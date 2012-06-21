@@ -17,7 +17,7 @@
 %% @doc Index the given object `O'.
 -spec index(riak_object:riak_object()) -> ok | {error, term()}.
 index(O) ->
-    esolr:add([make_doc(O)]).
+    yokozuna_solr:index([make_doc(O)]).
 
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
