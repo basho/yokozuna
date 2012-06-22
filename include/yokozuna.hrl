@@ -8,6 +8,13 @@
           pairs :: [{DocID::binary(), VClock::base64()}]
          }).
 
+%% A reference to a merkle tree.
+-record(tree_ref, {
+          name :: tree_name(),
+          pid :: pid(),
+          ref :: reference()
+         }).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -20,4 +27,5 @@
 -type base64() :: base64:ascii_string().
 -type solr_vclocks() :: #solr_vclocks{}.
 -type iso8601() :: string().
-
+-type tree_name() :: atom().
+-type tree_ref() :: #tree_ref{}.

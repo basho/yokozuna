@@ -71,7 +71,7 @@ gen_ts() ->
 gen_vc(O) ->
     TS = gen_ts(),
     ID = doc_id(O),
-    VClock = base64:encode(term_to_binary(doc_vclock(O))),
+    VClock = base64:encode(crypto:sha(term_to_binary(doc_vclock(O)))),
     <<TS/binary," ",ID/binary," ",VClock/binary>>.
 
 value(O) ->

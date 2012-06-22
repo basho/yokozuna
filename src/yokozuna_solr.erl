@@ -31,8 +31,8 @@ get_vclocks(Before, Continue, N) when N > 0 ->
             R = mochijson2:decode(Body),
             More = json_get_key(<<"more">>, R),
             Continuation = get_continuation(More, R),
-            Response = get_response(R),
-            make_solr_vclocks(More, Continuation, Response);
+            Pairs = get_pairs(R),
+            make_solr_vclocks(More, Continuation, Pairs);
         X ->
             {error, X}
     end.
@@ -51,6 +51,13 @@ get_continuation(false, _R) ->
 get_continuation(true, R) ->
     json_get_key(<<"continuation">>, R).
 
+get_pairs(R) ->
+    Docs = json_get_key(<<"docs">>, get_response(R)),
+    [to_pair(DocStruct) || DocStruct <- Docs].
+
+to_pair({struct, [{_,DocId},{_,Base64VClock}]}) ->
+    {DocId, Base64VClock}.
+
 get_response(R) ->
     json_get_key(<<"response">>, R).
 
@@ -64,5 +71,5 @@ json_get_key(Key, {struct, PL}) ->
 json_get_key(_Key, Term) ->
     throw({error, "json_get_key: Term not a struct", Term}).
 
-make_solr_vclocks(More, Continuation, Response) ->
-    #solr_vclocks{more=More, continuation=Continuation, pairs=Response}.
+make_solr_vclocks(More, Continuation, Pairs) ->
+    #solr_vclocks{more=More, continuation=Continuation, pairs=Pairs}.
