@@ -88,3 +88,47 @@ test_it() ->
     O6 = riak_object:new(B, <<"lime">>, <<"1">>),
     [index(O) || O <- [O1, O2, O3, O4, O5, O6]],
     esolr:commit().
+
+demo_write_objs() ->
+    application:start(esolr),
+    write_n_objs(1000),
+    esolr:commit().
+
+demo_build_tree(Name) ->
+    ibrowse:start(),
+    TP = yokozuna_entropy:new_tree_proc(Name),
+    Pid = element(3, TP),
+    Ref = make_ref(),
+    Pid ! {get_tree, self(), Ref},
+    receive {tree, Ref, Tree} -> Tree end,
+    %% returning TreeProc too in case want to play with it
+    {Tree, TP}.
+
+demo_new_vclock(N) ->
+    %% the timestamp will change causing hash to change
+    NS = list_to_binary(integer_to_list(N)),
+    B = <<"test">>,
+    K = <<"key_",NS/binary>>,
+    V = <<"val_",NS/binary>>,
+    O = riak_object:new(B, K, V),
+    O2 = riak_object:increment_vclock(O, dummy_node),
+    index(O2),
+    esolr:commit().
+
+demo_delete(N) ->
+    NS = integer_to_list(N),
+    K = "key_" ++ NS,
+    ok = esolr:delete({id,K}),
+    ok = esolr:commit().
+
+write_n_objs(0) ->
+    ok;
+write_n_objs(N) ->
+    NS = list_to_binary(integer_to_list(N)),
+    B = <<"test">>,
+    K = <<"key_",NS/binary>>,
+    V = <<"val_",NS/binary>>,
+    O = riak_object:new(B, K, V),
+    O2 = riak_object:increment_vclock(O, dummy_node),
+    index(O2),
+    write_n_objs(N-1).
