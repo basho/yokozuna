@@ -26,6 +26,21 @@ ping() ->
     [{IndexNode, _Type}] = PrefList,
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, yokozuna_vnode_master).
 
+covering_nodes() ->
+    Selector = all,
+    %% TODO: remove hardcoded n_val
+    NVal = 3,
+    NumPrimaries = 1,
+    ReqId = erlang:phash2(erlang:now()),
+    Service = yokozuna,
+
+    {CoveringSet, _} = riak_core_coverage_plan:create_plan(Selector,
+                                                           NVal,
+                                                           NumPrimaries,
+                                                           ReqId,
+                                                           Service),
+    [Node || {_, Node} <- CoveringSet].
+
 
 %%%===================================================================
 %%% Private
