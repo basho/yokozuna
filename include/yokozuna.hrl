@@ -7,6 +7,11 @@
           req_id :: non_neg_integer()
          }).
 
+-record(yz_search_cmd, {
+          qry :: term(),
+          req_id :: non_neg_integer()
+         }).
+
 -record(solr_vclocks, {
           more=false :: boolean(),
           continuation :: base64() | none,
@@ -41,5 +46,6 @@
 %%%===================================================================
 
 -define(YZ_INDEX_CMD, #yz_index_cmd).
+-define(YZ_SEARCH_CMD, #yz_search_cmd).
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_VNODE_MASTER, yokozuna_vnode_master).
