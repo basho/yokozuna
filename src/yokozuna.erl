@@ -1,12 +1,6 @@
 -module(yokozuna).
 -include("yokozuna.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
-
-%% -export([
-%%          index/1,
-%%          ping/0
-%%         ]).
-
 -compile(export_all).
 
 
@@ -39,8 +33,22 @@ covering_nodes() ->
                                                            NumPrimaries,
                                                            ReqId,
                                                            Service),
-    [Node || {_, Node} <- CoveringSet].
+    lists:usort([Node || {_, Node} <- CoveringSet]).
 
+%% TODO: This is tied to KV, not sure I want knowledge of KV in yokozuna?
+postcommit(RO) ->
+    ReqId = erlang:phash2(erlang:now()),
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    {Bucket, _Key} = BKey = {riak_object:bucket(RO), riak_object:key(RO)},
+    %% Hash same as KV (doc-based partitioning)
+    Idx = riak_core_util:chash_key(BKey),
+    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    Idx = riak_core_util:chash_key(BKey),
+    NVal = riak_core_bucket:n_val(BProps),
+    UpNodes = riak_core_node_watcher:nodes(?YZ_SVC_NAME),
+    Preflist = riak_core_apl:get_apl(Idx, NVal, Ring, UpNodes),
+    Doc = make_doc(RO),
+    yokozuna_vnode:index(Preflist, Doc, ReqId).
 
 %%%===================================================================
 %%% Private

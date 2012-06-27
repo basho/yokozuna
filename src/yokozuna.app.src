@@ -7,6 +7,7 @@
   {applications, [
                   kernel,
                   stdlib,
+                  esolr,
                   riak_core,
                   riak_kv
                  ]},

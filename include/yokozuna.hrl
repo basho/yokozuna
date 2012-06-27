@@ -2,6 +2,11 @@
 %%% Records
 %%%===================================================================
 
+-record(yz_index_cmd, {
+          doc :: doc(),
+          req_id :: non_neg_integer()
+         }).
+
 -record(solr_vclocks, {
           more=false :: boolean(),
           continuation :: base64() | none,
@@ -29,3 +34,12 @@
 -type iso8601() :: string().
 -type tree_name() :: atom().
 -type tree_ref() :: #tree_ref{}.
+
+
+%%%===================================================================
+%%% Macros
+%%%===================================================================
+
+-define(YZ_INDEX_CMD, #yz_index_cmd).
+-define(YZ_SVC_NAME, yokozuna).
+-define(YZ_VNODE_MASTER, yokozuna_vnode_master).

@@ -1,7 +1,11 @@
 -module(yokozuna_vnode).
 -behaviour(riak_core_vnode).
+-include("yokozuna.hrl").
 
--export([start_vnode/1]).
+-export([
+         index/3,
+         start_vnode/1
+        ]).
 
 -export([
          init/1,
@@ -26,19 +30,30 @@
 %%% API
 %%%===================================================================
 
+index(Preflist, Doc, ReqId) ->
+    Cmd = ?YZ_INDEX_CMD{doc=Doc, req_id=ReqId},
+    riak_core_vnode_master:command(Preflist, Cmd, ?YZ_VNODE_MASTER).
+
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 
-%% ===================================================================
-%% Callbacks
-%% ===================================================================
+%%%===================================================================
+%%% Callbacks
+%%%===================================================================
 
 init([Partition]) ->
     {ok, #state { partition=Partition }}.
 
+handle_command(?YZ_INDEX_CMD{doc=Doc}, _Sender, State) ->
+    Reply = handle_index_cmd(Doc),
+    %% TODO: should not be doing commit per write
+    esolr:commit(),
+    {reply, Reply, State};
+
 handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
+
 handle_command(Message, _Sender, State) ->
     lager:error("unhandled command ~p", [Message]),
     {noreply, State}.
@@ -75,3 +90,10 @@ handle_exit(_Pid, _Reason, State) ->
 
 terminate(_Reason, _State) ->
     ok.
+
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
+handle_index_cmd(Doc) ->
+    yokozuna_solr:index([Doc]).
