@@ -35,6 +35,12 @@ covering_nodes() ->
                                                            Service),
     lists:usort([Node || {_, Node} <- CoveringSet]).
 
+install_postcommit(Bucket) when is_binary(Bucket) ->
+    ModT = {<<"mod">>, <<"yokozuna">>},
+    PostT = {<<"fun">>, <<"postcommit">>},
+    Struct = {struct, [ModT, PostT]},
+    riak_core_bucket:set_bucket(Bucket, [{postcommit, [Struct]}]).
+
 %% TODO: This is tied to KV, not sure I want knowledge of KV in yokozuna?
 postcommit(RO) ->
     ReqId = erlang:phash2(erlang:now()),
