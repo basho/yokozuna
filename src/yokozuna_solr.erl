@@ -2,6 +2,11 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 
+-define(CORE_ALIASES, [{index_dir, instanceDir},
+                       {cfg_file, config},
+                       {java_lib_dir, "property.yz_java_lib_dir"},
+                       {schema_file, schema}]).
+-define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 
 %% @doc This module provides the interface for making calls to Solr.
@@ -11,6 +16,24 @@
 %%% API
 %%%===================================================================
 
+%% @doc Perform Core related actions.
+-spec core(atom(), proplists:proplist()) -> ok.
+core(Action, Props) ->
+    BaseURL = base_url() ++ "/admin/cores",
+    Action2 = convert_action(Action),
+    Params = proplists:substitute_aliases(?CORE_ALIASES,
+                                          [{action, Action2}|Props]),
+    Encoded = mochiweb_util:urlencode(Params),
+    Opts = [{response_format, binary}],
+    URL = BaseURL ++ "?" ++ Encoded,
+
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _Headers, _Body} ->
+            ok;
+        X ->
+            throw({error_calling_solr, create_core, X})
+    end.
+
 %% @doc Get `N' key-vclock pairs that occur before the `Before'
 %%      timestamp.
 -spec get_vclocks(iso8601()) -> solr_vclocks().
@@ -18,7 +41,7 @@ get_vclocks(Before) ->
     get_vclocks(Before, none, ?DEFAULT_VCLOCK_N).
 
 get_vclocks(Before, Continue, N) when N > 0 ->
-    BaseURL = "http://localhost:8983/solr/merkle_tree",
+    BaseURL = base_url() ++ "/merkle_tree",
     Params = [{before, Before}, {wt, json}, {n, N}],
     Params2 = if Continue == none -> Params;
                  true -> [{continue, Continue}|Params]
@@ -44,6 +67,12 @@ index(Docs) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @doc Get the base URL.
+base_url() ->
+    app_helper:get_env(base_url, ?YZ_APP_NAME, ?DEFAULT_URL).
+
+convert_action(create) -> "CREATE".
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->

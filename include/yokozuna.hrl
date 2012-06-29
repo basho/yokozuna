@@ -45,7 +45,13 @@
 %%% Macros
 %%%===================================================================
 
+-define(ERROR(Fmt, Args), error_logger:error_msg(Fmt, Args)).
+
+-define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
+-define(YZ_CORE_CFG_FILE, "config.xml").
+-define(YZ_SCHEMA_FILE, "schema.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
 -define(YZ_SEARCH_CMD, #yz_search_cmd).
+-define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_VNODE_MASTER, yokozuna_vnode_master).
