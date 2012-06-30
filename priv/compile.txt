@@ -1,1 +1,0 @@
-javac -cp '/usr/local/apache-solr-3.5.0/example/work/Jetty_0_0_0_0_8983_solr.war__solr__k1kf17/webapp/WEB-INF/lib/*' java/com/basho/yokozuna/handler/MerkleTreeHandler.java 
