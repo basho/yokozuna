@@ -30,6 +30,7 @@ then
     tar zxvf apache-solr-3.5.0.tgz
 fi
 
-cp -vr $src_dir/example solr
-mkdir $dir/yokozuna
-cp -v solr.xml $dir/yokozuna
+cp -vr $src_dir/example $dir
+rm -rf $dir/{multicore,solr,README.txt}
+# mkdir $dir/yokozuna
+cp -v solr.xml $dir
