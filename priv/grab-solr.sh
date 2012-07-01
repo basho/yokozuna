@@ -13,6 +13,11 @@ check_for_solr()
     test -e $dir
 }
 
+if [ $(basename $PWD) != "priv" ]
+then
+    cd priv
+fi
+
 if check_for_solr
 then
     echo "Solr already exists, exiting..."
