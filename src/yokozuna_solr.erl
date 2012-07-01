@@ -64,13 +64,28 @@ get_vclocks(Before, Continue, N) when N > 0 ->
 index(Docs) ->
     esolr:add(Docs).
 
+%% @doc Return boolean based on ping response from Solr.
+-spec ping() -> boolean().
+ping() ->
+    URL = base_url() ++ "/admin/ping",
+    case ibrowse:send_req(URL, [], get) of
+        {ok, "200", _, _} -> true;
+        _ -> false
+    end.
+
+start(Dir) ->
+    SolrPort = app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT),
+    _Pid = spawn_link(?MODULE, solr_process, [Dir, SolrPort]),
+    ok.
+
 %%%===================================================================
 %%% Private
 %%%===================================================================
 
 %% @doc Get the base URL.
 base_url() ->
-    app_helper:get_env(base_url, ?YZ_APP_NAME, ?DEFAULT_URL).
+    Port = app_helper:get_env(?YZ_APP_NAME, port, ?YZ_DEFAULT_SOLR_PORT),
+    "http://localhost:" ++ Port ++ "/solr".
 
 convert_action(create) -> "CREATE".
 
@@ -102,3 +117,16 @@ json_get_key(_Key, Term) ->
 
 make_solr_vclocks(More, Continuation, Pairs) ->
     #solr_vclocks{more=More, continuation=Continuation, pairs=Pairs}.
+
+solr_process(Dir, SolrPort) ->
+    Cmd = "java -Dsolr.solr.home=. -Djetty.port=" ++ SolrPort ++ " -jar start.jar",
+    io:format("running: ~p~n", [Cmd]),
+    Port = open_port({spawn, Cmd}, [{cd, Dir}, exit_status]),
+    solr_process_loop(Dir, Port).
+
+solr_process_loop(_Dir, Port) ->
+    receive
+        {Port, {data, Data}} -> solr_process_loop(_Dir, Port);
+        {Port, {exit_status, 0}} -> throw({solr_exited, 0});
+        {Port, {exit_status, Num}} -> throw({solr_exited, Num})
+    end.

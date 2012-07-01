@@ -47,6 +47,8 @@
 
 -define(ERROR(Fmt, Args), error_logger:error_msg(Fmt, Args)).
 
+-define(YZ_DEFAULT_SOLR_PORT, "8983").
+-define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "config.xml").
 -define(YZ_SCHEMA_FILE, "schema.xml").
