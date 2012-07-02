@@ -110,6 +110,28 @@ ping() ->
         _ -> false
     end.
 
+port() ->
+    app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT).
+
+search(Core, Query, Mapping) ->
+    Nodes = yokozuna:covering_nodes(),
+    HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
+    ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
+    ShardFrags2 = string:join(ShardFrags, ","),
+    BaseURL = base_url() ++ "/" ++ Core ++ "/select",
+    %% TODO: ShardFrags breaks urlencode
+    Params = [%% {shards, ShardFrags},
+              {q, Query}],
+    Encoded = mochiweb_util:urlencode(Params),
+    URL = BaseURL ++ "?shards=" ++ ShardFrags2 ++ "&" ++ Encoded,
+    Headers = [],
+    Body = [],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, get, Body, Opts) of
+        {ok, "200", _, Resp} -> Resp;
+        Err -> throw({"Failed to search", URL, Err})
+    end.
+
 start(Dir) ->
     SolrPort = app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT),
     _Pid = spawn_link(?MODULE, solr_process, [Dir, SolrPort]),
@@ -121,8 +143,7 @@ start(Dir) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    Port = app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT),
-    "http://localhost:" ++ Port ++ "/solr".
+    "http://localhost:" ++ port() ++ "/solr".
 
 convert_action(create) -> "CREATE".
 
@@ -180,6 +201,9 @@ json_get_key(_Key, Term) ->
 make_solr_vclocks(More, Continuation, Pairs) ->
     #solr_vclocks{more=More, continuation=Continuation, pairs=Pairs}.
 
+shard_frag(Core, {Host, Port}) ->
+    Host ++ ":" ++ Port ++ "/solr/" ++ Core.
+
 solr_process(Dir, SolrPort) ->
     Cmd = "java -Dsolr.solr.home=. -Djetty.port=" ++ SolrPort ++ " -jar start.jar",
     io:format("running: ~p~n", [Cmd]),
@@ -188,7 +212,7 @@ solr_process(Dir, SolrPort) ->
 
 solr_process_loop(_Dir, Port) ->
     receive
-        {Port, {data, Data}} -> solr_process_loop(_Dir, Port);
+        {Port, {data, _Data}} -> solr_process_loop(_Dir, Port);
         {Port, {exit_status, 0}} -> throw({solr_exited, 0});
         {Port, {exit_status, Num}} -> throw({solr_exited, Num})
     end.
