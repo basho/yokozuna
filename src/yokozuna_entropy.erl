@@ -13,13 +13,13 @@
 %%% API
 %%%===================================================================
 
--spec new_tree_proc(tree_name()) -> tree_ref() | already_running.
-new_tree_proc(Name) ->
+-spec new_tree_proc(string(), tree_name()) -> tree_ref() | already_running.
+new_tree_proc(Core, Name) ->
     case whereis(Name) of
         undefined ->
-            {Pid, Ref} = spawn_monitor(?MODULE, tree_loop, []),
+            {Pid, Ref} = spawn_monitor(?MODULE, tree_loop, [Core]),
             register(Name, Pid),
-            #tree_ref{name=Name, pid=Pid, ref=Ref};
+            #tree_ref{core=Core, name=Name, pid=Pid, ref=Ref};
         Pid ->
             {already_running, Pid}
     end.
@@ -32,23 +32,23 @@ gen_before() ->
     DateTime = calendar:now_to_universal_time(os:timestamp()),
     to_datetime(minus_period(DateTime, [{mins, 5}])).
 
-build_tree() ->
+build_tree(Core) ->
     Before = gen_before(),
     T1 = hashtree:new(),
-    SV = yokozuna_solr:get_vclocks(Before, none, 100),
-    iterate_vclocks(Before, T1, SV).
+    SV = yokozuna_solr:get_vclocks(Core, Before, none, 100),
+    iterate_vclocks(Core, Before, T1, SV).
 
 ht_insert({Key, VCHash}, Tree) ->
     hashtree:insert(Key, VCHash, Tree).
 
-iterate_vclocks(Before, Tree, #solr_vclocks{more=true,
-                                            continuation=Cont,
-                                            pairs=Pairs}) ->
+iterate_vclocks(Core, Before, Tree, #solr_vclocks{more=true,
+                                                  continuation=Cont,
+                                                  pairs=Pairs}) ->
     Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
-    SV = yokozuna_solr:get_vclocks(Before, Cont, 100),
-    iterate_vclocks(Before, Tree2, SV);
-iterate_vclocks(_, Tree, #solr_vclocks{more=false,
-                                       pairs=Pairs}) ->
+    SV = yokozuna_solr:get_vclocks(Core, Before, Cont, 100),
+    iterate_vclocks(Core, Before, Tree2, SV);
+iterate_vclocks(_, _, Tree, #solr_vclocks{more=false,
+                                          pairs=Pairs}) ->
     Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
     hashtree:update_tree(Tree2).
 
@@ -82,15 +82,13 @@ to_datetime({{Year, Month, Day}, {Hour, Min, Sec}}) ->
     list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
                                  [Year,Month,Day,Hour,Min,Sec])).
 
-tree_loop() ->
-    Tree = build_tree(),
-    tree_loop(Tree).
+tree_loop(Core) ->
+    Tree = build_tree(Core),
+    tree_cache_loop(Tree).
 
-tree_loop(Tree) ->
+tree_cache_loop(Tree) ->
     receive
-        %% {pairs, Pairs} ->
-        %%     throw(do_something);
         {get_tree, Pid, Ref} ->
             Pid ! {tree, Ref, Tree},
-            tree_loop(Tree)
+            tree_cache_loop(Tree)
     end.

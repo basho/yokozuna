@@ -16,8 +16,8 @@
 %%% API
 %%%===================================================================
 
-commit() ->
-    BaseURL = base_url() ++ "/update",
+commit(Core) ->
+    BaseURL = base_url() ++ "/" ++ Core ++  "/update",
     XML = encode_commit(),
     Params = [{commit, true}],
     Encoded = mochiweb_util:urlencode(Params),
@@ -47,8 +47,8 @@ core(Action, Props) ->
             throw({error_calling_solr, create_core, X})
     end.
 
-delete(DocID) ->
-    BaseURL = base_url() ++ "/update",
+delete(Core, DocID) ->
+    BaseURL = base_url() ++ "/" ++ Core ++ "/update",
     XML = encode_delete(DocID),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
@@ -62,12 +62,12 @@ delete(DocID) ->
 
 %% @doc Get `N' key-vclock pairs that occur before the `Before'
 %%      timestamp.
--spec get_vclocks(iso8601()) -> solr_vclocks().
-get_vclocks(Before) ->
-    get_vclocks(Before, none, ?DEFAULT_VCLOCK_N).
+-spec get_vclocks(string(), iso8601()) -> solr_vclocks().
+get_vclocks(Core, Before) ->
+    get_vclocks(Core, Before, none, ?DEFAULT_VCLOCK_N).
 
-get_vclocks(Before, Continue, N) when N > 0 ->
-    BaseURL = base_url() ++ "/merkle_tree",
+get_vclocks(Core, Before, Continue, N) when N > 0 ->
+    BaseURL = base_url() ++ "/" ++ Core ++ "/merkle_tree",
     Params = [{before, Before}, {wt, json}, {n, N}],
     Params2 = if Continue == none -> Params;
                  true -> [{continue, Continue}|Params]
@@ -87,8 +87,8 @@ get_vclocks(Before, Continue, N) when N > 0 ->
     end.
 
 %% @doc Index the given `Docs'.
-index(Docs) ->
-    BaseURL = base_url() ++ "/update",
+index(Core, Docs) ->
+    BaseURL = base_url() ++ "/" ++ Core ++ "/update",
     Doc = {add, [], lists:map(fun encode_doc/1, Docs)},
     XML = xmerl:export_simple([Doc], xmerl_xml),
     Params = [],
@@ -121,7 +121,7 @@ start(Dir) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    Port = app_helper:get_env(?YZ_APP_NAME, port, ?YZ_DEFAULT_SOLR_PORT),
+    Port = app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT),
     "http://localhost:" ++ Port ++ "/solr".
 
 convert_action(create) -> "CREATE".

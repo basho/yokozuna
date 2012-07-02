@@ -20,6 +20,7 @@
 
 %% A reference to a merkle tree.
 -record(tree_ref, {
+          core :: string(),
           name :: tree_name(),
           pid :: pid(),
           ref :: reference()

@@ -9,9 +9,9 @@
 %%%===================================================================
 
 %% @doc Index the given object `O'.
--spec index(riak_object:riak_object()) -> ok | {error, term()}.
-index(O) ->
-    yokozuna_solr:index([make_doc(O)]).
+-spec index(string(), riak_object:riak_object()) -> ok | {error, term()}.
+index(Core, O) ->
+    yokozuna_solr:index(Core, [make_doc(O)]).
 
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
@@ -106,7 +106,7 @@ gen_vc(O) ->
 value(O) ->
     riak_object:get_value(O).
 
-test_it() ->
+test_it(Core) ->
     B = <<"fruit">>,
     O1 = riak_object:new(B, <<"apples">>, <<"2">>),
     O2 = riak_object:new(B, <<"oranges">>, <<"1">>),
@@ -114,17 +114,17 @@ test_it() ->
     O4 = riak_object:new(B, <<"lemons">>, <<"1">>),
     O5 = riak_object:new(B, <<"celery">>, <<"4">>),
     O6 = riak_object:new(B, <<"lime">>, <<"1">>),
-    [index(O) || O <- [O1, O2, O3, O4, O5, O6]],
-    yokozuna_solr:commit().
+    [index(Core, O) || O <- [O1, O2, O3, O4, O5, O6]],
+    yokozuna_solr:commit(Core).
 
-demo_write_objs() ->
+demo_write_objs(Core) ->
     ibrowse:start(),
-    write_n_objs(1000),
-    yokozuna_solr:commit().
+    write_n_objs(Core, 1000),
+    yokozuna_solr:commit(Core).
 
-demo_build_tree(Name) ->
+demo_build_tree(Name, Core) ->
     ibrowse:start(),
-    TP = yokozuna_entropy:new_tree_proc(Name),
+    TP = yokozuna_entropy:new_tree_proc(Name, Core),
     Pid = element(3, TP),
     Ref = make_ref(),
     Pid ! {get_tree, self(), Ref},
@@ -132,7 +132,7 @@ demo_build_tree(Name) ->
     %% returning TreeProc too in case want to play with it
     {Tree, TP}.
 
-demo_new_vclock(N) ->
+demo_new_vclock(Core, N) ->
     %% the timestamp will change causing hash to change
     NS = list_to_binary(integer_to_list(N)),
     B = <<"test">>,
@@ -140,23 +140,23 @@ demo_new_vclock(N) ->
     V = <<"val_",NS/binary>>,
     O = riak_object:new(B, K, V),
     O2 = riak_object:increment_vclock(O, dummy_node),
-    index(O2),
-    yokozuna_solr:commit().
+    index(Core, O2),
+    yokozuna_solr:commit(Core).
 
-demo_delete(N) ->
+demo_delete(Core, N) ->
     NS = integer_to_list(N),
     K = "key_" ++ NS,
-    ok = yokozuna_solr:delete({id,K}),
-    ok = yokozuna_solr:commit().
+    ok = yokozuna_solr:delete(Core, {id,K}),
+    ok = yokozuna_solr:commit(Core).
 
-write_n_objs(0) ->
+write_n_objs(_, 0) ->
     ok;
-write_n_objs(N) ->
+write_n_objs(Core, N) ->
     NS = list_to_binary(integer_to_list(N)),
     B = <<"test">>,
     K = <<"key_",NS/binary>>,
     V = <<"val_",NS/binary>>,
     O = riak_object:new(B, K, V),
     O2 = riak_object:increment_vclock(O, dummy_node),
-    index(O2),
-    write_n_objs(N-1).
+    index(Core, O2),
+    write_n_objs(Core, N-1).
