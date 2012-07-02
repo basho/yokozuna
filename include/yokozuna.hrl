@@ -4,6 +4,7 @@
 
 -record(yz_index_cmd, {
           doc :: doc(),
+          index :: string(),
           req_id :: non_neg_integer()
          }).
 

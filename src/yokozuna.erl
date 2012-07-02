@@ -42,6 +42,8 @@ install_postcommit(Bucket) when is_binary(Bucket) ->
     riak_core_bucket:set_bucket(Bucket, [{postcommit, [Struct]}]).
 
 %% TODO: This is tied to KV, not sure I want knowledge of KV in yokozuna?
+%%
+%% TODO: don't force 1:1 mapping of bucket to index
 postcommit(RO) ->
     ReqId = erlang:phash2(erlang:now()),
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
@@ -54,7 +56,8 @@ postcommit(RO) ->
     UpNodes = riak_core_node_watcher:nodes(?YZ_SVC_NAME),
     Preflist = riak_core_apl:get_apl(Idx, NVal, Ring, UpNodes),
     Doc = make_doc(RO),
-    yokozuna_vnode:index(Preflist, Doc, ReqId).
+    Index = Bucket,
+    yokozuna_vnode:index(Preflist, binary_to_list(Index), Doc, ReqId).
 
 %%%===================================================================
 %%% Private

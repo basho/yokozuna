@@ -3,7 +3,7 @@
 -include("yokozuna.hrl").
 
 -export([
-         index/3,
+         index/4,
          start_vnode/1
         ]).
 
@@ -30,8 +30,8 @@
 %%% API
 %%%===================================================================
 
-index(Preflist, Doc, ReqId) ->
-    Cmd = ?YZ_INDEX_CMD{doc=Doc, req_id=ReqId},
+index(Preflist, Index, Doc, ReqId) ->
+    Cmd = ?YZ_INDEX_CMD{doc=Doc, index=Index, req_id=ReqId},
     riak_core_vnode_master:command(Preflist, Cmd, ?YZ_VNODE_MASTER).
 
 search(Query, ReqId) ->
@@ -49,10 +49,10 @@ start_vnode(I) ->
 init([Partition]) ->
     {ok, #state { partition=Partition }}.
 
-handle_command(?YZ_INDEX_CMD{doc=Doc}, _Sender, State) ->
-    Reply = handle_index_cmd(Doc),
+handle_command(?YZ_INDEX_CMD{doc=Doc, index=Index}, _Sender, State) ->
+    Reply = handle_index_cmd(Index, Doc),
     %% TODO: should not be doing commit per write
-    yokozuna_solr:commit(),
+    yokozuna_solr:commit(Index),
     {reply, Reply, State};
 
 handle_command(ping, _Sender, State) ->
@@ -99,5 +99,5 @@ terminate(_Reason, _State) ->
 %%% Private
 %%%===================================================================
 
-handle_index_cmd(Doc) ->
-    yokozuna_solr:index([Doc]).
+handle_index_cmd(Index, Doc) ->
+    yokozuna_solr:index(Index, [Doc]).
