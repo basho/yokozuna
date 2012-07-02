@@ -7,7 +7,6 @@
   {applications, [
                   kernel,
                   stdlib,
-                  esolr,
                   ibrowse,
                   riak_core,
                   riak_kv

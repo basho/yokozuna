@@ -52,7 +52,7 @@ init([Partition]) ->
 handle_command(?YZ_INDEX_CMD{doc=Doc}, _Sender, State) ->
     Reply = handle_index_cmd(Doc),
     %% TODO: should not be doing commit per write
-    esolr:commit(),
+    yokozuna_solr:commit(),
     {reply, Reply, State};
 
 handle_command(ping, _Sender, State) ->

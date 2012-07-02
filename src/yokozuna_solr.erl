@@ -16,6 +16,19 @@
 %%% API
 %%%===================================================================
 
+commit() ->
+    BaseURL = base_url() ++ "/update",
+    XML = encode_commit(),
+    Params = [{commit, true}],
+    Encoded = mochiweb_util:urlencode(Params),
+    URL = BaseURL ++ "?" ++ Encoded,
+    Headers = [{content_type, "text/xml"}],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, post, XML, Opts) of
+        {ok, "200", _, _} -> ok;
+        Err -> throw({"Failed to commit", Err})
+    end.
+
 %% @doc Perform Core related actions.
 -spec core(atom(), proplists:proplist()) -> ok.
 core(Action, Props) ->
@@ -32,6 +45,19 @@ core(Action, Props) ->
             ok;
         X ->
             throw({error_calling_solr, create_core, X})
+    end.
+
+delete(DocID) ->
+    BaseURL = base_url() ++ "/update",
+    XML = encode_delete(DocID),
+    Params = [],
+    Encoded = mochiweb_util:urlencode(Params),
+    URL = BaseURL ++ "?" ++ Encoded,
+    Headers = [{content_type, "text/xml"}],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, post, XML, Opts) of
+        {ok, "200", _, _} -> ok;
+        Err -> throw({"Failed to delete doc", DocID, Err})
     end.
 
 %% @doc Get `N' key-vclock pairs that occur before the `Before'
@@ -62,7 +88,18 @@ get_vclocks(Before, Continue, N) when N > 0 ->
 
 %% @doc Index the given `Docs'.
 index(Docs) ->
-    esolr:add(Docs).
+    BaseURL = base_url() ++ "/update",
+    Doc = {add, [], lists:map(fun encode_doc/1, Docs)},
+    XML = xmerl:export_simple([Doc], xmerl_xml),
+    Params = [],
+    Encoded = mochiweb_util:urlencode(Params),
+    URL = BaseURL ++ "?" ++ Encoded,
+    Headers = [{content_type, "text/xml"}],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, post, XML, Opts) of
+        {ok, "200", _, _} -> ok;
+        Err -> throw({"Failed to index docs", Docs, Err})
+    end.
 
 %% @doc Return boolean based on ping response from Solr.
 -spec ping() -> boolean().
@@ -88,6 +125,31 @@ base_url() ->
     "http://localhost:" ++ Port ++ "/solr".
 
 convert_action(create) -> "CREATE".
+
+%% TODO: Encoding functions copied from esolr, redo this.
+encode_commit() ->
+	xmerl:export_simple([{commit, []}], xmerl_xml).
+
+encode_delete({id,Id})->
+	xmerl:export_simple([{delete, [], [{id, [], [Id]}]}], xmerl_xml).
+
+encode_doc({doc, Fields}) ->
+	{doc, [], lists:map(fun encode_field/1,Fields)};
+
+encode_doc({doc, Boost, Fields}) ->
+	{doc, [{boost, Boost}], lists:map(fun encode_field/1, Fields)}.
+
+encode_field({Name, Value}) when is_binary(Value)->
+	{field, [{name,Name}], [[Value]]};
+
+encode_field({Name,Value}) ->
+	{field, [{name,Name}], [Value]};
+
+encode_field({Name,Value,Boost}) when is_binary(Value)->
+	{field, [{name,Name}, {boost,Boost}], [[Value]]};
+
+encode_field({Name,Value,Boost}) ->
+	{field, [{name,Name}, {boost,Boost}], [Value]}.
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->

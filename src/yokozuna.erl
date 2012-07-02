@@ -107,7 +107,6 @@ value(O) ->
     riak_object:get_value(O).
 
 test_it() ->
-    application:start(esolr),
     B = <<"fruit">>,
     O1 = riak_object:new(B, <<"apples">>, <<"2">>),
     O2 = riak_object:new(B, <<"oranges">>, <<"1">>),
@@ -116,12 +115,12 @@ test_it() ->
     O5 = riak_object:new(B, <<"celery">>, <<"4">>),
     O6 = riak_object:new(B, <<"lime">>, <<"1">>),
     [index(O) || O <- [O1, O2, O3, O4, O5, O6]],
-    esolr:commit().
+    yokozuna_solr:commit().
 
 demo_write_objs() ->
-    application:start(esolr),
+    ibrowse:start(),
     write_n_objs(1000),
-    esolr:commit().
+    yokozuna_solr:commit().
 
 demo_build_tree(Name) ->
     ibrowse:start(),
@@ -142,13 +141,13 @@ demo_new_vclock(N) ->
     O = riak_object:new(B, K, V),
     O2 = riak_object:increment_vclock(O, dummy_node),
     index(O2),
-    esolr:commit().
+    yokozuna_solr:commit().
 
 demo_delete(N) ->
     NS = integer_to_list(N),
     K = "key_" ++ NS,
-    ok = esolr:delete({id,K}),
-    ok = esolr:commit().
+    ok = yokozuna_solr:delete({id,K}),
+    ok = yokozuna_solr:commit().
 
 write_n_objs(0) ->
     ok;
