@@ -62,18 +62,8 @@ postcommit(RO) ->
 search(Index, Query, Mapping) ->
     yokozuna_solr:search(Index, [{q, Query}], Mapping).
 
-node_hostport_mapping() ->
-    {Ports, []} = riak_core_util:rpc_every_member_ann(yokozuna_solr, port,
-                                                      [], 5000),
-    [{Node, {hostname(Node), Port}} || {Node, Port} <- Ports].
-
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
-
-hostname(Node) ->
-    S = atom_to_list(Node),
-    [_, Host] = re:split(S, "@", [{return, list}]),
-    Host.
 
 %%%===================================================================
 %%% Private
