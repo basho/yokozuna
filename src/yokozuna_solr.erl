@@ -113,15 +113,15 @@ ping() ->
 port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT).
 
-search(Core, Query, Mapping) ->
+search(Core, Params, Mapping) ->
     Nodes = yokozuna:covering_nodes(),
     HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
     ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
     ShardFrags2 = string:join(ShardFrags, ","),
     BaseURL = base_url() ++ "/" ++ Core ++ "/select",
     %% TODO: ShardFrags breaks urlencode
-    Params = [%% {shards, ShardFrags},
-              {q, Query}],
+    %% Params = [%% {shards, ShardFrags},
+    %%           {q, Query}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?shards=" ++ ShardFrags2 ++ "&" ++ Encoded,
     Headers = [],

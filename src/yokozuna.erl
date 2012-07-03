@@ -60,7 +60,7 @@ postcommit(RO) ->
     yokozuna_vnode:index(Preflist, binary_to_list(Index), Doc, ReqId).
 
 search(Core, Query, Mapping) ->
-    yokozuna_solr:search(Core, Query, Mapping).
+    yokozuna_solr:search(Core, [{q, Query}], Mapping).
 
 node_hostport_mapping() ->
     {Ports, []} = riak_core_util:rpc_every_member_ann(yokozuna_solr, port,

@@ -1,7 +1,8 @@
 -module(yokozuna_app).
 -behaviour(application).
+-export([start/2, stop/1]). % prevent compile warnings
+-compile(export_all).
 -include("yokozuna.hrl").
--export([start/2, stop/1]).
 
 
 %%%===================================================================
@@ -14,6 +15,7 @@ start(_StartType, _StartArgs) ->
     case yokozuna_sup:start_link() of
         {ok, Pid} ->
             register_app(),
+            add_routes(wm_routes()),
             {ok, Pid};
         Error ->
             Error
@@ -27,6 +29,9 @@ stop(_State) ->
 %%% Private
 %%%===================================================================
 
+add_routes(Routes) ->
+    [webmachine_router:add_route(R) || R <- Routes].
+
 register_app() ->
     Modules = [{vnode_module, yokozuna_vnode}],
     riak_core:register(yokozuna, Modules).
@@ -38,3 +43,6 @@ start_solr(Dir) ->
         %% this
         false -> ok = yokozuna_solr:start(Dir)
     end.
+
+wm_routes() ->
+    [{["search", index], yz_wm_search, []}].
