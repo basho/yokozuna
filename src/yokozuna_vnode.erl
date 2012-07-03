@@ -34,10 +34,6 @@ index(Preflist, Index, Doc, ReqId) ->
     Cmd = ?YZ_INDEX_CMD{doc=Doc, index=Index, req_id=ReqId},
     riak_core_vnode_master:command(Preflist, Cmd, ?YZ_VNODE_MASTER).
 
-search(Query, ReqId) ->
-    _Cmd = ?YZ_SEARCH_CMD{qry=Query, req_id=ReqId},
-    throw(implement_me).
-
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
