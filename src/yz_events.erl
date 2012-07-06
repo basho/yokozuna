@@ -10,6 +10,13 @@
 %%% API
 %%%===================================================================
 
+-spec get_mapping() -> list().
+get_mapping() ->
+    case ets:lookup(?YZ_EVENTS_TAB, mapping) of
+        [{mapping, Mapping}] -> Mapping;
+        [] -> []
+    end.
+
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -62,13 +69,6 @@ create_events_table() ->
     Opts = [named_table, protected, {read_concurrency, true}],
     ?YZ_EVENTS_TAB = ets:new(?YZ_EVENTS_TAB, Opts),
     ok.
-
--spec get_mapping() -> list().
-get_mapping() ->
-    case ets:lookup(?YZ_EVENTS_TAB, mapping) of
-        [{mapping, Mapping}] -> Mapping;
-        [] -> []
-    end.
 
 -spec handle_node_event(node(), up | down, list()) -> list().
 handle_node_event(Node, down, Mapping) ->

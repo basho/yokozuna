@@ -17,7 +17,7 @@ search(Req, S) ->
     Index = wrq:path_info(index, Req),
     %% Query = wrq:get_qs_value("q", Req),
     Params = wrq:req_qs(Req),
-    Mapping = yokozuna:node_hostport_mapping(),
+    Mapping = yz_events:get_mapping(),
     XML = yokozuna_solr:search(Index, Params, Mapping),
     Req2 = wrq:set_resp_header("Content-Type", "text/xml", Req),
     {XML, Req2, S}.
