@@ -131,9 +131,9 @@ demo_write_objs(Index) ->
     write_n_objs(Index, 1000),
     yokozuna_solr:commit(Index).
 
-demo_build_tree(Name, Index) ->
+demo_build_tree(Index, Name) ->
     ibrowse:start(),
-    TP = yokozuna_entropy:new_tree_proc(Name, Index),
+    TP = yz_entropy:new_tree_proc(Index, Name),
     Pid = element(3, TP),
     Ref = make_ref(),
     Pid ! {get_tree, self(), Ref},

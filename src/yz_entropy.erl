@@ -1,4 +1,4 @@
--module(yokozuna_entropy).
+-module(yz_entropy).
 -compile(export_all).
 -include("yokozuna.hrl").
 
