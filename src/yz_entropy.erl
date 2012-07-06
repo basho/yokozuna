@@ -35,7 +35,7 @@ gen_before() ->
 build_tree(Index) ->
     Before = gen_before(),
     T1 = hashtree:new(),
-    SV = yokozuna_solr:get_vclocks(Index, Before, none, 100),
+    SV = yz_solr:get_vclocks(Index, Before, none, 100),
     iterate_vclocks(Index, Before, T1, SV).
 
 ht_insert({Key, VCHash}, Tree) ->
@@ -45,7 +45,7 @@ iterate_vclocks(Index, Before, Tree, #solr_vclocks{more=true,
                                                   continuation=Cont,
                                                   pairs=Pairs}) ->
     Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
-    SV = yokozuna_solr:get_vclocks(Index, Before, Cont, 100),
+    SV = yz_solr:get_vclocks(Index, Before, Cont, 100),
     iterate_vclocks(Index, Before, Tree2, SV);
 iterate_vclocks(_, _, Tree, #solr_vclocks{more=false,
                                           pairs=Pairs}) ->

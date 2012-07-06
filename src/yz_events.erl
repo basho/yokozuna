@@ -86,7 +86,7 @@ handle_ring_event(Ring, Mapping) ->
 
 -spec host_port(node()) -> {string(), non_neg_integer() | unknown}.
 host_port(Node) ->
-    case rpc:call(Node, yokozuna_solr, port, [], 5000) of
+    case rpc:call(Node, yz_solr, port, [], 5000) of
         {badrpc, Reason} ->
             ?ERROR("error retrieving Solr port ~p ~p", [Node, Reason]),
             {hostname(Node), unknown};

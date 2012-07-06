@@ -37,11 +37,11 @@ register_app() ->
     riak_core:register(yokozuna, Modules).
 
 start_solr(Dir) ->
-    case yokozuna_solr:ping() of
+    case yz_solr:ping() of
         true -> ok;
         %% TODO: start_solr is currently linking to process running
         %% this
-        false -> ok = yokozuna_solr:start(Dir)
+        false -> ok = yz_solr:start(Dir)
     end.
 
 wm_routes() ->

@@ -11,7 +11,7 @@
 %% @doc Index the given object `O'.
 -spec index(string(), riak_object:riak_object()) -> ok | {error, term()}.
 index(Index, O) ->
-    yokozuna_solr:index(Index, [make_doc(O)]).
+    yz_solr:index(Index, [make_doc(O)]).
 
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
@@ -60,7 +60,7 @@ postcommit(RO) ->
     yokozuna_vnode:index(Preflist, binary_to_list(Index), Doc, ReqId).
 
 search(Index, Query, Mapping) ->
-    yokozuna_solr:search(Index, [{q, Query}], Mapping).
+    yz_solr:search(Index, [{q, Query}], Mapping).
 
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
@@ -124,12 +124,12 @@ test_it(Index) ->
     O5 = riak_object:new(B, <<"celery">>, <<"4">>),
     O6 = riak_object:new(B, <<"lime">>, <<"1">>),
     [index(Index, O) || O <- [O1, O2, O3, O4, O5, O6]],
-    yokozuna_solr:commit(Index).
+    yz_solr:commit(Index).
 
 demo_write_objs(Index) ->
     ibrowse:start(),
     write_n_objs(Index, 1000),
-    yokozuna_solr:commit(Index).
+    yz_solr:commit(Index).
 
 demo_build_tree(Index, Name) ->
     ibrowse:start(),
@@ -150,13 +150,13 @@ demo_new_vclock(Index, N) ->
     O = riak_object:new(B, K, V),
     O2 = riak_object:increment_vclock(O, dummy_node),
     index(Index, O2),
-    yokozuna_solr:commit(Index).
+    yz_solr:commit(Index).
 
 demo_delete(Index, N) ->
     NS = integer_to_list(N),
     K = "key_" ++ NS,
-    ok = yokozuna_solr:delete(Index, {id,K}),
-    ok = yokozuna_solr:commit(Index).
+    ok = yz_solr:delete(Index, {id,K}),
+    ok = yz_solr:commit(Index).
 
 write_n_objs(_, 0) ->
     ok;

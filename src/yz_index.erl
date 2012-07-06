@@ -30,7 +30,7 @@ create(Name) ->
                  {java_lib_dir, JavaLibDir},
                  {schema_file, ?YZ_SCHEMA_FILE}
                 ],
-    ok = yokozuna_solr:core(create, CoreProps).
+    ok = yz_solr:core(create, CoreProps).
 
 %%%===================================================================
 %%% Private

@@ -1,4 +1,4 @@
--module(yokozuna_solr).
+-module(yz_solr).
 -compile(export_all).
 -include("yokozuna.hrl").
 
