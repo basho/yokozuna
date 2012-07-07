@@ -47,6 +47,7 @@
 %%% Macros
 %%%===================================================================
 
+-define(DEBUG(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 -define(ERROR(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 
 -define(YZ_DEFAULT_SOLR_PORT, "8983").

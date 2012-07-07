@@ -102,9 +102,9 @@ index(Core, Docs) ->
     end.
 
 %% @doc Return boolean based on ping response from Solr.
--spec ping() -> boolean().
-ping() ->
-    URL = base_url() ++ "/admin/ping",
+-spec ping(string()) -> boolean().
+ping(Core) ->
+    URL = base_url() ++ "/" ++ Core ++ "/admin/ping",
     case ibrowse:send_req(URL, [], get) of
         {ok, "200", _, _} -> true;
         _ -> false
@@ -131,11 +131,6 @@ search(Core, Params, Mapping) ->
         {ok, "200", _, Resp} -> Resp;
         Err -> throw({"Failed to search", URL, Err})
     end.
-
-start(Dir) ->
-    SolrPort = app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT),
-    _Pid = spawn_link(?MODULE, solr_process, [Dir, SolrPort]),
-    ok.
 
 %%%===================================================================
 %%% Private
@@ -203,16 +198,3 @@ make_solr_vclocks(More, Continuation, Pairs) ->
 
 shard_frag(Core, {Host, Port}) ->
     Host ++ ":" ++ Port ++ "/solr/" ++ Core.
-
-solr_process(Dir, SolrPort) ->
-    Cmd = "java -Dsolr.solr.home=. -Djetty.port=" ++ SolrPort ++ " -jar start.jar",
-    io:format("running: ~p~n", [Cmd]),
-    Port = open_port({spawn, Cmd}, [{cd, Dir}, exit_status]),
-    solr_process_loop(Dir, Port).
-
-solr_process_loop(_Dir, Port) ->
-    receive
-        {Port, {data, _Data}} -> solr_process_loop(_Dir, Port);
-        {Port, {exit_status, 0}} -> throw({solr_exited, 0});
-        {Port, {exit_status, Num}} -> throw({solr_exited, Num})
-    end.
