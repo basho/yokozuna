@@ -47,8 +47,6 @@ init([Partition]) ->
 
 handle_command(?YZ_INDEX_CMD{doc=Doc, index=Index}, _Sender, State) ->
     Reply = handle_index_cmd(Index, Doc),
-    %% TODO: should not be doing commit per write
-    yz_solr:commit(Index),
     {reply, Reply, State};
 
 handle_command(ping, _Sender, State) ->
