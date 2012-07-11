@@ -11,7 +11,7 @@
 %% @doc Index the given object `O'.
 -spec index(string(), riak_object:riak_object()) -> ok | {error, term()}.
 index(Index, O) ->
-    yz_solr:index(Index, [make_doc(O)]).
+    yz_solr:index(Index, [yz_doc:make_doc(O)]).
 
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
@@ -19,21 +19,6 @@ ping() ->
     PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, yokozuna),
     [{IndexNode, _Type}] = PrefList,
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, yokozuna_vnode_master).
-
-covering_nodes() ->
-    Selector = all,
-    %% TODO: remove hardcoded n_val
-    NVal = 3,
-    NumPrimaries = 1,
-    ReqId = erlang:phash2(erlang:now()),
-    Service = yokozuna,
-
-    {CoveringSet, _} = riak_core_coverage_plan:create_plan(Selector,
-                                                           NVal,
-                                                           NumPrimaries,
-                                                           ReqId,
-                                                           Service),
-    lists:usort([Node || {_, Node} <- CoveringSet]).
 
 install_postcommit(Bucket) when is_binary(Bucket) ->
     ModT = {<<"mod">>, <<"yokozuna">>},
@@ -55,9 +40,14 @@ postcommit(RO) ->
     NVal = riak_core_bucket:n_val(BProps),
     UpNodes = riak_core_node_watcher:nodes(?YZ_SVC_NAME),
     Preflist = riak_core_apl:get_apl(Idx, NVal, Ring, UpNodes),
-    Doc = make_doc(RO),
+    FPN = ?INT_TO_BIN(first_partition(Preflist)),
+    Doc = yz_doc:make_doc(RO),
+    Doc2 = yz_doc:add_to_doc(Doc, {'_fpn', FPN}),
     Index = Bucket,
-    yokozuna_vnode:index(Preflist, binary_to_list(Index), Doc, ReqId).
+    yokozuna_vnode:index(Preflist, binary_to_list(Index), Doc2, ReqId).
+
+first_partition([{Partition, _}|_]) ->
+    Partition.
 
 search(Index, Query, Mapping) ->
     yz_solr:search(Index, [{q, Query}], Mapping).
@@ -68,52 +58,6 @@ solr_port(Node, Ports) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
-%% @doc Given an object generate the doc to be indexed by Solr.
--spec make_doc(riak_object:riak_object()) -> doc().
-make_doc(O) ->
-    %% TODO: For now assume text/plain to prototype
-    %%
-    %% TODO: change 'text' to 'value'
-    Fields = [{id, doc_id(O)},
-              {text, value(O)},
-              {'_vc', gen_vc(O)}],
-    {doc, Fields}.
-
-%% @doc Given an object generate the vector clock doc to be indexed by
-%%      Solr.
-%% -spec make_vclock_doc(riak_object:riak_object()) -> doc().
-%% make_vclock_doc(O) ->
-%%     Fields = {id, doc
-
-doc_id(O) ->
-    riak_object:key(O).
-
-%% TODO: Just pass metadata in?
-%%
-%% TODO: I don't like having X-Riak-Last-Modified in here.  Add
-%%       function to riak_object.
-doc_ts(O) ->
-    MD = riak_object:get_metadata(O),
-    dict:fetch(<<"X-Riak-Last-Modified">>, MD).
-
-doc_vclock(O) ->
-    riak_object:vclock(O).
-
-gen_ts() ->
-    {{Year, Month, Day},
-     {Hour, Min, Sec}} = calendar:now_to_universal_time(erlang:now()),
-    list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
-                                 [Year,Month,Day,Hour,Min,Sec])).
-
-gen_vc(O) ->
-    TS = gen_ts(),
-    ID = doc_id(O),
-    VClock = base64:encode(crypto:sha(term_to_binary(doc_vclock(O)))),
-    <<TS/binary," ",ID/binary," ",VClock/binary>>.
-
-value(O) ->
-    riak_object:get_value(O).
 
 test_it(Index) ->
     B = <<"fruit">>,

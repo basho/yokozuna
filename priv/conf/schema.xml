@@ -552,9 +552,18 @@
    <!--
    <field name="timestamp" type="date" indexed="true" stored="true" default="NOW" multiValued="false"/>
      -->
-   
 
+
+   <!-- Vector Clock: Data related to anti-entropy -->
    <field name="_vc" type="string" indexed="true" stored="true"/>
+
+   <!-- Partition Number: Used as a filter query param -->
+   <field name="_pn" type="string" indexed="true" stored="true"/>
+
+   <!-- First Partition Number: The first partition in this doc's
+        preflist, used for further filtering on overlapping partitions. -->
+   <field name="_fpn" type="string" indexed="true" stored="true"/>
+
    <!-- Dynamic field definitions.  If a field name is not found, dynamicFields
         will be used if the name matches any of the patterns.
         RESTRICTION: the glob-like pattern in the name attribute must have

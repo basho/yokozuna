@@ -42,6 +42,19 @@
 -type tree_name() :: atom().
 -type tree_ref() :: #tree_ref{}.
 
+%% N value
+-type n() :: pos_integer().
+%% Number of partitions
+-type q() :: pos_integer().
+%% Partition
+-type p() :: non_neg_integer().
+%% Logical Partition
+-type lp() :: pos_integer().
+%% Distance between LPs
+-type dist() :: non_neg_integer().
+%% Mapping from logical partition to partition
+-type logical_idx() :: [{lp(), p()}].
+
 
 %%%===================================================================
 %%% Macros
@@ -49,6 +62,8 @@
 
 -define(DEBUG(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 -define(ERROR(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
+
+-define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_EVENTS_TAB, yz_events_tab).

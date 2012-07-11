@@ -114,15 +114,16 @@ port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT).
 
 search(Core, Params, Mapping) ->
-    Nodes = yokozuna:covering_nodes(),
+    {Nodes, FilterPairs} = yz_cover:plan(Core),
     HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
     ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
     ShardFrags2 = string:join(ShardFrags, ","),
+    FQ = build_fq(FilterPairs),
     BaseURL = base_url() ++ "/" ++ Core ++ "/select",
-    %% TODO: ShardFrags breaks urlencode
-    %% Params = [%% {shards, ShardFrags},
-    %%           {q, Query}],
-    Encoded = mochiweb_util:urlencode(Params),
+    Params2 = Params ++ [{fq, FQ}],
+    Encoded = mochiweb_util:urlencode(Params2),
+    %% NOTE: For some reason ShardFrags2 breaks urlencode so add it
+    %%       manually
     URL = BaseURL ++ "?shards=" ++ ShardFrags2 ++ "&" ++ Encoded,
     Headers = [],
     Body = [],
@@ -139,6 +140,19 @@ search(Core, Params, Mapping) ->
 %% @doc Get the base URL.
 base_url() ->
     "http://localhost:" ++ port() ++ "/solr".
+
+build_fq(Partitions) ->
+    Fields = [filter_to_str(P) || P <- Partitions],
+    string:join(Fields, " OR ").
+
+filter_to_str({Partition, all}) ->
+    "_pn:" ++ integer_to_list(Partition);
+filter_to_str({Partition, FPFilter}) ->
+    PNQ = "_pn:" ++ integer_to_list(Partition),
+    FPQ = string:join(lists:map(fun integer_to_list/1, FPFilter), " OR "),
+    FPQ2 = "_fpn:" ++ FPQ,
+    "(" ++ PNQ ++ " AND (" ++ FPQ2 ++ "))".
+
 
 convert_action(create) -> "CREATE".
 

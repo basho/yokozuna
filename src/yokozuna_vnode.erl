@@ -23,8 +23,8 @@
          handle_exit/3
         ]).
 
--record(state, {partition}).
-
+-record(state, {partition, partition_binary}).
+-define(PARTITION_BINARY(S), S#state.partition_binary).
 
 %%%===================================================================
 %%% API
@@ -43,10 +43,11 @@ start_vnode(I) ->
 %%%===================================================================
 
 init([Partition]) ->
-    {ok, #state { partition=Partition }}.
+    PartitionBinary = ?INT_TO_BIN(Partition),
+    {ok, #state {partition=Partition, partition_binary=PartitionBinary}}.
 
 handle_command(?YZ_INDEX_CMD{doc=Doc, index=Index}, _Sender, State) ->
-    Reply = handle_index_cmd(Index, Doc),
+    Reply = handle_index_cmd(Index, Doc, ?PARTITION_BINARY(State)),
     {reply, Reply, State};
 
 handle_command(ping, _Sender, State) ->
@@ -93,5 +94,9 @@ terminate(_Reason, _State) ->
 %%% Private
 %%%===================================================================
 
-handle_index_cmd(Index, Doc) ->
-    yz_solr:index(Index, [Doc]).
+add_partition(Doc, Partition) ->
+    yz_doc:add_to_doc(Doc, {'_pn', Partition}).
+
+handle_index_cmd(Index, Doc, Partition) ->
+    Doc2 = add_partition(Doc, Partition),
+    yz_solr:index(Index, [Doc2]).
