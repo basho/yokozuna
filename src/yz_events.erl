@@ -34,12 +34,10 @@ init([]) ->
 handle_cast({node_event, Node, Status}, S) ->
     Mapping = get_mapping(),
     Mapping2 = handle_node_event(Node, Status, Mapping),
-    io:format("node event ~p ~p ~p~n", [Node, Status, Mapping2]),
     ok = set_mapping(Mapping2),
     {noreply, S};
 
 handle_cast({ring_event, Ring}, S) ->
-    io:format("ring event~n"),
     Mapping = get_mapping(),
     Mapping2 = handle_ring_event(Ring, Mapping),
     ok = set_mapping(Mapping2),
