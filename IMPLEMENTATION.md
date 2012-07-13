@@ -52,7 +52,7 @@ contain a different `_pn` value based on it's owning partition.  That
 takes care of the first half of the problem, getting the partition
 data in Solr.  Next it must be filtered on.
 
-The most obvious way to filter on _pn is append to the user query.
+The most obvious way to filter on `_pn` is append to the user query.
 For example, if the user query is `text:banana` then Yokozuna would
 transform it to something like `text:banana AND (_pn:<pn1> OR
 _pn:<pn2> ... OR _pn:<pnI>)`.  The new query will only accept
