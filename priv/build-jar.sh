@@ -8,9 +8,17 @@ then
     cd priv
 fi
 
-SOLR_JAR_DIR=${SOLR_JAR_DIR:-'/usr/local/apache-solr-3.5.0/example/work/Jetty_0_0_0_0_8983_solr.war__solr__k1kf17/webapp/WEB-INF/lib/*'}
+SOLR_JAR_DIR=solr-jars/WEB-INF/lib
 
-javac -cp "$SOLR_JAR_DIR" java/com/basho/yokozuna/handler/MerkleTreeHandler.java
+if [ ! -e $SOLR_JAR_DIR ]; then
+    mkdir solr-jars
+    cp solr/webapps/solr.war solr-jars
+    pushd solr-jars
+    jar xvf solr.war
+    popd
+fi
+
+javac -cp "$SOLR_JAR_DIR/*" java/com/basho/yokozuna/handler/MerkleTreeHandler.java
 jar cvf yokozuna.jar -C java/ .
 
 mkdir java_lib

@@ -5,5 +5,6 @@ priv/*.jar
 priv/java_lib
 priv/solr
 priv/apache*
+priv/solr-jars
 *.class
 *.tgz
