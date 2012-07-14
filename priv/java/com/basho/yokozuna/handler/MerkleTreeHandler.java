@@ -20,26 +20,23 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import org.apache.commons.codec.binary.Base64;
+
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermEnum;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.params.CommonParams;
-import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.common.params.ShardParams;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.RTimer;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.search.SolrIndexReader;;
 import org.apache.solr.search.SolrIndexSearcher;
-import org.apache.solr.util.RefCounted;
-import org.apache.solr.util.SolrPluginUtils;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,8 +49,9 @@ public class MerkleTreeHandler
     implements PluginInfoInitialized {
 
     protected static Logger log = LoggerFactory.getLogger(MerkleTreeHandler.class);
-    static final String DEFAULT_CONT = "";
+    static final BytesRef DEFAULT_CONT = null;
     static final int DEFAULT_N = 1000;
+    static final String ENTROPY_DATA_FIELD = "_vc";
 
     // Pass info from solrconfig.xml
     public void init(PluginInfo info) {
@@ -64,61 +62,58 @@ public class MerkleTreeHandler
     public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp)
         throws Exception, InstantiationException, IllegalAccessException {
 
-        String contParam = req.getParams().get("continue", DEFAULT_CONT);
-        String cont = isContinue(contParam) ?
+        String contParam = req.getParams().get("continue");
+        BytesRef cont = contParam != null ?
             decodeCont(contParam) : DEFAULT_CONT;
 
-        // TODO: Make before required
+        // TODO: Make before required in handler config
         String before = req.getParams().get("before");
         if (before == null) {
             throw new Exception("Parameter 'before' is required");
         }
         int n = req.getParams().getInt("n", DEFAULT_N);
-        Term term = new Term("_vc", cont);
         SolrDocumentList docs = new SolrDocumentList();
 
         // Add docs here and modify object inline in code
         rsp.add("response", docs);
-        TermEnum te = null;
 
         try {
             SolrIndexSearcher searcher = req.getSearcher();
-            SolrIndexReader rdr = searcher.getReader();
-            te = rdr.terms(term);
-
-            Term tmp = te.term();
-
-            if (tmp == null) {
-                rsp.add("more", false);
-                return;
-            }
+            AtomicReader rdr = searcher.getAtomicReader();
+            BytesRef tmp = null;
+            Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
+            TermsEnum te = terms.iterator(null);
 
             if (isContinue(cont)) {
                 log.debug("continue from " + cont);
-                // If a continuation was passed in then need to skip
-                // first one since it was already seen.
-                te.next();
-                tmp = te.term();
 
-                if (tmp == null || ! isVClock(tmp)) {
+                TermsEnum.SeekStatus status = te.seekCeil(cont, true);
+
+                if (status == TermsEnum.SeekStatus.END) {
                     rsp.add("more", false);
                     return;
                 }
-                log.debug("next " + tmp.field() + " : " + tmp.text());
+
+                // If this term has already been seen then skip it.
+                if (status == TermsEnum.SeekStatus.FOUND) {
+                    tmp = te.next();
+
+                    if (endOfItr(tmp)) {
+                        rsp.add("more", false);
+                        return;
+                    }
+                }
             }
 
-            String field = null;
             String text = null;
             String[] vals = null;
             String ts = null;
             String docId = null;
             String vectorClock = null;
             int count = 0;
-            boolean more = true;
 
-            while(tmp != null && isVClock(tmp) && count < n) {
-                field = tmp.field();
-                text = tmp.text();
+            while(!endOfItr(tmp) && count < n) {
+                text = tmp.utf8ToString();
                 vals = text.split(" ");
                 ts = vals[0];
 
@@ -126,28 +121,26 @@ public class MerkleTreeHandler
                 if (! (ts.compareTo(before) < 0)) {
                     rsp.add("more", false);
                     docs.setNumFound(count);
-                    more = false;
                     return;
                 }
 
                 docId = vals[1];
                 vectorClock = vals[2];
-                log.debug(field + " : " + text);
+                log.debug("text: " + text);
                 SolrDocument tmpDoc = new SolrDocument();
                 tmpDoc.addField("doc_id", docId);
                 tmpDoc.addField("base64_vclock", Base64.encodeBase64String(sha(vectorClock)));
                 docs.add(tmpDoc);
                 count++;
-                te.next();
-                tmp = te.term();
+                tmp = te.next();
             }
 
             if (count < n) {
                 rsp.add("more", false);
             } else {
                 // Indicates whether more terms match the query.
-                rsp.add("more", more);
-                String newCont = Base64.encodeBase64URLSafeString(text.getBytes());
+                rsp.add("more", true);
+                String newCont = Base64.encodeBase64URLSafeString(tmp.bytes);
                 // The continue context for next req to start where
                 // this one finished.
                 rsp.add("continuation", newCont);
@@ -157,17 +150,17 @@ public class MerkleTreeHandler
 
         } catch (Exception e) {
             e.printStackTrace();
-        } finally {
-            if (te != null) {
-                te.close();
-            }
         }
     }
 
 
-    static String decodeCont(String cont) {
+    static BytesRef decodeCont(String cont) {
         byte[] bytes = Base64.decodeBase64(cont);
-        return new String(bytes);
+        return new BytesRef(bytes);
+    }
+
+    static boolean endOfItr(BytesRef returnValue) {
+        return returnValue == null;
     }
 
     static byte[] sha(String s) throws NoSuchAlgorithmException {
@@ -176,8 +169,8 @@ public class MerkleTreeHandler
         return md.digest();
     }
 
-    static boolean isContinue(String cont) {
-        return ! DEFAULT_CONT.equals(cont);
+    static boolean isContinue(BytesRef cont) {
+        return DEFAULT_CONT != cont;
     }
 
     static boolean isVClock(Term t) {
@@ -192,11 +185,6 @@ public class MerkleTreeHandler
     @Override
     public String getVersion() {
         return "0.0.1";
-    }
-
-    @Override
-    public String getSourceId() {
-        return "TODO: implement getSourceId";
     }
 
     @Override

@@ -6,7 +6,7 @@
 #     ./grab-solr.sh
 
 dir=solr
-src_dir=apache-solr-3.5.0
+src_dir=apache-solr-4.0.0-alpha
 
 check_for_solr()
 {
@@ -26,8 +26,8 @@ fi
 
 if [ ! -e $src_dir ]
 then
-    wget http://apache.deathculture.net/lucene/solr/3.5.0/apache-solr-3.5.0.tgz
-    tar zxvf apache-solr-3.5.0.tgz
+    wget http://apache.deathculture.net/lucene/solr/4.0.0-ALPHA/apache-solr-4.0.0-ALPHA.tgz
+    tar zxvf apache-solr-4.0.0-ALPHA.tgz
 fi
 
 cp -vr $src_dir/example $dir
