@@ -93,17 +93,19 @@ public class EntropyData
                 if (status == TermsEnum.SeekStatus.END) {
                     rsp.add("more", false);
                     return;
-                }
-
-                // If this term has already been seen then skip it.
-                if (status == TermsEnum.SeekStatus.FOUND) {
+                } else if (status == TermsEnum.SeekStatus.FOUND) {
+                    // If this term has already been seen then skip it.
                     tmp = te.next();
 
                     if (endOfItr(tmp)) {
                         rsp.add("more", false);
                         return;
                     }
+                } else if (status == TermsEnum.SeekStatus.NOT_FOUND) {
+                    tmp = te.next();
                 }
+            } else {
+                tmp = te.next();
             }
 
             String text = null;
@@ -112,9 +114,12 @@ public class EntropyData
             String docId = null;
             String vectorClock = null;
             int count = 0;
+            BytesRef current = null;
 
             while(!endOfItr(tmp) && count < n) {
+                current = BytesRef.deepCopyOf(tmp);
                 text = tmp.utf8ToString();
+                log.debug("text: " + text);
                 vals = text.split(" ");
                 ts = vals[0];
 
@@ -127,7 +132,6 @@ public class EntropyData
 
                 docId = vals[1];
                 vectorClock = vals[2];
-                log.debug("text: " + text);
                 SolrDocument tmpDoc = new SolrDocument();
                 tmpDoc.addField("doc_id", docId);
                 tmpDoc.addField("base64_vclock", Base64.encodeBase64String(sha(vectorClock)));
@@ -139,9 +143,8 @@ public class EntropyData
             if (count < n) {
                 rsp.add("more", false);
             } else {
-                // Indicates whether more terms match the query.
                 rsp.add("more", true);
-                String newCont = Base64.encodeBase64URLSafeString(tmp.bytes);
+                String newCont = Base64.encodeBase64URLSafeString(current.bytes);
                 // The continue context for next req to start where
                 // this one finished.
                 rsp.add("continuation", newCont);
