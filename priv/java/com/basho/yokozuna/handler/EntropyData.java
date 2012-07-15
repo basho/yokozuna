@@ -41,17 +41,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This class provides handler logic to iterate over the vector clock
- * data stored in the index.  This is used for anti-entropy.
+ * This class provides handler logic to iterate over the entropy data
+ * stored in the index.  This data can be used to build a hash tree to
+ * detect entropy.
  */
-public class MerkleTreeHandler
+public class EntropyData
     extends RequestHandlerBase
     implements PluginInfoInitialized {
 
-    protected static Logger log = LoggerFactory.getLogger(MerkleTreeHandler.class);
+    protected static Logger log = LoggerFactory.getLogger(EntropyData.class);
     static final BytesRef DEFAULT_CONT = null;
     static final int DEFAULT_N = 1000;
-    static final String ENTROPY_DATA_FIELD = "_vc";
+    static final String ENTROPY_DATA_FIELD = "_yz_ed";
 
     // Pass info from solrconfig.xml
     public void init(PluginInfo info) {
@@ -171,10 +172,6 @@ public class MerkleTreeHandler
 
     static boolean isContinue(BytesRef cont) {
         return DEFAULT_CONT != cont;
-    }
-
-    static boolean isVClock(Term t) {
-        return "_vc".equals(t.field());
     }
 
     @Override

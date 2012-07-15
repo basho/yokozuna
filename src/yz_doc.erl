@@ -39,7 +39,7 @@ make_doc(O) ->
     %% TODO: change 'text' to 'value'
     Fields = [{id, doc_id(O)},
               {text, value(O)},
-              {'_vc', gen_vc(O)}],
+              {?YZ_ENTROPY_DATA_FIELD, gen_vc(O)}],
     {doc, Fields}.
 
 %%%===================================================================

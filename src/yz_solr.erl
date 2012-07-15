@@ -87,7 +87,7 @@ get_vclocks(Core, Before) ->
     get_vclocks(Core, Before, none, ?DEFAULT_VCLOCK_N).
 
 get_vclocks(Core, Before, Continue, N) when N > 0 ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/merkle_tree",
+    BaseURL = base_url() ++ "/" ++ Core ++ "/entropy_data",
     Params = [{before, Before}, {wt, json}, {n, N}],
     Params2 = if Continue == none -> Params;
                  true -> [{continue, Continue}|Params]

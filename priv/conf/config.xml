@@ -724,8 +724,8 @@
 
     -->
 
-  <requestHandler name="/merkle_tree"
-                  class="com.basho.yokozuna.handler.MerkleTreeHandler">
+  <requestHandler name="/entropy_data"
+                  class="com.basho.yokozuna.handler.EntropyData">
   </requestHandler>
 
   <!-- SearchHandler

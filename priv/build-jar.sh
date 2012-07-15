@@ -18,7 +18,7 @@ if [ ! -e $SOLR_JAR_DIR ]; then
     popd
 fi
 
-javac -cp "$SOLR_JAR_DIR/*" java/com/basho/yokozuna/handler/MerkleTreeHandler.java
+javac -cp "$SOLR_JAR_DIR/*" java/com/basho/yokozuna/handler/*.java
 jar cvf yokozuna.jar -C java/ .
 
 mkdir java_lib

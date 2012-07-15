@@ -87,6 +87,7 @@
 
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_EVENTS_TAB, yz_events_tab).
+-define(YZ_ENTROPY_DATA_FIELD, '_yz_ed').
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "config.xml").
