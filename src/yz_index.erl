@@ -60,8 +60,16 @@ copy_files([], _) ->
     ok;
 copy_files([File|Rest], Dir) ->
     Basename = filename:basename(File),
-    {ok, _} = file:copy(File, filename:join([Dir, Basename])),
-    copy_files(Rest, Dir).
+    case filelib:is_dir(File) of
+        true ->
+            NewDir = filename:join([Dir, Basename]),
+            make_dir(NewDir),
+            copy_files(filelib:wildcard(filename:join([File, "*"])), NewDir),
+            copy_files(Rest, Dir);
+        false ->
+            {ok, _} = file:copy(File, filename:join([Dir, Basename])),
+            copy_files(Rest, Dir)
+    end.
 
 index_dir(Name) ->
     YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
