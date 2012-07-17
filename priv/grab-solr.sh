@@ -5,18 +5,76 @@
 # Usage:
 #     ./grab-solr.sh
 
-dir=solr
-src_dir=apache-solr-4.0.0-alpha
+FROM_SRC=false
+
+if [ $(basename $PWD) != "priv" ]
+then
+    cd priv
+fi
+
+case $1 in
+    from-src)
+        FROM_SRC=true
+        shift
+        ;;
+    *)
+        echo Invalid option $1
+        exit 1
+esac
+
+if $FROM_SRC; then
+    dir=$PWD/solr
+    src_dir=$PWD/lucene-solr
+    example_dir=$src_dir/solr/example
+    patch_dir=$PWD/solr-patches
+    branch=branch_4x
+else
+    dir=$PWD/solr
+    src_dir=$PWD/apache-solr-4.0.0-alpha
+    example_dir=$src_dir/example
+fi
+
+apply_patches()
+{
+    echo "applying patches in $patch_dir"
+    for p in $patch_dir/*.patch; do
+        patch -p1 < $p
+    done
+}
+
+build_solr()
+{
+    pushd $src_dir
+    apply_patches
+    ant compile
+    pushd solr
+    ant dist example
+    popd
+    popd
+}
+
+checkout_branch()
+{
+    branch=$1
+    pushd $src_dir
+    git checkout $branch
+    popd
+}
 
 check_for_solr()
 {
     test -e $dir
 }
 
-if [ $(basename $PWD) != "priv" ]
-then
-    cd priv
-fi
+get_solr()
+{
+    if $FROM_SRC; then
+        git clone git://github.com/apache/lucene-solr.git
+    else
+        wget http://apache.deathculture.net/lucene/solr/4.0.0-ALPHA/apache-solr-4.0.0-ALPHA.tgz
+        tar zxvf apache-solr-4.0.0-ALPHA.tgz
+    fi
+}
 
 if check_for_solr
 then
@@ -26,11 +84,15 @@ fi
 
 if [ ! -e $src_dir ]
 then
-    wget http://apache.deathculture.net/lucene/solr/4.0.0-ALPHA/apache-solr-4.0.0-ALPHA.tgz
-    tar zxvf apache-solr-4.0.0-ALPHA.tgz
+    get_solr
 fi
 
-cp -vr $src_dir/example $dir
+if $FROM_SRC; then
+    checkout_branch $branch
+    build_solr
+fi
+
+cp -vr $example_dir $dir
 rm -rf $dir/{multicore,solr,README.txt}
 # mkdir $dir/yokozuna
 cp -v solr.xml $dir

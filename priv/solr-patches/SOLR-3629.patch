@@ -1,0 +1,13 @@
+diff --git a/solr/core/src/java/org/apache/solr/core/CoreContainer.java b/solr/core/src/java/org/apache/solr/core/CoreContainer.java
+index ef3fdbb..7597cf9 100644
+--- a/solr/core/src/java/org/apache/solr/core/CoreContainer.java
++++ b/solr/core/src/java/org/apache/solr/core/CoreContainer.java
+@@ -1188,7 +1188,7 @@ public class CoreContainer
+         
+         // write config 
+         String configName = dcore.getConfigName();
+-        addCoreProperty(coreAttribs, coreNode, "conf", configName, dcore.getDefaultConfigName());
++        addCoreProperty(coreAttribs, coreNode, "config", configName, dcore.getDefaultConfigName());
+         
+         // write schema
+         String schema = dcore.getSchemaName();

@@ -6,5 +6,6 @@ priv/java_lib
 priv/solr
 priv/apache*
 priv/solr-jars
+priv/lucene-solr
 *.class
 *.tgz
