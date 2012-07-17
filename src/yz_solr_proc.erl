@@ -92,8 +92,9 @@ build_cmd(SolrPort) ->
     Java = "java",
     HomeArg = "-Dsolr.solr.home=.",
     PortArg = "-Djetty.port=" ++ SolrPort,
+    LoggingArg = "-Djava.util.logging.config.file=logging.properties",
     JarArg = "-jar start.jar",
-    string:join([Wrapper, Java, HomeArg, PortArg, JarArg], " ").
+    string:join([Wrapper, Java, HomeArg, PortArg, LoggingArg, JarArg], " ").
 
 run_cmd(Cmd, Dir) ->
     open_port({spawn, Cmd}, [{cd, Dir}, exit_status]).

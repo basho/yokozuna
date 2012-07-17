@@ -96,3 +96,4 @@ cp -vr $example_dir $dir
 rm -rf $dir/{multicore,solr,README.txt}
 # mkdir $dir/yokozuna
 cp -v solr.xml $dir
+cp -v *.properties $dir
