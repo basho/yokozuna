@@ -110,6 +110,12 @@ returned.  Thus a `{P, [IFP1, IFP2]}` pair will be converted to
 Index Mapping & Cores
 ----------
 
+Solr has the notion of a [core] [solr_core] which allows multiple
+indexes to live under the same Solr/JVM instance.  This is useful
+because it allows isolation of index files as well as schemas and
+configuration.  Yokozuna exposes the notion of cores as _indexes_.
+Each index has a unique name and maps to **one** core.
+
 * Set `persistent` to `true` in `solr.xml` so that changes during
   runtime will persist on restart.
 
@@ -208,3 +214,5 @@ Index Mapping & Cores
 
 
 [rdd]: http://tom.preston-werner.com/2010/08/23/readme-driven-development.html
+
+[solr_core]: http://wiki.apache.org/solr/CoreAdmin
