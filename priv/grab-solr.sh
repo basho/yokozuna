@@ -36,10 +36,12 @@ fi
 
 apply_patches()
 {
-    echo "applying patches in $patch_dir"
-    for p in $patch_dir/*.patch; do
-        patch -p1 < $p
-    done
+    if [ -e $patch_dir ]; then
+        echo "applying patches in $patch_dir"
+        for p in $patch_dir/*.patch; do
+            patch -p1 < $p
+        done
+    fi
 }
 
 build_solr()
