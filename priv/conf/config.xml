@@ -73,7 +73,7 @@
   <lib dir="../../dist/" regex="apache-solr-langid-\d.*\.jar" />
   <lib dir="../../contrib/langid/lib/" regex=".*\.jar" />
 
-  <lib dir="${yz_java_lib_dir}" />
+  <lib dir="${yz.lib.dir}" />
 
   <!-- an exact 'path' can be used instead of a 'dir' to specify a
        specific file.  This will cause a serious error to be logged if

@@ -31,6 +31,11 @@
 %%% API
 %%%===================================================================
 
+-spec add_to_ring(string()) -> ok.
+add_to_ring(Name) ->
+    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    ok = add_to_ring(Ring, Name).
+
 %% TODO: Allow data dir to be changed
 -spec create(string()) -> ok.
 create(Name) ->
@@ -38,23 +43,46 @@ create(Name) ->
     ConfDir = filename:join([IndexDir, "conf"]),
     ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
     DataDir = filename:join([IndexDir, "data"]),
-    JavaLibDir = java_lib_dir(),
 
-    make_dirs([ConfDir, DataDir, JavaLibDir]),
+    make_dirs([ConfDir, DataDir]),
     copy_files(ConfFiles, ConfDir),
 
     CoreProps = [
                  {name, Name},
                  {index_dir, IndexDir},
                  {cfg_file, ?YZ_CORE_CFG_FILE},
-                 {java_lib_dir, JavaLibDir},
                  {schema_file, ?YZ_SCHEMA_FILE}
                 ],
-    ok = yz_solr:core(create, CoreProps).
+    {ok, _, _} = yz_solr:core(create, CoreProps),
+    ok.
+
+-spec exists(string()) -> boolean().
+exists(Name) ->
+    true == yz_solr:ping(Name).
+
+-spec get_indexes_from_ring(ring()) -> ordset().
+get_indexes_from_ring(Ring) ->
+    case riak_core_ring:get_meta(?YZ_META_INDEXES, Ring) of
+        {ok, Indexes} -> Indexes;
+        undefined -> []
+    end.
+
+-spec indexes() -> ordset().
+indexes() ->
+    {ok, _, Body} = yz_solr:core(status, [{wt,json}]),
+    Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
+    ordsets:from_list([binary_to_list(Name) || {Name, _} <- Status]).
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+add_to_ring(Ring, Name) ->
+    Indexes = get_indexes_from_ring(Ring),
+    Indexes2 = ordsets:add_element(Name, Indexes),
+    Ring2 = riak_core_ring:update_meta(?YZ_META_INDEXES, Indexes2, Ring),
+    {ok, _Ring3} = riak_core_ring_manager:ring_trans(set_ring_trans(Ring2), []),
+    ok.
 
 copy_files([], _) ->
     ok;
@@ -75,9 +103,6 @@ index_dir(Name) ->
     YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
     filename:absname(filename:join([YZDir, Name])).
 
-java_lib_dir() ->
-    ?YZ_PRIV ++ "/java_lib".
-
 make_dir(Dir) ->
     case filelib:is_dir(Dir) of
         true ->
@@ -95,6 +120,10 @@ make_dirs([Dir|Rest]) ->
 
 schema_file() ->
     ?YZ_PRIV ++ "/" ++ ?YZ_SCHEMA_FILE.
+
+set_ring_trans(Ring) ->
+    fun(_,_) -> {new_ring, Ring} end.
+
 
 %% Old stuff relate to exception handling ideas I was playing with
 

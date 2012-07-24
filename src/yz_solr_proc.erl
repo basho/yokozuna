@@ -59,9 +59,10 @@ start_link(Dir, SolrPort) ->
 %%       properly.
 init([Dir, SolrPort]) ->
     process_flag(trap_exit, true),
-    Cmd = build_cmd(SolrPort),
+    Cmd = build_cmd(SolrPort, Dir),
     ?DEBUG("running OS cmd ~p", [Cmd]),
-    Port = run_cmd(Cmd, Dir),
+    Port = run_cmd(Cmd),
+    wait_for_solr(solr_startup_wait()),
     S = #state{
       dir=Dir,
       port=Port,
@@ -87,14 +88,35 @@ terminate(_, S) ->
 %%% Private
 %%%===================================================================
 
-build_cmd(SolrPort) ->
-    Wrapper = ?YZ_PRIV ++ "/sig-wrapper",
+build_cmd(SolrPort, Dir) ->
+    Wrapper = filename:join([?YZ_PRIV, "sig-wrapper"]),
     Java = "java",
-    HomeArg = "-Dsolr.solr.home=.",
+    SolrHomeArg = "-Dsolr.solr.home=" ++ Dir,
+    JettyHomeArg = "-Djetty.home=" ++ Dir,
     PortArg = "-Djetty.port=" ++ SolrPort,
-    LoggingArg = "-Djava.util.logging.config.file=logging.properties",
-    JarArg = "-jar start.jar",
-    string:join([Wrapper, Java, HomeArg, PortArg, LoggingArg, JarArg], " ").
+    LoggingProps = filename:join([Dir, "logging.properties"]),
+    LoggingArg = "-Djava.util.logging.config.file=" ++ LoggingProps,
+    LibDir = filename:join([?YZ_PRIV, "java_lib"]),
+    LibArg = "-Dyz.lib.dir=" ++ LibDir,
+    JarArg = "-jar " ++ filename:join([Dir, "start.jar"]),
+    string:join([Wrapper, Java, JettyHomeArg, PortArg,
+                 SolrHomeArg, LoggingArg, LibArg, JarArg], " ").
 
-run_cmd(Cmd, Dir) ->
-    open_port({spawn, Cmd}, [{cd, Dir}, exit_status]).
+run_cmd(Cmd) ->
+    open_port({spawn, Cmd}, [exit_status]).
+
+solr_startup_wait() ->
+    app_helper:get_env(?YZ_APP_NAME,
+                       solr_startup_wait,
+                       ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
+
+wait_for_solr(0) ->
+    throw({error, "Solr didn't start in alloted time"});
+wait_for_solr(N) ->
+    case yz_solr:ping(?YZ_INDEX) of
+        true ->
+            ok;
+        false ->
+            timer:sleep(1000),
+            wait_for_solr(N-1)
+    end.

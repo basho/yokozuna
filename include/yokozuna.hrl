@@ -55,8 +55,11 @@
 -type value() :: term().
 -type field() :: {name(), value()}.
 -type fields() :: [field()].
+-type index_name() :: string().
 -type doc() :: {doc, fields()}.
 -type base64() :: base64:ascii_string().
+-type ordset() :: ordsets:ordset().
+-type ring() :: riak_core_ring:riak_core_ring().
 -type solr_vclocks() :: #solr_vclocks{}.
 -type iso8601() :: string().
 -type tree_name() :: atom().
@@ -75,6 +78,10 @@
 %% Mapping from logical partition to partition
 -type logical_idx() :: [{lp(), p()}].
 
+-type node_event() :: {node_event, node(), up | down}.
+-type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
+-type event() :: node_event() | ring_event().
+
 
 %%%===================================================================
 %%% Macros
@@ -85,7 +92,9 @@
 
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 
+-define(YZ_INDEX, "_yz").
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
+-define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_EVENTS_TAB, yz_events_tab).
 -define(YZ_ENTROPY_DATA_FIELD, '_yz_ed').
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
@@ -97,3 +106,4 @@
 -define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_VNODE_MASTER, yokozuna_vnode_master).
+-define(YZ_META_INDEXES, yokozuna_indexes).

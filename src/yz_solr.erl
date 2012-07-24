@@ -24,7 +24,6 @@
 
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
-                       {java_lib_dir, "property.yz_java_lib_dir"},
                        {schema_file, schema}]).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
@@ -61,10 +60,10 @@ core(Action, Props) ->
     URL = BaseURL ++ "?" ++ Encoded,
 
     case ibrowse:send_req(URL, [], get, [], Opts) of
-        {ok, "200", _Headers, _Body} ->
-            ok;
+        {ok, "200", Headers, Body} ->
+            {ok, Headers, Body};
         X ->
-            throw({error_calling_solr, create_core, X})
+            throw({error_calling_solr, core, Action, X})
     end.
 
 delete(Core, DocID) ->
@@ -174,7 +173,8 @@ filter_to_str({Partition, FPFilter}) ->
     "(" ++ PNQ ++ " AND (" ++ FPQ2 ++ "))".
 
 
-convert_action(create) -> "CREATE".
+convert_action(create) -> "CREATE";
+convert_action(status) -> "STATUS".
 
 %% TODO: Encoding functions copied from esolr, redo this.
 encode_commit() ->
@@ -213,6 +213,16 @@ get_pairs(R) ->
 
 to_pair({struct, [{_,DocId},{_,Base64VClock}]}) ->
     {DocId, Base64VClock}.
+
+get_path({struct, PL}, Path) ->
+    get_path(PL, Path);
+get_path(PL, [Name]) ->
+    case proplists:get_value(Name, PL) of
+        {struct, Obj} -> Obj;
+        Val -> Val
+    end;
+get_path(PL, [Name|Path]) ->
+    get_path(proplists:get_value(Name, PL), Path).
 
 get_response(R) ->
     json_get_key(<<"response">>, R).

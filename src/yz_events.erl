@@ -18,13 +18,17 @@
 %%
 %% -------------------------------------------------------------------
 
--module(yz_events).
--compile(export_all).
--behavior(gen_server).
--include("yokozuna.hrl").
-
 %% @doc Functionality related to events.  This is the single producer of
 %% writes to the ETS table `yz_events`.
+
+-module(yz_events).
+-behavior(gen_server).
+-compile(export_all).
+-export([handle_cast/2,
+         init/1,
+         terminate/2]).
+-include("yokozuna.hrl").
+
 
 %%%===================================================================
 %%% API
@@ -51,22 +55,44 @@ init([]) ->
     ok = create_events_table(),
     {ok, none}.
 
-handle_cast({node_event, Node, Status}, S) ->
+handle_cast({node_event, _Node, _Status}=NE, S) ->
     Mapping = get_mapping(),
-    Mapping2 = handle_node_event(Node, Status, Mapping),
+    Mapping2 = new_mapping(NE, Mapping),
     ok = set_mapping(Mapping2),
+
     {noreply, S};
 
-handle_cast({ring_event, Ring}, S) ->
+handle_cast({ring_event, Ring}=RE, S) ->
     Mapping = get_mapping(),
-    Mapping2 = handle_ring_event(Ring, Mapping),
+    Mapping2 = new_mapping(RE, Mapping),
     ok = set_mapping(Mapping2),
+
+    Local = yz_index:indexes(),
+    Cluster = yz_index:get_indexes_from_ring(Ring),
+    {Removed, Added, Same} = index_delta(Local, Cluster),
+    ok = sync_indexes(Removed, Added, Same),
+
     {noreply, S}.
+
+terminate(_Reason, _S) ->
+    ok = destroy_events_table().
 
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+-spec add_index(index_name()) -> ok.
+add_index(Name) ->
+    case yz_index:exists(Name) of
+        true -> ok;
+        false -> ok = yz_index:create(Name)
+    end.
+
+-spec add_indexes(ordset()) -> ok.
+add_indexes(Names) ->
+    lists:foreach(fun add_index/1, Names),
+    ok.
 
 -spec add_node(node(), list()) -> list().
 add_node(Node, Mapping) ->
@@ -88,19 +114,10 @@ create_events_table() ->
     ?YZ_EVENTS_TAB = ets:new(?YZ_EVENTS_TAB, Opts),
     ok.
 
--spec handle_node_event(node(), up | down, list()) -> list().
-handle_node_event(Node, down, Mapping) ->
-    remove_node(Node, Mapping);
-handle_node_event(Node, up, Mapping) ->
-    add_node(Node, Mapping).
-
--spec handle_ring_event(riak_core_ring:ring(), list()) -> list().
-handle_ring_event(Ring, Mapping) ->
-    Nodes = riak_core_ring:all_members(Ring),
-    {Removed, Added} = node_ops(Mapping, Nodes),
-    Mapping2 = remove_nodes(Removed, Mapping),
-    Mapping3 = add_nodes(Added, Mapping2),
-    check_unkown(Mapping3).
+-spec destroy_events_table() -> ok.
+destroy_events_table() ->
+    true = ets:delete(?YZ_EVENTS_TAB),
+    ok.
 
 -spec host_port(node()) -> {string(), non_neg_integer() | unknown}.
 host_port(Node) ->
@@ -118,6 +135,14 @@ hostname(Node) ->
     [_, Host] = re:split(S, "@", [{return, list}]),
     Host.
 
+-spec index_delta(ordset(), ordset()) ->
+                         {Removed::ordset(), Added::ordset(), Same::ordset()}.
+index_delta(Local, Cluster) ->
+    Removed = ordsets:subtract(Local, Cluster),
+    Added = ordsets:subtract(Cluster, Local),
+    Same = ordsets:intersection(Cluster, Local),
+    {Removed, Added, Same}.
+
 -spec is_unknown(tuple()) -> boolean().
 is_unknown({_, {_, unknown}}) -> true;
 is_unknown({_, {_, Port}}) when is_list(Port) -> false.
@@ -126,6 +151,18 @@ is_unknown({_, {_, Port}}) when is_list(Port) -> false.
 just_nodes(Mapping) ->
     [Node || {Node, _} <- Mapping].
 
+-spec new_mapping(event(), list()) -> list().
+new_mapping({node_event, Node, down}, Mapping) ->
+    remove_node(Node, Mapping);
+new_mapping({node_event, Node, up}, Mapping) ->
+    add_node(Node, Mapping);
+new_mapping({ring_event, Ring}, Mapping) ->
+    Nodes = riak_core_ring:all_members(Ring),
+    {Removed, Added} = node_ops(Mapping, Nodes),
+    Mapping2 = remove_nodes(Removed, Mapping),
+    Mapping3 = add_nodes(Added, Mapping2),
+    check_unkown(Mapping3).
+
 -spec node_ops(list(), list()) -> {Removed::list(), Added::list()}.
 node_ops(Mapping, Nodes) ->
     MappingNodesSet = sets:from_list(just_nodes(Mapping)),
@@ -133,6 +170,9 @@ node_ops(Mapping, Nodes) ->
     Removed = sets:subtract(MappingNodesSet, NodesSet),
     Added = sets:subtract(NodesSet, MappingNodesSet),
     {sets:to_list(Removed), sets:to_list(Added)}.
+
+remove_indexes(_Names) ->
+    throw(implement_remove_indexes).
 
 -spec remove_node(node(), list()) -> list().
 remove_node(Node, Mapping) ->
@@ -153,6 +193,10 @@ send_ring_event(Ring) ->
 set_mapping(Mapping) ->
     true = ets:insert(?YZ_EVENTS_TAB, [{mapping, Mapping}]),
     ok.
+
+sync_indexes(_Removed, Added, Same) ->
+    %% ok = remove_indexes(Removed),
+    ok = add_indexes(Added ++ Same).
 
 watch_node_events() ->
     riak_core_node_watcher_events:add_sup_callback(fun send_node_update/1).
