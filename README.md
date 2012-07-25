@@ -26,37 +26,37 @@ you should be able to complete these steps.
 
 1. Clone my fork of Riak.
 
-    git clone git://github.com/rzezeski/riak.git
-    cd riak
+        git clone git://github.com/rzezeski/riak.git
+        cd riak
 
 2. Checkout the Yokozuna branch.
 
-    git checkout rz-yokozuna
+        git checkout rz-yokozuna
 
 3. Download the dependencies.
 
-    make deps
+        make deps
 
 4. Replace the riak core dependency with my fork and checkout the
    Yokozuna branch.
 
-    cd deps
-    rm -rf riak_core
-    git clone git://github.com/rzezeski/riak_core.git
-    (cd riak_core && git checkout rz-yokozuna)
+        cd deps
+        rm -rf riak_core
+        git clone git://github.com/rzezeski/riak_core.git
+        (cd riak_core && git checkout rz-yokozuna)
 
 5. Compile.  This will take a long time because it must clone Solr
    source and build it.  The first time you do this is the longest as
    Ivy may have to download all the dependencies if you don't
    regularly develop on Java projects.
 
-    cd ..
-    make
+        cd ..
+        make
 
 6. Make a stage rel or stage devrel.  At this point it's no different
    from building a vanilla Riak release.
 
-    make stagedevrel
+        make stagedevrel
 
 ### Running ###
 
@@ -68,8 +68,8 @@ build.  The following instructions assume a devrel.
    `beam.smp` processes and 4 `java` processes.  The Solr instances
    should be listening on ports 7981-7984.
 
-    for d in dev/dev*; do $d/bin/riak start; done
-    for d in dev/dev*; do $d/bin/riak ping; done
+        for d in dev/dev*; do $d/bin/riak start; done
+        for d in dev/dev*; do $d/bin/riak ping; done
 
 2. Join the nodes.  I am using the force (`-f`) option here as this is
    just a development release.  In a production environment you should
@@ -77,7 +77,7 @@ build.  The following instructions assume a devrel.
    efficient when doing multiple operations and can save you from
    making costly mistakes.
 
-    for d in dev/dev{2,3,4}; do $d/bin/riak-admin join dev1@127.0.0.1; done
+        for d in dev/dev{2,3,4}; do $d/bin/riak-admin join dev1@127.0.0.1; done
 
 ### Creating an Index ###
 
