@@ -5,6 +5,82 @@ Notes on the implementation _before_ it is implemented.  Think of it
 something like [readme driven development] [rdd].
 
 
+Indexing
+----------
+
+### Avoid Post-Commit Hook
+
+* The object must be sent `2 * N` times.  It needs to be `N` times for
+  the KV write and another `N` times for indexing.  In the worst case
+  all of those messages have to traverse the network and in the best
+  case `2N - 2` messages have to.  If the object size is 5MB--the
+  block size in RiakCS--then 30MB of data must traverse the network,
+  15MB of which is redundant.
+
+* Post-commit is executed on the coordinator after the object is
+  written and a client reply is sent.  This provides no back pressure
+  to the client.
+
+* Post-commit error handling is wrong.  It hides errors and just
+  increments a counter kept by stats.  You must alter the logging
+  levels at runtime to discover the cause of the errors.
+
+* Post-commit is only invoked during user put requests.  Indexing
+  changes also need to occur during read-repair and handoff events.
+  Any time the KV object changes the index needs to change as well (at
+  minimum the object hash must be updated).
+
+### Add Event Hooks to VNodes
+
+* Gives Yokozuna access to all object modifications.
+
+* Exploits locality, avoids redundant transmission of the object
+  across the network.
+
+* Provides back-pressure during client writes.
+
+* Could set the stage for atomic commits between KV and other
+  services if that's something we wanted to pursue.
+
+* A downside is that now more is happening on the KV vnode which is a
+  high contention point as it is.  Measuring and careful thought is
+  needed here.
+
+### Ideas for Implementation
+
+* I'm not sure if this is a generic vnode thing or specific to the KV
+  vnode.  Right now I'm leaning towards the latter.
+
+* The events Yokozuna needs to react to: put, read-repair (which is
+  ultimately a put), and handoff (which once again is just a put).
+  Maybe all I need is a low-level hook into the KV backend put.  Might
+  help to think of Yokozuna as a backend to KV that compliments the
+  primary backend.  Using a low-level put hook covers all cases since
+  it is invoked any time the object is modified.  It also provides
+  some future proofing as it should always be the least common
+  denominator for any future object mutation (e.g. if some new type of
+  event was added to KV that causes the object to be modified).
+
+* Invoke the hook IFF the object has changed and the write to the
+  backend was successful.  Have to look at `PrepPutRes` from
+  `prepare_put` and `Reply` from `perform_put`.
+
+* The deletion of an object from a backend is a separate code path.
+  Need to hook into that as well.
+
+* The handoff object put is a different code path, see
+  `do_diffobj_put`.  Need to hook into this.
+
+* Yokozuna handoff piggy-backs KV handoff (by re-indexing on put
+  versus sending across Solr index data) and therefore Yokozuna vnode
+  handoff is simple matter of dropping the index.  Actually, this is a
+  lie.  If the KV vnode doesn't handoff first then an entire partition
+  of replicas is lost temporarily.  The Yokozuna vnode needs a way to
+  tell the handoff system that it cannot start handoff until the KV
+  service for the same partition performs handoff.  This could be done
+  by returning `{waiting_for, [riak_kv]}`.  The vnode manager will
+  probably have to be modified.
+
 Searching
 ----------
 
