@@ -27,7 +27,9 @@
          compare/2]).
 -compile(export_all).
 
+-ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
+-endif.
 -include_lib("eunit/include/eunit.hrl").
 
 -define(NUM_SEGMENTS, (1024*1024)).
@@ -532,6 +534,8 @@ snapshot_test() ->
 %%% EQC
 %%%===================================================================
 
+-ifdef(EQC).
+
 objects() ->
     ?SIZED(Size, objects(Size+3)).
 
@@ -610,3 +614,5 @@ prop_correct() ->
                 destroy(B0),
                 true
             end)).
+
+-endif.
