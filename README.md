@@ -73,23 +73,24 @@ build.  The following instructions assume a devrel.
 
 2. Join the nodes.  I am using the force (`-f`) option here as this is
    just a development release.  In a production environment you should
-   absolutely use the new cluster staging commands as they are more
-   efficient when doing multiple operations and can save you from
-   making costly mistakes.
+   use the new cluster staging commands as they are more efficient
+   when doing multiple operations and can save you from making costly
+   mistakes.
 
-        for d in dev/dev{2,3,4}; do $d/bin/riak-admin join dev1@127.0.0.1; done
+        for d in dev/dev{2,3,4}; do $d/bin/riak-admin join -f dev1@127.0.0.1; done
 
 ### Creating an Index ###
 
+This command must be run from the Riak console--you must first attach
+to it.
+
+    ./dev/dev1/bin/riak attach
+
 An _index_ must be created in order for Yokozuna to index data.
 Currently the index name is a 1:1 mapping with the bucket name.  I
-plan to change this me a 1:M mapping from index to bucket.  Also, the
-index must be created on each node manually by using
-`riak_core_utils:rpc_every_member`.  I'm in the process of making
-index creation a cluster-wide operation which uses the ring and gossip
-underneath.
+may change this me a 1:M mapping from index to bucket.
 
-    riak_core_utils:rpc_every_member(yz_index, create, ["name_of_index"], 30000).
+    yz_index:add_to_ring("name_of_index").
 
 ### Install the Post-commit Hook ###
 
@@ -105,7 +106,7 @@ Yokozuna is hard coded to treat all objects as `text/plain`.  The
 value of an object is stored under the `text` field in the Yokozuna
 schema.  This will become more sophisticated as I iterate.
 
-    curl -H 'content-type: text/plain' -X PUT 'http://lcoalhost:8091/riak/name_of_bucket/name' -d "Ryan Zezeski"
+    curl -H 'content-type: text/plain' -X PUT 'http://localhost:8091/riak/name_of_bucket/name' -d "Ryan Zezeski"
 
 ### Searching ###
 
