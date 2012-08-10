@@ -37,13 +37,18 @@ you should be able to complete these steps.
 
         make deps
 
-4. Replace the riak core dependency with my fork and checkout the
-   Yokozuna branch.
+4. Replace the Riak Core and KV dependencies with my forks and
+   checkout the Yokozuna branch.
 
         cd deps
         rm -rf riak_core
         git clone git://github.com/rzezeski/riak_core.git
         (cd riak_core && git checkout rz-yokozuna)
+
+        rm -rf riak_kv
+        git clone git://github.com/rzezeski/riak_kv.git
+        (cd riak_kv && git checkout rz-yokozuna)
+
 
 5. Compile.  This will take a long time because it must clone Solr
    source and build it.  The first time you do this is the longest as
@@ -97,7 +102,7 @@ may change this me a 1:M mapping from index to bucket.
 Yokozuna hooks into KV using a post-commit hook.  This may change
 soon.  Remember, the bucket and index name must be the same.
 
-    yokozuna:install_postcommit(<<"name_of_bucket">>).
+    yz_kv:install_obj_modified_hook(<<"name_of_bucket">>).
 
 ### Index Some Data ###
 
