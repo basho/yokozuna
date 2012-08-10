@@ -44,7 +44,6 @@
         ]).
 
 -record(state, {partition, partition_binary}).
--define(PARTITION_BINARY(S), S#state.partition_binary).
 
 %%%===================================================================
 %%% API

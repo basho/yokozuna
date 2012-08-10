@@ -91,6 +91,7 @@
 -define(ERROR(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
+-define(PARTITION_BINARY(S), S#state.partition_binary).
 
 -define(YZ_INDEX, "_yz").
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
