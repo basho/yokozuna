@@ -23,7 +23,6 @@
 -include("yokozuna.hrl").
 
 -export([
-         index/4,
          start_vnode/1
         ]).
 
@@ -49,10 +48,6 @@
 %%% API
 %%%===================================================================
 
-index(Preflist, Index, Doc, ReqId) ->
-    Cmd = ?YZ_INDEX_CMD{doc=Doc, index=Index, req_id=ReqId},
-    riak_core_vnode_master:command(Preflist, Cmd, ?YZ_VNODE_MASTER).
-
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
@@ -64,13 +59,6 @@ start_vnode(I) ->
 init([Partition]) ->
     PartitionBinary = ?INT_TO_BIN(Partition),
     {ok, #state {partition=Partition, partition_binary=PartitionBinary}}.
-
-handle_command(?YZ_INDEX_CMD{doc=Doc, index=Index}, _Sender, State) ->
-    Reply = handle_index_cmd(Index, Doc, ?PARTITION_BINARY(State)),
-    {reply, Reply, State};
-
-handle_command(ping, _Sender, State) ->
-    {reply, {pong, State#state.partition}, State};
 
 handle_command(Message, _Sender, State) ->
     lager:error("unhandled command ~p", [Message]),
@@ -112,10 +100,3 @@ terminate(_Reason, _State) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
-add_partition(Doc, Partition) ->
-    yz_doc:add_to_doc(Doc, {'_pn', Partition}).
-
-handle_index_cmd(Index, Doc, Partition) ->
-    Doc2 = add_partition(Doc, Partition),
-    yz_solr:index(Index, [Doc2]).
