@@ -35,7 +35,7 @@ start(_StartType, _StartArgs) ->
     case yokozuna_sup:start_link() of
         {ok, Pid} ->
             register_app(),
-            add_routes(wm_routes()),
+            yz_misc:add_routes(yz_wm_search:routes()),
             {ok, Pid};
         Error ->
             Error
@@ -49,12 +49,6 @@ stop(_State) ->
 %%% Private
 %%%===================================================================
 
-add_routes(Routes) ->
-    [webmachine_router:add_route(R) || R <- Routes].
-
 register_app() ->
     Modules = [{vnode_module, yokozuna_vnode}],
     riak_core:register(yokozuna, Modules).
-
-wm_routes() ->
-    [{["search", index], yz_wm_search, []}].

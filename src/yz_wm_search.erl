@@ -22,6 +22,19 @@
 -compile(export_all).
 -include_lib("webmachine/include/webmachine.hrl").
 
+%%%===================================================================
+%%% API
+%%%===================================================================
+
+%% @doc Return the list of routes provided by this resource.
+routes() ->
+    [{["search", index], yz_wm_search, []}].
+
+
+%%%===================================================================
+%%% Callbacks
+%%%===================================================================
+
 init(_) ->
     {ok, none}.
 
@@ -35,7 +48,6 @@ content_types_provided(Req, S) ->
 
 search(Req, S) ->
     Index = wrq:path_info(index, Req),
-    %% Query = wrq:get_qs_value("q", Req),
     Params = wrq:req_qs(Req),
     Mapping = yz_events:get_mapping(),
     XML = yz_solr:search(Index, Params, Mapping),
