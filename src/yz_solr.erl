@@ -168,10 +168,11 @@ filter_to_str({Partition, all}) ->
     "_pn:" ++ integer_to_list(Partition);
 filter_to_str({Partition, FPFilter}) ->
     PNQ = "_pn:" ++ integer_to_list(Partition),
-    FPQ = string:join(lists:map(fun integer_to_list/1, FPFilter), " OR "),
-    FPQ2 = "_fpn:" ++ FPQ,
-    "(" ++ PNQ ++ " AND (" ++ FPQ2 ++ "))".
+    FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),
+    "(" ++ PNQ ++ " AND (" ++ FPQ ++ "))".
 
+fpn_str(FPN) ->
+    "_fpn:" ++ integer_to_list(FPN).
 
 convert_action(create) -> "CREATE";
 convert_action(status) -> "STATUS".
