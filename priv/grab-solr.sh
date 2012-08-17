@@ -50,6 +50,7 @@ build_solr()
     apply_patches
     ant compile
     pushd solr
+    mkdir test-framework/lib
     ant dist example
     popd
     popd
