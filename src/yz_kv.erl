@@ -37,10 +37,9 @@ index_obj(Obj, VNodeState) ->
     Idx = riak_core_util:chash_key(BKey),
     IdealPreflist = riak_core_ring:preflist(Idx, NVal, Ring),
     FPN = ?INT_TO_BIN(first_partition(IdealPreflist)),
-    Doc = yz_doc:make_doc(Obj),
-    Doc2 = yz_doc:add_to_doc(Doc, {'_fpn', FPN}),
-    Doc3 = add_partition(Doc2, ?INT_TO_BIN(get_partition(VNodeState))),
-    yz_solr:index(binary_to_list(Bucket), [Doc3]).
+    Partition = ?INT_TO_BIN(get_partition(VNodeState)),
+    Doc = yz_doc:make_doc(Obj, FPN, Partition),
+    yz_solr:index(binary_to_list(Bucket), [Doc]).
 
 install_obj_modified_hook(Bucket) when is_binary(Bucket) ->
     Mod = yz_kv,
@@ -52,15 +51,8 @@ install_obj_modified_hook(Bucket) when is_binary(Bucket) ->
 %%% Private
 %%%===================================================================
 
-add_partition(Doc, Partition) ->
-    yz_doc:add_to_doc(Doc, {'_pn', Partition}).
-
 first_partition([{Partition, _}|_]) ->
     Partition.
 
 get_partition(VNodeState) ->
     riak_kv_vnode:get_state_partition(VNodeState).
-
-handle_index_cmd(Index, Doc, Partition) ->
-    Doc2 = add_partition(Doc, Partition),
-    yz_solr:index(Index, [Doc2]).

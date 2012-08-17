@@ -30,7 +30,7 @@
 %% @doc Index the given object `O'.
 -spec index(string(), riak_object:riak_object()) -> ok | {error, term()}.
 index(Index, O) ->
-    yz_solr:index(Index, [yz_doc:make_doc(O)]).
+    yz_solr:index(Index, [yz_doc:make_doc(O, <<"FPN">>, <<"Partition">>)]).
 
 search(Index, Query, Mapping) ->
     yz_solr:search(Index, [{q, Query}], Mapping).

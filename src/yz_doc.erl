@@ -32,22 +32,26 @@ add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_doc(riak_object:riak_object()) -> doc().
-make_doc(O) ->
+-spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
+make_doc(O, FPN, Partition) ->
     %% TODO: For now assume text/plain to prototype
     %%
     %% TODO: change 'text' to 'value'
-    Fields = [{id, doc_id(O)},
+    Fields = [{id, doc_id(O, Partition)},
               {text, value(O)},
-              {?YZ_ENTROPY_DATA_FIELD, gen_vc(O)}],
+              {?YZ_ENTROPY_DATA_FIELD, gen_vc(O)},
+              {'_fpn', FPN},
+              {'_pn', Partition},
+              {'_rk', riak_key(O)}],
     {doc, Fields}.
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
 
-doc_id(O) ->
-    riak_object:key(O).
+-spec doc_id(riak_object:riak_object(), binary()) -> binary().
+doc_id(O, Partition) ->
+    <<(riak_object:key(O))/binary,"_",Partition/binary>>.
 
 %% TODO: Just pass metadata in?
 %%
@@ -68,9 +72,12 @@ gen_ts() ->
 
 gen_vc(O) ->
     TS = gen_ts(),
-    ID = doc_id(O),
+    RiakKey = riak_key(O),
     VClock = base64:encode(crypto:sha(term_to_binary(doc_vclock(O)))),
-    <<TS/binary," ",ID/binary," ",VClock/binary>>.
+    <<TS/binary," ",RiakKey/binary," ",VClock/binary>>.
+
+riak_key(O) ->
+    riak_object:key(O).
 
 value(O) ->
     riak_object:get_value(O).

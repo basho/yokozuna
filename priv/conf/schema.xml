@@ -157,6 +157,9 @@
         preflist, used for further filtering on overlapping partitions. -->
    <field name="_fpn" type="string" indexed="true" stored="true"/>
 
+   <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
+   <field name="_rk" type="string" indexed="true" stored="true"/>
+
 
    <!-- Dynamic field definitions allow using convention over configuration
        for fields via the specification of patterns to match field names. 
