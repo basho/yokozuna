@@ -20,6 +20,7 @@
 
 -module(yz_wm_search).
 -compile(export_all).
+-include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
 %%%===================================================================
@@ -50,6 +51,13 @@ search(Req, S) ->
     Index = wrq:path_info(index, Req),
     Params = wrq:req_qs(Req),
     Mapping = yz_events:get_mapping(),
-    XML = yz_solr:search(Index, Params, Mapping),
-    Req2 = wrq:set_resp_header("Content-Type", "text/xml", Req),
-    {XML, Req2, S}.
+    try
+        XML = yz_solr:search(Index, Params, Mapping),
+        Req2 = wrq:set_resp_header("Content-Type", "text/xml", Req),
+        {XML, Req2, S}
+    catch throw:insufficient_vnodes_available ->
+            ErrReq = wrq:set_resp_header("Content-Type", "text/plain", Req),
+            ErrReq2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n",
+                                        ErrReq),
+            {{halt, 503}, ErrReq2, S}
+    end.

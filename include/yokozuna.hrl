@@ -108,3 +108,6 @@
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_VNODE_MASTER, yokozuna_vnode_master).
 -define(YZ_META_INDEXES, yokozuna_indexes).
+
+-define(YZ_ERR_NOT_ENOUGH_NODES,
+        "Not enough nodes are up to service this request.").

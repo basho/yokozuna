@@ -38,15 +38,20 @@ plan(Index) ->
     ReqId = erlang:phash2(erlang:now()),
     Service = yokozuna,
 
-    {CoveringSet, _} = riak_core_coverage_plan:create_plan(Selector,
-                                                           NVal,
-                                                           NumPrimaries,
-                                                           ReqId,
-                                                           Service),
-    {Partitions, Nodes} = lists:unzip(CoveringSet),
-    UniqNodes = lists:usort(Nodes),
-    FilterPairs = filter_pairs(Ring, NVal, Partitions),
-    {UniqNodes, reify(Ring, FilterPairs)}.
+    Result = riak_core_coverage_plan:create_plan(Selector,
+                                                 NVal,
+                                                 NumPrimaries,
+                                                 ReqId,
+                                                 Service),
+    case Result of
+        {error, Error} ->
+            throw(Error);
+        {CoveringSet, _} ->
+            {Partitions, Nodes} = lists:unzip(CoveringSet),
+            UniqNodes = lists:usort(Nodes),
+            FilterPairs = filter_pairs(Ring, NVal, Partitions),
+            {UniqNodes, reify(Ring, FilterPairs)}
+    end.
 
 %%%===================================================================
 %%% Private
