@@ -312,11 +312,10 @@
          but does not ensure that data is synced to disk.  This is
          faster and more near-realtime friendly than a hard commit.
       -->
-     <!--
+
        <autoSoftCommit>
          <maxTime>1000</maxTime>
        </autoSoftCommit>
-      -->
 
     <!-- Update Related Event Listeners
 
