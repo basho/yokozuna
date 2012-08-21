@@ -52,6 +52,7 @@ search(Req, S) ->
     Params = wrq:req_qs(Req),
     Mapping = yz_events:get_mapping(),
     try
+        %% TODO: this isn't always XML, user can pass wt
         XML = yz_solr:search(Index, Params, Mapping),
         Req2 = wrq:set_resp_header("Content-Type", "text/xml", Req),
         {XML, Req2, S}

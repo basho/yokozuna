@@ -120,6 +120,23 @@ index(Core, Docs) ->
         Err -> throw({"Failed to index docs", Docs, Err})
     end.
 
+%% @doc Return the set of unique partitions stored on this node.
+-spec partition_list(string()) -> binary().
+partition_list(Core) ->
+    BaseURL = base_url() ++ "/" ++ Core ++ "/select",
+    Params = [{q, "*:*"},
+              {facet, "on"},
+              {"facet.mincount", "1"},
+              {"facet.field", "_pn"},
+              {wt, "json"}],
+    Encoded = mochiweb_util:urlencode(Params),
+    URL = BaseURL ++ "?" ++ Encoded,
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _, Resp} -> Resp;
+        Err -> throw({"Failed to get partition list", URL, Err})
+    end.
+
 %% @doc Return boolean based on ping response from Solr.
 -spec ping(string()) -> boolean().
 ping(Core) ->

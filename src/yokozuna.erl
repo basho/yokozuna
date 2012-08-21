@@ -32,6 +32,19 @@
 index(Index, O) ->
     yz_solr:index(Index, [yz_doc:make_doc(O, <<"FPN">>, <<"Partition">>)]).
 
+%% @doc Return the set of unique partitions stored on this node for
+%%      the given `Index'.
+-spec partition_list(string()) -> [binary()].
+partition_list(Index) ->
+    Resp = yz_solr:partition_list(Index),
+    Struct = mochijson2:decode(Resp),
+    Path = [<<"facet_counts">>, <<"facet_fields">>, <<"_pn">>],
+    Facets = yz_solr:get_path(Struct, Path),
+    %% Facets is a list of field values followed by their
+    %% corresponding count.  The `is_binary' filter is done to remove
+    %% the counts and leave only the partitions.
+    lists:filter(fun erlang:is_binary/1, Facets).
+
 search(Index, Query, Mapping) ->
     yz_solr:search(Index, [{q, Query}], Mapping).
 
