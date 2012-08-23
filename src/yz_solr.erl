@@ -27,6 +27,7 @@
                        {schema_file, schema}]).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
+-define(QUERY(Str), {'query', [], [Str]}).
 
 %% @doc This module provides the interface for making calls to Solr.
 %%      All interaction with Solr should go through this API.
@@ -34,6 +35,11 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+-spec build_partition_delete_query([integer()]) -> term().
+build_partition_delete_query(Partitions) ->
+    Queries = [?QUERY("_pn:" ++ ?INT_TO_STR(P)) || P <- Partitions],
+    xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
 
 commit(Core) ->
     BaseURL = base_url() ++ "/" ++ Core ++  "/update",
@@ -77,6 +83,14 @@ delete(Core, DocID) ->
     case ibrowse:send_req(URL, Headers, post, XML, Opts) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to delete doc", DocID, Err})
+    end.
+
+delete_by_query(Core, XML) ->
+    BaseURL = base_url() ++ "/" ++ Core ++ "/update",
+    Headers = [{content_type, "text/xml"}],
+    case ibrowse:send_req(BaseURL, Headers, post, XML, []) of
+        {ok, "200", _, _} -> ok;
+        Err -> throw({"Failed to delete by query", XML, Err})
     end.
 
 %% @doc Get `N' key-vclock pairs that occur before the `Before'

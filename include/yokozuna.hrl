@@ -89,13 +89,17 @@
 
 -define(DEBUG(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 -define(ERROR(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
+-define(INFO(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 
+-define(BIN_TO_INT(B), list_to_integer(binary_to_list(B))).
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
+-define(INT_TO_STR(I), integer_to_list(I)).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 
 -define(YZ_INDEX, "_yz").
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
+-define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_EVENTS_TAB, yz_events_tab).
 -define(YZ_ENTROPY_DATA_FIELD, '_yz_ed').
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).

@@ -25,6 +25,7 @@
 -behavior(gen_server).
 -compile(export_all).
 -export([handle_cast/2,
+         handle_info/2,
          init/1,
          terminate/2]).
 -include("yokozuna.hrl").
@@ -53,6 +54,7 @@ init([]) ->
     ok = watch_ring_events(),
     ok = watch_node_events(),
     ok = create_events_table(),
+    ok = set_tick(),
     {ok, none}.
 
 handle_cast({node_event, _Node, _Status}=NE, S) ->
@@ -72,6 +74,11 @@ handle_cast({ring_event, Ring}=RE, S) ->
     {Removed, Added, Same} = index_delta(Local, Cluster),
     ok = sync_indexes(Removed, Added, Same),
 
+    {noreply, S}.
+
+handle_info(tick, S) ->
+    ok = remove_non_owned_data(),
+    ok = set_tick(),
     {noreply, S}.
 
 terminate(_Reason, _S) ->
@@ -119,6 +126,9 @@ destroy_events_table() ->
     true = ets:delete(?YZ_EVENTS_TAB),
     ok.
 
+get_tick_interval() ->
+    app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
+
 -spec host_port(node()) -> {string(), non_neg_integer() | unknown}.
 host_port(Node) ->
     case rpc:call(Node, yz_solr, port, [], 5000) of
@@ -151,6 +161,11 @@ is_unknown({_, {_, Port}}) when is_list(Port) -> false.
 just_nodes(Mapping) ->
     [Node || {Node, _} <- Mapping].
 
+maybe_log({_, []}) ->
+    ok;
+maybe_log({Index, Removed}) ->
+    ?INFO("removed non-owned partitions ~p from index ~p", [Removed, Index]).
+
 -spec new_mapping(event(), list()) -> list().
 new_mapping({node_event, Node, down}, Mapping) ->
     remove_node(Node, Mapping);
@@ -182,6 +197,17 @@ remove_node(Node, Mapping) ->
 remove_nodes(Nodes, Mapping) ->
     lists:foldl(fun remove_node/2, Mapping, Nodes).
 
+%% @private
+%%
+%% @doc Remove documents for any data not owned by this node.
+-spec remove_non_owned_data() -> ok.
+remove_non_owned_data() ->
+    Indexes = ordsets:to_list(yz_index:indexes()),
+    Removed = [{Index, yz_index:remove_non_owned_data(Index)}
+               || Index <- Indexes],
+    [maybe_log(R) || R <- Removed],
+    ok.
+
 send_node_update({node_update, Node, Status}) ->
     gen_server:cast(?MODULE, {node_event, Node, Status});
 send_node_update(_) ->
@@ -192,6 +218,11 @@ send_ring_event(Ring) ->
 
 set_mapping(Mapping) ->
     true = ets:insert(?YZ_EVENTS_TAB, [{mapping, Mapping}]),
+    ok.
+
+set_tick() ->
+    Interval = get_tick_interval(),
+    erlang:send_after(Interval, ?MODULE, tick),
     ok.
 
 sync_indexes(_Removed, Added, Same) ->

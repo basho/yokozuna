@@ -73,6 +73,18 @@ indexes() ->
     Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
     ordsets:from_list([binary_to_list(Name) || {Name, _} <- Status]).
 
+%% @doc Remove documents in `Index' that are not owned by the local
+%%      node.  Return the list of non-owned partitions found.
+-spec remove_non_owned_data(string()) -> list().
+remove_non_owned_data(Index) ->
+    IndexPartitions = yokozuna:partition_list(Index),
+    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
+    NonOwned = ordsets:subtract(IndexPartitions, OwnedAndNext),
+    Query = yz_solr:build_partition_delete_query(NonOwned),
+    ok = yz_solr:delete_by_query(Index, Query),
+    NonOwned.
+
 %%%===================================================================
 %%% Private
 %%%===================================================================

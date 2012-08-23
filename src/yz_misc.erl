@@ -22,6 +22,27 @@
 -compile(export_all).
 -include_lib("webmachine/include/webmachine.hrl").
 
+%%%===================================================================
+%%% API
+%%%===================================================================
+
 %% @doc Add list of webmachine routes to the router.
 add_routes(Routes) ->
     [webmachine_router:add_route(R) || R <- Routes].
+
+%% @doc Return the list of partitions owned and about to be owned by
+%%      this `Node' for the given `Ring'.
+-spec owned_and_next_partitions(node(), riak_core_ring:riak_core_ring()) ->
+                                       ordsets:ordset().
+owned_and_next_partitions(Node, Ring) ->
+    Owned = lists:filter(is_owner(Node), riak_core_ring:all_owners(Ring)),
+    Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
+    ordsets:from_list([P || {P,_} <- Next ++ Owned]).
+
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
+%% @private
+is_owner(Node) ->
+    fun({P,Owner}) -> Node == Owner end.
