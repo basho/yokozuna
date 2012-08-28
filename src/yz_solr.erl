@@ -195,12 +195,15 @@ build_fq(Partitions) ->
     Fields = [filter_to_str(P) || P <- Partitions],
     string:join(Fields, " OR ").
 
-filter_to_str({Partition, all}) ->
-    "_pn:" ++ integer_to_list(Partition);
-filter_to_str({Partition, FPFilter}) ->
+filter_to_str({{Partition, Owner}, all}) ->
+    OwnerQ = "_node:" ++ atom_to_list(Owner),
+    PNQ = "_pn:" ++ integer_to_list(Partition),
+    "(" ++ OwnerQ ++ " AND " ++ PNQ ++ ")";
+filter_to_str({{Partition, Owner}, FPFilter}) ->
+    OwnerQ = "_node:" ++ atom_to_list(Owner),
     PNQ = "_pn:" ++ integer_to_list(Partition),
     FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),
-    "(" ++ PNQ ++ " AND (" ++ FPQ ++ "))".
+    "(" ++ OwnerQ ++ " AND " ++ PNQ ++ " AND (" ++ FPQ ++ "))".
 
 fpn_str(FPN) ->
     "_fpn:" ++ integer_to_list(FPN).

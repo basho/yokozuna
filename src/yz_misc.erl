@@ -30,6 +30,13 @@
 add_routes(Routes) ->
     [webmachine_router:add_route(R) || R <- Routes].
 
+%% @doc Take a list `L' and pair adjacent elements wrapping around the
+%%      end by pairing the first with the last.
+-spec make_pairs([T]) -> [{T,T}].
+make_pairs(L) ->
+    make_pairs(L, hd(L), []).
+
+
 %% @doc Return the list of partitions owned and about to be owned by
 %%      this `Node' for the given `Ring'.
 -spec owned_and_next_partitions(node(), riak_core_ring:riak_core_ring()) ->
@@ -45,4 +52,10 @@ owned_and_next_partitions(Node, Ring) ->
 
 %% @private
 is_owner(Node) ->
-    fun({P,Owner}) -> Node == Owner end.
+    fun({_P, Owner}) -> Node == Owner end.
+
+%% @private
+make_pairs([Last], First, Pairs) ->
+    [{Last, First}|lists:reverse(Pairs)];
+make_pairs([A,B|T], _First, Pairs) ->
+    make_pairs([B|T], _First, [{A,B}|Pairs]).

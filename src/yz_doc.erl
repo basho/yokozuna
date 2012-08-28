@@ -41,6 +41,7 @@ make_doc(O, FPN, Partition) ->
               {text, value(O)},
               {?YZ_ENTROPY_DATA_FIELD, gen_vc(O)},
               {'_fpn', FPN},
+              {'_node', ?ATOM_TO_BIN(node())},
               {'_pn', Partition},
               {'_rk', riak_key(O)}],
     {doc, Fields}.

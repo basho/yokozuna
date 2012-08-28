@@ -77,6 +77,13 @@
 -type dist() :: non_neg_integer().
 %% Mapping from logical partition to partition
 -type logical_idx() :: [{lp(), p()}].
+-type logical_filter() :: all | [lp()].
+-type filter() :: all | [p()].
+-type p_node() :: {p(), node()}.
+-type lp_node() :: {lp(), node()}.
+-type cover_set() :: [p_node()].
+-type logical_cover_set() :: [lp_node()].
+-type filter_cover_set() :: [{p_node(), filter()}].
 
 -type node_event() :: {node_event, node(), up | down}.
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
@@ -91,6 +98,7 @@
 -define(ERROR(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 -define(INFO(Fmt, Args), error_logger:error_msg(Fmt ++ "~n", Args)).
 
+-define(ATOM_TO_BIN(A), list_to_binary(atom_to_list(A))).
 -define(BIN_TO_INT(B), list_to_integer(binary_to_list(B))).
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 -define(INT_TO_STR(I), integer_to_list(I)).
