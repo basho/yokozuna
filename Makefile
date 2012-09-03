@@ -50,3 +50,13 @@ cleanplt:
 	@echo
 	sleep 5
 	rm $(COMBO_PLT)
+
+##
+## Purity
+##
+## NOTE: Must add purity to ERL_LIBS for these targets to work
+build_purity_plt:
+	@erl -noshell -run purity_cli main -extra --build-plt --apps $(APPS) deps/*/ebin ebin
+
+purity:
+	@erl -noshell -run purity_cli main -extra -v -s stats --with-reasons -l 3 --apps ebin
