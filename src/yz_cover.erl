@@ -80,7 +80,7 @@ get_distance(_Q, {LPA,_}, {LPB,_}) ->
     LPB - LPA.
 
 %% @doc Create a mapping from logical to actual partition.
--spec logical_index(riak_core_ring:ring()) -> logical_idx().
+-spec logical_index(riak_core_ring:riak_core_ring()) -> logical_idx().
 logical_index(Ring) ->
     {Partitions, _} = lists:unzip(riak_core_ring:all_owners(Ring)),
     Q = riak_core_ring:num_partitions(Ring),

@@ -34,7 +34,7 @@ index(Index, O) ->
 
 %% @doc Return the set of unique partitions stored on this node for
 %%      the given `Index'.
--spec partition_list(string()) -> ordsets:ordset().
+-spec partition_list(string()) -> ordset(p()).
 partition_list(Index) ->
     Resp = yz_solr:partition_list(Index),
     Struct = mochijson2:decode(Resp),

@@ -60,14 +60,14 @@ create(Name) ->
 exists(Name) ->
     true == yz_solr:ping(Name).
 
--spec get_indexes_from_ring(ring()) -> ordset().
+-spec get_indexes_from_ring(ring()) -> ordset(p()).
 get_indexes_from_ring(Ring) ->
     case riak_core_ring:get_meta(?YZ_META_INDEXES, Ring) of
         {ok, Indexes} -> Indexes;
         undefined -> []
     end.
 
--spec indexes() -> ordset().
+-spec indexes() -> ordset(index_name()).
 indexes() ->
     {ok, _, Body} = yz_solr:core(status, [{wt,json}]),
     Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),

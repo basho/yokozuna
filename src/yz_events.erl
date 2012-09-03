@@ -96,7 +96,7 @@ add_index(Name) ->
         false -> ok = yz_index:create(Name)
     end.
 
--spec add_indexes(ordset()) -> ok.
+-spec add_indexes(index_set()) -> ok.
 add_indexes(Names) ->
     lists:foreach(fun add_index/1, Names),
     ok.
@@ -145,8 +145,11 @@ hostname(Node) ->
     [_, Host] = re:split(S, "@", [{return, list}]),
     Host.
 
--spec index_delta(ordset(), ordset()) ->
-                         {Removed::ordset(), Added::ordset(), Same::ordset()}.
+-type index_delta() :: {Removed::index_set(),
+                        Added::index_set(),
+                        Same::index_set()}.
+
+-spec index_delta(index_set(), index_set()) -> index_delta().
 index_delta(Local, Cluster) ->
     Removed = ordsets:subtract(Local, Cluster),
     Added = ordsets:subtract(Cluster, Local),

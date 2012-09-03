@@ -56,9 +56,10 @@
 -type field() :: {name(), value()}.
 -type fields() :: [field()].
 -type index_name() :: string().
+-type index_set() :: ordset(index_name()).
 -type doc() :: {doc, fields()}.
--type base64() :: base64:ascii_string().
--type ordset() :: ordsets:ordset().
+-type base64() :: binary().
+-type ordset(T) :: ordsets:ordset(T).
 -type ring() :: riak_core_ring:riak_core_ring().
 -type solr_vclocks() :: #solr_vclocks{}.
 -type iso8601() :: string().

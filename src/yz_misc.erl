@@ -20,6 +20,7 @@
 
 -module(yz_misc).
 -compile(export_all).
+-include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
 %%%===================================================================
@@ -40,7 +41,7 @@ make_pairs(L) ->
 %% @doc Return the list of partitions owned and about to be owned by
 %%      this `Node' for the given `Ring'.
 -spec owned_and_next_partitions(node(), riak_core_ring:riak_core_ring()) ->
-                                       ordsets:ordset().
+                                       ordset(p()).
 owned_and_next_partitions(Node, Ring) ->
     Owned = lists:filter(is_owner(Node), riak_core_ring:all_owners(Ring)),
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
