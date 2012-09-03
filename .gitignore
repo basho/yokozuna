@@ -1,6 +1,5 @@
 deps
 ebin
-rebar
 priv/*.jar
 priv/java_lib
 priv/solr
