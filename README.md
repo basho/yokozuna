@@ -102,7 +102,7 @@ may change this me a 1:M mapping from index to bucket.
 Yokozuna hooks into KV using a post-commit hook.  This may change
 soon.  Remember, the bucket and index name must be the same.
 
-    yz_kv:install_obj_modified_hook(<<"name_of_bucket">>).
+    yz_kv:install_hook(<<"name_of_bucket">>).
 
 ### Index Some Data ###
 
