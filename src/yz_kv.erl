@@ -66,7 +66,11 @@ index(Obj, Reason, VNodeState) ->
     FPN = ?INT_TO_BIN(first_partition(IdealPreflist)),
     Partition = ?INT_TO_BIN(get_partition(VNodeState)),
     Doc = yz_doc:make_doc(Obj, FPN, Partition),
-    ok = yz_solr:index(binary_to_list(Bucket), [Doc]).
+    try
+        ok = yz_solr:index(binary_to_list(Bucket), [Doc])
+    catch _:Err ->
+            ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
+    end.
 
 %% @doc Install the object modified hook on the given `Bucket'.
 -spec install_hook(binary()) -> ok.
