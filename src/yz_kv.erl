@@ -31,7 +31,7 @@
 
 -type check() :: {module(), atom(), list()}.
 -type seconds() :: pos_integer().
--type write_reason() :: handoff | put.
+-type write_reason() :: delete | handoff | put.
 
 
 %%%===================================================================
@@ -42,7 +42,19 @@
 %% written or modified.
 %%
 %% NOTE: This code runs on the vnode process.
+%%
+%% NOTE: Index is doing double duty of index and delete.
 -spec index(riak_object:riak_object(), write_reason(), term()) -> ok.
+index(Obj, delete, VNodeState) ->
+    {Bucket, _Key} = {riak_object:bucket(Obj), riak_object:key(Obj)},
+    Partition = get_partition(VNodeState),
+    %% DocID = binary_to_list(Key) ++ "_" ++ ?INT_TO_STR(Partition),
+    DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(Partition))),
+    try
+        yz_solr:delete(binary_to_list(Bucket), DocID)
+    catch _:Err ->
+            ?ERROR("failed to delete docid ~s with error ~p", [DocID, Err])
+    end;
 index(Obj, Reason, VNodeState) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},

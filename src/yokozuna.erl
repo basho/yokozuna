@@ -96,7 +96,7 @@ demo_new_vclock(Index, N) ->
 demo_delete(Index, N) ->
     NS = integer_to_list(N),
     K = "key_" ++ NS,
-    ok = yz_solr:delete(Index, {id,K}),
+    ok = yz_solr:delete(Index, K),
     ok = yz_solr:commit(Index).
 
 write_n_objs(_, 0) ->

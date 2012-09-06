@@ -31,6 +31,10 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
+-spec doc_id(riak_object:riak_object(), binary()) -> binary().
+doc_id(O, Partition) ->
+    <<(riak_object:key(O))/binary,"_",Partition/binary>>.
+
 %% @doc Given an object generate the doc to be indexed by Solr.
 -spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
 make_doc(O, FPN, Partition) ->
@@ -49,10 +53,6 @@ make_doc(O, FPN, Partition) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
--spec doc_id(riak_object:riak_object(), binary()) -> binary().
-doc_id(O, Partition) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary>>.
 
 %% TODO: Just pass metadata in?
 %%

@@ -73,9 +73,10 @@ core(Action, Props) ->
             throw({error_calling_solr, core, Action, X})
     end.
 
+-spec delete(string(), string()) -> ok.
 delete(Core, DocID) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    XML = encode_delete(DocID),
+    XML = encode_delete({id,DocID}),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
