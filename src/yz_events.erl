@@ -93,7 +93,7 @@ terminate(_Reason, _S) ->
 add_index(Name) ->
     case yz_index:exists(Name) of
         true -> ok;
-        false -> ok = yz_index:create(Name)
+        false -> ok = yz_index:local_create(Name)
     end.
 
 -spec add_indexes(index_set()) -> ok.

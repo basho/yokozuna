@@ -31,7 +31,7 @@
 
 start(_StartType, _StartArgs) ->
     riak_core:wait_for_service(riak_kv),
-    yz_index:add_to_ring(?YZ_INDEX),
+    yz_index:create(?YZ_INDEX),
     case yokozuna_sup:start_link() of
         {ok, Pid} ->
             register_app(),

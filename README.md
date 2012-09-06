@@ -95,7 +95,7 @@ An _index_ must be created in order for Yokozuna to index data.
 Currently the index name is a 1:1 mapping with the bucket name.  I
 may change this me a 1:M mapping from index to bucket.
 
-    yz_index:add_to_ring("name_of_index").
+    yz_index:create("name_of_index").
 
 ### Install the Post-commit Hook ###
 

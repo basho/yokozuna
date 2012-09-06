@@ -31,30 +31,11 @@
 %%% API
 %%%===================================================================
 
--spec add_to_ring(string()) -> ok.
-add_to_ring(Name) ->
-    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
-    ok = add_to_ring(Ring, Name).
-
-%% TODO: Allow data dir to be changed
+%% @doc Create the index `Name' across the entire cluster.
 -spec create(string()) -> ok.
 create(Name) ->
-    IndexDir = index_dir(Name),
-    ConfDir = filename:join([IndexDir, "conf"]),
-    ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
-    DataDir = filename:join([IndexDir, "data"]),
-
-    make_dirs([ConfDir, DataDir]),
-    copy_files(ConfFiles, ConfDir),
-
-    CoreProps = [
-                 {name, Name},
-                 {index_dir, IndexDir},
-                 {cfg_file, ?YZ_CORE_CFG_FILE},
-                 {schema_file, ?YZ_SCHEMA_FILE}
-                ],
-    {ok, _, _} = yz_solr:core(create, CoreProps),
-    ok.
+    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    ok = add_to_ring(Ring, Name).
 
 -spec exists(string()) -> boolean().
 exists(Name) ->
@@ -72,6 +53,31 @@ indexes() ->
     {ok, _, Body} = yz_solr:core(status, [{wt,json}]),
     Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
     ordsets:from_list([binary_to_list(Name) || {Name, _} <- Status]).
+
+%% @doc Create the index `Name' locally.
+%%
+%% NOTE: This should typically be called by a the ring handler in
+%%       `yz_event'.  The `create/1' API should be used to create a
+%%       cluster-wide index.
+-spec local_create(string()) -> ok.
+local_create(Name) ->
+    %% TODO: Allow data dir to be changed
+    IndexDir = index_dir(Name),
+    ConfDir = filename:join([IndexDir, "conf"]),
+    ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
+    DataDir = filename:join([IndexDir, "data"]),
+
+    make_dirs([ConfDir, DataDir]),
+    copy_files(ConfFiles, ConfDir),
+
+    CoreProps = [
+                 {name, Name},
+                 {index_dir, IndexDir},
+                 {cfg_file, ?YZ_CORE_CFG_FILE},
+                 {schema_file, ?YZ_SCHEMA_FILE}
+                ],
+    {ok, _, _} = yz_solr:core(create, CoreProps),
+    ok.
 
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
