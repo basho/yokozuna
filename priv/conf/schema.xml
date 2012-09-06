@@ -151,17 +151,17 @@
    <field name="_yz_ed" type="string" indexed="true" stored="true"/>
 
    <!-- Partition Number: Used as a filter query param -->
-   <field name="_pn" type="string" indexed="true" stored="true"/>
+   <field name="_yz_pn" type="string" indexed="true" stored="true"/>
 
    <!-- First Partition Number: The first partition in this doc's
         preflist, used for further filtering on overlapping partitions. -->
-   <field name="_fpn" type="string" indexed="true" stored="true"/>
+   <field name="_yz_fpn" type="string" indexed="true" stored="true"/>
 
    <!-- Node: The name of the node that this doc was created on. -->
-   <field name="_node" type="string" indexed="true" stored="true"/>
+   <field name="_yz_node" type="string" indexed="true" stored="true"/>
 
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
-   <field name="_rk" type="string" indexed="true" stored="true"/>
+   <field name="_yz_rk" type="string" indexed="true" stored="true"/>
 
 
    <!-- Dynamic field definitions allow using convention over configuration

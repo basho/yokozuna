@@ -110,7 +110,6 @@
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_EVENTS_TAB, yz_events_tab).
--define(YZ_ENTROPY_DATA_FIELD, '_yz_ed').
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "config.xml").
@@ -124,3 +123,27 @@
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
+
+%%%===================================================================
+%%% Solr Fields
+%%%===================================================================
+
+%% Entropy Data
+-define(YZ_ED_FIELD, '_yz_ed').
+
+%% First Partition Number
+-define(YZ_FPN_FIELD, '_yz_fpn').
+-define(YZ_FPN_FIELD_S, "_yz_fpn").
+-define(YZ_FPN_FIELD_B, <<"_yz_fpn">>).
+
+%% Node
+-define(YZ_NODE_FIELD, '_yz_node').
+-define(YZ_NODE_FIELD_S, "_yz_node").
+
+%% Partition Number
+-define(YZ_PN_FIELD, '_yz_pn').
+-define(YZ_PN_FIELD_S, "_yz_pn").
+-define(YZ_PN_FIELD_B, <<"_yz_pn">>).
+
+%% Riak key
+-define(YZ_RK_FIELD, '_yz_rk').

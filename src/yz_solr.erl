@@ -38,7 +38,8 @@
 
 -spec build_partition_delete_query([integer()]) -> term().
 build_partition_delete_query(Partitions) ->
-    Queries = [?QUERY("_pn:" ++ ?INT_TO_STR(P)) || P <- Partitions],
+    Queries = [?QUERY(?YZ_PN_FIELD_S ++ ":" ++ ?INT_TO_STR(P))
+               || P <- Partitions],
     xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
 
 commit(Core) ->
@@ -141,7 +142,7 @@ partition_list(Core) ->
     Params = [{q, "*:*"},
               {facet, "on"},
               {"facet.mincount", "1"},
-              {"facet.field", "_pn"},
+              {"facet.field", ?YZ_PN_FIELD_S},
               {wt, "json"}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
@@ -196,17 +197,17 @@ build_fq(Partitions) ->
     string:join(Fields, " OR ").
 
 filter_to_str({{Partition, Owner}, all}) ->
-    OwnerQ = "_node:" ++ atom_to_list(Owner),
-    PNQ = "_pn:" ++ integer_to_list(Partition),
+    OwnerQ = ?YZ_NODE_FIELD_S ++ ":" ++ atom_to_list(Owner),
+    PNQ = ?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(Partition),
     "(" ++ OwnerQ ++ " AND " ++ PNQ ++ ")";
 filter_to_str({{Partition, Owner}, FPFilter}) ->
-    OwnerQ = "_node:" ++ atom_to_list(Owner),
-    PNQ = "_pn:" ++ integer_to_list(Partition),
+    OwnerQ = ?YZ_NODE_FIELD_S ++ ":" ++ atom_to_list(Owner),
+    PNQ = ?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(Partition),
     FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),
     "(" ++ OwnerQ ++ " AND " ++ PNQ ++ " AND (" ++ FPQ ++ "))".
 
 fpn_str(FPN) ->
-    "_fpn:" ++ integer_to_list(FPN).
+    ?YZ_FPN_FIELD_S ++ ":" ++ integer_to_list(FPN).
 
 convert_action(create) -> "CREATE";
 convert_action(status) -> "STATUS".
