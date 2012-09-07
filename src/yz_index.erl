@@ -81,15 +81,17 @@ local_create(Name) ->
 
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
--spec remove_non_owned_data(string()) -> list().
+-spec remove_non_owned_data(string()) -> [{ordset(p()), ordset(lp())}].
 remove_non_owned_data(Index) ->
-    IndexPartitions = yokozuna:partition_list(Index),
     {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    IndexPartitions = yz_cover:reify_partitions(Ring,
+                                                yokozuna:partition_list(Index)),
     OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
     NonOwned = ordsets:subtract(IndexPartitions, OwnedAndNext),
-    Query = yz_solr:build_partition_delete_query(NonOwned),
+    LNonOwned = yz_cover:logical_partitions(Ring, NonOwned),
+    Query = yz_solr:build_partition_delete_query(LNonOwned),
     ok = yz_solr:delete_by_query(Index, Query),
-    NonOwned.
+    lists:zip(NonOwned, LNonOwned).
 
 %%%===================================================================
 %%% Private

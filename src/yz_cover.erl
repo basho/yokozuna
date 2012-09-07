@@ -29,6 +29,11 @@
 %%% API
 %%%===================================================================
 
+-spec logical_partitions(ring(), ordset(p())) -> ordset(lp()).
+logical_partitions(Ring, Partitions) ->
+    LI = logical_index(Ring),
+    ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
+
 plan(Index) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Q = riak_core_ring:num_partitions(Ring),
@@ -51,8 +56,13 @@ plan(Index) ->
             UniqNodes = lists:usort(Nodes),
             LPI = logical_index(Ring),
             LogicalCoverSet = add_filtering(NVal, Q, LPI, CoverSet),
-            {UniqNodes, reify(LPI, LogicalCoverSet)}
+            {UniqNodes, LogicalCoverSet}
     end.
+
+-spec reify_partitions(ring(), ordset(lp())) -> ordset(p()).
+reify_partitions(Ring, LPartitions) ->
+    LI = logical_index(Ring),
+    ordsets:from_list([partition(LI, LP) || LP <- LPartitions]).
 
 %%%===================================================================
 %%% Private
@@ -147,18 +157,3 @@ make_logical(LogicalIndex, Cover) ->
 partition(LogicalIndex, LP) ->
     {_, P} = lists:keyfind(LP, 1, LogicalIndex),
     P.
-
--spec reify(logical_idx(), logical_cover_set()) -> filter_cover_set().
-reify(LPI, LogicalCoverSet) ->
-    [reify_data(LPI, E) || E <- LogicalCoverSet].
-
--spec reify_data(logical_idx(), {lp_node(), logical_filter()}) ->
-                        {{p(), node()}, filter()}.
-%% @doc Take a logical filter and make it concrete.
-reify_data(LPI, {{LP, Node}, all}) ->
-    P = partition(LPI, LP),
-    {{P, Node}, all};
-reify_data(LPI, {{LP, Node}, IncludeLPs}) ->
-    P = partition(LPI, LP),
-    Includes = [partition(LPI, LP2) || LP2 <- IncludeLPs],
-    {{P, Node}, Includes}.

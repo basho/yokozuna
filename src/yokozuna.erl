@@ -32,9 +32,9 @@
 index(Index, O) ->
     yz_solr:index(Index, [yz_doc:make_doc(O, <<"FPN">>, <<"Partition">>)]).
 
-%% @doc Return the set of unique partitions stored on this node for
-%%      the given `Index'.
--spec partition_list(string()) -> ordset(p()).
+%% @doc Return the set of unique logical partitions stored on this
+%%      node for the given `Index'.
+-spec partition_list(string()) -> ordset(lp()).
 partition_list(Index) ->
     Resp = yz_solr:partition_list(Index),
     Struct = mochijson2:decode(Resp),

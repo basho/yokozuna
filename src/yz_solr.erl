@@ -36,10 +36,10 @@
 %%% API
 %%%===================================================================
 
--spec build_partition_delete_query([integer()]) -> term().
-build_partition_delete_query(Partitions) ->
-    Queries = [?QUERY(?YZ_PN_FIELD_S ++ ":" ++ ?INT_TO_STR(P))
-               || P <- Partitions],
+-spec build_partition_delete_query(ordset(lp())) -> term().
+build_partition_delete_query(LPartitions) ->
+    Queries = [?QUERY(?YZ_PN_FIELD_S ++ ":" ++ ?INT_TO_STR(LP))
+               || LP <- LPartitions],
     xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
 
 commit(Core) ->

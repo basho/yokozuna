@@ -46,26 +46,28 @@
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(riak_object:riak_object(), write_reason(), term()) -> ok.
 index(Obj, delete, VNodeState) ->
-    {Bucket, _Key} = {riak_object:bucket(Obj), riak_object:key(Obj)},
-    Partition = get_partition(VNodeState),
-    %% DocID = binary_to_list(Key) ++ "_" ++ ?INT_TO_STR(Partition),
-    DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(Partition))),
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    LI = yz_cover:logical_index(Ring),
+    {Bucket, _Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+    LP = yz_cover:logical_partition(LI, get_partition(VNodeState)),
+    DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
     try
         yz_solr:delete(binary_to_list(Bucket), DocID)
     catch _:Err ->
-            ?ERROR("failed to delete docid ~s with error ~p", [DocID, Err])
+            ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
     end;
 index(Obj, Reason, VNodeState) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    LI = yz_cover:logical_index(Ring),
     {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
     ok = maybe_wait(Reason, Bucket),
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
     NVal = riak_core_bucket:n_val(BProps),
     Idx = riak_core_util:chash_key(BKey),
     IdealPreflist = riak_core_ring:preflist(Idx, NVal, Ring),
-    FPN = ?INT_TO_BIN(first_partition(IdealPreflist)),
-    Partition = ?INT_TO_BIN(get_partition(VNodeState)),
-    Doc = yz_doc:make_doc(Obj, FPN, Partition),
+    LFPN = yz_cover:logical_partition(LI, first_partition(IdealPreflist)),
+    LP = yz_cover:logical_partition(LI, get_partition(VNodeState)),
+    Doc = yz_doc:make_doc(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
     try
         ok = yz_solr:index(binary_to_list(Bucket), [Doc])
     catch _:Err ->
