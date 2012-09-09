@@ -73,6 +73,12 @@ core(Action, Props) ->
             throw({error_calling_solr, core, Action, X})
     end.
 
+-spec cores() -> ordset(index_name()).
+cores() ->
+    {ok, _, Body} = yz_solr:core(status, [{wt,json}]),
+    Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
+    ordsets:from_list([binary_to_list(Name) || {Name, _} <- Status]).
+
 -spec delete(string(), string()) -> ok.
 delete(Core, DocID) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",

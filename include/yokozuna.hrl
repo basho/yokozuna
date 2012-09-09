@@ -55,7 +55,6 @@
 -type value() :: term().
 -type field() :: {name(), value()}.
 -type fields() :: [field()].
--type index_name() :: string().
 -type index_set() :: ordset(index_name()).
 -type doc() :: {doc, fields()}.
 -type base64() :: binary().
@@ -65,6 +64,7 @@
 -type iso8601() :: string().
 -type tree_name() :: atom().
 -type tree_ref() :: #tree_ref{}.
+-type orddict(K,V) :: [{K,V}].
 
 %% N value
 -type n() :: pos_integer().
@@ -109,7 +109,6 @@
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "config.xml").
--define(YZ_SCHEMA_FILE, "schema.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
 -define(YZ_SEARCH_CMD, #yz_search_cmd).
 -define(YZ_APP_NAME, yokozuna).
@@ -128,6 +127,31 @@
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
 
+%%%===================================================================
+%%% Indexes
+%%%===================================================================
+
+-record(index_info,
+        {
+          name :: index_name(),
+          schema_name :: schema_name()
+        }).
+
+-type indexes() :: orddict(index_name(), index_info()).
+-type index_info() :: #index_info{}.
+-type index_name() :: string().
+
+%%%===================================================================
+%%% Schemas
+%%%===================================================================
+
+-define(YZ_DEFAULT_SCHEMA_FILE,
+        filename:join([?YZ_PRIV, "default_schema.xml"])).
+-define(YZ_DEFAULT_SCHEMA_NAME, <<"_yz_default">>).
+-define(YZ_SCHEMA_BUCKET, <<"_yz_schema">>).
+
+-type raw_schema() :: binary().
+-type schema_name() :: binary().
 
 %%%===================================================================
 %%% Solr Fields

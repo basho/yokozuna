@@ -31,53 +31,65 @@
 %%% API
 %%%===================================================================
 
-%% @doc Create the index `Name' across the entire cluster.
 -spec create(string()) -> ok.
 create(Name) ->
+    create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
+
+%% @doc Create the index `Name' across the entire cluster using
+%%      `SchemaName' as the schema.
+-spec create(string(), schema_name()) -> ok.
+create(Name, SchemaName) ->
     {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
-    ok = add_to_ring(Ring, Name).
+    Info = make_info(Name, SchemaName),
+    ok = add_to_ring(Ring, Name, Info).
 
 -spec exists(string()) -> boolean().
 exists(Name) ->
     true == yz_solr:ping(Name).
 
--spec get_indexes_from_ring(ring()) -> ordset(p()).
+-spec get_indexes_from_ring(ring()) -> indexes().
 get_indexes_from_ring(Ring) ->
     case riak_core_ring:get_meta(?YZ_META_INDEXES, Ring) of
         {ok, Indexes} -> Indexes;
         undefined -> []
     end.
 
--spec indexes() -> ordset(index_name()).
-indexes() ->
-    {ok, _, Body} = yz_solr:core(status, [{wt,json}]),
-    Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
-    ordsets:from_list([binary_to_list(Name) || {Name, _} <- Status]).
+get_info_from_ring(Ring, Name) ->
+    Indexes = get_indexes_from_ring(Ring),
+    orddict:fetch(Name, Indexes).
 
 %% @doc Create the index `Name' locally.
 %%
 %% NOTE: This should typically be called by a the ring handler in
 %%       `yz_event'.  The `create/1' API should be used to create a
 %%       cluster-wide index.
--spec local_create(string()) -> ok.
-local_create(Name) ->
+-spec local_create(ring(), string()) -> ok.
+local_create(Ring, Name) ->
     %% TODO: Allow data dir to be changed
     IndexDir = index_dir(Name),
     ConfDir = filename:join([IndexDir, "conf"]),
     ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
     DataDir = filename:join([IndexDir, "data"]),
+    Info = get_info_from_ring(Ring, Name),
+    SchemaName = schema_name(Info),
+    RawSchema = yz_schema:get(SchemaName),
+    SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
 
     make_dirs([ConfDir, DataDir]),
     copy_files(ConfFiles, ConfDir),
+    ok = file:write_file(SchemaFile, RawSchema),
 
     CoreProps = [
                  {name, Name},
                  {index_dir, IndexDir},
                  {cfg_file, ?YZ_CORE_CFG_FILE},
-                 {schema_file, ?YZ_SCHEMA_FILE}
+                 {schema_file, SchemaFile}
                 ],
     {ok, _, _} = yz_solr:core(create, CoreProps),
     ok.
+
+name(Info) ->
+    Info#index_info.name.
 
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
@@ -93,14 +105,25 @@ remove_non_owned_data(Index) ->
     ok = yz_solr:delete_by_query(Index, Query),
     lists:zip(NonOwned, LNonOwned).
 
+-spec schema_name(index_info()) -> schema_name().
+schema_name(Info) ->
+    Info#index_info.schema_name.
+
 %%%===================================================================
 %%% Private
 %%%===================================================================
 
-add_to_ring(Ring, Name) ->
+-spec add_index(indexes(), index_name(), index_info()) -> indexes().
+add_index(Indexes, Name, Info) ->
+    orddict:store(Name, Info, Indexes).
+
+-spec add_to_ring(ring(), index_name(), index_info()) -> ok.
+add_to_ring(Ring, Name, Info) ->
     Indexes = get_indexes_from_ring(Ring),
-    Indexes2 = ordsets:add_element(Name, Indexes),
+    Indexes2 = add_index(Indexes, Name, Info),
     Ring2 = riak_core_ring:update_meta(?YZ_META_INDEXES, Indexes2, Ring),
+    %% TODO Is the ring trans needed or does update_meta already do
+    %%      that for me?
     {ok, _Ring3} = riak_core_ring_manager:ring_trans(set_ring_trans(Ring2), []),
     ok.
 
@@ -138,8 +161,9 @@ make_dirs([Dir|Rest]) ->
     ok = make_dir(Dir),
     make_dirs(Rest).
 
-schema_file() ->
-    ?YZ_PRIV ++ "/" ++ ?YZ_SCHEMA_FILE.
+make_info(IndexName, SchemaName) ->
+    #index_info{name=IndexName,
+                schema_name=SchemaName}.
 
 set_ring_trans(Ring) ->
     fun(_,_) -> {new_ring, Ring} end.

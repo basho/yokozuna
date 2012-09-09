@@ -69,10 +69,10 @@ handle_cast({ring_event, Ring}=RE, S) ->
     Mapping2 = new_mapping(RE, Mapping),
     ok = set_mapping(Mapping2),
 
-    Local = yz_index:indexes(),
-    Cluster = yz_index:get_indexes_from_ring(Ring),
-    {Removed, Added, Same} = index_delta(Local, Cluster),
-    ok = sync_indexes(Removed, Added, Same),
+    Local = yz_solr:cores(),
+    Cluster = [Name || {Name,_} <- yz_index:get_indexes_from_ring(Ring)],
+    {Removed, Added, Same} = yz_misc:delta(Local, Cluster),
+    ok = sync_indexes(Ring, Removed, Added, Same),
 
     {noreply, S}.
 
@@ -89,16 +89,16 @@ terminate(_Reason, _S) ->
 %%% Private
 %%%===================================================================
 
--spec add_index(index_name()) -> ok.
-add_index(Name) ->
+-spec add_index(ring(), index_name()) -> ok.
+add_index(Ring, Name) ->
     case yz_index:exists(Name) of
         true -> ok;
-        false -> ok = yz_index:local_create(Name)
+        false -> ok = yz_index:local_create(Ring, Name)
     end.
 
--spec add_indexes(index_set()) -> ok.
-add_indexes(Names) ->
-    lists:foreach(fun add_index/1, Names),
+-spec add_indexes(ring(), index_set()) -> ok.
+add_indexes(Ring, Names) ->
+    [add_index(Ring, N) || N <- Names],
     ok.
 
 -spec add_node(node(), list()) -> list().
@@ -144,17 +144,6 @@ hostname(Node) ->
     S = atom_to_list(Node),
     [_, Host] = re:split(S, "@", [{return, list}]),
     Host.
-
--type index_delta() :: {Removed::index_set(),
-                        Added::index_set(),
-                        Same::index_set()}.
-
--spec index_delta(index_set(), index_set()) -> index_delta().
-index_delta(Local, Cluster) ->
-    Removed = ordsets:subtract(Local, Cluster),
-    Added = ordsets:subtract(Cluster, Local),
-    Same = ordsets:intersection(Cluster, Local),
-    {Removed, Added, Same}.
 
 -spec is_unknown(tuple()) -> boolean().
 is_unknown({_, {_, unknown}}) -> true;
@@ -205,7 +194,7 @@ remove_nodes(Nodes, Mapping) ->
 %% @doc Remove documents for any data not owned by this node.
 -spec remove_non_owned_data() -> ok.
 remove_non_owned_data() ->
-    Indexes = ordsets:to_list(yz_index:indexes()),
+    Indexes = ordsets:to_list(yz_solr:cores()),
     Removed = [{Index, yz_index:remove_non_owned_data(Index)}
                || Index <- Indexes],
     [maybe_log(R) || R <- Removed],
@@ -228,9 +217,9 @@ set_tick() ->
     erlang:send_after(Interval, ?MODULE, tick),
     ok.
 
-sync_indexes(_Removed, Added, Same) ->
+sync_indexes(Ring, _Removed, Added, Same) ->
     %% ok = remove_indexes(Removed),
-    ok = add_indexes(Added ++ Same).
+    ok = add_indexes(Ring, Added ++ Same).
 
 watch_node_events() ->
     riak_core_node_watcher_events:add_sup_callback(fun send_node_update/1).

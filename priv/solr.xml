@@ -29,7 +29,7 @@
     If 'null' (or absent), cores will not be manageable via request handler
   -->
   <cores adminPath="/admin/cores">
-    <core name="_yz" schema="schema.xml" config="config.xml" instanceDir="_yz">
-    </core>
+    <!-- <core name="_yz" schema="default_schema.xml" config="config.xml" instanceDir="_yz"> -->
+    <!-- </core> -->
   </cores>
 </solr>

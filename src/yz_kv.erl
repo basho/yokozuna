@@ -38,6 +38,20 @@
 %%% API
 %%%===================================================================
 
+-spec client() -> any().
+client() ->
+    {ok,C} = riak:local_client(),
+    C.
+
+-spec get(any(), binary(), binary()) -> any().
+get(C, Bucket, Key) ->
+    case C:get(Bucket, Key) of
+        {ok, O} ->
+            {value, riak_object:get_value(O)};
+        Other ->
+            Other
+    end.
+
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
@@ -81,6 +95,11 @@ install_hook(Bucket) when is_binary(Bucket) ->
     Fun = index,
     ok = riak_kv_vnode:add_obj_modified_hook(Bucket, Mod, Fun).
 
+%% @doc Write a value
+-spec put(any(), binary(), binary(), binary(), string()) -> ok.
+put(Client, Bucket, Key, Value, ContentType) ->
+    O = riak_object:new(Bucket, Key, Value, ContentType),
+    Client:put(O, [{pw,3},{w,3},{dw,3}]).
 
 %%%===================================================================
 %%% Private
