@@ -1,0 +1,5 @@
+{application, bench,
+ [
+  {description, "This is just here to make rebar happy."},
+  {vsn, "0.0.0"}
+]}.
