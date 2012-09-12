@@ -146,6 +146,7 @@ index_dir(Name) ->
     YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
     filename:absname(filename:join([YZDir, Name])).
 
+%% TODO: move to misc
 make_dir(Dir) ->
     case filelib:is_dir(Dir) of
         true ->

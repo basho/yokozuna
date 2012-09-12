@@ -60,7 +60,7 @@ start_link(Dir, SolrPort) ->
 init([Dir, SolrPort]) ->
     process_flag(trap_exit, true),
     Cmd = build_cmd(SolrPort, Dir),
-    ?DEBUG("running OS cmd ~p", [Cmd]),
+    ?INFO("Starting solr: ~p", [Cmd]),
     Port = run_cmd(Cmd),
     wait_for_solr(solr_startup_wait()),
     S = #state{
@@ -102,6 +102,14 @@ build_cmd(SolrPort, Dir) ->
     string:join([Wrapper, Java, JettyHomeArg, PortArg,
                  SolrHomeArg, LoggingArg, LibArg, JarArg], " ").
 
+is_up() ->
+    try
+        _ = yz_solr:cores(),
+        true
+    catch throw:{error_calling_solr,core,_,_} ->
+            false
+    end.
+
 run_cmd(Cmd) ->
     open_port({spawn, Cmd}, [exit_status]).
 
@@ -113,7 +121,7 @@ solr_startup_wait() ->
 wait_for_solr(0) ->
     throw({error, "Solr didn't start in alloted time"});
 wait_for_solr(N) ->
-    case yz_solr:ping(?YZ_INDEX) of
+    case is_up() of
         true ->
             ok;
         false ->
