@@ -20,6 +20,9 @@
 
 %% @doc Functionality related to events.  This is the single producer of
 %% writes to the ETS table `yz_events`.
+%%
+%% NOTE: Store the raw ring in the state because that is what is being
+%%       delivered during a ring event.
 
 -module(yz_events).
 -behavior(gen_server).
@@ -30,6 +33,10 @@
          terminate/2]).
 -include("yokozuna.hrl").
 
+-record(state, {
+          previous_ring :: ring()
+         }).
+-define(PREV_RING(S), S#state.previous_ring).
 
 %%%===================================================================
 %%% API
@@ -45,7 +52,6 @@ get_mapping() ->
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
@@ -55,7 +61,8 @@ init([]) ->
     ok = watch_node_events(),
     ok = create_events_table(),
     ok = set_tick(),
-    {ok, none}.
+    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    {ok, #state{previous_ring=Ring}}.
 
 handle_cast({node_event, _Node, _Status}=NE, S) ->
     Mapping = get_mapping(),
@@ -65,13 +72,14 @@ handle_cast({node_event, _Node, _Status}=NE, S) ->
     {noreply, S};
 
 handle_cast({ring_event, Ring}=RE, S) ->
+    PrevRing = ?PREV_RING(S),
     Mapping = get_mapping(),
     Mapping2 = new_mapping(RE, Mapping),
     ok = set_mapping(Mapping2),
 
-    Local = yz_solr:cores(),
-    Cluster = [Name || {Name,_} <- yz_index:get_indexes_from_ring(Ring)],
-    {Removed, Added, Same} = yz_misc:delta(Local, Cluster),
+    Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
+    Current = names(yz_index:get_indexes_from_ring(Ring)),
+    {Removed, Added, Same} = yz_misc:delta(Previous, Current),
     ok = sync_indexes(Ring, Removed, Added, Same),
 
     {noreply, S}.
@@ -157,6 +165,9 @@ maybe_log({_, []}) ->
     ok;
 maybe_log({Index, Removed}) ->
     ?INFO("removed non-owned partitions ~p from index ~p", [Removed, Index]).
+
+names(Indexes) ->
+    [Name || {Name,_} <- Indexes].
 
 -spec new_mapping(event(), list()) -> list().
 new_mapping({node_event, Node, down}, Mapping) ->
