@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<schema name="fruit" version="1.5">
+
+ <fields>
+   <field name="id" type="string" indexed="true" stored="true" required="true" />
+rue"/>
+
+   <field name="text" type="text_ws" indexed="true" stored="false" multiValued="true"/>
+
+   <field name="_version_" type="long" indexed="true" stored="true"/>
+
+   <!-- Entropy Data: Data related to anti-entropy -->
+   <field name="_yz_ed" type="string" indexed="true" stored="true"/>
+
+   <!-- Partition Number: Used as a filter query param -->
+   <field name="_yz_pn" type="string" indexed="true" stored="true"/>
+
+   <!-- First Partition Number: The first partition in this doc's
+        preflist, used for further filtering on overlapping partitions. -->
+   <field name="_yz_fpn" type="string" indexed="true" stored="true"/>
+
+   <!-- Node: The name of the node that this doc was created on. -->
+   <field name="_yz_node" type="string" indexed="true" stored="true"/>
+
+   <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
+   <field name="_yz_rk" type="string" indexed="true" stored="true"/>
+ </fields>
+
+ <uniqueKey>id</uniqueKey>
+
+  <types>
+
+    <fieldType name="string" class="solr.StrField" sortMissingLast="true" />
+
+    <fieldType name="long" class="solr.TrieLongField" precisionStep="0" positionIncrementGap="0"/>
+
+    <!-- A text field that only splits on whitespace for exact matching of words -->
+    <fieldType name="text_ws" class="solr.TextField" positionIncrementGap="100">
+      <analyzer>
+        <tokenizer class="solr.WhitespaceTokenizerFactory"/>
+      </analyzer>
+    </fieldType>
+  </types>
+
+</schema>
