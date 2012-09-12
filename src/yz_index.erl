@@ -75,8 +75,8 @@ local_create(Ring, Name) ->
     RawSchema = yz_schema:get(SchemaName),
     SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
 
-    make_dirs([ConfDir, DataDir]),
-    copy_files(ConfFiles, ConfDir),
+    yz_misc:make_dirs([ConfDir, DataDir]),
+    yz_misc:copy_files(ConfFiles, ConfDir),
     ok = file:write_file(SchemaFile, RawSchema),
 
     CoreProps = [
@@ -127,40 +127,9 @@ add_to_ring(Ring, Name, Info) ->
     {ok, _Ring3} = riak_core_ring_manager:ring_trans(set_ring_trans(Ring2), []),
     ok.
 
-copy_files([], _) ->
-    ok;
-copy_files([File|Rest], Dir) ->
-    Basename = filename:basename(File),
-    case filelib:is_dir(File) of
-        true ->
-            NewDir = filename:join([Dir, Basename]),
-            make_dir(NewDir),
-            copy_files(filelib:wildcard(filename:join([File, "*"])), NewDir),
-            copy_files(Rest, Dir);
-        false ->
-            {ok, _} = file:copy(File, filename:join([Dir, Basename])),
-            copy_files(Rest, Dir)
-    end.
-
 index_dir(Name) ->
     YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
     filename:absname(filename:join([YZDir, Name])).
-
-%% TODO: move to misc
-make_dir(Dir) ->
-    case filelib:is_dir(Dir) of
-        true ->
-            ok;
-        false ->
-            ok = filelib:ensure_dir(Dir),
-            ok = file:make_dir(Dir)
-    end.
-
-make_dirs([]) ->
-    ok;
-make_dirs([Dir|Rest]) ->
-    ok = make_dir(Dir),
-    make_dirs(Rest).
 
 make_info(IndexName, SchemaName) ->
     #index_info{name=IndexName,

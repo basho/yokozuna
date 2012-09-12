@@ -31,6 +31,23 @@
 add_routes(Routes) ->
     [webmachine_router:add_route(R) || R <- Routes].
 
+%% @doc Recursively copy each file to `Dir'.
+-spec copy_files([string()], string()) -> ok.
+copy_files([], _) ->
+    ok;
+copy_files([File|Rest], Dir) ->
+    Basename = filename:basename(File),
+    case filelib:is_dir(File) of
+        true ->
+            NewDir = filename:join([Dir, Basename]),
+            yz_misc:make_dir(NewDir),
+            copy_files(filelib:wildcard(filename:join([File, "*"])), NewDir),
+            copy_files(Rest, Dir);
+        false ->
+            {ok, _} = file:copy(File, filename:join([Dir, Basename])),
+            copy_files(Rest, Dir)
+    end.
+
 %% @doc Calculate the delta between `Old' and `New'.
 -spec delta(ordset(any()), ordset(any())) ->
                    {ordset(any()), ordset(any()), ordset(any())}.
@@ -39,6 +56,25 @@ delta(Old, New) ->
     Added = ordsets:subtract(New, Old),
     Same = ordsets:intersection(New, Old),
     {Removed, Added, Same}.
+
+%% @doc Create the `Dir' if it doesn't already exist.
+-spec make_dir(string()) -> ok.
+make_dir(Dir) ->
+    case filelib:is_dir(Dir) of
+        true ->
+            ok;
+        false ->
+            ok = filelib:ensure_dir(Dir),
+            ok = file:make_dir(Dir)
+    end.
+
+%% @doc Create each dir in the list.
+-spec make_dirs([string()]) -> ok.
+make_dirs([]) ->
+    ok;
+make_dirs([Dir|Rest]) ->
+    ok = make_dir(Dir),
+    make_dirs(Rest).
 
 %% @doc Take a list `L' and pair adjacent elements wrapping around the
 %%      end by pairing the first with the last.
