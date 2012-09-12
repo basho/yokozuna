@@ -101,7 +101,6 @@
 -define(INT_TO_STR(I), integer_to_list(I)).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 
--define(YZ_INDEX, "_yz").
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).

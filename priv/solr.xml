@@ -16,20 +16,7 @@
  limitations under the License.
 -->
 
-<!--
- All (relative) paths are relative to the installation path
-
-  persistent: Save changes made via the API to this file
-  sharedLib: path to a lib directory that will be shared across all cores
--->
 <solr persistent="true">
-
-  <!--
-  adminPath: RequestHandler path to manage cores.
-    If 'null' (or absent), cores will not be manageable via request handler
-  -->
   <cores adminPath="/admin/cores">
-    <!-- <core name="_yz" schema="default_schema.xml" config="config.xml" instanceDir="_yz"> -->
-    <!-- </core> -->
   </cores>
 </solr>
