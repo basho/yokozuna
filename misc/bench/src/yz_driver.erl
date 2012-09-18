@@ -126,12 +126,14 @@ valgen_i(index) ->
 valgen_i(search) ->
     yz_file_terms:get_ft().
 
+-define(M1, 1000000).
 -define(K100, 100000).
 -define(K10, 10000).
 -define(K1, 1000).
 
 -define(FRUITS,
-        [{?K100, "apple grape orange pineapple strawberry kiwi"},
+        [{?M1, "blueberry apricot guava feijoa jackfruit jambul"},
+         {?K100, "apple grape orange pineapple strawberry kiwi"},
          {?K10, "avocado raspberry persimmon blackberry cherry tomato"},
          {?K1, "clementine lime lemon melon plum pear"},
          {100, "marang nutmeg olive pecan peanut tangerine"},
@@ -150,7 +152,7 @@ fruit_key_val_gen(Id) ->
     fruit_key_val_gen(Id, ?K100).
 
 fruit_key_val_gen(Id, NumKeys) ->
-    Fruits2 = [{N, combine(?FRUITS, N)} || N <- [1, 10, 100, ?K1, ?K10, ?K100]],
+    Fruits2 = [{N, combine(?FRUITS, N)} || N <- [1, 10, 100, ?K1, ?K10, ?K100, ?M1]],
     StartKey = 1,
     Workers = basho_bench_config:get(concurrent),
     Range = NumKeys div Workers,
