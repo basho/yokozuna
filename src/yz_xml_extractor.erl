@@ -88,7 +88,7 @@ sax_cb({endElement, _Uri, _Name, _QualName}, _Location, S) ->
 %% Got a value, set it to the value of the topmost element in the stack...
 sax_cb({characters, Value}, _Location, S) ->
     Name = make_name(S#state.field_separator, S#state.name_stack),
-    Field = {Name, list_to_binary(Value)},
+    Field = {Name, unicode:characters_to_binary(Value)},
     S#state{fields = [Field|S#state.fields]};
 
 sax_cb(_Event, _Location, State) ->

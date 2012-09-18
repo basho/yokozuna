@@ -11,7 +11,7 @@
 
 -include_lib("basho_bench/include/basho_bench.hrl").
 -define(MB, 1048576).
--record(state, {cache, i, fields, file, schema}).
+-record(state, {cache, i, fields, file, read_mfa, schema}).
 
 -type field() :: binary().
 -type sterm() :: binary().
@@ -28,9 +28,14 @@ get_ft() -> get_ft(1).
 %% @doc Return a {Field, Terms} pair.  An attempt will be made to
 %% return N terms but could be less.
 -spec get_ft(pos_integer()) -> {field(), sterms()}.
-get_ft(N) -> gen_server:call(term_server, {ft, N}).
+get_ft(N) ->
+    gen_server:call(term_server, {ft, N}).
 
-get_line() -> gen_server:call(line_server, line).
+get_line() ->
+    gen_server:call(line_server, line).
+
+read_mfa(Op) ->
+     gen_server:call(mfa_server, {read_mfa, Op}).
 
 start_ts(Path, Fields, Schema) ->
     gen_server:start_link({local, term_server}, ?MODULE,
@@ -39,12 +44,20 @@ start_ts(Path, Fields, Schema) ->
 start_ls(Path) ->
     gen_server:start_link({local, line_server}, ?MODULE, [Path], []).
 
+%% MFA Server - load based on MFA
+start_mfa(LoadMFA, ReadMFA) ->
+    Args = [{mfa, LoadMFA, ReadMFA}],
+    gen_server:start_link({local, mfa_server}, ?MODULE, Args, []).
+
 
 %% ====================================================================
 %% Callbacks
 %% ====================================================================
 
 %% -spec init([string(), [binary()], string()]) -> {ok, #state{}}.
+init([{mfa, {M, F, A}, ReadMFA}]) ->
+    Data = apply(M, F, A),
+    {ok, #state{cache=Data, read_mfa=ReadMFA}};
 init([Path, Fields, SchemaPath]) ->
     {ok, F} = file:open(Path, [read, raw, binary, {read_ahead, ?MB}]),
     Schema = load_schema(SchemaPath),
@@ -52,6 +65,17 @@ init([Path, Fields, SchemaPath]) ->
 init([Path]) ->
     {ok, F} = file:open(Path, [read, raw, binary, {read_ahead, ?MB}]),
     {ok, #state{cache=[], i=1, file=F}}.
+
+handle_call({read_mfa, Op}, _From, S) ->
+    Cache = S#state.cache,
+    {M, F, A} = S#state.read_mfa,
+    case apply(M, F, [Op,Cache|A]) of
+        {KeyValue, Cache2} ->
+            {reply, KeyValue, S#state{cache=Cache2}};
+        finished ->
+            gen_server:reply(_From, finished),
+            {stop, normal, S#state{cache=finished}}
+    end;
 
 handle_call({ft, N}, _From, S=#state{cache=[],
                                      fields=Fields,

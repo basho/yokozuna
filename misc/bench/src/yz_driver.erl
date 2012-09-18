@@ -10,7 +10,9 @@
          fruit_key_val_gen/1,
          fruit_key_val_gen/2,
          valgen/4,
-         valgen_i/1]).
+         valgen_i/1,
+         mfa_valgen/3,
+         mfa_valgen_i/1]).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
 -record(state, {pb_conns, index, iurls, surls}).
@@ -67,12 +69,12 @@ run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
             {error, Reason, S2}
     end;
 
-run(index, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
+run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Line} = ValGen(index),
     URL = ?FMT("~s/~s", [Base, Key]),
     S2 = S#state{iurls=wrap(URLs)},
-    case http_put(URL, "application/json", Line) of
+    case http_put(URL, CT, Line) of
         ok -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
     end;
@@ -82,7 +84,7 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
     {Key, Val} = KeyValGen(),
     URL = ?FMT("~s/~p", [Base, Key]),
     S2 = S#state{iurls=wrap(URLs)},
-    case http_put(URL, "plain/text", Val) of
+    case http_put(URL, "text/plain", Val) of
         ok -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
     end;
@@ -125,6 +127,22 @@ valgen_i(index) ->
     yz_file_terms:get_line();
 valgen_i(search) ->
     yz_file_terms:get_ft().
+
+mfa_valgen(Id, LoadMFA, ReadMFA) ->
+    N = basho_bench_config:get(concurrent),
+    if Id == N ->
+            {ok, _} = yz_file_terms:start_mfa(LoadMFA, ReadMFA);
+       true -> ok
+    end,
+    fun ?MODULE:mfa_valgen_i/1.
+
+mfa_valgen_i(index) ->
+    case yz_file_terms:read_mfa(index) of
+        finished ->
+            throw({stop, empty_valgen});
+        Val ->
+            Val
+    end.
 
 -define(M1, 1000000).
 -define(K100, 100000).
