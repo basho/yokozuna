@@ -51,14 +51,10 @@
 %%% Types
 %%%===================================================================
 
--type name() :: atom().
--type value() :: term().
--type field() :: {name(), value()}.
--type fields() :: [field()].
 -type index_set() :: ordset(index_name()).
--type doc() :: {doc, fields()}.
 -type base64() :: binary().
 -type ordset(T) :: ordsets:ordset(T).
+-type proplist() :: proplists:proplist().
 -type ring() :: riak_core_ring:riak_core_ring().
 -type solr_vclocks() :: #solr_vclocks{}.
 -type iso8601() :: string().
@@ -117,6 +113,31 @@
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
+
+%%%===================================================================
+%%% Riak KV
+%%%===================================================================
+
+-type obj() :: riak_object:riak_object().
+
+%%%===================================================================
+%%% Docs
+%%%===================================================================
+
+-type field_name() :: atom() | binary().
+-type field_value() :: binary().
+-type field() :: {field_name(), field_value()}.
+-type fields() :: [field()].
+-type doc() :: {doc, fields()}.
+
+%%%===================================================================
+%%% Extractors
+%%%===================================================================
+
+-type mime_type() :: binary() | string() | default.
+-type extractor_name() :: atom().
+-type extractor_def() :: extractor_name() | {extractor_name(), proplist()}.
+-type extractor_map() :: orddict(mime_type(), extractor_def()).
 
 %%%===================================================================
 %%% Logging

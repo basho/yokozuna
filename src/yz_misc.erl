@@ -57,6 +57,17 @@ delta(Old, New) ->
     Same = ordsets:intersection(New, Old),
     {Removed, Added, Same}.
 
+%% @doc Get either the `raw' or `transformed' ring.  The raw ring is
+%%      what is stored on disk.  The transformed ring is the raw ring
+%%      with processing done to it such as bucket fixups.
+-spec get_ring(raw | transformed) -> ring().
+get_ring(raw) ->
+    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    Ring;
+get_ring(transformed) ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    Ring.
+
 %% @doc Create the `Dir' if it doesn't already exist.
 -spec make_dir(string()) -> ok.
 make_dir(Dir) ->
@@ -91,6 +102,16 @@ owned_and_next_partitions(Node, Ring) ->
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
     ordsets:from_list([P || {P,_} <- Next ++ Owned]).
 
+%% @doc Set the ring metadata for the given `Name' to the given
+%%      `Value'
+-spec set_ring_meta(atom(), any()) -> ring().
+set_ring_meta(Name, Value) ->
+    Ring = get_ring(raw),
+    Ring2 = riak_core_ring:update_meta(Name, Value, Ring),
+    F = set_ring_trans(Ring2),
+    {ok, Ring3} = riak_core_ring_manager:ring_trans(F, none),
+    Ring3.
+
 %%%===================================================================
 %%% Private
 %%%===================================================================
@@ -104,3 +125,7 @@ make_pairs([Last], First, Pairs) ->
     [{Last, First}|lists:reverse(Pairs)];
 make_pairs([A,B|T], _First, Pairs) ->
     make_pairs([B|T], _First, [{A,B}|Pairs]).
+
+%% @private
+set_ring_trans(Ring) ->
+    fun(_,_) -> {new_ring, Ring} end.

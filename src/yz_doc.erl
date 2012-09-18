@@ -38,17 +38,21 @@ doc_id(O, Partition) ->
 %% @doc Given an object generate the doc to be indexed by Solr.
 -spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
 make_doc(O, FPN, Partition) ->
-    %% TODO: For now assume text/plain to prototype
-    %%
-    %% TODO: change 'text' to 'value'
+    ExtractedFields = extract_fields(O),
     Fields = [{id, doc_id(O, Partition)},
-              {text, value(O)},
               {?YZ_ED_FIELD, gen_vc(O)},
               {?YZ_FPN_FIELD, FPN},
               {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
               {?YZ_PN_FIELD, Partition},
               {?YZ_RK_FIELD, riak_key(O)}],
-    {doc, Fields}.
+    {doc, lists:append([ExtractedFields, Fields])}.
+
+-spec extract_fields(obj()) ->  fields() | {error, any()}.
+extract_fields(O) ->
+    CT = yz_kv:get_obj_ct(O),
+    Value = hd(riak_object:get_values(O)),
+    ExtractorDef = yz_extractor:get_def(CT, [check_default]),
+    yz_extractor:run(Value, ExtractorDef).
 
 %%%===================================================================
 %%% Private

@@ -52,13 +52,18 @@ get(C, Bucket, Key) ->
             Other
     end.
 
+%% @doc Get the content-type of the object.
+-spec get_obj_ct(obj()) -> binary().
+get_obj_ct(Obj) ->
+    dict:fetch(<<"content-type">>, riak_object:get_metadata(Obj)).
+
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
 %% NOTE: This code runs on the vnode process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
--spec index(riak_object:riak_object(), write_reason(), term()) -> ok.
+-spec index(obj(), write_reason(), term()) -> ok.
 index(Obj, delete, VNodeState) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     LI = yz_cover:logical_index(Ring),
