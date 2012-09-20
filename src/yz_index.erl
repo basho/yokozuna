@@ -39,9 +39,8 @@ create(Name) ->
 %%      `SchemaName' as the schema.
 -spec create(string(), schema_name()) -> ok.
 create(Name, SchemaName) ->
-    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
     Info = make_info(Name, SchemaName),
-    ok = add_to_ring(Ring, Name, Info).
+    ok = add_to_ring(Name, Info).
 
 -spec exists(string()) -> boolean().
 exists(Name) ->
@@ -117,14 +116,11 @@ schema_name(Info) ->
 add_index(Indexes, Name, Info) ->
     orddict:store(Name, Info, Indexes).
 
--spec add_to_ring(ring(), index_name(), index_info()) -> ok.
-add_to_ring(Ring, Name, Info) ->
-    Indexes = get_indexes_from_ring(Ring),
+-spec add_to_ring(index_name(), index_info()) -> ok.
+add_to_ring(Name, Info) ->
+    Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
     Indexes2 = add_index(Indexes, Name, Info),
-    Ring2 = riak_core_ring:update_meta(?YZ_META_INDEXES, Indexes2, Ring),
-    %% TODO Is the ring trans needed or does update_meta already do
-    %%      that for me?
-    {ok, _Ring3} = riak_core_ring_manager:ring_trans(set_ring_trans(Ring2), []),
+    yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
     ok.
 
 index_dir(Name) ->
@@ -134,10 +130,6 @@ index_dir(Name) ->
 make_info(IndexName, SchemaName) ->
     #index_info{name=IndexName,
                 schema_name=SchemaName}.
-
-set_ring_trans(Ring) ->
-    fun(_,_) -> {new_ring, Ring} end.
-
 
 %% Old stuff relate to exception handling ideas I was playing with
 
