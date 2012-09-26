@@ -72,7 +72,8 @@ run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
 run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Line} = ValGen(index),
-    URL = ?FMT("~s/~s", [Base, Key]),
+    Key2 = mochiweb_util:quote_plus(Key),
+    URL = ?FMT("~s/~s", [Base, Key2]),
     S2 = S#state{iurls=wrap(URLs)},
     case http_put(URL, CT, Line) of
         ok -> {ok, S2};
