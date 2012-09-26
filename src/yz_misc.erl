@@ -57,6 +57,15 @@ delta(Old, New) ->
     Same = ordsets:intersection(New, Old),
     {Removed, Added, Same}.
 
+%% @doc Attempt to get the `Key' from `Dict'.  If it doesn't exist
+%%      then return `Default'.
+-spec dict_get(term(), dict(), term()) -> term().
+dict_get(Key, Dict, Default) ->
+    case dict:find(Key, Dict) of
+        {ok, Val} -> Val;
+        error -> Default
+    end.
+
 %% @doc Get either the `raw' or `transformed' ring.  The raw ring is
 %%      what is stored on disk.  The transformed ring is the raw ring
 %%      with processing done to it such as bucket fixups.

@@ -57,6 +57,19 @@ get(C, Bucket, Key) ->
 get_obj_ct(Obj) ->
     dict:fetch(<<"content-type">>, riak_object:get_metadata(Obj)).
 
+%% @doc Determine if the `Obj' is a tombstone.
+-spec is_tombstone(obj()) -> boolean().
+is_tombstone(Obj) ->
+    case yz_misc:dict_get(<<"X-Riak-Deleted">>, metadata(Obj), false) of
+        "true" -> true;
+        false -> false
+    end.
+
+%% @doc Get the metadata of the `Obj'.
+-spec metadata(obj()) -> obj_metadata().
+metadata(Obj) ->
+    riak_object:get_metadata(Obj).
+
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
