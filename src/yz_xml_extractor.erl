@@ -123,6 +123,6 @@ make_name(_, [], Name) ->
     Name.
 
 parsing_error({_, _, Line}, Reason) ->
-    Msg = io_lib:format("failure parsing XML at line ~w with reason ~p",
+    Msg = io_lib:format("failure parsing XML at line ~w with reason \"~s\"",
                         [Line, Reason]),
     {error, Msg}.

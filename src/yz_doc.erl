@@ -52,7 +52,13 @@ extract_fields(O) ->
     CT = yz_kv:get_obj_ct(O),
     Value = hd(riak_object:get_values(O)),
     ExtractorDef = yz_extractor:get_def(CT, [check_default]),
-    yz_extractor:run(Value, ExtractorDef).
+    case yz_extractor:run(Value, ExtractorDef) of
+        {error, Reason} ->
+            ?ERROR("failed to index with reason ~s~nValue: ~s", [Reason, Value]),
+            {error, Reason};
+        Fields ->
+            Fields
+    end.
 
 %%%===================================================================
 %%% Private
