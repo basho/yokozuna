@@ -31,12 +31,12 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
--spec doc_id(riak_object:riak_object(), binary()) -> binary().
+-spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary>>.
+    <<(yz_kv:get_obj_key(O))/binary,"_",Partition/binary>>.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
+-spec make_doc(obj(), binary(), binary()) -> doc().
 make_doc(O, FPN, Partition) ->
     ExtractedFields = extract_fields(O),
     Fields = [{id, doc_id(O, Partition)},
@@ -44,7 +44,7 @@ make_doc(O, FPN, Partition) ->
               {?YZ_FPN_FIELD, FPN},
               {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
               {?YZ_PN_FIELD, Partition},
-              {?YZ_RK_FIELD, riak_key(O)}],
+              {?YZ_RK_FIELD, yz_kv:get_obj_key(O)}],
     {doc, lists:append([ExtractedFields, Fields])}.
 
 -spec extract_fields(obj()) ->  fields() | {error, any()}.
@@ -69,16 +69,11 @@ extract_fields(O) ->
 %%% Private
 %%%===================================================================
 
-%% TODO: Just pass metadata in?
-%%
 %% TODO: I don't like having X-Riak-Last-Modified in here.  Add
 %%       function to riak_object.
 doc_ts(O) ->
-    MD = riak_object:get_metadata(O),
+    MD = yz_kv:get_obj_md(O),
     dict:fetch(<<"X-Riak-Last-Modified">>, MD).
-
-doc_vclock(O) ->
-    riak_object:vclock(O).
 
 gen_ts() ->
     {{Year, Month, Day},
@@ -91,23 +86,8 @@ gen_ts() ->
 %%       entry.
 gen_ed(O, Partition) ->
     TS = gen_ts(),
-    RiakBucket = riak_bucket(O),
-    RiakKey = riak_key(O),
-    Hash = hash_object(O),
+    RiakBucket = yz_kv:get_obj_bucket(O),
+    RiakKey = yz_kv:get_obj_key(O),
+    %% TODO: do this in KV vnode and pass to hook
+    Hash = yz_kv:hash_object(O),
     <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.
-
-%% TODO: do this in KV vnode and pass to hook
-hash_object(O) ->
-    Vclock = riak_object:vclock(O),
-    O2 = riak_object:set_vclock(O, lists:sort(Vclock)),
-    Hash = erlang:phash2(term_to_binary(O2)),
-    term_to_binary(Hash).
-
-riak_bucket(O) ->
-    riak_object:bucket(O).
-
-riak_key(O) ->
-    riak_object:key(O).
-
-value(O) ->
-    riak_object:get_value(O).
