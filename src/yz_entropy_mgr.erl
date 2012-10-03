@@ -46,27 +46,32 @@ handle_call({get_lock, Type, Pid}, _From, S) ->
     {reply, Reply, S2};
 
 handle_call(Request, From, S) ->
-    lager:warning("Unexpected message: ~p from ~p", [Request, From]),
-    {reply, ok, S}.
+    lager:warning("Unexpected call: ~p from ~p", [Request, From]),
+    {reply, unexpected_call, S}.
 
-handle_cast({requeue_poke, Index}, State) ->
-    State2 = requeue_poke(Index, State),
-    {noreply, State2};
-handle_cast({exchange_status, Pid, LocalVN, RemoteVN, IndexN, Reply}, State) ->
-    State2 = do_exchange_status(Pid, LocalVN, RemoteVN, IndexN, Reply, State),
-    {noreply, State2};
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast({requeue_poke, Index}, S) ->
+    S2 = requeue_poke(Index, S),
+    {noreply, S2};
 
-handle_info(tick, State) ->
-    State2 = reload_hashtrees(State),
-    State3 = tick(State2),
-    {noreply, State3};
+handle_cast({exchange_status, Pid, Index, {StartIdx, N}, Reply}, S) ->
+    S2 = do_exchange_status(Pid, Index, {StartIdx, N}, Reply, S),
+    {noreply, S2};
+
+handle_cast(_Msg, S) ->
+    {noreply, S}.
+
+handle_info(tick, S) ->
+    S2 = reload_hashtrees(S),
+    S3 = tick(S2),
+    schedule_tick(),
+    {noreply, S3};
+
 handle_info({'DOWN', Ref, _, Obj, _}, State) ->
     State2 = maybe_release_lock(Ref, State),
     State3 = maybe_clear_exchange(Ref, State2),
     State4 = maybe_clear_registered_tree(Obj, State3),
     {noreply, State4};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -101,7 +106,7 @@ get_index(Child, Trees) ->
     end.
 
 -spec reload_hashtrees(state()) -> state().
-reload_hashtrees(State=#state{trees=Trees}) ->
+reload_hashtrees(S=#state{trees=Trees}) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Indices = riak_core_ring:my_indices(Ring),
     Existing = dict:from_list(Trees),
@@ -113,12 +118,12 @@ reload_hashtrees(State=#state{trees=Trees}) ->
     Moved = [Idx || {Idx,_} <- Trees2, not lists:member(Idx, Indices)],
     Trees3 = remove_trees(Trees2, Moved),
 
-    State2 = State#state{trees=Trees3},
-    State3 = lists:foldl(fun({Idx,Pid}, StateAcc) ->
+    S2 = S#state{trees=Trees3},
+    S3 = lists:foldl(fun({Idx,Pid}, SAcc) ->
                                  monitor(process, Pid),
-                                 add_index_exchanges(Idx, StateAcc)
-                         end, State2, L),
-    State3.
+                                 add_index_exchanges(Idx, SAcc)
+                         end, S2, L),
+    S3.
 
 %% @private
 %%
@@ -162,45 +167,37 @@ maybe_clear_registered_tree(_, State) ->
 
 next_tree(#state{trees=[]}) ->
     [];
-next_tree(State=#state{tree_queue=Queue, trees=Trees}) ->
+next_tree(S=#state{tree_queue=Queue, trees=Trees}) ->
     More = fun() -> Trees end,
     {[{_,Pid}], Rest} = yz_misc:queue_pop(Queue, 1, More),
-    State2 = State#state{tree_queue=Rest},
-    {Pid, State2}.
+    S2 = S#state{tree_queue=Rest},
+    {Pid, S2}.
 
 schedule_tick() ->
     erlang:send_after(?YZ_ENTROPY_TICK, ?MODULE, tick).
 
-tick(State) ->
-    State2 = lists:foldl(fun(_,S) ->
+tick(S) ->
+    S2 = lists:foldl(fun(_,S) ->
                                  maybe_poke_tree(S)
-                         end, State, lists:seq(1,10)),
-    State3 = maybe_exchange(State2),
-    schedule_tick(),
-    State3.
+                         end, S, lists:seq(1,10)),
+    maybe_exchange(S2).
 
-maybe_poke_tree(State=#state{trees=[]}) ->
-    State;
-maybe_poke_tree(State) ->
-    {Tree, State2} = next_tree(State),
+maybe_poke_tree(S=#state{trees=[]}) ->
+    S;
+maybe_poke_tree(S) ->
+    {Tree, S2} = next_tree(S),
+    %% TODO: replace with yz_index_hashtree:poke/1
     gen_server:cast(Tree, poke),
-    State2.
+    S2.
 
 %%%===================================================================
 %%% Exchanging
 %%%===================================================================
 
-do_exchange_status(_Pid, LocalVN, RemoteVN, IndexN, Reply, State) ->
-    {LocalIdx, _} = LocalVN,
-    {RemoteIdx, _} = RemoteVN,
-    lager:info("S: ~p", [Reply]),
+do_exchange_status(_Pid, Index, {StartIdx, N}, Reply, S) ->
     case Reply of
-        ok ->
-            State;
-        _ ->
-            %% lager:info("Requeuing rate limited exchange"),
-            State2 = requeue_exchange(LocalIdx, RemoteIdx, IndexN, State),
-            State2
+        ok -> S;
+        _ -> requeue_exchange(Index, {StartIdx, N}, S)
     end.
 
 -spec start_exchange(p(), {p(),n()}, state()) ->
@@ -251,22 +248,20 @@ already_exchanging(Index, #state{exchanges=E}) ->
             true
     end.
 
-maybe_exchange(State) ->
+maybe_exchange(S) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    case next_exchange(Ring, State) of
-        {none, State2} ->
-            State2;
-        {NextExchange, State2} ->
+    case next_exchange(Ring, S) of
+        {none, S2} ->
+            S2;
+        {NextExchange, S2} ->
             {Index, {StartIdx, N}} = NextExchange,
-            case already_exchanging(Index, State) of
+            case already_exchanging(Index, S) of
                 true ->
-                    requeue_exchange(Index, StartIdx, N, State2);
+                    requeue_exchange(Index, {StartIdx, N}, S2);
                 false ->
-                    case start_exchange(Index, {StartIdx, N}, State2) of
-                        {ok, State3} ->
-                            State3;
-                        {_Reason, State3} ->
-                            State3
+                    case start_exchange(Index, {StartIdx, N}, S2) of
+                        {ok, S3} -> S3;
+                        {_Reason, S3} -> S3
                     end
             end
     end.
@@ -287,23 +282,24 @@ next_exchange(Ring, S=#state{exchange_queue=Exchanges}) ->
     S2 = S#state{exchange_queue=Rest},
     {Exchange, S2}.
 
-requeue_poke(Index, State=#state{trees=Trees}) ->
+-spec requeue_poke(p(), state()) -> state().
+requeue_poke(Index, S=#state{trees=Trees}) ->
     case orddict:find(Index, Trees) of
         {ok, Tree} ->
-            Queue = State#state.tree_queue ++ [{Index,Tree}],
-            State#state{tree_queue=Queue};
+            Queue = S#state.tree_queue ++ [{Index,Tree}],
+            S#state{tree_queue=Queue};
         _ ->
-            State
+            S
     end.
 
-requeue_exchange(Index, StartIdx, N, State) ->
+requeue_exchange(Index, {StartIdx, N}, S) ->
     Exchange = {Index, {StartIdx, N}},
-    case lists:member(Exchange, State#state.exchange_queue) of
+    case lists:member(Exchange, S#state.exchange_queue) of
         true ->
-            State;
+            S;
         false ->
             lager:info("Requeue exhcange for partition ~p of preflist ~p",
                        [{Index, {StartIdx, N}}]),
-            Exchanges = State#state.exchange_queue ++ [Exchange],
-            State#state{exchange_queue=Exchanges}
+            Exchanges = S#state.exchange_queue ++ [Exchange],
+            S#state{exchange_queue=Exchanges}
     end.
