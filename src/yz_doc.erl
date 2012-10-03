@@ -40,7 +40,7 @@ doc_id(O, Partition) ->
 make_doc(O, FPN, Partition) ->
     ExtractedFields = extract_fields(O),
     Fields = [{id, doc_id(O, Partition)},
-              {?YZ_ED_FIELD, gen_vc(O)},
+              {?YZ_ED_FIELD, gen_ed(O, Partition)},
               {?YZ_FPN_FIELD, FPN},
               {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
               {?YZ_PN_FIELD, Partition},
@@ -86,11 +86,25 @@ gen_ts() ->
     list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
                                  [Year,Month,Day,Hour,Min,Sec])).
 
-gen_vc(O) ->
+%% NOTE: All of this data needs to be in one field to efficiently
+%%       iterate.  Otherwise the doc would have to be fetched for each
+%%       entry.
+gen_ed(O, Partition) ->
     TS = gen_ts(),
+    RiakBucket = riak_bucket(O),
     RiakKey = riak_key(O),
-    VClock = base64:encode(crypto:sha(term_to_binary(doc_vclock(O)))),
-    <<TS/binary," ",RiakKey/binary," ",VClock/binary>>.
+    Hash = hash_object(O),
+    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.
+
+%% TODO: do this in KV vnode and pass to hook
+hash_object(O) ->
+    Vclock = riak_object:vclock(O),
+    O2 = riak_object:set_vclock(O, lists:sort(Vclock)),
+    Hash = erlang:phash2(term_to_binary(O2)),
+    term_to_binary(Hash).
+
+riak_bucket(O) ->
+    riak_object:bucket(O).
 
 riak_key(O) ->
     riak_object:key(O).
