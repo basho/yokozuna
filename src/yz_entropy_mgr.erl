@@ -66,20 +66,21 @@ handle_info(tick, S) ->
     schedule_tick(),
     {noreply, S3};
 
-handle_info({'DOWN', Ref, _, Obj, _}, State) ->
-    State2 = maybe_release_lock(Ref, State),
-    State3 = maybe_clear_exchange(Ref, State2),
-    State4 = maybe_clear_registered_tree(Obj, State3),
-    {noreply, State4};
+handle_info({'DOWN', Ref, _, Obj, _}, S) ->
+    %% NOTE: The down msg could be for exchange FSM or tree
+    S2 = maybe_release_lock(Ref, S),
+    S3 = maybe_clear_exchange(Ref, S2),
+    S4 = maybe_clear_registered_tree(Obj, S3),
+    {noreply, S4};
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(_Info, S) ->
+    {noreply, S}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, _S) ->
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, S, _Extra) ->
+    {ok, S}.
 
 %%%===================================================================
 %%% Internal functions
@@ -145,25 +146,25 @@ do_get_lock(_Type, Pid, S=#state{locks=Locks}) ->
             {ok, S2}
     end.
 
-maybe_release_lock(Ref, State) ->
-    Locks = lists:keydelete(Ref, 2, State#state.locks),
-    State#state{locks=Locks}.
+maybe_release_lock(Ref, S) ->
+    Locks = lists:keydelete(Ref, 2, S#state.locks),
+    S#state{locks=Locks}.
 
-maybe_clear_exchange(Ref, State) ->
-    case lists:keyfind(Ref, 2, State#state.exchanges) of
+maybe_clear_exchange(Ref, S) ->
+    case lists:keyfind(Ref, 2, S#state.exchanges) of
         false ->
             ok;
         {Idx,Ref} ->
             lager:info("Untracking exchange: ~p", [Idx])
     end,
-    Exchanges = lists:keydelete(Ref, 2, State#state.exchanges),
-    State#state{exchanges=Exchanges}.
+    Exchanges = lists:keydelete(Ref, 2, S#state.exchanges),
+    S#state{exchanges=Exchanges}.
 
-maybe_clear_registered_tree(Pid, State) when is_pid(Pid) ->
-    Trees = lists:keydelete(Pid, 2, State#state.trees),
-    State#state{trees=Trees};
-maybe_clear_registered_tree(_, State) ->
-    State.
+maybe_clear_registered_tree(Pid, S) when is_pid(Pid) ->
+    Trees = lists:keydelete(Pid, 2, S#state.trees),
+    S#state{trees=Trees};
+maybe_clear_registered_tree(_, S) ->
+    S.
 
 next_tree(#state{trees=[]}) ->
     [];
@@ -234,11 +235,11 @@ all_exchanges(Ring, Trees) ->
                   end, Indices).
 
 -spec add_index_exchanges(p(), state()) -> state().
-add_index_exchanges(Index, State) ->
+add_index_exchanges(Index, S) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Exchanges = all_pairwise_exchanges(Index, Ring),
-    EQ = State#state.exchange_queue ++ Exchanges,
-    State#state{exchange_queue=EQ}.
+    EQ = S#state.exchange_queue ++ Exchanges,
+    S#state{exchange_queue=EQ}.
 
 already_exchanging(Index, #state{exchanges=E}) ->
     case lists:keyfind(Index, 1, E) of
@@ -272,8 +273,8 @@ init_next_exchange(S) ->
     Exchanges = all_exchanges(Ring, Trees),
     S#state{exchange_queue=Exchanges}.
 
-next_exchange(_Ring, State=#state{exchange_queue=[], trees=[]}) ->
-    {none, State};
+next_exchange(_Ring, S=#state{exchange_queue=[], trees=[]}) ->
+    {none, S};
 next_exchange(Ring, S=#state{exchange_queue=Exchanges}) ->
     More = fun() ->
                    all_exchanges(Ring, S#state.trees)
