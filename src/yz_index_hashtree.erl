@@ -114,18 +114,16 @@ load_built(#state{trees=Trees}) ->
 
 %% TODO: need to convert Partition to logical partition
 fold_keys(Partition, Tree) ->
-    %% step1: get list of cores
+    LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
+    LogicalPartition = yz_cover:logical_partition(LI, Partition),
     Cores = yz_solr:cores(),
-
-    %% step2: for each core, call yz_entropy:iterate_vclocks, change
-    %% fun name to interate hashes
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
                 IndexN = get_index_n(BKey),
                 insert(IndexN, term_to_binary(BKey), Hash, Tree, [if_missing])
         end,
-    Filter = [{partition, Partition}],
+    Filter = [{partition, LogicalPartition}],
     [yz_entropy:iterate_entropy_data(Core, Filter, F) || Core <- Cores],
     ok.
 
