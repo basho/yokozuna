@@ -126,6 +126,7 @@
         app_helper:get_env(?YZ_APP_NAME, entropy_tick, 60000)).
 
 -type exchange() :: {p(), {p(), n()}}.
+-type exchange_mode() :: automatic | manual.
 -type tree() :: pid().
 -type trees() :: orddict(p(), tree()).
 

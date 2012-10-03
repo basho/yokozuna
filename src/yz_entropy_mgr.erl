@@ -7,7 +7,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {trees :: trees(),
+-record(state, {mode :: exchange_mode(),
+                trees :: trees(),
                 tree_queue :: trees(),
                 locks :: [{pid(),reference()}],
                 exchange_queue :: [exchange()],
@@ -27,6 +28,17 @@ get_lock(Type) ->
 get_lock(Type, Pid) ->
     gen_server:call(?MODULE, {get_lock, Type, Pid}, infinity).
 
+%% @doc Put the entropy manager in automatic mode.
+-spec automatic_mode() -> ok.
+automatic_mode() ->
+    gen_server:call(?MODULE, {set_mode, automatic}, infinity).
+
+%% @doc Put the entropy manager in manual mode.  The tick will still
+%%      occur but no exchanges will be performed.
+-spec manual_mode() -> ok.
+manual_mode() ->
+    gen_server:call(?MODULE, {set_mode, manual}, infinity).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -34,7 +46,8 @@ get_lock(Type, Pid) ->
 init([]) ->
     Trees = get_trees_from_sup(),
     schedule_tick(),
-    S = #state{trees=Trees,
+    S = #state{mode=automatic,
+               trees=Trees,
                tree_queue=[],
                locks=[],
                exchanges=[],
@@ -44,6 +57,10 @@ init([]) ->
 handle_call({get_lock, Type, Pid}, _From, S) ->
     {Reply, S2} = do_get_lock(Type, Pid, S),
     {reply, Reply, S2};
+
+handle_call({set_mode, Mode}, _From, S) ->
+    S2 = S#state{mode=Mode},
+    {reply, ok, S2};
 
 handle_call(Request, From, S) ->
     lager:warning("Unexpected call: ~p from ~p", [Request, From]),
@@ -61,8 +78,9 @@ handle_cast(_Msg, S) ->
     {noreply, S}.
 
 handle_info(tick, S) ->
+    Mode = S#state.mode,
     S2 = reload_hashtrees(S),
-    S3 = tick(S2),
+    S3 = tick(S2, Mode),
     schedule_tick(),
     {noreply, S3};
 
@@ -186,12 +204,14 @@ next_tree(S=#state{tree_queue=Queue, trees=Trees}) ->
 schedule_tick() ->
     erlang:send_after(?YZ_ENTROPY_TICK, ?MODULE, tick).
 
--spec tick(state()) -> state().
-tick(S) ->
+-spec tick(state(), exchange_mode()) -> state().
+tick(S, automatic) ->
     S2 = lists:foldl(fun(_,SAcc) ->
                                  maybe_poke_tree(SAcc)
                          end, S, lists:seq(1,10)),
-    maybe_exchange(S2).
+    maybe_exchange(S2);
+tick(S, manual) ->
+    S.
 
 -spec maybe_poke_tree(state()) -> state().
 maybe_poke_tree(S) ->
