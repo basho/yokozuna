@@ -111,17 +111,17 @@ code_change(_OldVsn, S, _Extra) ->
 %%      crash.
 -spec get_trees_from_sup() -> trees().
 get_trees_from_sup() ->
-    Children = yz_index_hashtree_sup:children(),
-    lists:foldl(fun get_index/2, [], Children).
+    Trees = yz_index_hashtree_sup:trees(),
+    lists:foldl(fun get_index/2, [], Trees).
 
 %% @private
 %%
 %% @doc Get the index for the `Child' make a pair and add to `Trees'.
--spec get_index(pid(), trees()) -> trees().
-get_index(Child, Trees) ->
-    case yz_index_hashtree:index(Child) of
+-spec get_index(tree(), trees()) -> trees().
+get_index(Tree, Trees) ->
+    case yz_index_hashtree:get_index(Tree) of
         {error, _} -> Trees;
-        Index -> [{Index,Child}|Trees]
+        Index -> [{Index,Tree}|Trees]
     end.
 
 -spec reload_hashtrees(state()) -> state().

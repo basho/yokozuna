@@ -1,6 +1,14 @@
 -module(yz_index_hashtree_sup).
 -behavior(supervisor).
--export([start_link/0, init/1]).
+-include("yokozuna.hrl").
+-compile(export_all).
+-export([init/1]).
+
+%% @doc Get the list of trees.
+-spec trees() -> trees().
+trees() ->
+    Children = supervisor:which_children(?MODULE),
+    [Pid || {_,Pid,_,_} <- Children].
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
