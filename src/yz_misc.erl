@@ -113,17 +113,16 @@ owned_and_next_partitions(Node, Ring) ->
 
 %% NOTE: This could get in inifinite loop if `Queue' runs out and
 %%       `Refill' produces [].
--spec queue_pop(list(), pos_integer(), function()) ->
-                       {Items::list(), NewQueue::list()}.
-queue_pop(Queue, N, Refill) ->
-    case length(Queue) < N of
-        true ->
-            Items = Refill(),
-            Queue2 = Queue ++ Items,
-            queue_pop(Queue2, N, Refill);
-        false ->
-            lists:split(N, Queue)
-    end.
+-spec queue_pop(list(), function()) ->
+                       {Items::any(), NewQueue::list()} | empty.
+queue_pop([], Refill) ->
+    case Refill() of
+        [] -> empty;
+        Items -> queue_pop(Items, Refill)
+    end;
+queue_pop(Queue, _Refill) ->
+    [Item|Rest] = Queue,
+    {Item,Rest}.
 
 %% @doc Set the ring metadata for the given `Name' to the given
 %%      `Value'

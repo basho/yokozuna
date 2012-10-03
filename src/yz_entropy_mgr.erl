@@ -136,6 +136,8 @@ remove_trees(Trees, ToRemove) ->
     lists:foldl(F, Trees, ToRemove).
 
 %% NOTES: Exchange FSM grabs the lock and thus is monitored
+-spec do_get_lock(atom(), pid(), state()) ->
+                         {max_concurrency, state()} | {ok, state()}.
 do_get_lock(_Type, Pid, S=#state{locks=Locks}) ->
     case length(Locks) >= ?YZ_HASH_EXCHANGE_CONCURRENCY of
         true ->
@@ -146,10 +148,12 @@ do_get_lock(_Type, Pid, S=#state{locks=Locks}) ->
             {ok, S2}
     end.
 
+-spec maybe_release_lock(reference(), state()) -> state().
 maybe_release_lock(Ref, S) ->
     Locks = lists:keydelete(Ref, 2, S#state.locks),
     S#state{locks=Locks}.
 
+-spec maybe_clear_exchange(reference(), state()) -> state().
 maybe_clear_exchange(Ref, S) ->
     case lists:keyfind(Ref, 2, S#state.exchanges) of
         false ->
@@ -160,41 +164,51 @@ maybe_clear_exchange(Ref, S) ->
     Exchanges = lists:keydelete(Ref, 2, S#state.exchanges),
     S#state{exchanges=Exchanges}.
 
+-spec maybe_clear_registered_tree(pid(), state()) -> state().
 maybe_clear_registered_tree(Pid, S) when is_pid(Pid) ->
     Trees = lists:keydelete(Pid, 2, S#state.trees),
     S#state{trees=Trees};
 maybe_clear_registered_tree(_, S) ->
     S.
 
-next_tree(#state{trees=[]}) ->
-    [];
+-spec next_tree(state()) -> {pid(), state()} | {none, state()}.
 next_tree(S=#state{tree_queue=Queue, trees=Trees}) ->
     More = fun() -> Trees end,
-    {[{_,Pid}], Rest} = yz_misc:queue_pop(Queue, 1, More),
-    S2 = S#state{tree_queue=Rest},
-    {Pid, S2}.
+    case yz_misc:queue_pop(Queue, More) of
+        {[{_,Pid}], Rest} ->
+            S2 = S#state{tree_queue=Rest},
+            {Pid, S2};
+        empty ->
+            {none, S}
+    end.
 
+-spec schedule_tick() -> reference().
 schedule_tick() ->
     erlang:send_after(?YZ_ENTROPY_TICK, ?MODULE, tick).
 
+-spec tick(state()) -> state().
 tick(S) ->
-    S2 = lists:foldl(fun(_,S) ->
-                                 maybe_poke_tree(S)
+    S2 = lists:foldl(fun(_,SAcc) ->
+                                 maybe_poke_tree(SAcc)
                          end, S, lists:seq(1,10)),
     maybe_exchange(S2).
 
-maybe_poke_tree(S=#state{trees=[]}) ->
-    S;
+-spec maybe_poke_tree(state()) -> state().
 maybe_poke_tree(S) ->
-    {Tree, S2} = next_tree(S),
-    %% TODO: replace with yz_index_hashtree:poke/1
-    gen_server:cast(Tree, poke),
-    S2.
+    case next_tree(S) of
+        {none, S2} ->
+            S2;
+        {Tree, S2} ->
+            %% TODO: replace with yz_index_hashtree:poke/1
+            gen_server:cast(Tree, poke),
+            S2
+    end.
 
 %%%===================================================================
 %%% Exchanging
 %%%===================================================================
 
+-spec do_exchange_status(pid(), p(), {p(), n()}, any(), state()) -> state().
 do_exchange_status(_Pid, Index, {StartIdx, N}, Reply, S) ->
     case Reply of
         ok -> S;
@@ -241,6 +255,7 @@ add_index_exchanges(Index, S) ->
     EQ = S#state.exchange_queue ++ Exchanges,
     S#state{exchange_queue=EQ}.
 
+-spec already_exchanging(p(), state()) -> boolean().
 already_exchanging(Index, #state{exchanges=E}) ->
     case lists:keyfind(Index, 1, E) of
         false ->
@@ -249,6 +264,7 @@ already_exchanging(Index, #state{exchanges=E}) ->
             true
     end.
 
+-spec maybe_exchange(state()) -> state().
 maybe_exchange(S) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     case next_exchange(Ring, S) of
@@ -267,21 +283,25 @@ maybe_exchange(S) ->
             end
     end.
 
+-spec init_next_exchange(state()) -> state().
 init_next_exchange(S) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Trees = S#state.trees,
     Exchanges = all_exchanges(Ring, Trees),
     S#state{exchange_queue=Exchanges}.
 
-next_exchange(_Ring, S=#state{exchange_queue=[], trees=[]}) ->
-    {none, S};
+-spec next_exchange(ring(), state()) -> {exchange(), state()} | {none, state()}.
 next_exchange(Ring, S=#state{exchange_queue=Exchanges}) ->
     More = fun() ->
                    all_exchanges(Ring, S#state.trees)
            end,
-    {[Exchange], Rest} = yz_misc:queue_pop(Exchanges, 1, More),
-    S2 = S#state{exchange_queue=Rest},
-    {Exchange, S2}.
+    case yz_misc:queue_pop(Exchanges, More) of
+        {Exchange, Rest} ->
+            S2 = S#state{exchange_queue=Rest},
+            {Exchange, S2};
+        empty ->
+            {none, S}
+    end.
 
 -spec requeue_poke(p(), state()) -> state().
 requeue_poke(Index, S=#state{trees=Trees}) ->
@@ -293,6 +313,7 @@ requeue_poke(Index, S=#state{trees=Trees}) ->
             S
     end.
 
+-spec requeue_exchange(p(), {p(), n()}, state()) -> state().
 requeue_exchange(Index, {StartIdx, N}, S) ->
     Exchange = {Index, {StartIdx, N}},
     case lists:member(Exchange, S#state.exchange_queue) of
