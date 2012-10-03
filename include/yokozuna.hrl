@@ -115,6 +115,22 @@
         "Not enough nodes are up to service this request.").
 
 %%%===================================================================
+%%% Anti Entropy
+%%%===================================================================
+
+-define(YZ_HASHTREES_BASE_PATH,
+        app_helper:get_env(?YZ_APP_NAME, hashtree_base_path, "data/yz/anti")).
+-define(YZ_HASH_EXCHANGE_CONCURRENCY,
+        app_helper:get_env(?YZ_APP_NAME, hashtree_exchange_concurrency, 2)).
+-define(YZ_ENTROPY_TICK,
+        app_helper:get_env(?YZ_APP_NAME, entropy_tick, 60000)).
+
+-type exchange() :: {p(), {p(), n()}}.
+-type tree() :: pid().
+-type trees() :: orddict(p(), tree()).
+
+
+%%%===================================================================
 %%% Riak KV
 %%%===================================================================
 

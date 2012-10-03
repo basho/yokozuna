@@ -111,6 +111,20 @@ owned_and_next_partitions(Node, Ring) ->
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
     ordsets:from_list([P || {P,_} <- Next ++ Owned]).
 
+%% NOTE: This could get in inifinite loop if `Queue' runs out and
+%%       `Refill' produces [].
+-spec queue_pop(list(), pos_integer(), function()) ->
+                       {Items::list(), NewQueue::list()}.
+queue_pop(Queue, N, Refill) ->
+    case length(Queue) < N of
+        true ->
+            Items = Refill(),
+            Queue2 = Queue ++ Items,
+            queue_pop(Queue2, N, Refill);
+        false ->
+            lists:split(N, Queue)
+    end.
+
 %% @doc Set the ring metadata for the given `Name' to the given
 %%      `Value'
 -spec set_ring_meta(atom(), any()) -> ring().
