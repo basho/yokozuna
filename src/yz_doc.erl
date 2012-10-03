@@ -89,5 +89,5 @@ gen_ed(O, Partition) ->
     RiakBucket = yz_kv:get_obj_bucket(O),
     RiakKey = yz_kv:get_obj_key(O),
     %% TODO: do this in KV vnode and pass to hook
-    Hash = yz_kv:hash_object(O),
+    Hash = base64:encode(yz_kv:hash_object(O)),
     <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.

@@ -25,7 +25,7 @@
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
                        {schema_file, schema}]).
--define(FIELD_ALIASES, [{partition, '_yz_pn'}]).
+-define(FIELD_ALIASES, []).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {'query', [], [Str]}).
@@ -256,8 +256,8 @@ get_pairs(R) ->
     Docs = json_get_key(<<"docs">>, get_response(R)),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
-to_pair({struct, [{_,DocId},{_,Base64VClock}]}) ->
-    {DocId, Base64VClock}.
+to_pair({struct, [{_,Bucket},{_,Key},{_,Base64Hash}]}) ->
+    {{Bucket,Key}, Base64Hash}.
 
 get_path({struct, PL}, Path) ->
     get_path(PL, Path);

@@ -112,8 +112,6 @@ load_built(#state{trees=Trees}) ->
             false
     end.
 
-%% TODO: fold is done against solr, remember to fold against all solr cores
-%%
 %% TODO: need to convert Partition to logical partition
 fold_keys(Partition, Tree) ->
     %% step1: get list of cores
@@ -121,12 +119,11 @@ fold_keys(Partition, Tree) ->
 
     %% step2: for each core, call yz_entropy:iterate_vclocks, change
     %% fun name to interate hashes
-    F = fun({Bucket, Key, Hash}) ->
-                BKey = term_to_binary({Bucket,Key}),
+    F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
-                IndexN = get_index_n({Bucket,Key}),
-                insert(IndexN, BKey, Hash, Tree, [if_missing])
+                IndexN = get_index_n(BKey),
+                insert(IndexN, term_to_binary(BKey), Hash, Tree, [if_missing])
         end,
     Filter = [{partition, Partition}],
     [yz_entropy:iterate_entropy_data(Core, Filter, F) || Core <- Cores],
