@@ -33,9 +33,9 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
--spec doc_id(riak_object:riak_object(), binary()) -> binary().
+-spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary>>.
+    <<(yz_kv:get_obj_key(O))/binary,"_",Partition/binary>>.
 
 doc_id(O, Partition, none) ->
     doc_id(O, Partition);
@@ -47,29 +47,36 @@ doc_id(O, Partition, Sibling) ->
 has_siblings(O) -> riak_object:value_count(O) > 1.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_docs(riak_object:riak_object(), binary(), binary()) -> [doc()].
-make_docs(O, FPN, Partition) ->
-    [make_doc(O, Content, FPN, Partition) || Content <- riak_object:get_contents(O)].
+-spec make_docs(obj(), binary(), binary(), boolean()) -> [doc()].
+make_docs(O, FPN, Partition, IndexContent) ->
+    [make_doc(O, Content, FPN, Partition, IndexContent)
+     || Content <- riak_object:get_contents(O)].
 
--spec make_doc(riak_object:riak_object(), {dict(), dict()}, binary(), binary()) -> doc().
-make_doc(O, {MD, V}, FPN, Partition) ->
+-spec make_doc(obj(), {dict(), dict()}, binary(), binary(), boolean()) -> doc().
+make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
-    Fields = make_fields({DocId, riak_key(O), gen_vc(O), FPN, Partition, Vtag}),
-    ExtractedFields = extract_fields({MD, V}),
+    EntropyData = gen_ed(O, Partition),
+    Fields = make_fields({DocId, yz_kv:get_obj_key(O), FPN,
+                          Partition, Vtag, EntropyData}),
+    ExtractedFields =
+        case IndexContent of
+            true -> extract_fields({MD, V});
+            false -> []
+        end,
     Tags = extract_tags(MD),
     {doc, lists:append([Tags, ExtractedFields, Fields])}.
 
-make_fields({DocId, Key, VC, FPN, Partition, none}) ->
+make_fields({DocId, Key, FPN, Partition, none, EntropyData}) ->
     [{id, DocId},
-     {?YZ_ED_FIELD, VC},
+     {?YZ_ED_FIELD, EntropyData},
      {?YZ_FPN_FIELD, FPN},
      {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
      {?YZ_PN_FIELD, Partition},
      {?YZ_RK_FIELD, Key}];
 
-make_fields({DocId, Key, VC, FPN, Partition, Vtag}) ->
-    make_fields({DocId, Key, VC, FPN, Partition, none}) ++
+make_fields({DocId, Key, FPN, Partition, Vtag, EntropyData}) ->
+    make_fields({DocId, Key, FPN, Partition, none, EntropyData}) ++
       [{?YZ_VTAG_FIELD, Vtag}].
 
 %% @doc If this is a sibling, return its binary vtag
@@ -79,7 +86,7 @@ get_vtag(O, MD) ->
         _ -> none
     end.
 
-% -spec extract_fields(obj()) ->  fields() | {error, any()}.
+-spec extract_fields({obj_metadata(), term()}) ->  fields() | {error, any()}.
 extract_fields({MD, V}) ->
     case yz_kv:is_tombstone(MD) of
         false ->
@@ -179,23 +186,19 @@ split_tag_names(TagNames) ->
 doc_ts(MD) ->
     dict:fetch(<<"X-Riak-Last-Modified">>, MD).
 
-doc_vclock(O) ->
-    riak_object:vclock(O).
-
 gen_ts() ->
     {{Year, Month, Day},
      {Hour, Min, Sec}} = calendar:now_to_universal_time(erlang:now()),
     list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
                                  [Year,Month,Day,Hour,Min,Sec])).
 
-gen_vc(O) ->
+%% NOTE: All of this data needs to be in one field to efficiently
+%%       iterate.  Otherwise the doc would have to be fetched for each
+%%       entry.
+gen_ed(O, Partition) ->
     TS = gen_ts(),
-    RiakKey = riak_key(O),
-    VClock = base64:encode(crypto:sha(term_to_binary(doc_vclock(O)))),
-    <<TS/binary," ",RiakKey/binary," ",VClock/binary>>.
-
-riak_key(O) ->
-    riak_object:key(O).
-
-value(O) ->
-    riak_object:get_value(O).
+    RiakBucket = yz_kv:get_obj_bucket(O),
+    RiakKey = yz_kv:get_obj_key(O),
+    %% TODO: do this in KV vnode and pass to hook
+    Hash = base64:encode(yz_kv:hash_object(O)),
+    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.

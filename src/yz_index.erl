@@ -83,21 +83,26 @@ local_create(Ring, Name) ->
     DataDir = filename:join([IndexDir, "data"]),
     Info = get_info_from_ring(Ring, Name),
     SchemaName = schema_name(Info),
-    RawSchema = yz_schema:get(SchemaName),
-    SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
+    case yz_schema:get(SchemaName) of
+        {ok, RawSchema} ->
+            SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
 
-    yz_misc:make_dirs([ConfDir, DataDir]),
-    yz_misc:copy_files(ConfFiles, ConfDir),
-    ok = file:write_file(SchemaFile, RawSchema),
+            yz_misc:make_dirs([ConfDir, DataDir]),
+            yz_misc:copy_files(ConfFiles, ConfDir),
+            ok = file:write_file(SchemaFile, RawSchema),
 
-    CoreProps = [
-                 {name, Name},
-                 {index_dir, IndexDir},
-                 {cfg_file, ?YZ_CORE_CFG_FILE},
-                 {schema_file, SchemaFile}
-                ],
-    {ok, _, _} = yz_solr:core(create, CoreProps),
-    ok.
+            CoreProps = [
+                         {name, Name},
+                         {index_dir, IndexDir},
+                         {cfg_file, ?YZ_CORE_CFG_FILE},
+                         {schema_file, SchemaFile}
+                        ],
+            {ok, _, _} = yz_solr:core(create, CoreProps),
+            ok;
+        {error, _, Reason} ->
+            lager:warning("Couldn't create index ~s: ~p", [Name, Reason]),
+            ok
+    end.
 
 %% @doc Remove the index `Name' locally.
 -spec local_remove(string()) -> ok.

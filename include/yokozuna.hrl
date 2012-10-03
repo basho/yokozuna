@@ -96,6 +96,8 @@
 -define(INT_TO_STR(I), integer_to_list(I)).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 
+-define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
+
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
@@ -112,6 +114,22 @@
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
+
+%%%===================================================================
+%%% Anti Entropy
+%%%===================================================================
+
+-define(YZ_AE_DIR,
+        application:get_env(?YZ_APP_NAME, anti_entropy_data_dir)).
+-define(YZ_ENTROPY_TICK,
+        app_helper:get_env(?YZ_APP_NAME, entropy_tick, 60000)).
+
+-type hashtree() :: hashtree:hashtree().
+-type exchange() :: {p(), {p(), n()}}.
+-type exchange_mode() :: automatic | manual.
+-type tree() :: pid().
+-type trees() :: orddict(p(), tree()).
+
 
 %%%===================================================================
 %%% Riak KV
@@ -164,6 +182,9 @@
 -type index_info() :: #index_info{}.
 -type index_name() :: string().
 
+-define(YZ_DEFAULT_INDEX, "_yz_default").
+-define(YZ_INDEX_CONTENT, yz_index_content).
+
 %%%===================================================================
 %%% Schemas
 %%%===================================================================
@@ -204,3 +225,5 @@
 
 %% Riak key
 -define(YZ_RK_FIELD, '_yz_rk').
+-define(YZ_RK_FIELD_S, "_yz_rk").
+-define(YZ_RK_FIELD_B, <<"_yz_rk">>).
