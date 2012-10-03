@@ -48,9 +48,14 @@ init(_Args) ->
               {yz_events, start_link, []},
               permanent, 5000, worker, [yz_events]},
 
-    %% TODO: when hashtree sup is added make sure to start it _before_ mgr
+    HashtreeSup = {yz_index_hashtree_sup,
+                   {yz_index_hashtree_sup, start_link, []},
+                   permanent, infinity, supervisor, [yz_index_hashtree_sup]},
+
     EntropyMgr = {yz_entropy_mgr,
                   {yz_entropy_mgr, start_link, []},
                   permanent, 5000, worker, [yz_entropy_mgr]},
 
-    {ok, {{one_for_one, 5, 10}, [SolrProc, VMaster, Events, EntropyMgr]}}.
+    Children = [SolrProc, VMaster, Events, HashtreeSup, EntropyMgr],
+
+    {ok, {{one_for_one, 5, 10}, Children}}.
