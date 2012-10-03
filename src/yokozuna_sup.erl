@@ -48,4 +48,9 @@ init(_Args) ->
               {yz_events, start_link, []},
               permanent, 5000, worker, [yz_events]},
 
-    {ok, {{one_for_one, 5, 10}, [SolrProc, VMaster, Events]}}.
+    %% TODO: when hashtree sup is added make sure to start it _before_ mgr
+    EntropyMgr = {yz_entropy_mgr,
+                  {yz_entropy_mgr, start_link, []},
+                  permanent, 5000, worker, [yz_entropy_mgr]},
+
+    {ok, {{one_for_one, 5, 10}, [SolrProc, VMaster, Events, EntropyMgr]}}.

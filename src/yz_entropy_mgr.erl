@@ -9,7 +9,7 @@
 
 -record(state, {trees :: trees(),
                 tree_queue :: trees(),
-                locks,
+                locks :: [{pid(),reference()}],
                 exchange_queue :: [exchange()],
                 exchanges :: [{p(),reference()}]}).
 -type state() :: #state{}.
@@ -34,19 +34,20 @@ get_lock(Type, Pid) ->
 init([]) ->
     Trees = get_trees_from_sup(),
     schedule_tick(),
-    State = #state{trees=Trees,
-                   tree_queue=[],
-                   locks=[],
-                   exchanges=[],
-                   exchange_queue=[]},
-    {ok, State}.
+    S = #state{trees=Trees,
+               tree_queue=[],
+               locks=[],
+               exchanges=[],
+               exchange_queue=[]},
+    {ok, S}.
 
-handle_call({get_lock, Type, Pid}, _From, State) ->
-    {Reply, State2} = do_get_lock(Type, Pid, State),
-    {reply, Reply, State2};
-handle_call(Request, From, State) ->
+handle_call({get_lock, Type, Pid}, _From, S) ->
+    {Reply, S2} = do_get_lock(Type, Pid, S),
+    {reply, Reply, S2};
+
+handle_call(Request, From, S) ->
     lager:warning("Unexpected message: ~p from ~p", [Request, From]),
-    {reply, ok, State}.
+    {reply, ok, S}.
 
 handle_cast({requeue_poke, Index}, State) ->
     State2 = requeue_poke(Index, State),
@@ -126,14 +127,15 @@ remove_trees(Trees, ToRemove) ->
     [yz_index_hashtree:remove(Idx) || Idx <- ToRemove],
     lists:foldl(F, Trees, ToRemove).
 
-do_get_lock(_Type, Pid, State=#state{locks=Locks}) ->
+%% NOTES: Exchange FSM grabs the lock and thus is monitored
+do_get_lock(_Type, Pid, S=#state{locks=Locks}) ->
     case length(Locks) >= ?YZ_HASH_EXCHANGE_CONCURRENCY of
         true ->
-            {max_concurrency, State};
+            {max_concurrency, S};
         false ->
             Ref = monitor(process, Pid),
-            State2 = State#state{locks=[{Pid,Ref}|Locks]},
-            {ok, State2}
+            S2 = S#state{locks=[{Pid,Ref}|Locks]},
+            {ok, S2}
     end.
 
 maybe_release_lock(Ref, State) ->
