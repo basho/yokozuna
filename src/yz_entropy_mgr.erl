@@ -7,14 +7,11 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--type index() :: non_neg_integer().
--type index_n() :: {index(), pos_integer()}.
-
--record(state, {trees :: orddict(index(), pid()),
-                tree_queue,
+-record(state, {trees :: trees(),
+                tree_queue :: trees(),
                 locks,
-                exchange_queue :: [{index(), index(), index_n()}],
-                exchanges}).
+                exchange_queue :: [exchange()],
+                exchanges :: [{p(),reference()}]}).
 -type state() :: #state{}.
 
 %%%===================================================================
@@ -123,7 +120,7 @@ reload_hashtrees(State=#state{trees=Trees}) ->
 %% @private
 %%
 %% @doc Remove trees from `Trees' and remove the hashtrees.
--spec remove_trees(trees(), [index()]) -> trees().
+-spec remove_trees(trees(), [p()]) -> trees().
 remove_trees(Trees, ToRemove) ->
     F = fun(Idx,TreesAcc) -> orddict:erase(Idx, TreesAcc) end,
     [yz_index_hashtree:remove(Idx) || Idx <- ToRemove],
@@ -202,9 +199,9 @@ do_exchange_status(_Pid, LocalVN, RemoteVN, IndexN, Reply, State) ->
             State2
     end.
 
--spec start_exchange(index(), index_n(), ring(), state()) ->
+-spec start_exchange(p(), {p(),n()}, state()) ->
                             {ok, state()} | {any(), state()}.
-start_exchange(Index, {StartIdx, N}, Ring, S) ->
+start_exchange(Index, {StartIdx, N}, S) ->
     case exchange_fsm:start(Index, StartIdx, N) of
         {ok, FsmPid} ->
             %% Make this happen automatically as part of init in exchange_fsm
@@ -223,7 +220,7 @@ start_exchange(Index, {StartIdx, N}, Ring, S) ->
     end.
 
 %% Exchanges between yz and KV are RPs
--spec all_pairwise_exchanges(index(), ring()) -> [exchange()].
+-spec all_pairwise_exchanges(p(), ring()) -> [exchange()].
 all_pairwise_exchanges(Index, Ring) ->
     RPs = riak_kv_vnode:responsible_preflists(Index, Ring),
     [{Index, {StartIdx, N}} || {StartIdx, N} <- RPs].
@@ -235,7 +232,7 @@ all_exchanges(Ring, Trees) ->
                           all_pairwise_exchanges(Index, Ring)
                   end, Indices).
 
--spec add_index_exchanges(index(), state()) -> state().
+-spec add_index_exchanges(p(), state()) -> state().
 add_index_exchanges(Index, State) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Exchanges = all_pairwise_exchanges(Index, Ring),
@@ -261,7 +258,7 @@ maybe_exchange(State) ->
                 true ->
                     requeue_exchange(Index, StartIdx, N, State2);
                 false ->
-                    case start_exchange(Index, {StartIdx, N}, Ring, State2) of
+                    case start_exchange(Index, {StartIdx, N}, State2) of
                         {ok, State3} ->
                             State3;
                         {_Reason, State3} ->
@@ -295,13 +292,14 @@ requeue_poke(Index, State=#state{trees=Trees}) ->
             State
     end.
 
-requeue_exchange(LocalIdx, RemoteIdx, IndexN, State) ->
-    Exchange = {LocalIdx, RemoteIdx, IndexN},
+requeue_exchange(Index, StartIdx, N, State) ->
+    Exchange = {Index, {StartIdx, N}},
     case lists:member(Exchange, State#state.exchange_queue) of
         true ->
             State;
         false ->
-            lager:info("Requeue: ~p", [{LocalIdx, RemoteIdx, IndexN}]),
+            lager:info("Requeue exhcange for partition ~p of preflist ~p",
+                       [{Index, {StartIdx, N}}]),
             Exchanges = State#state.exchange_queue ++ [Exchange],
             State#state{exchange_queue=Exchanges}
     end.
