@@ -115,23 +115,20 @@ load_built(#state{trees=Trees}) ->
 %% TODO: fold is done against solr, remember to fold against all solr cores
 fold_keys(Partition, Tree) ->
     %% step1: get list of cores
+    Cores = yz_solr:cores(),
 
     %% step2: for each core, call yz_entropy:iterate_vclocks, change
     %% fun name to interate hashes
-
+    F = fun({Bucket, Key, Hash}) ->
+                BKey = term_to_binary({Bucket,Key}),
+                %% TODO: return _yz_fp from iterator and use that for
+                %%       more efficient get_index_N
+                IndexN = get_index_n({Bucket,Key}),
+                insert(IndexN, BKey, Hash, Tree, [if_missing])
+        end,
+    Filter = [{partition, Partition}],
+    [yz_entropy:iterate_entropy_data(Core, Filter, F) || Core <- Cores],
     ok.
-    %% {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    %% Req = ?FOLD_REQ{foldfun=fun(BKey={Bucket,Key}, RObj, _) ->
-    %%                                 IndexN = get_index_n({Bucket, Key}, Ring),
-    %%                                 insert(IndexN, term_to_binary(BKey), hash_object(RObj),
-    %%                                        Tree, [if_missing]),
-    %%                                 ok
-    %%                         end,
-    %%                 acc0=ok},
-    %% riak_core_vnode_master:sync_command({Partition, node()},
-    %%                                     Req,
-    %%                                     riak_kv_vnode_master, infinity),
-    %% ok.
 
 handle_call(get_index, _From, S) ->
     {reply, S#state.index, S};
@@ -364,6 +361,8 @@ tree_id({Index, N}) ->
 tree_id(_) ->
     erlang:error(badarg).
 
+%% TODO: OMG cache this with entry in proc dict, use `_yz_fp` as Index
+%%       and keep an orddict(Bucket,N) in proc dict
 get_index_n(BKey) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     get_index_n(BKey, Ring).

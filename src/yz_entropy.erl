@@ -56,21 +56,31 @@ build_tree(Index) ->
     Before = gen_before(),
     T1 = hashtree:new(),
     SV = yz_solr:get_vclocks(Index, Before, none, 100),
-    iterate_vclocks(Index, Before, T1, SV).
+    iterate_entropy_data(Index, Before, T1, SV).
 
 ht_insert({Key, VCHash}, Tree) ->
     hashtree:insert(Key, VCHash, Tree).
 
-iterate_vclocks(Index, Before, Tree, #solr_vclocks{more=true,
-                                                  continuation=Cont,
-                                                  pairs=Pairs}) ->
-    Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
+%% @doc Iterate all the entropy data in `Index' calling `Fun' for
+%%      every 100 entries.
+-spec iterate_entropy_data(index_name(), tree()) -> tree().
+iterate_entropy_data(Index, Fun) ->
+    DateTime = calendar:now_to_universal_time(os:timestamp()),
+    Before = to_datetime(minus_period(DateTime, [{mins, 5}])),
+    SV = yz_solr:get_vclocks(Index, Before, none, 100),
+    iterate_entropy_data(Index, Before, Fun, SV).
+
+iterate_entropy_data(Index, Before, Fun, #solr_vclocks{more=true,
+                                                       continuation=Cont,
+                                                       pairs=Pairs}) ->
+    %% Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
+    lists:foreach(Fun, Pairs),
     SV = yz_solr:get_vclocks(Index, Before, Cont, 100),
-    iterate_vclocks(Index, Before, Tree2, SV);
-iterate_vclocks(_, _, Tree, #solr_vclocks{more=false,
-                                          pairs=Pairs}) ->
-    Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
-    hashtree:update_tree(Tree2).
+    iterate_entropy_data(Index, Before, Fun, SV);
+iterate_entropy_data(_, _, Fun, #solr_vclocks{more=false,
+                                              pairs=Pairs}) ->
+    %% lists:foldl(fun ht_insert/2, Tree, Pairs).
+    lists:foreach(Fun, Pairs).
 
 %% @doc Minus Period from DateTime.
 %%
