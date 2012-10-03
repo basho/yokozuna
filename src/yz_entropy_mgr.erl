@@ -82,7 +82,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% @private
 %%
-%% @doc Generate a list of all the trees currently active.
+%% @doc Generate a list of all the trees currently active.  It enables
+%%      the entropy manager to rediscover the trees in the case of a
+%%      crash.
 -spec get_trees_from_sup() -> trees().
 get_trees_from_sup() ->
     Children = yz_index_hashtree_sup:children(),
