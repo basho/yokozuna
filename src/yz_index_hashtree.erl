@@ -113,6 +113,8 @@ load_built(#state{trees=Trees}) ->
     end.
 
 %% TODO: fold is done against solr, remember to fold against all solr cores
+%%
+%% TODO: need to convert Partition to logical partition
 fold_keys(Partition, Tree) ->
     %% step1: get list of cores
     Cores = yz_solr:cores(),

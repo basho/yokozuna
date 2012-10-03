@@ -30,21 +30,6 @@
 %% TODO: proper supervision and probably make tree proc a gen_server
 
 %%%===================================================================
-%%% API
-%%%===================================================================
-
--spec new_tree_proc(string(), tree_name()) -> tree_ref() | already_running.
-new_tree_proc(Index, Name) ->
-    case whereis(Name) of
-        undefined ->
-            {Pid, Ref} = spawn_monitor(?MODULE, tree_loop, [Index]),
-            register(Name, Pid),
-            #tree_ref{index=Index, name=Name, pid=Pid, ref=Ref};
-        Pid ->
-            {already_running, Pid}
-    end.
-
-%%%===================================================================
 %%% Private
 %%%===================================================================
 
@@ -52,34 +37,26 @@ gen_before() ->
     DateTime = calendar:now_to_universal_time(os:timestamp()),
     to_datetime(minus_period(DateTime, [{mins, 5}])).
 
-build_tree(Index) ->
-    Before = gen_before(),
-    T1 = hashtree:new(),
-    SV = yz_solr:get_vclocks(Index, Before, none, 100),
-    iterate_entropy_data(Index, Before, T1, SV).
-
 ht_insert({Key, VCHash}, Tree) ->
     hashtree:insert(Key, VCHash, Tree).
 
 %% @doc Iterate all the entropy data in `Index' calling `Fun' for
 %%      every 100 entries.
--spec iterate_entropy_data(index_name(), tree()) -> tree().
-iterate_entropy_data(Index, Fun) ->
+-spec iterate_entropy_data(index_name(), list(), function()) -> ok.
+iterate_entropy_data(Index, Filter, Fun) ->
     DateTime = calendar:now_to_universal_time(os:timestamp()),
     Before = to_datetime(minus_period(DateTime, [{mins, 5}])),
-    SV = yz_solr:get_vclocks(Index, Before, none, 100),
-    iterate_entropy_data(Index, Before, Fun, SV).
+    SV = yz_solr:get_vclocks(Index, Before, Filter, none, 100),
+    iterate_entropy_data(Index, Before, Filter, Fun, SV).
 
-iterate_entropy_data(Index, Before, Fun, #solr_vclocks{more=true,
-                                                       continuation=Cont,
-                                                       pairs=Pairs}) ->
-    %% Tree2 = lists:foldl(fun ht_insert/2, Tree, Pairs),
+iterate_entropy_data(Index, Before, Filter, Fun, #solr_vclocks{more=true,
+                                                               continuation=Cont,
+                                                               pairs=Pairs}) ->
     lists:foreach(Fun, Pairs),
-    SV = yz_solr:get_vclocks(Index, Before, Cont, 100),
-    iterate_entropy_data(Index, Before, Fun, SV);
-iterate_entropy_data(_, _, Fun, #solr_vclocks{more=false,
-                                              pairs=Pairs}) ->
-    %% lists:foldl(fun ht_insert/2, Tree, Pairs).
+    SV = yz_solr:get_vclocks(Index, Before, Filter, Cont, 100),
+    iterate_entropy_data(Index, Before, Filter, Fun, SV);
+iterate_entropy_data(_, _, _, Fun, #solr_vclocks{more=false,
+                                                 pairs=Pairs}) ->
     lists:foreach(Fun, Pairs).
 
 %% @doc Minus Period from DateTime.
@@ -111,14 +88,3 @@ to_datetime({_Mega, _Secs, _Micro}=Now) ->
 to_datetime({{Year, Month, Day}, {Hour, Min, Sec}}) ->
     list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
                                  [Year,Month,Day,Hour,Min,Sec])).
-
-tree_loop(Index) ->
-    Tree = build_tree(Index),
-    tree_cache_loop(Tree).
-
-tree_cache_loop(Tree) ->
-    receive
-        {get_tree, Pid, Ref} ->
-            Pid ! {tree, Ref, Tree},
-            tree_cache_loop(Tree)
-    end.
