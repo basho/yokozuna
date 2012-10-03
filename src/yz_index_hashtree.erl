@@ -71,6 +71,9 @@ compare(Id, Remote, AccFun, Tree) ->
     put(calling, ?LINE),
     gen_server:call(Tree, {compare, Id, Remote, AccFun}, infinity).
 
+get_index(Tree) ->
+    gen_server:call(Tree, get_index, infinity).
+
 get_lock(Tree, Type) ->
     get_lock(Tree, Type, self()).
 
@@ -93,7 +96,6 @@ init([Index]) ->
     S2 = init_trees(RPs, S),
     {ok, S2}.
 
-
 -spec init_trees([{p(),n()}], state()) -> state().
 init_trees(RPs, S) ->
     S2 = lists:foldl(fun(Id, SAcc) ->
@@ -110,28 +112,29 @@ load_built(#state{trees=Trees}) ->
             false
     end.
 
-%% TODO: remove, hashing will be done in hook
-hash_object(RObjBin) ->
-    RObj = binary_to_term(RObjBin),
-    Vclock = riak_object:vclock(RObj),
-    UpdObj = riak_object:set_vclock(RObj, lists:sort(Vclock)),
-    Hash = erlang:phash2(term_to_binary(UpdObj)),
-    term_to_binary(Hash).
-
 %% TODO: fold is done against solr, remember to fold against all solr cores
 fold_keys(Partition, Tree) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    Req = ?FOLD_REQ{foldfun=fun(BKey={Bucket,Key}, RObj, _) ->
-                                    IndexN = get_index_n({Bucket, Key}, Ring),
-                                    insert(IndexN, term_to_binary(BKey), hash_object(RObj),
-                                           Tree, [if_missing]),
-                                    ok
-                            end,
-                    acc0=ok},
-    riak_core_vnode_master:sync_command({Partition, node()},
-                                        Req,
-                                        riak_kv_vnode_master, infinity),
+    %% step1: get list of cores
+
+    %% step2: for each core, call yz_entropy:iterate_vclocks, change
+    %% fun name to interate hashes
+
     ok.
+    %% {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    %% Req = ?FOLD_REQ{foldfun=fun(BKey={Bucket,Key}, RObj, _) ->
+    %%                                 IndexN = get_index_n({Bucket, Key}, Ring),
+    %%                                 insert(IndexN, term_to_binary(BKey), hash_object(RObj),
+    %%                                        Tree, [if_missing]),
+    %%                                 ok
+    %%                         end,
+    %%                 acc0=ok},
+    %% riak_core_vnode_master:sync_command({Partition, node()},
+    %%                                     Req,
+    %%                                     riak_kv_vnode_master, infinity),
+    %% ok.
+
+handle_call(get_index, _From, S) ->
+    {reply, S#state.index, S};
 
 handle_call({new_tree, Id}, _From, State) ->
     State2 = do_new_tree(Id, State),
@@ -223,7 +226,9 @@ handle_cast({insert_object, BKey, RObj}, State) ->
     %% lager:info("Inserting object ~p", [BKey]),
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     IndexN = get_index_n(BKey, Ring),
-    State2 = do_insert(IndexN, term_to_binary(BKey), hash_object(RObj), [], State),
+    %% TODO: remove this cast
+    %% State2 = do_insert(IndexN, term_to_binary(BKey), hash_object(RObj), [], State),
+    State2 = State,
     {noreply, State2};
 handle_cast({delete, BKey}, State) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
