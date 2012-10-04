@@ -20,7 +20,7 @@
 -compile(export_all).
 
 %% Time from build to expiration of tree, in microseconds.
--define(EXPIRE, 10000000).
+-define(EXPIRE, 100000000).
 
 %%%===================================================================
 %%% API

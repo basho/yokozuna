@@ -96,7 +96,8 @@ metadata(Obj) ->
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
-%% NOTE: This code runs on the vnode process.
+%% NOTE: For a normal update this hook runs on the vnode process.
+%%       During active anti-entropy runs on spwned process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), term()) -> ok.
@@ -168,6 +169,8 @@ get_partition(VNodeState) ->
 %% @private
 %%
 %% @doc Wait for index creation if hook was invoked for handoff write.
+%%
+%% NOTE: This function assumes it is running on a long-lived process.
 -spec maybe_wait(write_reason(), binary()) -> ok.
 maybe_wait(handoff, Bucket) ->
     Index = binary_to_list(Bucket),
