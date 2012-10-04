@@ -28,6 +28,11 @@ get_lock(Type) ->
 get_lock(Type, Pid) ->
     gen_server:call(?MODULE, {get_lock, Type, Pid}, infinity).
 
+%% @doc Get the tree registered for `Index'.
+-spec get_tree(p()) -> tree() | not_registered.
+get_tree(Index) ->
+    gen_server:call(?MODULE, {get_tree, Index}, infinity).
+
 %% @doc Put the entropy manager in automatic mode.
 -spec automatic_mode() -> ok.
 automatic_mode() ->
@@ -57,6 +62,12 @@ init([]) ->
 handle_call({get_lock, Type, Pid}, _From, S) ->
     {Reply, S2} = do_get_lock(Type, Pid, S),
     {reply, Reply, S2};
+
+handle_call({get_tree, Index}, _, S) ->
+    case orddict:find(Index, S#state.trees) of
+        {ok, Tree} -> {reply, Tree, S};
+        error -> {reply, not_registered, S}
+    end;
 
 handle_call({set_mode, Mode}, _From, S) ->
     S2 = S#state{mode=Mode},
@@ -238,16 +249,9 @@ do_exchange_status(_Pid, Index, {StartIdx, N}, Reply, S) ->
 -spec start_exchange(p(), {p(),n()}, state()) ->
                             {ok, state()} | {any(), state()}.
 start_exchange(Index, {StartIdx, N}, S) ->
-    case exchange_fsm:start(Index, StartIdx, N) of
+    case exchange_fsm:start(Index, {StartIdx, N}) of
         {ok, FsmPid} ->
-            %% Make this happen automatically as part of init in exchange_fsm
-            lager:info("Start exchange of partition ~p for preflist {~p, ~p}",
-                       [Index, StartIdx, N]),
-            %% exchange_fsm handles locking: tries to get concurrency lock, then index_ht lock
-            Tree = orddict:fetch(Index, S#state.trees),
-            exchange_fsm:start_exchange(FsmPid, Tree, self()),
-            %% Do we want to monitor exchange FSMs?
-            %% Do we want to track exchange FSMs?
+            exchange_fsm:start_exchange(FsmPid, self()),
             Ref = monitor(process, FsmPid),
             E = S#state.exchanges,
             {ok, S#state{exchanges=[{Index,Ref}|E]}};
