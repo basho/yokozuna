@@ -44,6 +44,9 @@ automatic_mode() ->
 manual_mode() ->
     gen_server:call(?MODULE, {set_mode, manual}, infinity).
 
+manual_exchange(Index, Preflist) ->
+    gen_server:call(?MODULE, {manual_exchange, Index, Preflist}, infinity).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -67,6 +70,12 @@ handle_call({get_tree, Index}, _, S) ->
     case orddict:find(Index, S#state.trees) of
         {ok, Tree} -> {reply, Tree, S};
         error -> {reply, not_registered, S}
+    end;
+
+handle_call({manual_exchange, Index, Partition}, _From, S) ->
+    case start_exchange(Index, Partition, S) of
+        {ok, S2} -> {reply, ok, S2};
+        {error, Reason, S2} -> {reply, {error, Reason}, S2}
     end;
 
 handle_call({set_mode, Mode}, _From, S) ->
@@ -254,8 +263,8 @@ do_exchange_status(_Pid, Index, {StartIdx, N}, Reply, S) ->
 
 -spec start_exchange(p(), {p(),n()}, state()) ->
                             {ok, state()} | {error, any(), state()}.
-start_exchange(Index, {StartIdx, N}, S) ->
-    case yz_exchange_fsm:start(Index, {StartIdx, N}) of
+start_exchange(Index, Preflist, S) ->
+    case yz_exchange_fsm:start(Index, Preflist) of
         {ok, FsmPid} ->
             yz_exchange_fsm:start_exchange(FsmPid, self()),
             Ref = monitor(process, FsmPid),
