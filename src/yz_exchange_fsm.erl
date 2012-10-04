@@ -80,7 +80,8 @@ prepare_exchange(start_exchange, S) ->
                                 ok ->
                                     update_trees(start_exchange, S2);
                                 _ ->
-                                    maybe_reply(already_locked, S)
+                                    maybe_reply(already_locked, S),
+                                    {stop, normal, S}
                             end
                     end;
                 _ ->
@@ -142,13 +143,29 @@ key_exchange(timeout, S=#state{index=Index,
                      Acc
              end,
     index_hashtree:compare(IndexN, Remote, AccFun, YZTree),
+
+    lager:info("Finished key exchange for partition ~p preflist ~p",
+               [Index, IndexN]),
+
     {stop, normal, S}.
 
 read_repair_keydiff(RC, {_, KeyBin}) ->
-    {Bucket, Key} = binary_to_term(KeyBin),
-    lager:info("Anti-entropy forced read repair: ~p/~p", [Bucket, Key]),
-    RC:get(Bucket, Key),
+    BKey = {Bucket, Key} = binary_to_term(KeyBin),
+    lager:info("Anti-entropy forced read repair and re-index: ~p/~p", [Bucket, Key]),
+    {ok, Obj} = RC:get(Bucket, Key),
+    Ring = yz_misc:get_ring(transformed),
+    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    Idx = riak_core_util:chash_key(BKey),
+    N = proplists:get_value(n_val,BucketProps),
+    Preflist = riak_core_ring:preflist(Idx, N, Ring),
+    lists:foreach(fun({Partition, Node}) ->
+                          FakeState = fake_kv_vnode_state(Partition),
+                          rpc:call(Node, yz_kv, index, [Obj, anti_entropy, FakeState])
+                  end, Preflist),
     ok.
+
+fake_kv_vnode_state(Partition) ->
+    {state,Partition,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake}.
 
 exchange_bucket_kv(Tree, IndexN, Level, Bucket) ->
     index_hashtree:exchange_bucket(IndexN, Level, Bucket, Tree).
