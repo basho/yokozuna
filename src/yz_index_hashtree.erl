@@ -29,30 +29,23 @@
 start(Index) ->
     supervisor:start_child(yz_index_hashtree_sup, [Index]).
 
-new_tree(Id, Tree) ->
-    put(calling, ?LINE),
-    gen_server:call(Tree, {new_tree, Id}, infinity).
-
-insert(Id, Key, Hash, Tree) ->
-    insert(Id, Key, Hash, Tree, []).
-
+%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given `Id'
+-spec insert({p(),n()}, binary(), binary(), tree(), list()) -> ok.
 insert(Id, Key, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, Key, Hash, Options}).
 
-insert_object(BKey, RObj, Tree) ->
-    gen_server:cast(Tree, {insert_object, BKey, RObj}).
-
+%% @doc Delete the `BKey' from `Tree'.  The id will be determined from `BKey'.
+-spec delete(tuple(), tree()) -> ok.
 delete(BKey, Tree) ->
     gen_server:cast(Tree, {delete, BKey}).
 
-start_exchange_remote(FsmPid, IndexN, Tree) ->
-    put(calling, ?LINE),
-    gen_server:call(Tree, {start_exchange_remote, FsmPid, IndexN}, infinity).
-
+-spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
     put(calling, ?LINE),
     gen_server:call(Tree, {update_tree, Id}, infinity).
 
+%% @doc Build the trees if they need to be built.
+-spec build(tree()) -> ok.
 build(Tree) ->
     gen_server:cast(Tree, build).
 
@@ -103,6 +96,7 @@ init_trees(RPs, S) ->
                          end, S, RPs),
     S2#state{built=false}.
 
+%% TODO: If one is build they are all built?
 load_built(#state{trees=Trees}) ->
     {_,Tree0} = hd(Trees),
     case hashtree:read_meta(<<"built">>, Tree0) of
@@ -112,7 +106,6 @@ load_built(#state{trees=Trees}) ->
             false
     end.
 
-%% TODO: need to convert Partition to logical partition
 fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
@@ -130,29 +123,13 @@ fold_keys(Partition, Tree) ->
 handle_call(get_index, _From, S) ->
     {reply, S#state.index, S};
 
-handle_call({new_tree, Id}, _From, State) ->
-    State2 = do_new_tree(Id, State),
-    {reply, ok, State2};
-
 handle_call({get_lock, Type, Pid}, _From, State) ->
     {Reply, State2} = do_get_lock(Type, Pid, State),
     {reply, Reply, State2};
 
-handle_call({start_exchange_remote, FsmPid, _IndexN}, _From, State) ->
-    case entropy_manager:get_lock(exchange_remote, FsmPid) of
-        max_concurrency ->
-            {reply, max_concurrency, State};
-        ok ->
-            case do_get_lock(remote_fsm, FsmPid, State) of
-                {ok, State2} ->
-                    {reply, ok, State2};
-                {Reply, State2} ->
-                    {reply, Reply, State2}
-            end
-    end;
-
-handle_call({update_tree, Id}, From, State) ->
-    lager:info("Updating tree: (vnode)=~p (preflist)=~p", [State#state.index, Id]),
+handle_call({update_tree, Id}, From, S) ->
+    lager:info("Updating tree for partition ~p preflist ~p",
+               [S#state.index, Id]),
     apply_tree(Id,
                fun(Tree) ->
                        {SnapTree, Tree2} = hashtree:update_snapshot(Tree),
@@ -162,7 +139,7 @@ handle_call({update_tree, Id}, From, State) ->
                                   end),
                        {noreply, Tree2}
                end,
-               State);
+               S);
 
 handle_call({exchange_bucket, Id, Level, Bucket}, _From, State) ->
     apply_tree(Id,
@@ -201,9 +178,9 @@ handle_cast(poke, State) ->
     State2 = do_poke(State),
     {noreply, State2};
 
-handle_cast(build, State) ->
-    State2 = maybe_build(State),
-    {noreply, State2};
+handle_cast(build, S) ->
+    S2 = maybe_build(S),
+    {noreply, S2};
 
 handle_cast(build_failed, State) ->
     gen_server:cast(entropy_manager, {requeue_poke, State#state.index}),
@@ -216,14 +193,7 @@ handle_cast(build_finished, State) ->
 handle_cast({insert, Id, Key, Hash, Options}, State) ->
     State2 = do_insert(Id, Key, Hash, Options, State),
     {noreply, State2};
-handle_cast({insert_object, BKey, RObj}, State) ->
-    %% lager:info("Inserting object ~p", [BKey]),
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    IndexN = get_index_n(BKey, Ring),
-    %% TODO: remove this cast
-    %% State2 = do_insert(IndexN, term_to_binary(BKey), hash_object(RObj), [], State),
-    State2 = State,
-    {noreply, State2};
+
 handle_cast({delete, BKey}, State) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     IndexN = get_index_n(BKey, Ring),
@@ -387,35 +357,35 @@ maybe_clear(State=#state{lock=undefined, built=true}) ->
 maybe_clear(State) ->
     State.
 
-clear_tree(State=#state{index=Index, trees=Trees}) ->
-    lager:info("Clearing tree ~p", [State#state.index]),
+clear_tree(S=#state{index=Index, trees=Trees}) ->
+    lager:info("Clearing tree ~p", [S#state.index]),
     {_,Tree0} = hd(Trees),
     hashtree:destroy(Tree0),
     IndexN = riak_kv_vnode:responsible_preflists(Index),
-    State2 = init_trees(IndexN, State#state{trees=orddict:new()}),
-    State2#state{built=false}.
+    S2 = init_trees(IndexN, S#state{trees=orddict:new()}),
+    S2#state{built=false}.
 
-maybe_build(State=#state{built=false}) ->
+maybe_build(S=#state{built=false}) ->
     Self = self(),
     Pid = spawn_link(fun() ->
-                             case entropy_manager:get_lock(build) of
+                             case yz_entropy_mgr:get_lock(build) of
                                  max_concurrency ->
                                      gen_server:cast(Self, build_failed);
                                  ok ->
-                                     build_or_rehash(Self, State)
+                                     build_or_rehash(Self, S)
                              end
                      end),
-    State#state{built=Pid};
-maybe_build(State) ->
+    S#state{built=Pid};
+maybe_build(S) ->
     %% Already built or build in progress
-    State.
+    S.
 
-build_or_rehash(Self, State=#state{index=Index, trees=Trees}) ->
-    case load_built(State) of
+build_or_rehash(Self, S=#state{index=Index, trees=Trees}) ->
+    case load_built(S) of
         false ->
             lager:info("Starting build: ~p", [Index]),
             fold_keys(Index, Self),
-            lager:info("Finished build (a): ~p", [Index]), 
+            lager:info("Finished build (a): ~p", [Index]),
             gen_server:cast(Self, build_finished);
         true ->
             lager:info("Starting rehash: ~p", [Index]),
