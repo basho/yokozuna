@@ -29,6 +29,9 @@
 start(Index) ->
     supervisor:start_child(yz_index_hashtree_sup, [Index]).
 
+start_link(Index) ->
+    gen_server:start_link(?MODULE, [Index], []).
+
 %% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given `Id'
 -spec insert({p(),n()}, binary(), binary(), tree(), list()) -> ok.
 insert(Id, Key, Hash, Tree, Options) ->

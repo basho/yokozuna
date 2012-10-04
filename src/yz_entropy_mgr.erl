@@ -139,10 +139,13 @@ get_index(Tree, Trees) ->
 reload_hashtrees(S=#state{trees=Trees}) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Indices = riak_core_ring:my_indices(Ring),
-    Existing = dict:from_list(Trees),
+    Existing = orddict:from_list(Trees),
 
-    MissingIdx = [Idx || Idx <- Indices, not dict:is_key(Idx, Existing)],
-    L = [yz_index_hashtree:start(Idx) || Idx <- MissingIdx],
+    MissingIdx = [Idx || Idx <- Indices, not orddict:is_key(Idx, Existing)],
+    L = lists:foldl(fun(Idx, NewTrees) ->
+                            {ok, Tree} = yz_index_hashtree:start(Idx),
+                            [{Idx,Tree}|NewTrees]
+                    end, [], MissingIdx),
     Trees2 = orddict:from_list(Trees ++ L),
 
     Moved = [Idx || {Idx,_} <- Trees2, not lists:member(Idx, Indices)],
@@ -204,7 +207,7 @@ maybe_clear_registered_tree(_, S) ->
 next_tree(S=#state{tree_queue=Queue, trees=Trees}) ->
     More = fun() -> Trees end,
     case yz_misc:queue_pop(Queue, More) of
-        {[{_,Pid}], Rest} ->
+        {{_,Pid}, Rest} ->
             S2 = S#state{tree_queue=Rest},
             {Pid, S2};
         empty ->
@@ -243,20 +246,23 @@ maybe_poke_tree(S) ->
 do_exchange_status(_Pid, Index, {StartIdx, N}, Reply, S) ->
     case Reply of
         ok -> S;
-        _ -> requeue_exchange(Index, {StartIdx, N}, S)
+        _ ->
+            lager:info("Requeue exhcange for partition ~p of preflist ~p for reason ~p",
+                       [Index, {StartIdx, N}, Reply]),
+            requeue_exchange(Index, {StartIdx, N}, S)
     end.
 
 -spec start_exchange(p(), {p(),n()}, state()) ->
-                            {ok, state()} | {any(), state()}.
+                            {ok, state()} | {error, any(), state()}.
 start_exchange(Index, {StartIdx, N}, S) ->
-    case exchange_fsm:start(Index, {StartIdx, N}) of
+    case yz_exchange_fsm:start(Index, {StartIdx, N}) of
         {ok, FsmPid} ->
-            exchange_fsm:start_exchange(FsmPid, self()),
+            yz_exchange_fsm:start_exchange(FsmPid, self()),
             Ref = monitor(process, FsmPid),
             E = S#state.exchanges,
             {ok, S#state{exchanges=[{Index,Ref}|E]}};
         {error, Reason} ->
-            {Reason, S}
+            {error, Reason, S}
     end.
 
 %% Exchanges between yz and KV are RPs
@@ -302,7 +308,7 @@ maybe_exchange(S) ->
                 false ->
                     case start_exchange(Index, {StartIdx, N}, S2) of
                         {ok, S3} -> S3;
-                        {_Reason, S3} -> S3
+                        {error, _, S3} -> S3
                     end
             end
     end.
@@ -344,8 +350,6 @@ requeue_exchange(Index, {StartIdx, N}, S) ->
         true ->
             S;
         false ->
-            lager:info("Requeue exhcange for partition ~p of preflist ~p",
-                       [{Index, {StartIdx, N}}]),
             Exchanges = S#state.exchange_queue ++ [Exchange],
             S#state{exchange_queue=Exchanges}
     end.

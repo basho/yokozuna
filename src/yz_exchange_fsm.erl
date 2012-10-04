@@ -23,7 +23,7 @@
 
 %% @doc Initialize the exchange FSM to exchange between Yokozuna and
 %%      KV for the `Preflist' replicas on `Index'.
--spec start(p(), {p(),n()}) -> {ok, pid()}.
+-spec start(p(), {p(),n()}) -> {ok, pid()} | {error, any()}.
 start(Index, Preflist) ->
     gen_fsm:start(?MODULE, [Index, Preflist], []).
 
@@ -57,7 +57,7 @@ prepare_exchange({start_exchange, From}, S) ->
 prepare_exchange(start_exchange, S) ->
     %% Get locks and pids of yokozuna and KV trees
     Index = S#state.index,
-    case yz_entropy_manager:get_lock(exchange) of
+    case yz_entropy_mgr:get_lock(exchange) of
         max_concurrency ->
             maybe_reply(max_concurrency, S),
             %% TODO: russell said normal is not valid stop reason for FSM
