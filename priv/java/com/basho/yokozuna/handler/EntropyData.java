@@ -89,6 +89,12 @@ public class EntropyData
             AtomicReader rdr = searcher.getAtomicReader();
             BytesRef tmp = null;
             Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
+
+            if (terms == null) {
+                rsp.add("more", false);
+                return;
+            }
+
             TermsEnum te = terms.iterator(null);
 
             if (isContinue(cont)) {
