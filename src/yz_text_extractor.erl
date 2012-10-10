@@ -19,10 +19,16 @@
 %% -------------------------------------------------------------------
 
 -module(yz_text_extractor).
+-include("yokozuna.hrl").
 -compile(export_all).
 
 extract(Value) ->
     extract(Value, []).
 
-extract(Value, _Opts) ->
-    [{text, Value}].
+extract(Value, Opts) ->
+    FieldName = field_name(Opts),
+    [{FieldName, Value}].
+
+-spec field_name(proplist()) -> any().
+field_name(Opts) ->
+    proplists:get_value(field_name, Opts, text).
