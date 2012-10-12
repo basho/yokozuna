@@ -645,7 +645,7 @@
          using enableRemoteStreaming="true"
 
       -->
-    <requestParsers enableRemoteStreaming="true"
+    <requestParsers enableRemoteStreaming="false"
                     multipartUploadLimitInKB="2048000" />
 
     <!-- HTTP Caching
