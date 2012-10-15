@@ -86,6 +86,13 @@ Yokozuna.
 
     ./bin/riak-admin cluster commit
 
+### Index/Query Data
+
+To start indexing and querying data take a look at the
+[Getting Started] [gs] guide.  At the moment there is only support for
+`text/plain` and `text/xml` content types.  More thorough docs on
+indexing coming soon.
+
 ## The AMI
 
 The AMI is a customization of Amazon Linux ami-8d9c20e4.  It
@@ -104,6 +111,8 @@ the [commit log] [yz_commit_log].
 [cluster_setup]: http://docs.basho.com/riak/latest/cookbooks/Basic-Cluster-Setup/
 
 [five_nodes]: http://basho.com/blog/technical/2012/04/27/Why-Your-Riak-Cluster-Should-Have-At-Least-Five-Nodes/
+
+[gs]: https://github.com/rzezeski/yokozuna#creating-an-index
 
 [perf_aws]: http://docs.basho.com/riak/latest/cookbooks/Performance-Tuning-AWS/
 
