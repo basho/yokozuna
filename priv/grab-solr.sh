@@ -12,15 +12,18 @@ then
     cd priv
 fi
 
-case $1 in
-    from-src)
-        FROM_SRC=true
-        shift
-        ;;
-    *)
-        echo Invalid option $1
-        exit 1
-esac
+while [ $# -gt 0 ]
+do
+    case $1 in
+        from-src)
+            FROM_SRC=true
+            shift
+            ;;
+        *)
+            echo Invalid argument $1
+            exit 1
+    esac
+done
 
 if $FROM_SRC; then
     dir=$PWD/solr
@@ -30,7 +33,7 @@ if $FROM_SRC; then
     branch=branch_4x
 else
     dir=$PWD/solr
-    src_dir=$PWD/apache-solr-4.0.0-alpha
+    src_dir=$PWD/apache-solr-4.0.0
     example_dir=$src_dir/example
 fi
 
@@ -74,8 +77,8 @@ get_solr()
     if $FROM_SRC; then
         git clone git://github.com/apache/lucene-solr.git
     else
-        wget http://apache.deathculture.net/lucene/solr/4.0.0-ALPHA/apache-solr-4.0.0-ALPHA.tgz
-        tar zxvf apache-solr-4.0.0-ALPHA.tgz
+        wget http://apache.mesi.com.ar/lucene/solr/4.0.0/apache-solr-4.0.0.tgz
+        tar zxvf apache-solr-4.0.0.tgz
     fi
 }
 
@@ -97,6 +100,5 @@ fi
 
 cp -vr $example_dir $dir
 rm -rf $dir/{multicore,solr,README.txt}
-# mkdir $dir/yokozuna
 cp -v solr.xml $dir
 cp -v *.properties $dir
