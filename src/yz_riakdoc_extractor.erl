@@ -21,7 +21,6 @@
 -module(yz_riakdoc_extractor).
 -compile(export_all).
 -include("yokozuna.hrl").
--define(NO_OPTIONS, []).
 
 %% @doc Extractor for riakdoc format.  YAML headers followed by the
 %%      body.
@@ -29,8 +28,7 @@
 extract(Values) ->
     extract(Values, ?NO_OPTIONS).
 
--spec extract(binary(), proplist()) -> [{binary(), binary()}] |
-                                       {error, any()}.
+-spec extract(binary(), proplist()) -> fields() | {error, any()}.
 extract(Value, _Opts) ->
     extract_fields(Value).
 

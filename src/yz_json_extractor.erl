@@ -42,8 +42,6 @@
 -module(yz_json_extractor).
 -compile(export_all).
 -include("yokozuna.hrl").
-%% TODO: move to .hrl
--define(NO_OPTIONS, []).
 -define(DEFAULT_FIELD_SEPARATOR, <<"_">>).
 -record(state, {
           fields = [],
@@ -51,19 +49,16 @@
          }).
 -type state() :: #state{}.
 
-%% TODO: add fields type to .hrl
--spec extract(binary()) -> [{binary(), binary()}] |
-                           {error, any()}.
+-spec extract(binary()) -> fields() | {error, any()}.
 extract(Value) ->
     extract(Value, ?NO_OPTIONS).
 
--spec extract(binary(), proplist()) -> [{binary(), binary()}] |
-                                       {error, any()}.
+-spec extract(binary(), proplist()) -> fields() | {error, any()}.
 extract(Value, Opts) ->
     Sep = proplists:get_value(field_separator, Opts, ?DEFAULT_FIELD_SEPARATOR),
     extract_fields(Value, #state{field_separator=Sep}).
 
--spec extract_fields(binary(), state()) -> [{binary(), binary()}].
+-spec extract_fields(binary(), state()) -> fields().
 extract_fields(Value, S) ->
     Struct = mochijson2:decode(Value),
     S2 = extract_fields(undefined, Struct, S),

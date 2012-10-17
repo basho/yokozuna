@@ -140,6 +140,8 @@
 -type extractor_def() :: extractor_name() | {extractor_name(), proplist()}.
 -type extractor_map() :: orddict(mime_type(), extractor_def()).
 
+-define(NO_OPTIONS, []).
+
 %%%===================================================================
 %%% Logging
 %%%===================================================================

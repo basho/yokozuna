@@ -46,13 +46,11 @@
           fields = [],
           field_separator = ?DEFAULT_FIELD_SEPARATOR
          }).
--define(NO_OPTIONS, []).
 
 extract(Value) ->
     extract(Value, ?NO_OPTIONS).
 
--spec extract(binary(), proplist()) -> [{binary(), binary()}] |
-                                       {error, any()}.
+-spec extract(binary(), proplist()) -> fields() | {error, any()}.
 extract(Value, Opts) ->
     Sep = proplists:get_value(field_separator, Opts, ?DEFAULT_FIELD_SEPARATOR),
     extract_fields(Value, #state{field_separator=Sep}).
