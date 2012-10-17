@@ -25,10 +25,14 @@
 -type register_opts() :: [overwrite].
 -type get_def_opts() :: [check_default].
 
--define(DEFAULT_MAP, [{default, yz_text_extractor},
-                      {"text/plain", yz_text_extractor},
-                      {"application/xml", yz_xml_extractor},
-                      {"text/xml", yz_xml_extractor}]).
+%% NOTE: The map is treated as an orddict so these entries must be
+%%       ordered correctly or `get_def' may report no extractor is
+%%       registered when there is one.
+-define(DEFAULT_MAP, [{default,yz_text_extractor},
+                      {"application/json",yz_json_extractor},
+                      {"application/xml",yz_xml_extractor},
+                      {"text/plain",yz_text_extractor},
+                      {"text/xml",yz_xml_extractor}]).
 -define(META_EXTRACTOR_MAP, yokozuna_extractor_map).
 
 
