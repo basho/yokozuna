@@ -30,21 +30,11 @@ public class SimpleQueryExample {
         String field = args[2];
         String term = args[3];
 
-        SolrServer solr = new HttpSolrServer(baseURL);
+        SolrServer solr = new HttpSolrServer(baseURL + "/" + index);
         ModifiableSolrParams params = new ModifiableSolrParams();
-
-        // I'm not sure it using 'qt' is cheating but I couldn't get
-        // 'req.setPath' to work.
-        params.set("qt", "/" + index);
+        params.set("qt", "/");
         params.set("q", field + ":" + term);
         SolrRequest req = new QueryRequest(params);
-
-        // Currently Yokozuna doesn't support the canonical Solr url,
-        // i.e. 'solr/<core>/select?...' but instead uses
-        // 'search/<index>/?...'
-        //
-        // TODO: this didn't work
-        // req.setPath("/" + index);
 
         QueryResponse resp = solr.query(params);
         System.out.println("resp: " + resp);
