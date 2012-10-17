@@ -31,6 +31,16 @@
 add_routes(Routes) ->
     [webmachine_router:add_route(R) || R <- Routes].
 
+-spec convert_preflist(list(), logical | real) -> list().
+convert_preflist(Preflist, logical) ->
+    LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
+    [convert_pl_entry(Entry, logical, LI) || Entry <- Preflist].
+
+-spec convert_pl_entry(term(), logical | real, logical_idx()) -> term().
+convert_pl_entry({Partition,Node}, logical, Map) ->
+    LPartition = yz_cover:logical_partition(Map, Partition),
+    {LPartition,Node}.
+
 %% @doc Recursively copy each file to `Dir'.
 -spec copy_files([string()], string()) -> ok.
 copy_files([], _) ->
@@ -110,6 +120,19 @@ owned_and_next_partitions(Node, Ring) ->
     Owned = lists:filter(is_owner(Node), riak_core_ring:all_owners(Ring)),
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
     ordsets:from_list([P || {P,_} <- Next ++ Owned]).
+
+%% NOTE: This could get in inifinite loop if `Queue' runs out and
+%%       `Refill' produces [].
+-spec queue_pop(list(), function()) ->
+                       {Items::any(), NewQueue::list()} | empty.
+queue_pop([], Refill) ->
+    case Refill() of
+        [] -> empty;
+        Items -> queue_pop(Items, Refill)
+    end;
+queue_pop(Queue, _Refill) ->
+    [Item|Rest] = Queue,
+    {Item,Rest}.
 
 %% @doc Set the ring metadata for the given `Name' to the given
 %%      `Value'

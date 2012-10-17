@@ -52,10 +52,33 @@ get(C, Bucket, Key) ->
             Other
     end.
 
+-spec hash_object(obj()) -> binary().
+hash_object(Obj) ->
+    Vclock = riak_object:vclock(Obj),
+    Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
+    Hash = erlang:phash2(term_to_binary(Obj2)),
+    term_to_binary(Hash).
+
 %% @doc Get the content-type of the object.
 -spec get_obj_ct(obj()) -> binary().
 get_obj_ct(Obj) ->
     dict:fetch(<<"content-type">>, riak_object:get_metadata(Obj)).
+
+-spec get_obj_bucket(obj()) -> binary().
+get_obj_bucket(Obj) ->
+    riak_object:bucket(Obj).
+
+-spec get_obj_key(obj()) -> binary().
+get_obj_key(Obj) ->
+    riak_object:key(Obj).
+
+-spec get_obj_md(obj()) -> undefined | dict().
+get_obj_md(Obj) ->
+    riak_object:get_metadata(Obj).
+
+-spec get_obj_value(obj()) -> binary().
+get_obj_value(Obj) ->
+    riak_object:get_value(Obj).
 
 %% @doc Determine if the `Obj' is a tombstone.
 -spec is_tombstone(obj()) -> boolean().
@@ -73,7 +96,8 @@ metadata(Obj) ->
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
-%% NOTE: This code runs on the vnode process.
+%% NOTE: For a normal update this hook runs on the vnode process.
+%%       During active anti-entropy runs on spwned process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), term()) -> ok.
@@ -145,6 +169,8 @@ get_partition(VNodeState) ->
 %% @private
 %%
 %% @doc Wait for index creation if hook was invoked for handoff write.
+%%
+%% NOTE: This function assumes it is running on a long-lived process.
 -spec maybe_wait(write_reason(), binary()) -> ok.
 maybe_wait(handoff, Bucket) ->
     Index = binary_to_list(Bucket),

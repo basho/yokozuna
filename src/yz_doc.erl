@@ -31,20 +31,20 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
--spec doc_id(riak_object:riak_object(), binary()) -> binary().
+-spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary>>.
+    <<(yz_kv:get_obj_key(O))/binary,"_",Partition/binary>>.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
+-spec make_doc(obj(), binary(), binary()) -> doc().
 make_doc(O, FPN, Partition) ->
     ExtractedFields = extract_fields(O),
     Fields = [{id, doc_id(O, Partition)},
-              {?YZ_ED_FIELD, gen_vc(O)},
+              {?YZ_ED_FIELD, gen_ed(O, Partition)},
               {?YZ_FPN_FIELD, FPN},
               {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
               {?YZ_PN_FIELD, Partition},
-              {?YZ_RK_FIELD, riak_key(O)}],
+              {?YZ_RK_FIELD, yz_kv:get_obj_key(O)}],
     {doc, lists:append([ExtractedFields, Fields])}.
 
 -spec extract_fields(obj()) ->  fields() | {error, any()}.
@@ -69,16 +69,11 @@ extract_fields(O) ->
 %%% Private
 %%%===================================================================
 
-%% TODO: Just pass metadata in?
-%%
 %% TODO: I don't like having X-Riak-Last-Modified in here.  Add
 %%       function to riak_object.
 doc_ts(O) ->
-    MD = riak_object:get_metadata(O),
+    MD = yz_kv:get_obj_md(O),
     dict:fetch(<<"X-Riak-Last-Modified">>, MD).
-
-doc_vclock(O) ->
-    riak_object:vclock(O).
 
 gen_ts() ->
     {{Year, Month, Day},
@@ -86,14 +81,13 @@ gen_ts() ->
     list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
                                  [Year,Month,Day,Hour,Min,Sec])).
 
-gen_vc(O) ->
+%% NOTE: All of this data needs to be in one field to efficiently
+%%       iterate.  Otherwise the doc would have to be fetched for each
+%%       entry.
+gen_ed(O, Partition) ->
     TS = gen_ts(),
-    RiakKey = riak_key(O),
-    VClock = base64:encode(crypto:sha(term_to_binary(doc_vclock(O)))),
-    <<TS/binary," ",RiakKey/binary," ",VClock/binary>>.
-
-riak_key(O) ->
-    riak_object:key(O).
-
-value(O) ->
-    riak_object:get_value(O).
+    RiakBucket = yz_kv:get_obj_bucket(O),
+    RiakKey = yz_kv:get_obj_key(O),
+    %% TODO: do this in KV vnode and pass to hook
+    Hash = base64:encode(yz_kv:hash_object(O)),
+    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.

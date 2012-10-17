@@ -73,6 +73,12 @@ public class EntropyData
             throw new Exception("Parameter 'before' is required");
         }
         int n = req.getParams().getInt("n", DEFAULT_N);
+
+        String partition = req.getParams().get("partition");
+        if (partition == null) {
+            throw new Exception("Parameter 'partition' is required");
+        }
+
         SolrDocumentList docs = new SolrDocumentList();
 
         // Add docs here and modify object inline in code
@@ -83,6 +89,12 @@ public class EntropyData
             AtomicReader rdr = searcher.getAtomicReader();
             BytesRef tmp = null;
             Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
+
+            if (terms == null) {
+                rsp.add("more", false);
+                return;
+            }
+
             TermsEnum te = terms.iterator(null);
 
             if (isContinue(cont)) {
@@ -111,8 +123,10 @@ public class EntropyData
             String text = null;
             String[] vals = null;
             String ts = null;
-            String docId = null;
-            String vectorClock = null;
+            String docPartition = null;
+            String riakBucket = null;
+            String riakKey = null;
+            String hash = null;
             int count = 0;
             BytesRef current = null;
 
@@ -130,13 +144,18 @@ public class EntropyData
                     return;
                 }
 
-                docId = vals[1];
-                vectorClock = vals[2];
-                SolrDocument tmpDoc = new SolrDocument();
-                tmpDoc.addField("doc_id", docId);
-                tmpDoc.addField("base64_vclock", Base64.encodeBase64String(sha(vectorClock)));
-                docs.add(tmpDoc);
-                count++;
+                docPartition = vals[1];
+                riakBucket = vals[2];
+                riakKey = vals[3];
+                hash = vals[4];
+                if (partition.equals(docPartition)) {
+                    SolrDocument tmpDoc = new SolrDocument();
+                    tmpDoc.addField("riak_bucket", riakBucket);
+                    tmpDoc.addField("riak_key", riakKey);
+                    tmpDoc.addField("base64_hash", Base64.encodeBase64String(sha(hash)));
+                    docs.add(tmpDoc);
+                    count++;
+                }
                 tmp = te.next();
             }
 
