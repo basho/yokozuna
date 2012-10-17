@@ -18,15 +18,8 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc A noop extractor. Creates no index field for the
-%%      registered mime type.
-%%
-%% Example:
-%%   
-%%   Value is opaque data, such as an MPG file. Extraction
-%%   will do nothing, and return:
-%%   
-%%   []
+%% @doc A noop extractor. It performs no work, creates no index fields
+%%      for the registered mime type by returning an empty.
 %%
 -module(yz_noop_extractor).
 -include("yokozuna.hrl").
