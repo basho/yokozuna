@@ -28,7 +28,7 @@
 %% NOTE: The map is treated as an orddict so these entries must be
 %%       ordered correctly or `get_def' may report no extractor is
 %%       registered when there is one.
--define(DEFAULT_MAP, [{default,yz_text_extractor},
+-define(DEFAULT_MAP, [{default, yz_noop_extractor},
                       {"application/json",yz_json_extractor},
                       {"application/xml",yz_xml_extractor},
                       {"text/plain",yz_text_extractor},
