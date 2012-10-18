@@ -86,6 +86,19 @@ build.  The following instructions assume a devrel.
 
 ### Creating an Index ###
 
+An _index_ must be created in order for Yokozuna to index data.
+
+Currently the index name is a 1:1 mapping with the bucket name. This
+may eventually change to a 1:M mapping from index to bucket.
+
+You can create an index via the HTTP interface.
+
+    curl -XPUT -i -H 'content-type:application/json' http://localhost:8091/yz/index/name_of_index
+
+Optionally, you may create an index from the console.
+
+#### Index from Console
+
 This command must be run from the Riak console--you must first attach
 to it.
 

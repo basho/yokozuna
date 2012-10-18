@@ -53,6 +53,7 @@ get_indexes_from_ring(Ring) ->
         undefined -> []
     end.
 
+-spec get_info_from_ring(ring(), index_name()) -> index_info().
 get_info_from_ring(Ring, Name) ->
     Indexes = get_indexes_from_ring(Ring),
     orddict:fetch(Name, Indexes).
