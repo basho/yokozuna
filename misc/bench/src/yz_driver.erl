@@ -15,7 +15,7 @@
          mfa_valgen_i/1]).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {pb_conns, index, iurls, surls}).
+-record(state, {pb_conns, index, rurls, surls}).
 -define(DONT_VERIFY, dont_verify).
 
 %% ====================================================================
@@ -27,17 +27,19 @@ new(_Id) ->
     Index = basho_bench_config:get(index, "test"),
     HTTP = basho_bench_config:get(http_conns, [{"127.0.0.1", 8098}]),
     PB = basho_bench_config:get(pb_conns, [{"127.0.0.1", 8087}]),
-    IPath = basho_bench_config:get(index_path, "/riak/test"),
+    RPath = basho_bench_config:get(riak_path, "/riak/test"),
     SPath = basho_bench_config:get(search_path, "/search/test"),
-    IURLs = array:from_list(lists:map(make_url(IPath), HTTP)),
+    IPath = basho_bench_config:get(index_path, "/yz/index/test"),
+    RURLs = array:from_list(lists:map(make_url(RPath), HTTP)),
     SURLs = array:from_list(lists:map(make_url(SPath), HTTP)),
+    IURLs = array:from_list(lists:map(make_url(IPath), HTTP)),
     Conns = array:from_list(lists:map(fun make_conn/1, PB)),
     N = length(HTTP),
     M = length(PB),
 
     {ok, #state{pb_conns={Conns, {0,M}},
                 index=list_to_binary(Index),
-                iurls={IURLs, {0,N}},
+                rurls={RURLs, {0,N}},
                 surls={SURLs, {0,N}}}}.
 
 run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
@@ -69,22 +71,22 @@ run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
             {error, Reason, S2}
     end;
 
-run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
+run({index, CT}, _KeyGen, ValGen, S=#state{rurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Line} = ValGen(index),
     Key2 = mochiweb_util:quote_plus(Key),
     URL = ?FMT("~s/~s", [Base, Key2]),
-    S2 = S#state{iurls=wrap(URLs)},
+    S2 = S#state{rurls=wrap(URLs)},
     case http_put(URL, CT, Line) of
         ok -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
     end;
 
-run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
+run(load_fruit, KeyValGen, _, S=#state{rurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Val} = KeyValGen(),
     URL = ?FMT("~s/~p", [Base, Key]),
-    S2 = S#state{iurls=wrap(URLs)},
+    S2 = S#state{rurls=wrap(URLs)},
     case http_put(URL, "text/plain", Val) of
         ok -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}

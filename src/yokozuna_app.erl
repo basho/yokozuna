@@ -34,7 +34,7 @@ start(_StartType, _StartArgs) ->
     case yokozuna_sup:start_link() of
         {ok, Pid} ->
             register_app(),
-            Routes = yz_wm_search:routes() ++ yz_wm_extract:routes(),
+            Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++ yz_wm_index:routes(),
             yz_misc:add_routes(Routes),
             {ok, Pid};
         Error ->

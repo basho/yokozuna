@@ -96,6 +96,33 @@ make_dirs([Dir|Rest]) ->
     ok = make_dir(Dir),
     make_dirs(Rest).
 
+-spec delete_dir(string() | atom() | binary()) -> ok | {error, atom()}.
+delete_dir(Dir) ->
+    case filelib:is_file(Dir) of
+        true ->
+            case filelib:is_dir(Dir) of
+                true -> delete_dir([Dir], []);
+                false -> {error, enotdir}
+            end;
+        false -> {error, enoent}
+    end.
+
+delete_dir([], Acc) -> Acc;
+delete_dir([Path|Paths], Acc) ->
+    delete_dir(Paths,
+        case filelib:is_dir(Path) of
+            false ->
+              file:delete(Path);
+              % ok;
+            true ->
+                {ok, Listing} = file:list_dir(Path),
+                SubPaths = [filename:join(Path, Name) || Name <- Listing],
+                delete_dir(SubPaths, [Path | Acc]),
+                % dir should be clean by now
+                file:del_dir(Path)
+                % ok
+        end).
+
 %% @doc Take a list `L' and pair adjacent elements wrapping around the
 %%      end by pairing the first with the last.
 -spec make_pairs([T]) -> [{T,T}].
