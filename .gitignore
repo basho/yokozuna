@@ -8,3 +8,6 @@ priv/solr-jars
 priv/lucene-solr
 *.class
 *.tgz
+riak_test/ebin
+tests/20*
+tests/current
