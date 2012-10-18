@@ -24,7 +24,6 @@
 -module(yz_noop_extractor).
 -include("yokozuna.hrl").
 -compile(export_all).
--define(NO_OPTIONS, []).
 -define(NOOP_RESULTS, []).
 
 extract(Value) ->
@@ -32,5 +31,5 @@ extract(Value) ->
 
 -spec extract(binary(), proplist()) -> [{binary(), binary()}] |
                                        {error, any()}.
-extract(Value, Opts) ->
+extract(_Value, _Opts) ->
     ?NOOP_RESULTS.
