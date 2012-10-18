@@ -52,3 +52,12 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
     C = yz_kv:client(),
     yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml").
 
+%% @doc Checks if the given `SchemaName' actually exists.
+-spec exists(schema_name()) -> true | false.
+exists(SchemaName) ->
+    case yz_schema:get(SchemaName) of
+        {notfound, _} -> false;
+        _ -> true
+    end.
+
+

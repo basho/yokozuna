@@ -113,6 +113,13 @@ install_hook(Bucket) when is_binary(Bucket) ->
     Fun = index,
     ok = riak_kv_vnode:add_obj_modified_hook(Bucket, Mod, Fun).
 
+%% @doc Uninstall the object modified hook on the given `Bucket'.
+-spec uninstall_hook(binary()) -> ok.
+uninstall_hook(Bucket) when is_binary(Bucket) ->
+    Mod = yz_kv,
+    Fun = index,
+    ok = remove_obj_modified_hook(Bucket, Mod, Fun).
+
 %% @doc Write a value
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
 put(Client, Bucket, Key, Value, ContentType) ->
@@ -122,6 +129,19 @@ put(Client, Bucket, Key, Value, ContentType) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @private
+%%
+%% @docs remove a hook from the bucket
+%%
+%% NOTE: Move this into riak_kv
+remove_obj_modified_hook(Bucket, Mod, Fun) ->
+    BProps = riak_core_bucket:get_bucket(Bucket),
+    Existing = proplists:get_value(obj_modified_hooks, BProps, []),
+    HookProp = {Mod, Fun},
+    Hooks = lists:delete(HookProp, Existing),
+    ok = riak_core_bucket:set_bucket(Bucket, [{obj_modified_hooks, Hooks}]).
+
 
 %% @private
 %%
