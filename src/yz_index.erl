@@ -37,14 +37,25 @@ create(Name) ->
 
 %% @doc Create the index `Name' across the entire cluster using
 %%      `SchemaName' as the schema.
--spec create(string(), schema_name()) -> ok.
+%%      Returns 'ok' if created, or 'notfound' if the
+%%      `SchemaName' is unknown
+-spec create(string(), schema_name()) -> ok | notfound.
 create(Name, SchemaName) ->
-    Info = make_info(Name, SchemaName),
-    ok = add_to_ring(Name, Info).
+    case yz_schema:get(SchemaName) of
+        {notfound, _} -> notfound;
+        _ ->
+            Info = make_info(Name, SchemaName),
+            ok = add_to_ring(Name, Info)
+    end.
 
 -spec exists(string()) -> boolean().
 exists(Name) ->
     true == yz_solr:ping(Name).
+
+%% @doc Removed the index `Name' from the entire cluster.
+-spec remove(string()) -> ok.
+remove(Name) ->
+    ok = remove_from_ring(Name).
 
 -spec get_indexes_from_ring(ring()) -> indexes().
 get_indexes_from_ring(Ring) ->
@@ -88,6 +99,33 @@ local_create(Ring, Name) ->
     {ok, _, _} = yz_solr:core(create, CoreProps),
     ok.
 
+%% @doc Remove the index `Name' locally.
+-spec local_remove(ring(), string()) -> ok.
+local_remove(_Ring, Name) ->
+    % IndexDir = index_dir(Name),
+    % ConfDir = filename:join([IndexDir, "conf"]),
+    % ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
+    % DataDir = filename:join([IndexDir, "data"]),
+    % Info = get_info_from_ring(Ring, Name),
+    % SchemaName = schema_name(Info),
+    % RawSchema = yz_schema:get(SchemaName),
+    % SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
+
+    % TODO: delete these dirs and schema files
+    % yz_misc:make_dirs([ConfDir, DataDir]),
+    % yz_misc:copy_files(ConfFiles, ConfDir),
+    % ok = file:write_file(SchemaFile, RawSchema),
+
+    CoreProps = [
+                 {core, Name}
+                 % {delete_index, "true"}
+                 % {index_dir, IndexDir},
+                 % {cfg_file, ?YZ_CORE_CFG_FILE},
+                 % {schema_file, SchemaFile}
+                ],
+    {ok, _, _} = yz_solr:core(remove, CoreProps),
+    ok.
+
 name(Info) ->
     Info#index_info.name.
 
@@ -121,6 +159,17 @@ add_index(Indexes, Name, Info) ->
 add_to_ring(Name, Info) ->
     Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
     Indexes2 = add_index(Indexes, Name, Info),
+    yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
+    ok.
+
+-spec remove_index(indexes(), index_name()) -> indexes().
+remove_index(Indexes, Name) ->
+    orddict:erase(Name, Indexes).
+
+-spec remove_from_ring(index_name()) -> ok.
+remove_from_ring(Name) ->
+    Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
+    Indexes2 = remove_index(Indexes, Name),
     yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
     ok.
 

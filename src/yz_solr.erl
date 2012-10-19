@@ -24,7 +24,8 @@
 
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
-                       {schema_file, schema}]).
+                       {schema_file, schema},
+                       {delete_index, deleteIndex}]).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {'query', [], [Str]}).
@@ -217,7 +218,8 @@ fpn_str(FPN) ->
     ?YZ_FPN_FIELD_S ++ ":" ++ integer_to_list(FPN).
 
 convert_action(create) -> "CREATE";
-convert_action(status) -> "STATUS".
+convert_action(status) -> "STATUS";
+convert_action(remove) -> "UNLOAD".
 
 %% TODO: Encoding functions copied from esolr, redo this.
 encode_commit() ->

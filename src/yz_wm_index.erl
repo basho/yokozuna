@@ -58,7 +58,7 @@ delete_resource(RD, S) ->
     IndexName = wrq:path_info(index, RD),
     case yz_index:exists(IndexName) of
         true  ->
-            delete_index(IndexName),
+            ok = delete_index(IndexName),
             {true, RD, S};
         false -> {false, RD, S}
     end.
@@ -69,25 +69,22 @@ delete_resource(RD, S) ->
 %% of that name already exists. Returns a 500 error if
 %% the given schema does not exist.
 create_index(RD, S) ->
+    IndexName = wrq:path_info(index, RD),
     RDBody = wrq:req_body(RD),
-    case RDBody of
-        "" -> SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
-        _  -> SchemaName = get_schema_name(RDBody)
+    case (RDBody == <<>>) or (RDBody == []) of
+        true  -> SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
+        false -> SchemaName = get_schema_name(RDBody)
     end,
-    case yz_schema:get(SchemaName) of
-        {notfound, _} ->
+    case create_install_index_if_exists(IndexName, SchemaName) of
+        notfound ->
             BodyResp = wrq:set_resp_header("Content-Type", "text/plain", RD),
             BodyResp2 = wrq:set_resp_body("Schema does not exist", BodyResp),
             {{halt, 500}, BodyResp2, S};
-        _ ->
-            ?INFO("PUT ~p~n", [SchemaName]),
-            IndexName = wrq:path_info(index, RD),
-            Body = create_install_index_if_exists(IndexName, SchemaName),
+        Body ->
             BodyResp = wrq:set_resp_header("Content-Type", "text/plain", RD),
             BodyResp2 = wrq:set_resp_body(Body, BodyResp),
             {Body, BodyResp2, S}
     end.
-
 
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
@@ -110,12 +107,6 @@ read_index(RD, S) ->
     {Body, RD, S}.
 
 
-%% Responds to a GET request by returning index info for
-%% all indexes as a JSON response.
-% read_indexes(RD, S) ->
-%     yz_index:get_indexes_from_ring(Ring).
-
-
 %% private
 
 % Extracts the schema name from a json string.
@@ -135,11 +126,14 @@ create_install_index_if_exists(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
         true  -> "exists";
         false ->
-            ok = yz_index:create(IndexName, SchemaName),
-            ok = yz_kv:install_hook(list_to_binary(IndexName)),
-            "ok"
+            case yz_index:create(IndexName, SchemaName) of
+                notfound -> notfound;
+                ok ->
+                    ok = yz_kv:install_hook(list_to_binary(IndexName)),
+                    "ok"
+            end
     end.
 
 % TODO: delete the index
-delete_index(_IndexName)->
-    true.
+delete_index(IndexName)->
+    yz_index:remove(IndexName).

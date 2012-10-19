@@ -189,8 +189,20 @@ node_ops(Mapping, Nodes) ->
     Added = sets:subtract(NodesSet, MappingNodesSet),
     {sets:to_list(Removed), sets:to_list(Added)}.
 
-remove_indexes(_Names) ->
-    throw(implement_remove_indexes).
+% remove_indexes(_Names) ->
+%     throw(implement_remove_indexes).
+
+-spec remove_index(ring(), index_name()) -> ok.
+remove_index(Ring, Name) ->
+    case yz_index:exists(Name) of
+        true -> ok = yz_index:local_remove(Ring, Name);
+        false -> ok
+    end.
+
+-spec remove_indexes(ring(), index_set()) -> ok.
+remove_indexes(Ring, Names) ->
+    [remove_index(Ring, N) || N <- Names],
+    ok.
 
 -spec remove_node(node(), list()) -> list().
 remove_node(Node, Mapping) ->
@@ -228,8 +240,8 @@ set_tick() ->
     erlang:send_after(Interval, ?MODULE, tick),
     ok.
 
-sync_indexes(Ring, _Removed, Added, Same) ->
-    %% ok = remove_indexes(Removed),
+sync_indexes(Ring, Removed, Added, Same) ->
+    ok = remove_indexes(Ring, Removed),
     ok = add_indexes(Ring, Added ++ Same).
 
 watch_node_events() ->
