@@ -6,10 +6,6 @@ Testing
 Riak Test is a tool for running integration tests against a Riak
 cluster.  See the [Riak Test README][rt_readme] for more details.
 
-### Checkout Riak Test
-
-    git clone git://github.com/basho/riak_test.git
-
 ### Build a Riak/Yokozuna devrel
 
 Make a directory to build the devrel.
@@ -28,6 +24,8 @@ devrel.
 
     make deps
 
+    cd deps
+
     rm -rf riak_kv
     git clone git://github.com/rzezeski/riak_kv.git
     (cd riak_kv && git checkout rz-yokozuna)
@@ -44,7 +42,7 @@ Test.  It provides the ability to easily rollback the cluster to a
 fresh state.
 
     cd ~/testing
-    <path-to-riak-test>/bin/rtdev-setup-releases.sh
+    ./riak_yz/deps/riak_test/bin/rtdev-setup-releases.sh
 
 ### Compile Yokozuna Riak Test
 
@@ -58,6 +56,13 @@ pass.  A second invocation of make is required.
     make
 
 At this point you should see `.beam` files in `riak_test/ebin`.
+
+### Compile Yokozuna Bench Files
+
+    cd <path-to-yokozuna>/misc/bench
+    ../../rebar get-deps
+    ../../rebar compile
+    (cd deps/basho_bench && make)
 
 ### Add Yokozuna Config
 
@@ -73,17 +78,14 @@ Open `~/.riak_test.config` and add the following to the end.
 
 ### Run the Test
 
-In order for the test to run correctly two environment variables must
-be set.  The `BASHO_BENCH` var is needed so Riak Test can invoke Basho
-Bench.  The `YZ_BENCH_DIR` is needed so Riak Test can find the files
-to drive Basho Bench.
+The `YZ_BENCH_DIR` is needed so Riak Test can find the files to drive
+Basho Bench.
 
-    export BASHO_BENCH=<path/to/basho/bench/home>
     export YZ_BENCH_DIR=<path/to/yokozuna/home>/misc/bench
 
-Finally, run the test.  Currently there are intermittent failures.  I
-suspect there are a few race conditions occurring.
+Finally, run the test.
 
+    cd <path-to-yokozuna>
     ./rebar config=yokozuna test=yokozuna_essential rt_run | tee rtrun.out
 
 [rt_readme]: https://github.com/basho/riak_test/blob/master/README.md

@@ -117,7 +117,7 @@ run_bb(Method, File) ->
               sync -> cmd;
               async -> spawn_cmd
           end,
-    rt:Fun("$BASHO_BENCH/basho_bench " ++ File).
+    rt:Fun("$YZ_BENCH_DIR/deps/basho_bench/basho_bench " ++ File).
 
 select_random(List) ->
     Length = length(List),
