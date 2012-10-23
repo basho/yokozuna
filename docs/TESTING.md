@@ -28,11 +28,6 @@ devrel.
 
     make deps
 
-    cd deps
-    rm -rf riak_core
-    git clone git://github.com/rzezeski/riak_core.git
-    (cd riak_core && git checkout rz-yokozuna)
-
     rm -rf riak_kv
     git clone git://github.com/rzezeski/riak_kv.git
     (cd riak_kv && git checkout rz-yokozuna)

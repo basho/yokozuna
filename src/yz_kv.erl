@@ -96,7 +96,7 @@ index(Obj, Reason, VNodeState) ->
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
     NVal = riak_core_bucket:n_val(BProps),
     Idx = riak_core_util:chash_key(BKey),
-    IdealPreflist = riak_core_ring:preflist(Idx, NVal, Ring),
+    IdealPreflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), NVal),
     LFPN = yz_cover:logical_partition(LI, first_partition(IdealPreflist)),
     LP = yz_cover:logical_partition(LI, get_partition(VNodeState)),
     Doc = yz_doc:make_doc(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),

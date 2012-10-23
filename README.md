@@ -37,13 +37,10 @@ you should be able to complete these steps.
 
         make deps
 
-4. Replace the Riak Core and KV dependencies with my forks and
-   checkout the Yokozuna branch.
+4. Replace the Riak KV dependency with my fork and checkout the
+   Yokozuna branch.
 
         cd deps
-        rm -rf riak_core
-        git clone git://github.com/rzezeski/riak_core.git
-        (cd riak_core && git checkout rz-yokozuna)
 
         rm -rf riak_kv
         git clone git://github.com/rzezeski/riak_kv.git
