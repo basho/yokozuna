@@ -58,18 +58,10 @@ start_link() ->
 
 init([]) ->
     ok = watch_ring_events(),
-    ok = watch_node_events(),
     ok = create_events_table(),
     ok = set_tick(),
     {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
     {ok, #state{previous_ring=Ring}}.
-
-handle_cast({node_event, _Node, _Status}=NE, S) ->
-    Mapping = get_mapping(),
-    Mapping2 = new_mapping(NE, Mapping),
-    ok = set_mapping(Mapping2),
-
-    {noreply, S};
 
 handle_cast({ring_event, Ring}=RE, S) ->
     PrevRing = ?PREV_RING(S),
@@ -86,6 +78,11 @@ handle_cast({ring_event, Ring}=RE, S) ->
 
 handle_info(tick, S) ->
     ok = remove_non_owned_data(),
+
+    Mapping = get_mapping(),
+    Mapping2 = check_unkown(Mapping),
+    ok = set_mapping(Mapping2),
+
     ok = set_tick(),
     {noreply, S}.
 
@@ -170,10 +167,6 @@ names(Indexes) ->
     [Name || {Name,_} <- Indexes].
 
 -spec new_mapping(event(), list()) -> list().
-new_mapping({node_event, Node, down}, Mapping) ->
-    remove_node(Node, Mapping);
-new_mapping({node_event, Node, up}, Mapping) ->
-    add_node(Node, Mapping);
 new_mapping({ring_event, Ring}, Mapping) ->
     Nodes = riak_core_ring:all_members(Ring),
     {Removed, Added} = node_ops(Mapping, Nodes),
@@ -211,11 +204,6 @@ remove_non_owned_data() ->
     [maybe_log(R) || R <- Removed],
     ok.
 
-send_node_update({node_update, Node, Status}) ->
-    gen_server:cast(?MODULE, {node_event, Node, Status});
-send_node_update(_) ->
-    ok.
-
 send_ring_event(Ring) ->
     gen_server:cast(?MODULE, {ring_event, Ring}).
 
@@ -232,9 +220,5 @@ sync_indexes(Ring, _Removed, Added, Same) ->
     %% ok = remove_indexes(Removed),
     ok = add_indexes(Ring, Added ++ Same).
 
-watch_node_events() ->
-    riak_core_node_watcher_events:add_sup_callback(fun send_node_update/1).
-
 watch_ring_events() ->
     riak_core_ring_events:add_sup_callback(fun send_ring_event/1).
-

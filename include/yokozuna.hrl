@@ -82,9 +82,8 @@
 -type logical_cover_set() :: [lp_node()].
 -type filter_cover_set() :: [{p_node(), filter()}].
 
--type node_event() :: {node_event, node(), up | down}.
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
--type event() :: node_event() | ring_event().
+-type event() :: ring_event().
 
 
 %%%===================================================================
