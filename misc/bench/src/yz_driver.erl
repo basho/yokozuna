@@ -15,7 +15,7 @@
          mfa_valgen_i/1]).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {pb_conns, index, rurls, surls, iurls}).
+-record(state, {pb_conns, index, rurls, surls}).
 -define(DONT_VERIFY, dont_verify).
 
 %% ====================================================================
@@ -29,7 +29,7 @@ new(_Id) ->
     PB = basho_bench_config:get(pb_conns, [{"127.0.0.1", 8087}]),
     RPath = basho_bench_config:get(riak_path, "/riak/test"),
     SPath = basho_bench_config:get(search_path, "/search/test"),
-    IPath = basho_bench_config:get(index_path, "/yz/test"),
+    IPath = basho_bench_config:get(index_path, "/yz/index/test"),
     RURLs = array:from_list(lists:map(make_url(RPath), HTTP)),
     SURLs = array:from_list(lists:map(make_url(SPath), HTTP)),
     IURLs = array:from_list(lists:map(make_url(IPath), HTTP)),
@@ -40,8 +40,7 @@ new(_Id) ->
     {ok, #state{pb_conns={Conns, {0,M}},
                 index=list_to_binary(Index),
                 rurls={RURLs, {0,N}},
-                surls={SURLs, {0,N}},
-                iurls={IURLs, {0,N}}}}.
+                surls={SURLs, {0,N}}}}.
 
 run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
     Base = get_base(URLs),

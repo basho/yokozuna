@@ -103,12 +103,11 @@ local_create(Ring, Name) ->
 -spec local_remove(string()) -> ok.
 local_remove(Name) ->
     CoreProps = [
-                 {core, Name},
-                 {remove_index, "true"}
+                    {core, Name},
+                    {delete_instance, "true"}
                 ],
     {ok, _, _} = yz_solr:core(remove, CoreProps),
-    IndexDir = index_dir(Name),
-    yz_misc:delete_dir(IndexDir).
+    ok.
 
 name(Info) ->
     Info#index_info.name.
@@ -155,8 +154,6 @@ remove_from_ring(Name) ->
     Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
     Indexes2 = remove_index(Indexes, Name),
     yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
-    % XXX: ring event is not fired
-    ok = local_remove(Name),
     ok.
 
 index_dir(Name) ->

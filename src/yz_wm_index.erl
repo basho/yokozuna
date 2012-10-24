@@ -19,13 +19,14 @@
 %% -------------------------------------------------------------------
 
 
-%% @doc Resource for serving Riak objects over HTTP.
+%% @doc Resource for managing Yokozuna Indexes over HTTP.
 %%
 %% Available operations:
 %% 
 %% GET /yz/index
-%%   Get information about every index in this ring in JSON format.
-%%   Currently the same information as /yz/index/Index
+%%   Get information about every index in JSON format.
+%%   Currently the same information as /yz/index/Index,
+%%   but as an array of JSON objects.
 %%   
 %% GET /yz/index/Index
 %%   Gets information about a specific index in JSON format.
@@ -36,8 +37,9 @@
 %%      "schema": SchemaName
 %%   }
 %%   IndexName is the same value passed into the URL. Schema
-%%   is the solr schema type already installed on the server,
-%%   defaulting to "_yz_default".
+%%   is the name of the schema associate with this index. That
+%%   schema file must already be installed on the server.
+%%   Defaults to "_yz_default".
 %%
 %% PUT /yz/index/Index
 %%   Creates a new index with the given name, and also creates
@@ -57,10 +59,10 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(ctx, {api_version,  %% atom() - Determine which version of the API to use.
-              index_name,   %% string() - name the index
-              props,        %% proplist() - properties of the body
-              method        %% atom() - HTTP method for the request
+-record(ctx, {api_version :: atom(),  % Determine which version of the API to use.
+              index_name :: string(), % name the index
+              props :: proplist(),    % properties of the body
+              method :: atom()        % HTTP method for the request
              }).
 
 %%%===================================================================
@@ -120,17 +122,13 @@ delete_resource(RD, S) ->
 create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
-    case proplists:get_value(<<"schema">>, BodyProps) of
-        undefined  -> SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
-        SchemaName -> SchemaName = SchemaName
-    end,
-    BodyResp = wrq:set_resp_header("Content-Type", "text/plain", RD),
+    SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
     case create_install_index_if_exists(IndexName, SchemaName) of
         notfound ->
             {{halt, 500},
                 wrq:set_resp_header("Content-Type", "text/plain",
                     wrq:append_to_response_body(
-                        io_lib:format("Schema does not exist~n",[]),
+                        io_lib:format("Schema ~p does not exist~n",[SchemaName]),
                         RD)),
                 S};
         Body ->
@@ -205,7 +203,7 @@ malformed_request(RD, S) ->
 %%% Private
 %%%===================================================================
 
-% accepts a string and attempt to parse it into json
+%% accepts a string and attempt to parse it into json
 decode_json(RDBody) ->
     case (RDBody == <<>>) or (RDBody == []) of
       true  -> [];
@@ -216,9 +214,9 @@ decode_json(RDBody) ->
           end
     end.
 
-% If the index exists, return "exists".
-% If not, create it and return "ok"
-% If the schema does not exist, return 'notfound' 
+%% If the index exists, return "exists".
+%% If not, create it and return "ok"
+%% If the schema does not exist, return 'notfound' 
 create_install_index_if_exists(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
         true  -> "exists";

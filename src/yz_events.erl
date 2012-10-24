@@ -73,6 +73,7 @@ handle_cast({node_event, _Node, _Status}=NE, S) ->
 
 handle_cast({ring_event, Ring}=RE, S) ->
     PrevRing = ?PREV_RING(S),
+    S2 = S#state{previous_ring=Ring},
     Mapping = get_mapping(),
     Mapping2 = new_mapping(RE, Mapping),
     ok = set_mapping(Mapping2),
@@ -82,7 +83,7 @@ handle_cast({ring_event, Ring}=RE, S) ->
     {Removed, Added, Same} = yz_misc:delta(Previous, Current),
     ok = sync_indexes(Ring, Removed, Added, Same),
 
-    {noreply, S}.
+    {noreply, S2}.
 
 handle_info(tick, S) ->
     ok = remove_non_owned_data(),
