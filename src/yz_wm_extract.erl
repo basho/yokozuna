@@ -28,7 +28,7 @@
           extractor_name :: extractor_name()
          }).
 -define(HEAD_CTYPE, "content-type").
--define(YZ_HEAD_EXTRACTOR, "x-extractor").
+-define(YZ_HEAD_EXTRACTOR, "yz-extractor").
 
 routes() ->
     [{["extract"], yz_wm_extract, []}].
