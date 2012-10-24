@@ -18,10 +18,50 @@
 %%
 %% -------------------------------------------------------------------
 
+
+%% @doc Resource for serving Riak objects over HTTP.
+%%
+%% Available operations:
+%% 
+%% GET /yz/index
+%%   Get information about every index in this ring in JSON format.
+%%   Currently the same information as /yz/index/Index
+%%   
+%% GET /yz/index/Index
+%%   Gets information about a specific index in JSON format.
+%%   Returns the following information:
+%%   {
+%%      "name"  : IndexName,
+%%      "bucket": IndexName,
+%%      "schema": SchemaName
+%%   }
+%%   IndexName is the same value passed into the URL. Schema
+%%   is the solr schema type already installed on the server,
+%%   defaulting to "_yz_default".
+%%
+%% PUT /yz/index/Index
+%%   Creates a new index with the given name, and also creates
+%%   a post commit hook to a bucket of the same name.
+%%   A PUT request requires this header:
+%%   Content-Type: application/json
+%%   A JSON body may be sent. It currently only accepts
+%%   { "schema" : SchemaName }
+%%   If no "schema" is given, it defaults to "_yz_default".
+%%
+%% DELETE /yz/index/Index
+%%   Deletes the index with the given index name.
+%%   
+
 -module(yz_wm_index).
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
+
+-record(ctx, {api_version,  %% atom() - Determine which version of the API to use.
+              index_name,   %% string() - name the index
+              props,        %% proplist() - properties of the body
+              method        %% atom() - HTTP method for the request
+             }).
 
 %%%===================================================================
 %%% API
@@ -29,15 +69,25 @@
 
 %% @doc Return the list of routes provided by this resource.
 routes() ->
-    [{["yz", "index", index], yz_wm_index, []}].
+    [{["yz", "index", index], yz_wm_index, []},
+     {["yz", "index"], yz_wm_index, []}].
 
 
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
 
-init(_) ->
-    {ok, none}.
+init(_Props) ->
+    {ok, #ctx{api_version='0.1'}}.
+
+service_available(RD, Ctx=#ctx{}) ->
+    {true,
+        RD,
+        Ctx#ctx{
+            method=wrq:method(RD),
+            index_name=wrq:path_info(index, RD),
+            props=decode_json(wrq:req_body(RD))}
+    }.
 
 allowed_methods(RD, S) ->
     Methods = ['GET', 'PUT', 'DELETE'],
@@ -54,11 +104,10 @@ content_types_accepted(RD, S) ->
 % Responsed to a DELETE request by removing the
 % given index, and returning a 2xx code if successful
 delete_resource(RD, S) ->
-    ?INFO("DELETE~n", []),
-    IndexName = wrq:path_info(index, RD),
+    IndexName = S#ctx.index_name,
     case yz_index:exists(IndexName) of
         true  ->
-            ok = delete_index(IndexName),
+            ok = yz_index:remove(IndexName),
             {true, RD, S};
         false -> {false, RD, S}
     end.
@@ -69,59 +118,107 @@ delete_resource(RD, S) ->
 %% of that name already exists. Returns a 500 error if
 %% the given schema does not exist.
 create_index(RD, S) ->
-    IndexName = wrq:path_info(index, RD),
-    RDBody = wrq:req_body(RD),
-    case (RDBody == <<>>) or (RDBody == []) of
-        true  -> SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
-        false -> SchemaName = get_schema_name(RDBody)
+    IndexName = S#ctx.index_name,
+    BodyProps = S#ctx.props,
+    case proplists:get_value(<<"schema">>, BodyProps) of
+        undefined  -> SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
+        SchemaName -> SchemaName = SchemaName
     end,
+    BodyResp = wrq:set_resp_header("Content-Type", "text/plain", RD),
     case create_install_index_if_exists(IndexName, SchemaName) of
         notfound ->
-            BodyResp = wrq:set_resp_header("Content-Type", "text/plain", RD),
-            BodyResp2 = wrq:set_resp_body("Schema does not exist", BodyResp),
-            {{halt, 500}, BodyResp2, S};
+            {{halt, 500},
+                wrq:set_resp_header("Content-Type", "text/plain",
+                    wrq:append_to_response_body(
+                        io_lib:format("Schema does not exist~n",[]),
+                        RD)),
+                S};
         Body ->
-            BodyResp = wrq:set_resp_header("Content-Type", "text/plain", RD),
-            BodyResp2 = wrq:set_resp_body(Body, BodyResp),
-            {Body, BodyResp2, S}
+            {Body,
+                wrq:set_resp_header("Content-Type", "text/plain",
+                    wrq:append_to_response_body(Body, RD)),
+                S}
     end.
 
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
 read_index(RD, S) ->
-    % case wrq:get_qs_value("raw_schema", RD) of
-    %     undefined   -> GetRawSchema = false;
-    %     "true"      -> GetRawSchema = true;
-    %     _           -> GetRawSchema = false
-    % end,
-    IndexName = wrq:path_info(index, RD),
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    case S#ctx.index_name of
+        undefined  ->
+            Indexes = yz_index:get_indexes_from_ring(Ring),
+            Details = {array,[index_body(Ring, IndexName)
+              || IndexName <- orddict:fetch_keys(Indexes)]};
+        IndexName ->
+            Details = index_body(Ring, IndexName)
+    end,
+    {mochijson:encode(Details), RD, S}.
+
+index_body(Ring, IndexName) ->
     Info = yz_index:get_info_from_ring(Ring, IndexName),
     SchemaName = yz_index:schema_name(Info),
-    % RawSchema = yz_schema:get(SchemaName),
-    Body = mochijson:encode({struct, [
-          {"name", IndexName},
-          {"bucket", IndexName},
-          {"schema", SchemaName}
-        ]}),
-    {Body, RD, S}.
+    {struct, [
+        {"name", IndexName},
+        {"bucket", IndexName},
+        {"schema", SchemaName}
+    ]}.
 
 
-%% private
+missing_content_type(RD) ->
+    RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
+    wrq:append_to_response_body(
+      io_lib:format("Missing Content-Type request header~n",[]),
+      RD1).
 
-% Extracts the schema name from a json string.
-get_schema_name(RDBody)->
-    case mochijson2:decode(RDBody) of
-        {struct, BodyData} -> 
-            case proplists:get_value(<<"schema">>, BodyData) of
-                undefined  -> ?YZ_DEFAULT_SCHEMA_NAME;
-                SchemaName -> SchemaName
-            end;
-        _ -> ?YZ_DEFAULT_SCHEMA_NAME
+malformed_request(RD, S) when S#ctx.method =:= 'PUT' ->
+    case S#ctx.index_name of
+        undefined -> {{halt, 404}, RD, S};
+        _ ->
+            case wrq:get_req_header("Content-Type", RD) of
+                undefined -> {true, missing_content_type(RD), S};
+                _         -> {false, RD, S}
+            end
+    end;
+malformed_request(RD, S) when S#ctx.method =:= 'DELETE' ->
+    case S#ctx.index_name of
+        undefined -> {{halt, 404}, RD, S};
+        _ -> {false, RD, S}
+    end;
+malformed_request(RD, S) ->
+    IndexName = S#ctx.index_name,
+    case IndexName of
+      undefined -> {false, RD, S};
+      _ ->
+          case yz_index:exists(IndexName) of
+              true -> {false, RD, S};
+              _    ->
+                  {{halt, 404},
+                      wrq:set_resp_header("Content-Type", "text/plain",
+                          wrq:append_to_response_body(
+                              io_lib:format("not found~n",[]),
+                              RD)),
+                      S}
+          end
+    end.
+
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
+% accepts a string and attempt to parse it into json
+decode_json(RDBody) ->
+    case (RDBody == <<>>) or (RDBody == []) of
+      true  -> [];
+      false -> 
+          case mochijson2:decode(RDBody) of
+              {struct, BodyData} -> BodyData;
+              _ -> []
+          end
     end.
 
 % If the index exists, return "exists".
 % If not, create it and return "ok"
+% If the schema does not exist, return 'notfound' 
 create_install_index_if_exists(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
         true  -> "exists";
@@ -133,7 +230,3 @@ create_install_index_if_exists(IndexName, SchemaName)->
                     "ok"
             end
     end.
-
-% TODO: delete the index
-delete_index(IndexName)->
-    yz_index:remove(IndexName).

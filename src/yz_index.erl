@@ -100,31 +100,15 @@ local_create(Ring, Name) ->
     ok.
 
 %% @doc Remove the index `Name' locally.
--spec local_remove(ring(), string()) -> ok.
-local_remove(_Ring, Name) ->
-    % IndexDir = index_dir(Name),
-    % ConfDir = filename:join([IndexDir, "conf"]),
-    % ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
-    % DataDir = filename:join([IndexDir, "data"]),
-    % Info = get_info_from_ring(Ring, Name),
-    % SchemaName = schema_name(Info),
-    % RawSchema = yz_schema:get(SchemaName),
-    % SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
-
-    % TODO: delete these dirs and schema files
-    % yz_misc:make_dirs([ConfDir, DataDir]),
-    % yz_misc:copy_files(ConfFiles, ConfDir),
-    % ok = file:write_file(SchemaFile, RawSchema),
-
+-spec local_remove(string()) -> ok.
+local_remove(Name) ->
     CoreProps = [
-                 {core, Name}
-                 % {delete_index, "true"}
-                 % {index_dir, IndexDir},
-                 % {cfg_file, ?YZ_CORE_CFG_FILE},
-                 % {schema_file, SchemaFile}
+                 {core, Name},
+                 {remove_index, "true"}
                 ],
     {ok, _, _} = yz_solr:core(remove, CoreProps),
-    ok.
+    IndexDir = index_dir(Name),
+    yz_misc:delete_dir(IndexDir).
 
 name(Info) ->
     Info#index_info.name.
@@ -171,6 +155,8 @@ remove_from_ring(Name) ->
     Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
     Indexes2 = remove_index(Indexes, Name),
     yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
+    % XXX: ring event is not fired
+    ok = local_remove(Name),
     ok.
 
 index_dir(Name) ->

@@ -25,7 +25,7 @@
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
                        {schema_file, schema},
-                       {delete_index, deleteIndex}]).
+                       {remove_index, deleteIndex}]).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {'query', [], [Str]}).
