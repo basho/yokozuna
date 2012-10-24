@@ -65,6 +65,7 @@ init([]) ->
 
 handle_cast({ring_event, Ring}=RE, S) ->
     PrevRing = ?PREV_RING(S),
+    S2 = S#state{previous_ring=Ring},
     Mapping = get_mapping(),
     Mapping2 = new_mapping(RE, Mapping),
     ok = set_mapping(Mapping2),
@@ -74,7 +75,7 @@ handle_cast({ring_event, Ring}=RE, S) ->
     {Removed, Added, Same} = yz_misc:delta(Previous, Current),
     ok = sync_indexes(Ring, Removed, Added, Same),
 
-    {noreply, S}.
+    {noreply, S2}.
 
 handle_info(tick, S) ->
     ok = remove_non_owned_data(),
@@ -182,8 +183,17 @@ node_ops(Mapping, Nodes) ->
     Added = sets:subtract(NodesSet, MappingNodesSet),
     {sets:to_list(Removed), sets:to_list(Added)}.
 
-remove_indexes(_Names) ->
-    throw(implement_remove_indexes).
+-spec remove_index(index_name()) -> ok.
+remove_index(Name) ->
+    case yz_index:exists(Name) of
+        true -> ok = yz_index:local_remove(Name);
+        false -> ok
+    end.
+
+-spec remove_indexes(index_set()) -> ok.
+remove_indexes(Names) ->
+    [ok = remove_index(N) || N <- Names],
+    ok.
 
 -spec remove_node(node(), list()) -> list().
 remove_node(Node, Mapping) ->
@@ -216,8 +226,8 @@ set_tick() ->
     erlang:send_after(Interval, ?MODULE, tick),
     ok.
 
-sync_indexes(Ring, _Removed, Added, Same) ->
-    %% ok = remove_indexes(Removed),
+sync_indexes(Ring, Removed, Added, Same) ->
+    ok = remove_indexes(Removed),
     ok = add_indexes(Ring, Added ++ Same).
 
 watch_ring_events() ->
