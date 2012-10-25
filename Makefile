@@ -1,6 +1,6 @@
 REBAR = $(shell pwd)/rebar
 
-.PHONY: deps rel stagedevrel
+.PHONY: deps rel stagedevrel test
 
 all: deps compile
 

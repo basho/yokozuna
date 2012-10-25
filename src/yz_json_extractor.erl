@@ -93,8 +93,7 @@ extract_field(CurrentName) ->
 -spec extract_element(binary()) -> fun((binary(), state()) -> state()).
 extract_element(CurrentName) ->
     fun(Element, S) ->
-            Fields = S#state.fields,
-            S#state{fields=[{CurrentName, Element}|Fields]}
+            extract_fields(CurrentName, Element, S)
     end.
 
 -spec new_field_name(binary() | undefined, binary(), binary()) -> binary().
