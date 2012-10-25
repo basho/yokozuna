@@ -4,15 +4,7 @@
 %% Callbacks
 -export([new/1,
          run/4]).
-
-%% Key Gens
--export([always/2,
-         fruit_key_val_gen/1,
-         fruit_key_val_gen/2,
-         valgen/4,
-         valgen_i/1,
-         mfa_valgen/3,
-         mfa_valgen_i/1]).
+-compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
 -record(state, {pb_conns, index, iurls, surls}).
