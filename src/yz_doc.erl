@@ -39,13 +39,14 @@ doc_id(O, Partition) ->
 -spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
 make_doc(O, FPN, Partition) ->
     ExtractedFields = extract_fields(O),
+    Tags = extract_tags(O),
     Fields = [{id, doc_id(O, Partition)},
               {?YZ_ED_FIELD, gen_vc(O)},
               {?YZ_FPN_FIELD, FPN},
               {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
               {?YZ_PN_FIELD, Partition},
               {?YZ_RK_FIELD, riak_key(O)}],
-    {doc, lists:append([ExtractedFields, Fields])}.
+    {doc, lists:append([Tags, ExtractedFields, Fields])}.
 
 -spec extract_fields(obj()) ->  fields() | {error, any()}.
 extract_fields(O) ->
@@ -64,6 +65,80 @@ extract_fields(O) ->
         true ->
             []
     end.
+
+%% @private
+%%
+%% @doc Extract tags from object metadata.
+-spec extract_tags(obj()) -> fields().
+extract_tags(O) ->
+    MD = yz_kv:metadata(O),
+    MD2 = get_user_meta(MD),
+    TagNames = get_tag_names(MD2),
+    lists:foldl(get_tag(MD2), [], TagNames).
+
+%% @private
+%%
+%% @doc Get the user metdata from the Riak Object metadata.
+%%
+%% NOTE: This function should return the same type as the top-level
+%%       Riak Object metadata so that `yz_kv:get_md_entry' may be
+%%       used.  This way when KV is altered to store user meta at the
+%%       top-level the migration will be easier.
+-spec get_user_meta(dict()) -> dict().
+get_user_meta(MD) ->
+    case yz_kv:get_md_entry(MD, <<"X-Riak-Meta">>) of
+        none ->
+            dict:new();
+        MetaMeta ->
+            %% NOTE: Need to call `to_lower' because
+            %%       `erlang:decode_packet' which is used by mochiweb
+            %%       will modify the case of certain header names
+            MM2 = [{list_to_binary(string:to_lower(K)), list_to_binary(V)}
+                   || {K,V} <- MetaMeta],
+            dict:from_list(MM2)
+    end.
+
+-spec get_tag(list()) -> function().
+get_tag(MD) ->
+    fun(TagName, Fields) ->
+            case yz_kv:get_md_entry(MD, TagName) of
+                none ->
+                    Fields;
+                Value ->
+                    case strip_prefix(TagName) of
+                        ignore -> Fields;
+                        TagName2 -> [{TagName2, Value}|Fields]
+                    end
+            end
+    end.
+
+-spec strip_prefix(binary()) -> binary() | ignore.
+strip_prefix(<<"x-riak-meta-",Tag/binary>>) ->
+    Tag;
+strip_prefix(_) ->
+    %% bad tag, silently discard
+    ignore.
+
+
+%% @private
+%%
+%% @doc Get the tags names.
+-spec get_tag_names(dict()) -> list().
+get_tag_names(MD) ->
+    case yz_kv:get_md_entry(MD, <<"x-riak-meta-yz-tags">>) of
+        none -> [];
+        TagNames -> split_tag_names(TagNames)
+    end.
+
+%% @private
+%%
+%% @doc Split the tag names.  Input is assumed to be CSV.  Whitespace
+%%      is stripped.  Tag names are converted to lower-case.
+-spec split_tag_names(binary()) -> [binary()].
+split_tag_names(TagNames) ->
+    NoSpace = binary:replace(TagNames, <<" ">>, <<"">>, [global]),
+    Lower = list_to_binary(string:to_lower(binary_to_list(NoSpace))),
+    binary:split(Lower, <<",">>, [global]).
 
 %%%===================================================================
 %%% Private

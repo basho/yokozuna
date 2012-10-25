@@ -10,6 +10,7 @@
 
 confirm() ->
     YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
+    code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Nodes = rt:deploy_nodes(4),
     Cluster = join_three(Nodes),
@@ -19,9 +20,52 @@ confirm() ->
     Ref = async_query(Cluster, YZBenchDir),
     Cluster2 = join_rest(Cluster, Nodes),
     check_status(wait_for(Ref)),
+    ok = test_tagging(Cluster),
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
     pass.
+
+test_tagging(Cluster) ->
+    lager:info("Test tagging"),
+    HP = hd(host_entries(rt:connection_info(Cluster))),
+    ok = write_with_tag(HP),
+    %% TODO: the test fails if this sleep isn't here
+    timer:sleep(5000),
+    ok = query_tag(HP, "user_s", "rzezeski"),
+    ok = query_tag(HP, "desc_t", "description").
+
+write_with_tag({Host, Port}) ->
+    lager:info("Tag the object tagging/test"),
+    URL = lists:flatten(io_lib:format("http://~s:~s/riak/tagging/test",
+                                      [Host, integer_to_list(Port)])),
+    %% Opts = [{content_type, "text/plain"}],
+    Opts = [],
+    Body = <<"testing tagging">>,
+    Headers = [{"content-type", "text/plain"},
+               {"x-riak-meta-yz-tags", "x-riak-meta-user_s, x-riak-meta-desc_t"},
+               {"x-riak-meta-user_s", "rzezeski"},
+               {"x-riak-meta-desc_t", "This is a description"}],
+    {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
+    ok.
+
+query_tag({Host, Port}, Name, Term) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/search/tagging?q=~s:~s&wt=json",
+                                      [Host, integer_to_list(Port), Name, Term])),
+    lager:info("Run query ~s", [URL]),
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _, Resp} ->
+            lager:info("Query resp ~p", [Resp]),
+            verify_count(1, Resp),
+            ok;
+        Other ->
+            {bad_response, Other}
+    end.
+
+verify_count(Expected, Resp) ->
+    Struct = mochijson2:decode(Resp),
+    NumFound = yz_driver:get_path(Struct, [<<"response">>, <<"numFound">>]),
+    ?assertEqual(Expected, NumFound).
 
 async_query(Cluster, YZBenchDir) ->
     lager:info("Run async query against cluster ~p", [Cluster]),
@@ -45,6 +89,10 @@ async_query(Cluster, YZBenchDir) ->
 
 check_status({Status,_}) ->
     ?assertEqual(?SUCCESS, Status).
+
+create_index(Node, Index) ->
+    lager:info("Creating index ~s [~p]", [Index, Node]),
+    rpc:call(Node, yz_index, create, [Index]).
 
 create_index(Node, Index, SchemaName) ->
     lager:info("Creating index ~s [~p]", [Index, Node]),
@@ -130,6 +178,8 @@ setup_indexing(Cluster, YZBenchDir) ->
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
     ok = install_hook(Node, ?INDEX_B),
+    ok = create_index(Node, "tagging"),
+    ok = install_hook(Node, <<"tagging">>),
     %% Give Solr time to build index
     timer:sleep(5000).
 

@@ -70,6 +70,9 @@ is_tombstone(Obj) ->
 metadata(Obj) ->
     riak_object:get_metadata(Obj).
 
+get_md_entry(MD, Key) ->
+    yz_misc:dict_get(Key, MD, none).
+
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
