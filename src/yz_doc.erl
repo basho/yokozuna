@@ -98,7 +98,7 @@ get_user_meta(MD) ->
             dict:from_list(MM2)
     end.
 
--spec get_tag(list()) -> function().
+-spec get_tag(dict()) -> function().
 get_tag(MD) ->
     fun(TagName, Fields) ->
             case yz_kv:get_md_entry(MD, TagName) of
