@@ -33,9 +33,9 @@ start(_StartType, _StartArgs) ->
     riak_core:wait_for_service(riak_kv),
     case yokozuna_sup:start_link() of
         {ok, Pid} ->
-            register_app(),
             Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++ yz_wm_index:routes(),
             yz_misc:add_routes(Routes),
+            riak_core_node_watcher:service_up(yokozuna, Pid),
             {ok, Pid};
         Error ->
             Error
@@ -43,12 +43,3 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
-
-
-%%%===================================================================
-%%% Private
-%%%===================================================================
-
-register_app() ->
-    Modules = [{vnode_module, yokozuna_vnode}],
-    riak_core:register(yokozuna, Modules).
