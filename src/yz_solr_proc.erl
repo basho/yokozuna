@@ -24,7 +24,10 @@
 -behavior(gen_server).
 
 %% Keep compiler warnings away
--export([init/1,
+-export([code_change/3,
+         init/1,
+         handle_call/3,
+         handle_cast/2,
          handle_info/2,
          terminate/2]).
 
@@ -70,12 +73,23 @@ init([Dir, SolrPort]) ->
      },
     {ok, S}.
 
+handle_call(Req, _, S) ->
+    ?WARN("unexpected request ~p", [Req]),
+    {noreply, S}.
+
+handle_cast(Req, S) ->
+    ?WARN("unexpected request ~p", [Req]),
+    {noreply, S}.
+
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
     ?DEBUG("~p", Data),
     {noreply, S};
 
 handle_info({exit_status, ExitStatus}, S) ->
     exit({"solr OS process exited", ExitStatus, S}).
+
+code_change(_, S, _) ->
+    {ok, S}.
 
 terminate(_, S) ->
     Port = ?S_PORT(S),

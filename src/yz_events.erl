@@ -27,7 +27,9 @@
 -module(yz_events).
 -behavior(gen_server).
 -compile(export_all).
--export([handle_cast/2,
+-export([code_change/3,
+         handle_call/3,
+         handle_cast/2,
          handle_info/2,
          init/1,
          terminate/2]).
@@ -86,6 +88,13 @@ handle_info(tick, S) ->
 
     ok = set_tick(),
     {noreply, S}.
+
+handle_call(Req, _, S) ->
+    ?WARN("unexpected request ~p", [Req]),
+    {noreply, S}.
+
+code_change(_, S, _) ->
+    {ok, S}.
 
 terminate(_Reason, _S) ->
     ok = destroy_events_table().
