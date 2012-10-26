@@ -37,14 +37,25 @@ create(Name) ->
 
 %% @doc Create the index `Name' across the entire cluster using
 %%      `SchemaName' as the schema.
--spec create(string(), schema_name()) -> ok.
+%%      Returns 'ok' if created, or 'notfound' if the
+%%      `SchemaName' is unknown
+-spec create(string(), schema_name()) -> ok | notfound.
 create(Name, SchemaName) ->
-    Info = make_info(Name, SchemaName),
-    ok = add_to_ring(Name, Info).
+    case yz_schema:exists(SchemaName) of
+        false -> notfound;
+        true  ->
+            Info = make_info(Name, SchemaName),
+            ok = add_to_ring(Name, Info)
+    end.
 
 -spec exists(string()) -> boolean().
 exists(Name) ->
     true == yz_solr:ping(Name).
+
+%% @doc Removed the index `Name' from the entire cluster.
+-spec remove(string()) -> ok.
+remove(Name) ->
+    ok = remove_from_ring(Name).
 
 -spec get_indexes_from_ring(ring()) -> indexes().
 get_indexes_from_ring(Ring) ->
@@ -53,6 +64,7 @@ get_indexes_from_ring(Ring) ->
         undefined -> []
     end.
 
+-spec get_info_from_ring(ring(), index_name()) -> index_info().
 get_info_from_ring(Ring, Name) ->
     Indexes = get_indexes_from_ring(Ring),
     orddict:fetch(Name, Indexes).
@@ -85,6 +97,16 @@ local_create(Ring, Name) ->
                  {schema_file, SchemaFile}
                 ],
     {ok, _, _} = yz_solr:core(create, CoreProps),
+    ok.
+
+%% @doc Remove the index `Name' locally.
+-spec local_remove(string()) -> ok.
+local_remove(Name) ->
+    CoreProps = [
+                    {core, Name},
+                    {delete_instance, "true"}
+                ],
+    {ok, _, _} = yz_solr:core(remove, CoreProps),
     ok.
 
 name(Info) ->
@@ -120,6 +142,17 @@ add_index(Indexes, Name, Info) ->
 add_to_ring(Name, Info) ->
     Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
     Indexes2 = add_index(Indexes, Name, Info),
+    yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
+    ok.
+
+-spec remove_index(indexes(), index_name()) -> indexes().
+remove_index(Indexes, Name) ->
+    orddict:erase(Name, Indexes).
+
+-spec remove_from_ring(index_name()) -> ok.
+remove_from_ring(Name) ->
+    Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
+    Indexes2 = remove_index(Indexes, Name),
     yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
     ok.
 
