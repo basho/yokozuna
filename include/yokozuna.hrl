@@ -148,6 +148,7 @@
 -define(DEBUG(Fmt, Args), lager:debug(Fmt, Args)).
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
+-define(WARN(Fmt, Args), lager:warning(Fmt, Args)).
 
 %%%===================================================================
 %%% Indexes
