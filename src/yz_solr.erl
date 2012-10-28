@@ -131,8 +131,7 @@ get_vclocks(Core, Before, Continue, N) when N > 0 ->
 %% @doc Index the given `Docs'.
 index(Core, Docs) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    Doc = {add, [], lists:map(fun encode_doc/1, Docs)},
-    XML = xmerl:export_simple([Doc], xmerl_xml),
+    XML = prepare_xml(Docs),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
@@ -142,6 +141,10 @@ index(Core, Docs) ->
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to index docs", Docs, Err})
     end.
+
+prepare_xml(Docs) ->
+    Content = {add, [], lists:map(fun encode_doc/1, Docs)},
+    xmerl:export_simple([Content], xmerl_xml).
 
 %% @doc Return the set of unique partitions stored on this node.
 -spec partition_list(string()) -> binary().

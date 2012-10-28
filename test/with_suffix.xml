@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<add>
+<doc>
+<field name="lucky_numbers_ds">21</field>
+<field name="lucky_numbers_ds">17</field>
+<field name="lucky_numbers_ds">13</field>
+<field name="a_number_d">1.10000000000000000000e+06</field>
+<field name="married_b">false</field>
+<field name="alive_b">true</field>
+<field name="books_authors_txt">Patrick Valduriez</field>
+<field name="books_authors_txt">M. Tamer Özsu</field>
+<field name="books_title_txt">Principles of Distributed Database Systems</field>
+<field name="books_authors_txt">Hinrich Schütze</field>
+<field name="books_authors_txt">Prabhakar Raghavan</field>
+<field name="books_authors_txt">Christopher D. Manning</field>
+<field name="books_title_txt">Introduction to Information Retrieval</field>
+<field name="pets_txt">bandit</field>
+<field name="pets_txt">smokey</field>
+<field name="age_d">29</field>
+<field name="name_t">ryan</field>
+</doc>
+</add>
