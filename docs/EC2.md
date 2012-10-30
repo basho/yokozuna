@@ -45,30 +45,11 @@ cluster.
 
     -cookie <SOME_TEXT>
 
-### Increase nofile (ulimit -n)
+### Create the Data Dir
 
-This next step is convoluted because of how sysctl and ulimit work.
-The next AMI will raise the limit for you automatically.
-
-First edit `/etc/security/limits.conf` to up the open file limit for
-`ec2-user`.
-
-    sudo vim /etc/security/limits.conf
-
-Add the following line.
-
-    ec2-user hard nofile 50000
-
-Start a new login shell under ec2-user.  Make sure to start Riak in
-this session.
-
-    sudo su - ec2-user
-
-Set the open file limit.
-
-    ulimit -n 50000
-
-**NOTE: This step needs to be done _every time_ Riak is started.**
+    sudo mkdir /media/ephemeral0/data
+    sudo chown ec2-user /media/ephemeral0/data
+    sudo chgrp ec2-user /media/ephemeral0/data
 
 ### Start Riak
 
