@@ -52,12 +52,12 @@ More information can be found in [TAGGING.md][tagging].
 A Yokozuna AMI is provided to make it easier to try.  More information
 can be be found in [EC2.md][ec2].
 
-[admin]: https://github.com/rzezeski/yokozuna/blob/26a3749269e08613f1d623bc9d18e4e5925992cd/docs/ADMIN.md
+[admin]: https://github.com/rzezeski/yokozuna/blob/7abbc3f7430373a58fdefaa65731759344e86cc7/docs/ADMIN.md
 
-[ec2]: https://github.com/rzezeski/yokozuna/blob/26a3749269e08613f1d623bc9d18e4e5925992cd/docs/EC2.md
+[ec2]: https://github.com/rzezeski/yokozuna/blob/7abbc3f7430373a58fdefaa65731759344e86cc7/docs/EC2.md
 
 [sds]: http://wiki.apache.org/solr/DistributedSearch#Distributed_Searching_Limitations
 
-[se]: https://github.com/rzezeski/yokozuna/blob/26a3749269e08613f1d623bc9d18e4e5925992cd/priv/java/com/basho/yokozuna/query/SimpleQueryExample.java
+[se]: https://github.com/rzezeski/yokozuna/blob/7abbc3f7430373a58fdefaa65731759344e86cc7/priv/java/com/basho/yokozuna/query/SimpleQueryExample.java
 
-[tagging]: https://github.com/rzezeski/yokozuna/blob/26a3749269e08613f1d623bc9d18e4e5925992cd/docs/TAGGING.md
+[tagging]: https://github.com/rzezeski/yokozuna/blob/7abbc3f7430373a58fdefaa65731759344e86cc7/docs/TAGGING.md
