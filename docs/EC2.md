@@ -18,7 +18,7 @@ I recommend [using five nodes][five_nodes].  If you just want to
 experiment one node will work.  [Performance Tuning for AWS][perf_aws]
 contains advice in regards to running Riak on EC2.
 
-    ec2-run-instances ami-8d9c20e4 -k <YOUR_KEY> -n <NUM_NODES>
+    ec2-run-instances ami-9c2d96f5 -k <YOUR_KEY> -n <NUM_NODES>
 
 Each instance contains a self-contained Riak release under
 `~ec2-user/riak/rel/riak`.  Many of the following sections assume a
@@ -84,8 +84,8 @@ indexing coming soon.
 The AMI is a customization of Amazon Linux ami-8d9c20e4.  It
 is x86_64 using instance storage.
 
-    $ ec2-describe-images ami-8d9c20e4
-    IMAGE   ami-8d9c20e4    682127949672/yokozuna_ami       682127949672    available       public          x86_64  machine aki-88aa75e1                    instance-store  paravirtual     xen
+    $ ec2-describe-images ami-9c2d96f5
+    IMAGE   ami-9c2d96f5    682127949672/yz_ami_0.1.0       682127949672    available       public          x86_64  machine aki-88aa75e1                    instance-store  paravirtual     xen
 
 Yokozuna is a moving target.  If you run into issues you may want to
 check which commit of Yokozuna is being used and compare it against
