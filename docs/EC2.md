@@ -3,12 +3,6 @@ Yokozuna and EC2
 
 ## Building a Cluster
 
-### Open HTTP to Outside
-
-To use Riak/Yokozuna from outside port `8098` must be opened.
-
-    ec2-authorize default -p 8098
-
 ### Allow Inter-node Communication
 
 Riak relies on distributed Erlang for intercommunication.  Distributed
@@ -44,6 +38,17 @@ you should change the cookie to prevent outside access to your Erlang
 cluster.
 
     -cookie <SOME_TEXT>
+
+### Open HTTP to Outside
+
+If you want to open HTTP to the internet then do the following.
+First, change the default security group to allow traffic on 8098.
+
+    ec2-authorize default -p 8098
+
+Second, modify `app.config` to listen for HTTP on an external
+interface.  I.e. changing `{http, [ {"127.0.0.1", 8098 } ]}` to
+`{http, [ {"0.0.0.0", 8098 } ]}`.
 
 ### Create the Data Dir
 
