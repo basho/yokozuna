@@ -2,7 +2,7 @@
 {application, yokozuna,
  [
   {description, "Integrating Apache Solr into Riak"},
-  {vsn, "0.0.0"},
+  {vsn, "semver"},
   {registered, []},
   {applications, [
                   kernel,
