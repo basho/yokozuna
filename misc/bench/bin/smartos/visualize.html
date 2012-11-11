@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+body {
+  font: 12px sans-serif;
+}
+
+.label {
+  font: 14px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.x.axis path {
+  display: none;
+}
+
+.line {
+  fill: none;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+div.metric {
+    float: left
+}
+
+p.control * {
+    float: left
+}
+</style>
+
+<html>
+  <body>
+
+    <div id="throughput" class="metric"><p class="vis"/><p class="control"/></div>
+    <div id="latencies" class="metric"><p class="vis"/><p class="control"/></div>
+    <div id="cpu" class="metric"><p class="vis"/><p class="control"/></div>
+    <div id="disk" class="metric"><p class="vis"/><p class="control"/></div>
+
+    <script src="http://d3js.org/d3.v2.js"></script>
+
+    <script>
+      var margin = {top: 20, right: 20, bottom: 30, left: 100},
+          width = 480 - margin.left - margin.right,
+          height = 250 - margin.top - margin.bottom;
+    </script>
+
+    <script src="js/throughput.js"></script>
+    <script src="js/latency.js"> </script>
+    <script src="js/disk.js"> </script>
+    <script src="js/cpu.js"> </script>
+
+    <script>
+      init_throughput();
+    </script>
+
+    <!-- the next comment is used by make-vis.sh to insert scripts -->
+    <!-- generate scripts here -->
+  </body>
+</html>
