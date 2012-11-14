@@ -111,7 +111,7 @@ wait_for_instance() {
     client_token=$1; shift
     num_tries=0
 
-    info "waiting for instance with client-token $client-token"
+    info "waiting for instance with client-token $client_token"
     while [ ! "running" == "$(ec2-describe-instances --filter client-token=$client_token | sed -n '2p' | awk '{ print $6 }')" ]; do
         num_tries=$((num_tries + 1))
         if [ $num_tries -eq 60 ]; then
@@ -142,6 +142,8 @@ wait_for_sshd() {
 }
 
 set_instance_data() {
+    client_token=$1
+
     INSTANCE_ID=$(ec2-describe-instances --filter client-token=$client_token | sed -n '2p' | awk '{ print $2 }')
     INSTANCE_HOST=$(ec2-describe-instances --filter client-token=$client_token | sed -n '2p' | awk '{ print $4 }')
     info "instance id: $INSTANCE_ID instance host: $INSTANCE_HOST"
@@ -195,7 +197,7 @@ change_perms() {
 check
 start_instance $BASE_AMI $KEY_PAIR $CLIENT_TOKEN
 wait_for_instance $CLIENT_TOKEN
-set_instance_data
+set_instance_data $CLIENT_TOKEN
 wait_for_sshd $INSTANCE_HOST $KEY_PAIR_FILE
 change_perms $INSTANCE_HOST $KEY_PAIR_FILE
 copy_build_script $INSTANCE_HOST $KEY_PAIR_FILE $BUILD_SCRIPT
