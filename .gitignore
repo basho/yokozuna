@@ -11,3 +11,4 @@ priv/lucene-solr
 riak_test/ebin
 tests/20*
 tests/current
+.eunit
