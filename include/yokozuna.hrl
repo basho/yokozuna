@@ -188,6 +188,11 @@
 -define(YZ_FPN_FIELD_S, "_yz_fpn").
 -define(YZ_FPN_FIELD_B, <<"_yz_fpn">>).
 
+%% Sibling VTags
+-define(YZ_VTAG_FIELD, '_yz_vtag').
+-define(YZ_VTAG_FIELD_S, "_yz_vtag").
+-define(YZ_VTAG_FIELD_B, <<"_yz_vtag">>).
+
 %% Node
 -define(YZ_NODE_FIELD, '_yz_node').
 -define(YZ_NODE_FIELD_S, "_yz_node").

@@ -19,6 +19,9 @@ rue"/>
         preflist, used for further filtering on overlapping partitions. -->
    <field name="_yz_fpn" type="string" indexed="true" stored="true"/>
 
+   <!-- If there is a sibling, use vtag to differentiate them -->
+   <field name="_yz_vtag" type="string" indexed="true" stored="true"/>
+
    <!-- Node: The name of the node that this doc was created on. -->
    <field name="_yz_node" type="string" indexed="true" stored="true"/>
 

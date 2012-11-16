@@ -30,7 +30,7 @@
 %% @doc Index the given object `O'.
 -spec index(string(), riak_object:riak_object()) -> ok | {error, term()}.
 index(Index, O) ->
-    yz_solr:index(Index, [yz_doc:make_doc(O, <<"FPN">>, <<"Partition">>)]).
+    yz_solr:index(Index, yz_doc:make_docs(O, <<"FPN">>, <<"Partition">>)).
 
 %% @doc Return the set of unique logical partitions stored on this
 %%      node for the given `Index'.

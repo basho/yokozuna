@@ -22,6 +22,8 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 
+-define(MD_VTAG, <<"X-Riak-VTag">>).
+
 %% @doc Functionality for working with Yokozuna documents.
 
 %%%===================================================================
@@ -31,33 +33,59 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
--spec doc_id(riak_object:riak_object(), binary()) -> binary().
+% -spec doc_id(riak_object:riak_object(), binary()) -> binary().
 doc_id(O, Partition) ->
     <<(riak_object:key(O))/binary,"_",Partition/binary>>.
+doc_id(O, Partition, none) ->
+    doc_id(O, Partition);
+doc_id(O, Partition, Sibling) ->
+    <<(riak_object:key(O))/binary,"_",Partition/binary,"_",Sibling/binary>>.
+
+% @doc `true' if this Object has multiple contents
+has_siblings(O) -> riak_object:value_count(O) > 1.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_doc(riak_object:riak_object(), binary(), binary()) -> doc().
-make_doc(O, FPN, Partition) ->
-    ExtractedFields = extract_fields(O),
-    Tags = extract_tags(O),
-    Fields = [{id, doc_id(O, Partition)},
-              {?YZ_ED_FIELD, gen_vc(O)},
-              {?YZ_FPN_FIELD, FPN},
-              {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
-              {?YZ_PN_FIELD, Partition},
-              {?YZ_RK_FIELD, riak_key(O)}],
+-spec make_docs(riak_object:riak_object(), binary(), binary()) -> doc().
+make_docs(O, FPN, Partition) ->
+    [make_doc(O, Content, FPN, Partition) || Content <- riak_object:get_contents(O)].
+
+-spec make_doc(riak_object:riak_object(), {dict(), dict()}, binary(), binary()) -> doc().
+make_doc(O, {MD, V}, FPN, Partition) ->
+    Vtag = get_vtag(O, MD),
+    DocId = doc_id(O, Partition, Vtag),
+    Fields = make_fields({DocId, riak_key(O), gen_vc(O), FPN, Partition, Vtag}),
+    ExtractedFields = extract_fields({MD, V}),
+    Tags = extract_tags(MD),
     {doc, lists:append([Tags, ExtractedFields, Fields])}.
 
--spec extract_fields(obj()) ->  fields() | {error, any()}.
-extract_fields(O) ->
-    case yz_kv:is_tombstone(O) of
+make_fields({DocId, Key, VC, FPN, Partition, none}) ->
+    [{id, DocId},
+     {?YZ_ED_FIELD, VC},
+     {?YZ_FPN_FIELD, FPN},
+     {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
+     {?YZ_PN_FIELD, Partition},
+     {?YZ_RK_FIELD, Key}];
+
+make_fields({DocId, Key, VC, FPN, Partition, Vtag}) ->
+    make_fields({DocId, Key, VC, FPN, Partition, none}) ++
+      [{?YZ_VTAG_FIELD, Vtag}].
+
+%% @doc If this is a sibling, return its binary vtag
+get_vtag(O, MD) ->
+    case has_siblings(O) of
+        true -> list_to_binary(yz_kv:get_md_entry(MD, ?MD_VTAG));
+        _ -> none
+    end.
+
+% -spec extract_fields(obj()) ->  fields() | {error, any()}.
+extract_fields({MD, V}) ->
+    case yz_kv:is_tombstone(MD) of
         false ->
-            CT = yz_kv:get_obj_ct(O),
-            Value = hd(riak_object:get_values(O)),
+            CT = yz_kv:get_obj_ct(MD),
             ExtractorDef = yz_extractor:get_def(CT, [check_default]),
-            case yz_extractor:run(Value, ExtractorDef) of
+            case yz_extractor:run(V, ExtractorDef) of
                 {error, Reason} ->
-                    ?ERROR("failed to index with reason ~s~nValue: ~s", [Reason, Value]),
+                    ?ERROR("failed to index with reason ~s~nValue: ~s", [Reason, V]),
                     {error, Reason};
                 Fields ->
                     Fields
@@ -66,12 +94,12 @@ extract_fields(O) ->
             []
     end.
 
+
 %% @private
 %%
 %% @doc Extract tags from object metadata.
 -spec extract_tags(obj()) -> fields().
-extract_tags(O) ->
-    MD = yz_kv:metadata(O),
+extract_tags(MD) ->
     MD2 = get_user_meta(MD),
     TagNames = get_tag_names(MD2),
     lists:foldl(get_tag(MD2), [], TagNames).
@@ -144,12 +172,9 @@ split_tag_names(TagNames) ->
 %%% Private
 %%%===================================================================
 
-%% TODO: Just pass metadata in?
-%%
 %% TODO: I don't like having X-Riak-Last-Modified in here.  Add
 %%       function to riak_object.
-doc_ts(O) ->
-    MD = riak_object:get_metadata(O),
+doc_ts(MD) ->
     dict:fetch(<<"X-Riak-Last-Modified">>, MD).
 
 doc_vclock(O) ->
