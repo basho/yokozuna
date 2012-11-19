@@ -151,12 +151,15 @@ mfa_valgen_i(index) ->
          {10, "nunga nance mulberry langsat karonda kumquat"},
          {1, "korlan jocote genip elderberry citron jujube"}]).
 
-%% Deal with off-by-one scenario, sequential-key-gen doesn't include
-%% max value.
--define(LAST_ONE(Concurrent, Id),
-        if Concurrent == Id -> 1;
-           true -> 0
-        end).
+key_range(Id, NumKeys, NumWorkers) ->
+    Range = NumKeys div NumWorkers,
+    Start = Range * (Id - 1) + 1,
+    End = Range * Id,
+    if NumWorkers == Id ->
+            {Start, NumKeys - Start};
+       true ->
+            {Start, End - Start}
+    end.
 
 %% generates key and value because value is based on key
 fruit_key_val_gen(Id) ->
@@ -164,15 +167,15 @@ fruit_key_val_gen(Id) ->
 
 fruit_key_val_gen(Id, NumKeys) ->
     Fruits2 = [{N, combine(?FRUITS, N)} || N <- [1, 10, 100, ?K1, ?K10, ?K100, ?M1]],
-    StartKey = 1,
     Workers = basho_bench_config:get(concurrent),
-    Range = NumKeys div Workers,
-    MinValue = StartKey + Range * (Id - 1),
-    MaxValue = StartKey + Range * Id,
+    {Start, NumToWrite} = key_range(Id, NumKeys, Workers),
     Ref = make_ref(),
-    ?DEBUG("ID ~p generating range ~p to ~p\n", [Id, MinValue, MaxValue]),
+
+    ?DEBUG("ID ~p generating range ~p to ~p\n", [Id, Start, Start + NumToWrite]),
     fun() ->
-            K = basho_bench_keygen:sequential_int_generator(Ref, Range + ?LAST_ONE(Workers, Id), Id) + MinValue,
+            %% Need to add 1 to NumToWrite because sequential gen
+            %% doesn't write last value
+            K = basho_bench_keygen:sequential_int_generator(Ref, NumToWrite + 1, Id) + Start,
             V = first_large_enough(K, Fruits2),
             {K, V}
     end.
