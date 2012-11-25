@@ -46,7 +46,9 @@ for disk in $RUN_DIR/*-disk-collect.csv; do
     name=${file%-disk-collect.csv}
     disks="{name:\"$name\",resource:\"$file\"},$disks"
 done
-add_script "<script>init_disks([${disks%,}])</script>"
+add_script "<script>init_disks([${disks%,}],\"%b\",\"db\",\"Disk %b\",\"absolute\")</script>"
+add_script "<script>init_disks([${disks%,}],\"kr/s\",\"dkrs\",\"Disk kr/s\",\"relative\")</script>"
+add_script "<script>init_disks([${disks%,}],\"kw/s\",\"dkws\",\"Disk kw/s\",\"relative\")</script>"
 
 cpus=""
 for cpu in $RUN_DIR/*-pid-cpu-mem-collect.csv; do

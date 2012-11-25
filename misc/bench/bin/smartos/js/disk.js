@@ -1,4 +1,5 @@
-function init_disks(disks) {
+// ydomain should be "absolute" or "relative"
+function init_disks(disks, ycol, cclass, label, ydomain) {
     // stores the transformed data for each disk
     var diskData = [];
 
@@ -10,7 +11,7 @@ function init_disks(disks) {
 
     var line = d3.svg.line()
         .x(function(d) { return x(d.timestamp); })
-        .y(function(d) { return y(d["%b"]); });
+        .y(function(d) { return y(d[ycol]); });
 
     var svg = d3.select("#disk p.vis").append("svg")
         .attr("width", width + margin.left + margin.right)
@@ -21,19 +22,19 @@ function init_disks(disks) {
     var parseDate = d3.time.format("%Y-%m-%dT%H:%M:%S").parse;
 
     svg.append("g")
-        .attr("class", "db x axis")
+        .attr("class", cclass + " x axis")
         .attr("transform", "translate(0," + height + ")")
         .call(xAxis);
 
     svg.append("g")
-        .attr("class", "db y axis")
+        .attr("class", cclass + " y axis")
         .call(yAxis);
 
     svg.append("text")
         .attr("text-anchor", "middle")
         .attr("transform", "translate(" + -(margin.left/2) + "," + (height/2) + ")rotate(-90)")
         .attr("class", "label")
-        .text("Disk %b");
+        .text(label);
 
     var redraw = function() {
 
@@ -49,14 +50,24 @@ function init_disks(disks) {
                 return d3.max(c.values, function(d) { return d.timestamp; })
             })
         ]);
-        y.domain([0,100]);
+        if (ydomain === "absolute") {
+            y.domain([0,100]);
+        } else {
+            y.domain([
+                d3.min(diskData, function(c) {
+                    return d3.min(c.values, function(d) { return d[ycol]; })
+                }),
+                d3.max(diskData, function(c) {
+                    return d3.max(c.values, function(d) { return d[ycol]; })
+                })
+            ]);
+        }
 
-
-        var busy = svg.selectAll(".disk_busy")
+        var busy = svg.selectAll("." + cclass + "_line")
             .data(diskData, function(d) { return d.name; });
 
         busy.enter().append("path")
-            .attr("class", "line disk_busy")
+            .attr("class", "line " + cclass + "_line")
             .attr("d", function(d) { return line(d.values); })
             .style("stroke", function(d) { return colors(d.name); });
 
@@ -65,17 +76,19 @@ function init_disks(disks) {
 
         busy.exit().remove();
 
-        d3.select(".db.x.axis").call(xAxis);
-        d3.select(".db.y.axis").call(yAxis);
+        d3.select("." + cclass + ".x.axis").call(xAxis);
+        d3.select("." + cclass + ".y.axis").call(yAxis);
     };
 
     var add_disk_data = function(name, resource) {
         d3.csv(resource, function(data) {
-            data.forEach(function(d) {
-                d.timestamp = parseDate(d.timestamp)
+            var values = data.map(function(d) {
+                var tmp = {timestamp: parseDate(d.timestamp)};
+                tmp[ycol] = +d[ycol];
+                return tmp;
             });
 
-            diskData.push({name:name, values:data});
+            diskData.push({name:name, values:values});
             redraw();
         })
     };
