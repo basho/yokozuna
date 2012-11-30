@@ -71,15 +71,15 @@ export PATH=/usr/local/erlangR15B02/bin:$PATH
 
 # build Riak/Yokozuna
 if [ ! -d riak ]; then
-    git clone git://github.com/rzezeski/riak.git
+    git clone git://github.com/basho/riak.git
 fi
 
 pushd riak
 
 if [ ! -d rel/riak ]; then
-    git checkout rz-yokozuna
+    git checkout rz-yokozuna-2
     make deps
-    (cd deps && rm -rf riak_kv && git clone git://github.com/rzezeski/riak_kv.git && cd riak_kv && git checkout rz-yokozuna)
+    (cd deps && rm -rf riak_kv && git clone git://github.com/basho/riak_kv.git && cd riak_kv && git checkout rz-yokozuna-3)
     make
     make stage
 fi
