@@ -1,7 +1,7 @@
 // ydomain should be "absolute" or "relative"
-function init_disks(disks, ycol, cclass, label, ydomain) {
-    // stores the transformed data for each disk
-    var diskData = [];
+function init_nics(nics, ycol, cclass, label, ydomain) {
+    // stores the transformed data for each nic
+    var nicData = [];
 
     var x = d3.time.scale().range([0, width]);
     var y = d3.scale.linear().range([height, 0]);
@@ -13,13 +13,13 @@ function init_disks(disks, ycol, cclass, label, ydomain) {
         .x(function(d) { return x(d.timestamp); })
         .y(function(d) { return y(d[ycol]); });
 
-    var svg = d3.select("#disk p.vis").append("svg")
+    var svg = d3.select("#network p.vis").append("svg")
         .attr("width", width + margin.left + margin.right)
         .attr("height", height + margin.top + margin.bottom)
         .append("g")
         .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-    var parseDate = d3.time.format("%Y-%m-%dT%H:%M:%S").parse;
+    var parseDate = d3.time.format("%H:%M:%S").parse;
 
     svg.append("g")
         .attr("class", cclass + " x axis")
@@ -38,15 +38,14 @@ function init_disks(disks, ycol, cclass, label, ydomain) {
 
     var redraw = function() {
 
-        var names = diskData.map(function(d) { return d.name; });
+        var names = nicData.map(function(d) { return d.name; });
         colors.domain(names);
 
-        // length of time is same for all, just pull from first
         x.domain([
-            d3.min(diskData, function(c) {
+            d3.min(nicData, function(c) {
                 return d3.min(c.values, function(d) { return d.timestamp; })
             }),
-            d3.max(diskData, function(c) {
+            d3.max(nicData, function(c) {
                 return d3.max(c.values, function(d) { return d.timestamp; })
             })
         ]);
@@ -54,33 +53,33 @@ function init_disks(disks, ycol, cclass, label, ydomain) {
             y.domain([0,100]);
         } else {
             y.domain([
-                d3.min(diskData, function(c) {
+                d3.min(nicData, function(c) {
                     return d3.min(c.values, function(d) { return d[ycol]; })
                 }),
-                d3.max(diskData, function(c) {
+                d3.max(nicData, function(c) {
                     return d3.max(c.values, function(d) { return d[ycol]; })
                 })
             ]);
         }
 
-        var busy = svg.selectAll("." + cclass + "_line")
-            .data(diskData, function(d) { return d.name; });
+        var lines = svg.selectAll("." + cclass + "_line")
+            .data(nicData, function(d) { return d.name; });
 
-        busy.enter().append("path")
+        lines.enter().append("path")
             .attr("class", "line " + cclass + "_line")
             .attr("d", function(d) { return line(d.values); })
             .style("stroke", function(d) { return colors(d.name); });
 
-        d3.transition(busy)
+        d3.transition(lines)
             .attr("d", function(d) { return line(d.values); });
 
-        busy.exit().remove();
+        lines.exit().remove();
 
         d3.select("." + cclass + ".x.axis").call(xAxis);
         d3.select("." + cclass + ".y.axis").call(yAxis);
     };
 
-    var add_disk_data = function(name, resource) {
+    var add_nic_data = function(name, resource) {
         d3.csv(resource, function(data) {
             var values = data.map(function(d) {
                 var tmp = {timestamp: parseDate(d.timestamp)};
@@ -88,10 +87,10 @@ function init_disks(disks, ycol, cclass, label, ydomain) {
                 return tmp;
             });
 
-            diskData.push({name:name, values:values});
+            nicData.push({name:name, values:values});
             redraw();
         })
     };
 
-    disks.forEach(function(d) { add_disk_data(d.name, d.resource); });
+    nics.forEach(function(d) { add_nic_data(d.name, d.resource); });
 };

@@ -46,7 +46,9 @@ for disk in $RUN_DIR/*-disk-collect.csv; do
     name=${file%-disk-collect.csv}
     disks="{name:\"$name\",resource:\"$file\"},$disks"
 done
-add_script "<script>init_disks([${disks%,}])</script>"
+add_script "<script>init_disks([${disks%,}],\"%b\",\"db\",\"Disk %b\",\"absolute\")</script>"
+add_script "<script>init_disks([${disks%,}],\"kr/s\",\"dkrs\",\"Disk kr/s\",\"relative\")</script>"
+add_script "<script>init_disks([${disks%,}],\"kw/s\",\"dkws\",\"Disk kw/s\",\"relative\")</script>"
 
 cpus=""
 for cpu in $RUN_DIR/*-pid-cpu-mem-collect.csv; do
@@ -56,5 +58,13 @@ for cpu in $RUN_DIR/*-pid-cpu-mem-collect.csv; do
 done
 add_script "<script>init_cpus([${cpus%,}])</script>"
 
+nics=""
+for nic in $RUN_DIR/*-network-collect.csv; do
+    file=$(basename $nic)
+    name=${file%-network-collect.csv}
+    nics="{name:\"$name\",resource:\"$file\"},$nics"
+done
+add_script "<script>init_nics([${nics%,}],\"rKb/s\",\"rkbs\",\"Network rKb/s\",\"relative\")</script>"
+add_script "<script>init_nics([${nics%,}],\"wKb/s\",\"wkbs\",\"Network wKb/s\",\"relative\")</script>"
 
 open http://localhost/$BENCH_NAME/visualize.html

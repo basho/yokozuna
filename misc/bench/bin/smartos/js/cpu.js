@@ -1,5 +1,6 @@
 function init_cpus(cpus) {
     var cpuData = [];
+    var yCol = "CPU";
     var x = d3.time.scale().range([0, width]);
     var y = d3.scale.linear().range([height, 0]);
     var xAxis = d3.svg.axis().scale(x).orient("bottom");
@@ -9,7 +10,7 @@ function init_cpus(cpus) {
 
     var line = d3.svg.line()
         .x(function(d) { return x(d.timestamp); })
-        .y(function(d) { return y(d["CPU"]); });
+        .y(function(d) { return y(d[yCol]); });
 
     var svg = d3.select("#cpu p.vis").append("svg")
         .attr("width", width + margin.left + margin.right)
@@ -33,8 +34,8 @@ function init_cpus(cpus) {
         .text("CPU %");
 
     var redraw = function() {
-        var names = cpuData.map(function(d) { return d.name; });
-        colors.domain(names);
+        var keys = cpuData.map(function(d) { return d.key; });
+        colors.domain(keys);
 
         x.domain([
             d3.min(cpuData, function(c) {
@@ -47,12 +48,12 @@ function init_cpus(cpus) {
         y.domain([0,100]);
 
         var usage = svg.selectAll(".cpu_usage")
-            .data(cpuData, function(d) { return d.name; });
+            .data(cpuData, function(d) { return d.key; });
 
         usage.enter().append("path")
             .attr("class", "line")
             .attr("d", function(d) { return line(d.values); })
-            .style("stroke", function(d) { return colors(d.name); });
+            .style("stroke", function(d) { return colors(d.key); });
 
         d3.transition(usage)
             .attr("d", function(d) { return line(d.values); });
@@ -66,11 +67,19 @@ function init_cpus(cpus) {
 
     var add_cpu_data = function(name, resource) {
         d3.csv(resource, function(data) {
-            data.forEach(function(d) {
-                d.timestamp = parseDate(d.timestamp)
+            // scrub data to essential elements
+            data = data.map(function(d) {
+                var tmp = {process: d["PROCESS/NLWP"],
+                           timestamp: parseDate(d.timestamp)};
+                tmp[yCol] = +d[yCol];
+                return tmp;
             });
 
-            cpuData.push({name:name, values:data});
+            data = d3.nest()
+                .key(function(d) { return name + "-" + d.process; })
+                .entries(data);
+
+            cpuData = d3.merge([cpuData, data]);
             redraw();
         })
     };
