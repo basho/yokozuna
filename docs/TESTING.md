@@ -17,18 +17,18 @@ The rest is like the [Yokozuna Getting Started][yz_gs] guide but
 checkout riak as `riak_yz`.  Don't start the cluster.  Just build the
 devrel.
 
-    git clone git://github.com/rzezeski/riak.git riak_yz
+    git clone git://github.com/basho/riak.git riak_yz
     cd riak_yz
 
-    git checkout rz-yokozuna
+    git checkout rz-yokozuna-2
 
     make deps
 
     cd deps
 
     rm -rf riak_kv
-    git clone git://github.com/rzezeski/riak_kv.git
-    (cd riak_kv && git checkout rz-yokozuna)
+    git clone git://github.com/basho/riak_kv.git
+    (cd riak_kv && git checkout rz-yokozuna-3)
 
     cd ..
     make

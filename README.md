@@ -26,12 +26,12 @@ you should be able to complete these steps.
 
 1. Clone my fork of Riak.
 
-        git clone git://github.com/rzezeski/riak.git
+        git clone git://github.com/basho/riak.git
         cd riak
 
 2. Checkout the Yokozuna branch.
 
-        git checkout rz-yokozuna
+        git checkout rz-yokozuna-2
 
 3. Download the dependencies.
 
@@ -43,8 +43,8 @@ you should be able to complete these steps.
         cd deps
 
         rm -rf riak_kv
-        git clone git://github.com/rzezeski/riak_kv.git
-        (cd riak_kv && git checkout rz-yokozuna)
+        git clone git://github.com/basho/riak_kv.git
+        (cd riak_kv && git checkout rz-yokozuna-3)
 
 
 5. Compile.  This will take a long time because it must clone Solr
