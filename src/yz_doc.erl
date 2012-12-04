@@ -45,7 +45,7 @@ doc_id(O, Partition, Sibling) ->
 has_siblings(O) -> riak_object:value_count(O) > 1.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_docs(riak_object:riak_object(), binary(), binary()) -> doc().
+-spec make_docs(riak_object:riak_object(), binary(), binary()) -> [doc()].
 make_docs(O, FPN, Partition) ->
     [make_doc(O, Content, FPN, Partition) || Content <- riak_object:get_contents(O)].
 
@@ -98,7 +98,7 @@ extract_fields({MD, V}) ->
 %% @private
 %%
 %% @doc Extract tags from object metadata.
--spec extract_tags(obj()) -> fields().
+-spec extract_tags(dict()) -> fields().
 extract_tags(MD) ->
     MD2 = get_user_meta(MD),
     TagNames = get_tag_names(MD2),
