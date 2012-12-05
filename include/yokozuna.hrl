@@ -97,6 +97,7 @@
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
+-define(YZ_DEFAULT_SOLR_JMX_PORT, "8985").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_EVENTS_TAB, yz_events_tab).

@@ -175,6 +175,9 @@ ping(Core) ->
 port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT).
 
+jmx_port() ->
+    app_helper:get_env(?YZ_APP_NAME, solr_port_jmx, undefined).
+
 search(Core, Params, Mapping) ->
     {Nodes, FilterPairs} = yz_cover:plan(Core),
     HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
