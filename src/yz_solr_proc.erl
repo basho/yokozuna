@@ -34,11 +34,15 @@
 -record(state, {
           dir=exit(dir_undefined),
           port=exit(port_undefined),
-          solr_port=exit(solr_port_undefined)
+          solr_port=exit(solr_port_undefined),
+          solr_jmx_port=exit(solr_jmx_port_undefined)
          }).
 
 -define(SHUTDOWN_MSG, "INT\n").
--define(S_MATCH, #state{dir=_Dir, port=_Port, solr_port=_SolrPort}).
+-define(S_MATCH, #state{dir=_Dir,
+                        port=_Port,
+                        solr_port=_SolrPort,
+                        solr_jmx_port=_SolrJMXPort}).
 -define(S_PORT(S), S#state.port).
 
 %% @doc This module/process is responsible for administrating the
@@ -48,9 +52,9 @@
 %%% API
 %%%===================================================================
 
--spec start_link(string(), string()) -> {ok, pid()} | ignore | {error, term()}.
-start_link(Dir, SolrPort) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Dir, SolrPort], []).
+-spec start_link(string(), string(), string()) -> {ok, pid()} | ignore | {error, term()}.
+start_link(Dir, SolrPort, SolrJMXPort) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Dir, SolrPort, SolrJMXPort], []).
 
 
 %%%===================================================================
@@ -60,16 +64,17 @@ start_link(Dir, SolrPort) ->
 %% NOTE: Doing the work here will slow down startup but I think that's
 %%       desirable given that Solr must be up for Yokozuna to work
 %%       properly.
-init([Dir, SolrPort]) ->
+init([Dir, SolrPort, SolrJMXPort]) ->
     process_flag(trap_exit, true),
-    Cmd = build_cmd(SolrPort, Dir),
+    Cmd = build_cmd(SolrPort, Dir, SolrJMXPort),
     ?INFO("Starting solr: ~p", [Cmd]),
     Port = run_cmd(Cmd),
     wait_for_solr(solr_startup_wait()),
     S = #state{
       dir=Dir,
       port=Port,
-      solr_port=SolrPort
+      solr_port=SolrPort,
+      solr_jmx_port=SolrJMXPort
      },
     {ok, S}.
 
@@ -103,6 +108,9 @@ terminate(_, S) ->
 %%%===================================================================
 
 build_cmd(SolrPort, Dir) ->
+    build_cmd(SolrPort, Dir, undefined).
+
+build_cmd(SolrPort, Dir, JMXPort) ->
     Wrapper = filename:join([?YZ_PRIV, "sig-wrapper"]),
     Java = "java",
     SolrHomeArg = "-Dsolr.solr.home=" ++ Dir,
@@ -110,11 +118,20 @@ build_cmd(SolrPort, Dir) ->
     PortArg = "-Djetty.port=" ++ SolrPort,
     LoggingProps = filename:join([Dir, "logging.properties"]),
     LoggingArg = "-Djava.util.logging.config.file=" ++ LoggingProps,
+    case JMXPort of
+        undefined ->
+            JMXArgs = [];
+        _ ->
+            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ JMXPort,
+            JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
+            JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
+            JMXArgs = [JMXPortArg, JMXAuthArg, JMXSSLArg]
+    end,
     LibDir = filename:join([?YZ_PRIV, "java_lib"]),
     LibArg = "-Dyz.lib.dir=" ++ LibDir,
     JarArg = "-jar " ++ filename:join([Dir, "start.jar"]),
     string:join([Wrapper, Java, JettyHomeArg, PortArg,
-                 SolrHomeArg, LoggingArg, LibArg, JarArg], " ").
+                 SolrHomeArg, LoggingArg, LibArg, JarArg] ++ JMXArgs, " ").
 
 is_up() ->
     try
