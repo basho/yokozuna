@@ -66,5 +66,9 @@ for nic in $RUN_DIR/*-network-collect.csv; do
 done
 add_script "<script>init_nics([${nics%,}],\"rKb/s\",\"rkbs\",\"Network rKb/s\",\"relative\")</script>"
 add_script "<script>init_nics([${nics%,}],\"wKb/s\",\"wkbs\",\"Network wKb/s\",\"relative\")</script>"
+add_script "<script>init_nics([${nics%,}],\"rPk/s\",\"rpks\",\"Network rPk/s\",\"relative\")</script>"
+add_script "<script>init_nics([${nics%,}],\"wPk/s\",\"wpks\",\"Network wPk/s\",\"relative\")</script>"
+add_script "<script>init_nics([${nics%,}],\"rAvs\",\"ravs\",\"Network rAvs\",\"relative\")</script>"
+add_script "<script>init_nics([${nics%,}],\"wAvs\",\"wavs\",\"Network wAvs\",\"relative\")</script>"
 
 open http://localhost/$BENCH_NAME/visualize.html
