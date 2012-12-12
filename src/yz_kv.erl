@@ -75,15 +75,8 @@ get_md_entry(MD, Key) ->
 %%
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), term()) -> ok.
-index(Obj, delete, VNodeState) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    LI = yz_cover:logical_index(Ring),
+index(Obj, delete, _) ->
     {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    AllowMult = proplists:get_value(allow_mult, BProps, false),
-    Partition = get_partition(VNodeState),
-    LP = yz_cover:logical_partition(LI, Partition),
-    DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
     try
         XML = yz_solr:encode_delete({key, Key}),
         yz_solr:delete_by_query(binary_to_list(Bucket), XML)
