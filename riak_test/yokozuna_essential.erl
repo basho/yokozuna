@@ -28,12 +28,45 @@ confirm() ->
 
 test_siblings(Cluster) ->
     lager:info("Test siblings"),
-    Node = hd(Cluster),
     ok = allow_mult(Cluster, <<"siblings">>),
     HP = hd(host_entries(rt:connection_info(Cluster))),
     ok = write_sibs(HP),
     %% Verify 10 times because of non-determinism in coverage
     [ok = verify_sibs(HP) || _ <- lists:seq(1,10)],
+    ok = reconcile_sibs(HP),
+    [ok = verify_reconcile(HP) || _ <- lists:seq(1,10)],
+    ok.
+
+verify_reconcile(HP) ->
+    lager:info("Verify sibling indexes were deleted after reconcile"),
+    R1 = search(HP, "siblings", "_yz_rk", "test"),
+    verify_count(1, R1),
+    ok.
+
+reconcile_sibs(HP) ->
+    lager:info("Reconcile the siblings"),
+    {VClock, _} = http_get(HP, "siblings", "test"),
+    NewValue = <<"This is value alpha, beta, charlie, and delta">>,
+    ok = http_put(HP, "siblings", "test", VClock, NewValue),
+    timer:sleep(1000),
+    ok.
+
+http_get({Host, Port}, Bucket, Key) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+                                      [Host, integer_to_list(Port), Bucket, Key])),
+    Opts = [],
+    Headers = [{"accept", "multipart/mixed"}],
+    {ok, "300", RHeaders, Body} = ibrowse:send_req(URL, Headers, get, [], Opts),
+    VC = proplists:get_value("X-Riak-Vclock", RHeaders),
+    {VC, Body}.
+
+http_put({Host, Port}, Bucket, Key, VClock, Value) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+                                      [Host, integer_to_list(Port), Bucket, Key])),
+    Opts = [],
+    Headers = [{"content-type", "text/plain"},
+               {"x-riak-vclock", VClock}],
+    {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
 verify_sibs(HP) ->
@@ -63,7 +96,7 @@ write_sibs({Host, Port}) ->
 allow_mult(Cluster, Bucket) ->
     Args = [Bucket, [{allow_mult, true}]],
     ok = rpc:call(hd(Cluster), riak_core_bucket, set_bucket, Args),
-    %% TODO: this should be a wait_for
+    %% TODO: wait for allow_mult to gossip instead of sleep
     timer:sleep(5000),
     %% [begin
     %%      BPs = rpc:call(N, riak_core_bucket, get_bucket, [Bucket]),
