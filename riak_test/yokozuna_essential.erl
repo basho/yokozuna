@@ -23,7 +23,86 @@ confirm() ->
     ok = test_tagging(Cluster),
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
+    ok = test_siblings(Cluster),
     pass.
+
+test_siblings(Cluster) ->
+    lager:info("Test siblings"),
+    ok = allow_mult(Cluster, <<"siblings">>),
+    HP = hd(host_entries(rt:connection_info(Cluster))),
+    ok = write_sibs(HP),
+    %% Verify 10 times because of non-determinism in coverage
+    [ok = verify_sibs(HP) || _ <- lists:seq(1,10)],
+    ok = reconcile_sibs(HP),
+    [ok = verify_reconcile(HP) || _ <- lists:seq(1,10)],
+    ok.
+
+verify_reconcile(HP) ->
+    lager:info("Verify sibling indexes were deleted after reconcile"),
+    R1 = search(HP, "siblings", "_yz_rk", "test"),
+    verify_count(1, R1),
+    ok.
+
+reconcile_sibs(HP) ->
+    lager:info("Reconcile the siblings"),
+    {VClock, _} = http_get(HP, "siblings", "test"),
+    NewValue = <<"This is value alpha, beta, charlie, and delta">>,
+    ok = http_put(HP, "siblings", "test", VClock, NewValue),
+    timer:sleep(1000),
+    ok.
+
+http_get({Host, Port}, Bucket, Key) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+                                      [Host, integer_to_list(Port), Bucket, Key])),
+    Opts = [],
+    Headers = [{"accept", "multipart/mixed"}],
+    {ok, "300", RHeaders, Body} = ibrowse:send_req(URL, Headers, get, [], Opts),
+    VC = proplists:get_value("X-Riak-Vclock", RHeaders),
+    {VC, Body}.
+
+http_put({Host, Port}, Bucket, Key, VClock, Value) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+                                      [Host, integer_to_list(Port), Bucket, Key])),
+    Opts = [],
+    Headers = [{"content-type", "text/plain"},
+               {"x-riak-vclock", VClock}],
+    {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
+    ok.
+
+verify_sibs(HP) ->
+    lager:info("Verify siblings are indexed"),
+    R1 = search(HP, "siblings", "_yz_rk", "test"),
+    verify_count(4, R1),
+    Values = ["alpha", "beta", "charlie", "delta"],
+    [verify_count(1, search(HP, "siblings", "text", S)) || S <- Values],
+    ok.
+
+write_sibs({Host, Port}) ->
+    lager:info("Write siblings"),
+    URL = lists:flatten(io_lib:format("http://~s:~s/riak/siblings/test",
+                                      [Host, integer_to_list(Port)])),
+    Opts = [],
+    Headers = [{"content-type", "text/plain"}],
+    Body1 = <<"This is value alpha">>,
+    Body2 = <<"This is value beta">>,
+    Body3 = <<"This is value charlie">>,
+    Body4 = <<"This is value delta">>,
+    [{ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, B, Opts)
+     || B <- [Body1, Body2, Body3, Body4]],
+    %% Sleep for soft commit
+    timer:sleep(1000),
+    ok.
+
+allow_mult(Cluster, Bucket) ->
+    Args = [Bucket, [{allow_mult, true}]],
+    ok = rpc:call(hd(Cluster), riak_core_bucket, set_bucket, Args),
+    %% TODO: wait for allow_mult to gossip instead of sleep
+    timer:sleep(5000),
+    %% [begin
+    %%      BPs = rpc:call(N, riak_core_bucket, get_bucket, [Bucket]),
+    %%      ?assertEqual(true, proplists:get_bool(allow_mult, BPs))
+    %%  end || N <- Cluster],
+    ok.
 
 test_tagging(Cluster) ->
     lager:info("Test tagging"),
@@ -31,14 +110,15 @@ test_tagging(Cluster) ->
     ok = write_with_tag(HP),
     %% TODO: the test fails if this sleep isn't here
     timer:sleep(5000),
-    ok = query_tag(HP, "user_s", "rzezeski"),
-    ok = query_tag(HP, "desc_t", "description").
+    R1 = search(HP, "tagging", "user_s", "rzezeski"),
+    verify_count(1, R1),
+    R2 = search(HP, "tagging", "desc_t", "description"),
+    verify_count(1, R2).
 
 write_with_tag({Host, Port}) ->
     lager:info("Tag the object tagging/test"),
     URL = lists:flatten(io_lib:format("http://~s:~s/riak/tagging/test",
                                       [Host, integer_to_list(Port)])),
-    %% Opts = [{content_type, "text/plain"}],
     Opts = [],
     Body = <<"testing tagging">>,
     Headers = [{"content-type", "text/plain"},
@@ -48,16 +128,15 @@ write_with_tag({Host, Port}) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
     ok.
 
-query_tag({Host, Port}, Name, Term) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/search/tagging?q=~s:~s&wt=json",
-                                      [Host, integer_to_list(Port), Name, Term])),
-    lager:info("Run query ~s", [URL]),
+search({Host, Port}, Index, Name, Term) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/search/~s?q=~s:~s&wt=json",
+                                      [Host, integer_to_list(Port), Index, Name, Term])),
+    lager:info("Run search ~s", [URL]),
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, [], get, [], Opts) of
         {ok, "200", _, Resp} ->
-            lager:info("Query resp ~p", [Resp]),
-            verify_count(1, Resp),
-            ok;
+            lager:info("Search resp ~p", [Resp]),
+            Resp;
         Other ->
             {bad_response, Other}
     end.
@@ -180,6 +259,8 @@ setup_indexing(Cluster, YZBenchDir) ->
     ok = install_hook(Node, ?INDEX_B),
     ok = create_index(Node, "tagging"),
     ok = install_hook(Node, <<"tagging">>),
+    ok = create_index(Node, "siblings"),
+    ok = install_hook(Node, <<"siblings">>),
     %% Give Solr time to build index
     timer:sleep(5000).
 
