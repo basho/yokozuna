@@ -139,8 +139,7 @@ index(Core, Docs) ->
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, XML, Opts) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Err})
-        % Err -> throw({"Failed to index docs", Docs, Err})
+        Err -> throw({"Failed to index docs", Docs, Err})
     end.
 
 prepare_xml(Docs) ->
@@ -230,6 +229,10 @@ encode_commit() ->
 	xmerl:export_simple([{commit, []}], xmerl_xml).
 
 encode_delete({key,Key})->
+    Query = "_yz_rk:" ++ binary_to_list(Key),
+    xmerl:export_simple([{delete, [], [{'query', [], [Query]}]}], xmerl_xml);
+
+encode_delete({key,Key,siblings})->
     Query = "_yz_rk:" ++ binary_to_list(Key) ++ " AND _yz_vtag:[* TO *]",
     xmerl:export_simple([{delete, [], [{'query', [], [Query]}]}], xmerl_xml);
 

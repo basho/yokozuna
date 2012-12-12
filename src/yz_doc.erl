@@ -33,11 +33,13 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
-% -spec doc_id(riak_object:riak_object(), binary()) -> binary().
+-spec doc_id(riak_object:riak_object(), binary()) -> binary().
 doc_id(O, Partition) ->
     <<(riak_object:key(O))/binary,"_",Partition/binary>>.
+
 doc_id(O, Partition, none) ->
     doc_id(O, Partition);
+
 doc_id(O, Partition, Sibling) ->
     <<(riak_object:key(O))/binary,"_",Partition/binary,"_",Sibling/binary>>.
 

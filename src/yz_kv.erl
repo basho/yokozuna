@@ -68,10 +68,6 @@ is_tombstone(MD) ->
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
-delete_siblings_by_key(Obj, Bucket, Key, AllowMult) ->
-    XML = yz_solr:encode_delete({key, Key}),
-    yz_solr:delete_by_query(binary_to_list(Bucket), XML).
-
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
@@ -89,8 +85,8 @@ index(Obj, delete, VNodeState) ->
     LP = yz_cover:logical_partition(LI, Partition),
     DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
     try
-        yz_solr:delete(binary_to_list(Bucket), DocID),
-        delete_siblings_by_key(Obj, Bucket, Key, AllowMult)
+        XML = yz_solr:encode_delete({key, Key}),
+        yz_solr:delete_by_query(binary_to_list(Bucket), XML)
     catch _:Err ->
         ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
     end;
@@ -115,14 +111,16 @@ index(Obj, Reason, VNodeState) ->
             2 ->
                 case AllowMult of
                     true  ->
-                        % An object has crossed the threshold from being a single value
-                        % Object, to a sibling value Object, delete the non-sibling ID
+                        %% An object has crossed the threshold from being a single value
+                        %% Object, to a sibling value Object, delete the non-sibling ID
                         DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
                         yz_solr:delete(binary_to_list(Bucket), DocID);
                     _ -> ok
                 end;
-            % Delete any siblings
-            1 -> delete_siblings_by_key(Obj, Bucket, Key, AllowMult);
+            %% Delete any siblings
+            1 ->
+                XML = yz_solr:encode_delete({key, Key, siblings}),
+                yz_solr:delete_by_query(binary_to_list(Bucket), XML);
             _ -> ok
         end
     catch _:Err ->
