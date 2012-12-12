@@ -53,12 +53,12 @@ get(C, Bucket, Key) ->
     end.
 
 %% @doc Get the content-type of the object.
--spec get_obj_ct(obj()) -> binary().
+-spec get_obj_ct(obj_metadata()) -> binary().
 get_obj_ct(MD) ->
     dict:fetch(<<"content-type">>, MD).
 
 %% @doc Determine if the `Obj' is a tombstone.
--spec is_tombstone(obj()) -> boolean().
+-spec is_tombstone(obj_metadata()) -> boolean().
 is_tombstone(MD) ->
     case yz_misc:dict_get(<<"X-Riak-Deleted">>, MD, false) of
         "true" -> true;
