@@ -138,8 +138,7 @@ owned_and_next_partitions(Node, Ring) ->
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
     ordsets:from_list([P || {P,_} <- Next ++ Owned]).
 
-%% @doc Set the ring metadata for the given `Name' to the given
-%%      `Value'
+%% @doc Set the ring metadata for the given `Name' to `Value'
 -spec set_ring_meta(atom(), any()) -> ring().
 set_ring_meta(Name, Value) ->
     Ring = get_ring(raw),

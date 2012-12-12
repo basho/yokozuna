@@ -53,22 +53,17 @@ get(C, Bucket, Key) ->
     end.
 
 %% @doc Get the content-type of the object.
--spec get_obj_ct(obj()) -> binary().
-get_obj_ct(Obj) ->
-    dict:fetch(<<"content-type">>, riak_object:get_metadata(Obj)).
+-spec get_obj_ct(obj_metadata()) -> binary().
+get_obj_ct(MD) ->
+    dict:fetch(<<"content-type">>, MD).
 
 %% @doc Determine if the `Obj' is a tombstone.
--spec is_tombstone(obj()) -> boolean().
-is_tombstone(Obj) ->
-    case yz_misc:dict_get(<<"X-Riak-Deleted">>, metadata(Obj), false) of
+-spec is_tombstone(obj_metadata()) -> boolean().
+is_tombstone(MD) ->
+    case yz_misc:dict_get(<<"X-Riak-Deleted">>, MD, false) of
         "true" -> true;
         false -> false
     end.
-
-%% @doc Get the metadata of the `Obj'.
--spec metadata(obj()) -> obj_metadata().
-metadata(Obj) ->
-    riak_object:get_metadata(Obj).
 
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
@@ -80,33 +75,49 @@ get_md_entry(MD, Key) ->
 %%
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), term()) -> ok.
-index(Obj, delete, VNodeState) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    LI = yz_cover:logical_index(Ring),
-    {Bucket, _Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-    LP = yz_cover:logical_partition(LI, get_partition(VNodeState)),
-    DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
+index(Obj, delete, _) ->
+    {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
     try
-        yz_solr:delete(binary_to_list(Bucket), DocID)
+        XML = yz_solr:encode_delete({key, Key}),
+        yz_solr:delete_by_query(binary_to_list(Bucket), XML)
     catch _:Err ->
-            ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
+        ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
     end;
+
 index(Obj, Reason, VNodeState) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     LI = yz_cover:logical_index(Ring),
-    {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+    {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
     ok = maybe_wait(Reason, Bucket),
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    AllowMult = proplists:get_value(allow_mult, BProps),
     NVal = riak_core_bucket:n_val(BProps),
     Idx = riak_core_util:chash_key(BKey),
     IdealPreflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), NVal),
     LFPN = yz_cover:logical_partition(LI, first_partition(IdealPreflist)),
     LP = yz_cover:logical_partition(LI, get_partition(VNodeState)),
-    Doc = yz_doc:make_doc(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+
     try
-        ok = yz_solr:index(binary_to_list(Bucket), [Doc])
+        ok = yz_solr:index(binary_to_list(Bucket), Docs),
+        case riak_object:value_count(Obj) of
+            2 ->
+                case AllowMult of
+                    true  ->
+                        %% An object has crossed the threshold from being a single value
+                        %% Object, to a sibling value Object, delete the non-sibling ID
+                        DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
+                        yz_solr:delete(binary_to_list(Bucket), DocID);
+                    _ -> ok
+                end;
+            %% Delete any siblings
+            1 ->
+                XML = yz_solr:encode_delete({key, Key, siblings}),
+                yz_solr:delete_by_query(binary_to_list(Bucket), XML);
+            _ -> ok
+        end
     catch _:Err ->
-            ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
+        ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
     end.
 
 %% @doc Install the object modified hook on the given `Bucket'.
