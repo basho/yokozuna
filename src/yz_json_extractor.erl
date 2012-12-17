@@ -80,7 +80,7 @@ extract_fields(_, null, S) ->
 %% Value
 extract_fields(CurrentName, Value, S) ->
     Fields = S#state.fields,
-    S#state{fields=[{CurrentName, Value}|Fields]}.
+    S#state{fields=[{CurrentName, clean_value(Value)}|Fields]}.
 
 -spec extract_field(binary()) -> fun(({binary(), binary()}, state()) -> state()).
 extract_field(CurrentName) ->
@@ -101,3 +101,9 @@ new_field_name(undefined, FieldName, _) ->
     FieldName;
 new_field_name(CurrentName, FieldName, Separator) ->
     <<CurrentName/binary,Separator/binary,FieldName/binary>>.
+
+clean_value(Value) ->
+    case is_number(Value) of
+        true  -> list_to_binary(mochinum:digits(Value));
+        false -> Value
+    end.
