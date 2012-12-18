@@ -26,6 +26,7 @@
                        {cfg_file, config},
                        {schema_file, schema},
                        {delete_instance, deleteInstanceDir}]).
+-define(FIELD_ALIASES, []).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {'query', [], [Str]}).
@@ -41,6 +42,11 @@
 build_partition_delete_query(LPartitions) ->
     Queries = [?QUERY(?YZ_PN_FIELD_S ++ ":" ++ ?INT_TO_STR(LP))
                || LP <- LPartitions],
+    xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
+
+-spec build_rk_delete_query(binary()) -> term().
+build_rk_delete_query(RiakKey) ->
+    Queries = [?QUERY(?YZ_RK_FIELD_S ++ ":" ++ binary_to_list(RiakKey))],
     xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
 
 commit(Core) ->
@@ -104,17 +110,18 @@ delete_by_query(Core, XML) ->
 
 %% @doc Get `N' key-vclock pairs that occur before the `Before'
 %%      timestamp.
--spec get_vclocks(string(), iso8601()) -> solr_vclocks().
-get_vclocks(Core, Before) ->
-    get_vclocks(Core, Before, none, ?DEFAULT_VCLOCK_N).
+-spec get_vclocks(string(), iso8601(), list()) -> solr_vclocks().
+get_vclocks(Core, Before, Filter) ->
+    get_vclocks(Core, Before, Filter, none, ?DEFAULT_VCLOCK_N).
 
-get_vclocks(Core, Before, Continue, N) when N > 0 ->
+get_vclocks(Core, Before, Filter, Continue, N) when N > 0 ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/entropy_data",
-    Params = [{before, Before}, {wt, json}, {n, N}],
-    Params2 = if Continue == none -> Params;
-                 true -> [{continue, Continue}|Params]
+    Params = proplists:substitute_aliases(?FIELD_ALIASES, Filter),
+    Params2 = [{before, Before}, {wt, json}, {n, N}|Params],
+    Params3 = if Continue == none -> Params2;
+                 true -> [{continue, Continue}|Params2]
               end,
-    Encoded = mochiweb_util:urlencode(Params2),
+    Encoded = mochiweb_util:urlencode(Params3),
     Opts = [{response_format, binary}],
     URL = BaseURL ++ "?" ++ Encoded,
     case ibrowse:send_req(URL, [], get, [], Opts) of
@@ -267,8 +274,8 @@ get_pairs(R) ->
     Docs = json_get_key(<<"docs">>, get_response(R)),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
-to_pair({struct, [{_,DocId},{_,Base64VClock}]}) ->
-    {DocId, Base64VClock}.
+to_pair({struct, [{_,Bucket},{_,Key},{_,Base64Hash}]}) ->
+    {{Bucket,Key}, base64:decode(Base64Hash)}.
 
 get_path({struct, PL}, Path) ->
     get_path(PL, Path);

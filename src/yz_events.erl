@@ -86,6 +86,14 @@ handle_info(tick, S) ->
     Mapping2 = check_unkown(Mapping),
     ok = set_mapping(Mapping2),
 
+    %% TODO: should default index go into ring?
+    case yz_index:exists(?YZ_DEFAULT_INDEX) of
+        false ->
+            ok = yz_index:create(?YZ_DEFAULT_INDEX, ?YZ_DEFAULT_SCHEMA_NAME);
+        true ->
+            ok
+    end,
+
     ok = set_tick(),
     {noreply, S}.
 

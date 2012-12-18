@@ -7,22 +7,43 @@
 -define(INDEX_B, <<"fruit">>).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
+-define(CFG,
+        [{riak_kv,
+          [
+           %% build/expire often
+           {anti_entropy_build_limit, {100, 1000}},
+           {anti_entropy_expire, 10000},
+           {anti_entropy_concurrency, 12}
+          ]},
+         {yokozuna,
+          [
+           {entropy_tick, 1000}
+          ]},
+         {lager,
+          [{handlers,
+            [{lager_file_backend,
+              [{"./log/error.log",error,10485760,"$D0",5},
+               {"./log/console.log",debug,104857600,"$D0",10}]}]}]}
+        ]).
 
 confirm() ->
     YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Nodes = rt:deploy_nodes(4),
+    Nodes = rt:deploy_nodes(4, ?CFG),
     Cluster = join_three(Nodes),
     wait_for_joins(Cluster),
     setup_indexing(Cluster, YZBenchDir),
-    load_data(Cluster, YZBenchDir),
+    load_data(Cluster, "fruit", YZBenchDir),
     Ref = async_query(Cluster, YZBenchDir),
+    %% Verify data exists before running join
+    timer:sleep(10000),
     Cluster2 = join_rest(Cluster, Nodes),
     check_status(wait_for(Ref)),
     ok = test_tagging(Cluster),
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
+    ok = verify_aae(Cluster2, YZBenchDir),
     ok = test_siblings(Cluster),
     pass.
 
@@ -104,6 +125,60 @@ allow_mult(Cluster, Bucket) ->
     %%  end || N <- Cluster],
     ok.
 
+verify_aae(Cluster, YZBenchDir) ->
+    lager:info("Verify AAE"),
+    load_data(Cluster, "fruit_aae", YZBenchDir),
+    Keys = random_keys(),
+    {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
+    [ok = delete_ids(Cluster, "fruit_aae", K) || K <- DelKeys],
+    %% wait for soft commit
+    timer:sleep(1000),
+    %% ok = change_random_ids(Cluster, ChangeKeys),
+    HP = hd(host_entries(rt:connection_info(Cluster))),
+    ok = wait_for_aae(HP, "fruit_aae", ?NUM_KEYS).
+
+wait_for_aae(HP, Index, ExpectedNumFound) ->
+    wait_for_aae(HP, Index, ExpectedNumFound, 0).
+
+wait_for_aae(_, Index, _, 24) ->
+    lager:error("Hit limit waiting for AAE to repair indexes for ~p", [Index]),
+    aae_failed;
+wait_for_aae(HP, Index, ExpectedNumFound, Tries) ->
+    case search(HP, "fruit_aae", "text", "apricot", ExpectedNumFound) of
+        true -> ok;
+        _ ->
+            timer:sleep(5000),
+            wait_for_aae(HP, Index, ExpectedNumFound, Tries + 1)
+    end.
+
+delete_ids(Cluster, Index, Key) ->
+    BKey = {list_to_binary(Index), list_to_binary(Key)},
+    Node = hd(Cluster),
+    Preflist = get_preflist(Node, BKey),
+    SolrIds = solr_ids(Node, Preflist, BKey),
+    ok = solr_delete(Cluster, SolrIds).
+
+get_preflist(Node, BKey) ->
+    Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
+    DocIdx = rpc:call(Node, riak_core_util, chash_std_keyfun, [BKey]),
+    Preflist = rpc:call(Node, riak_core_ring, preflist, [DocIdx, Ring]),
+    lists:sublist(Preflist, 3).
+
+solr_ids(Node, Preflist, {B,K}) ->
+    LPL = rpc:call(Node, yz_misc, convert_preflist, [Preflist, logical]),
+    [begin
+         Suffix = "_" ++ integer_to_list(P),
+         {binary_to_list(B), binary_to_list(K) ++ Suffix}
+     end
+     || {P,_} <- LPL].
+
+solr_delete(Cluster, SolrIds) ->
+    [begin
+         lager:info("Deleting solr id ~p/~p", [B, Id]),
+         rpc:multicall(Cluster, yz_solr, delete, [B, Id])
+     end|| {B, Id} <- SolrIds],
+    ok.
+
 test_tagging(Cluster) ->
     lager:info("Test tagging"),
     HP = hd(host_entries(rt:connection_info(Cluster))),
@@ -113,7 +188,8 @@ test_tagging(Cluster) ->
     R1 = search(HP, "tagging", "user_s", "rzezeski"),
     verify_count(1, R1),
     R2 = search(HP, "tagging", "desc_t", "description"),
-    verify_count(1, R2).
+    verify_count(1, R2),
+    ok.
 
 write_with_tag({Host, Port}) ->
     lager:info("Tag the object tagging/test"),
@@ -128,6 +204,10 @@ write_with_tag({Host, Port}) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
     ok.
 
+search(HP, Index, Name, Term, Expect) ->
+    R = search(HP, Index, Name, Term),
+    verify_count(Expect, R).
+
 search({Host, Port}, Index, Name, Term) ->
     URL = lists:flatten(io_lib:format("http://~s:~s/search/~s?q=~s:~s&wt=json",
                                       [Host, integer_to_list(Port), Index, Name, Term])),
@@ -141,10 +221,12 @@ search({Host, Port}, Index, Name, Term) ->
             {bad_response, Other}
     end.
 
-verify_count(Expected, Resp) ->
+get_count(Resp) ->
     Struct = mochijson2:decode(Resp),
-    NumFound = yz_driver:get_path(Struct, [<<"response">>, <<"numFound">>]),
-    ?assertEqual(Expected, NumFound).
+    yz_driver:get_path(Struct, [<<"response">>, <<"numFound">>]).
+
+verify_count(Expected, Resp) ->
+    Expected == get_count(Resp).
 
 async_query(Cluster, YZBenchDir) ->
     lager:info("Run async query against cluster ~p", [Cluster]),
@@ -184,10 +266,8 @@ delete_key(Cluster, Key) ->
     C:delete(?INDEX_B, list_to_binary(Key)).
 
 delete_some_data(Cluster, ReapSleep) ->
-    Num = random:uniform(100),
-    lager:info("Deleting ~p keys", [Num]),
-    Keys = [integer_to_list(random:uniform(?NUM_KEYS))
-            || _ <- lists:seq(1, Num)],
+    Keys = random_keys(),
+    lager:info("Deleting ~p keys", [length(Keys)]),
     [delete_key(Cluster, K) || K <- Keys],
     lager:info("Sleeping ~ps to allow for reap", [ReapSleep]),
     timer:sleep(timer:seconds(ReapSleep)),
@@ -210,8 +290,8 @@ join_rest([NodeA|_]=Cluster, Nodes) ->
     [begin rt:join(Node, NodeA) end || Node <- ToJoin],
     Nodes.
 
-load_data(Cluster, YZBenchDir) ->
-    lager:info("Load data onto cluster ~p", [Cluster]),
+load_data(Cluster, Index, YZBenchDir) ->
+    lager:info("Load data for index ~p onto cluster ~p", [Index, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
     KeyGen = {function, yz_driver, fruit_key_val_gen, [?NUM_KEYS]},
     Cfg = [{mode,max},
@@ -219,12 +299,12 @@ load_data(Cluster, YZBenchDir) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/fruit"},
+           {index_path, "/riak/" ++ Index},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]}],
-    File = "bb-load-" ++ ?INDEX_S,
+    File = "bb-load-" ++ Index,
     write_terms(File, Cfg),
     run_bb(sync, File).
 
@@ -257,6 +337,8 @@ setup_indexing(Cluster, YZBenchDir) ->
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
     ok = install_hook(Node, ?INDEX_B),
+    ok = create_index(Node, "fruit_aae", ?FRUIT_SCHEMA_NAME),
+    ok = install_hook(Node, <<"fruit_aae">>),
     ok = create_index(Node, "tagging"),
     ok = install_hook(Node, <<"tagging">>),
     ok = create_index(Node, "siblings"),
@@ -293,6 +375,7 @@ wait_for(Ref) ->
     rt:wait_for_cmd(Ref).
 
 wait_for_joins(Cluster) ->
+    lager:info("Waiting for ownership handoff to finish"),
     rt:wait_until_nodes_ready(Cluster),
     rt:wait_until_no_pending_changes(Cluster).
 
@@ -300,3 +383,10 @@ write_terms(File, Terms) ->
     {ok, IO} = file:open(File, [write]),
     [io:fwrite(IO, "~p.~n", [T]) || T <- Terms],
     file:close(IO).
+
+random_keys() ->
+    random_keys(random:uniform(100)).
+
+random_keys(Num) ->
+    lists:usort([integer_to_list(random:uniform(?NUM_KEYS))
+                 || _ <- lists:seq(1, Num)]).

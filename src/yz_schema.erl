@@ -32,18 +32,17 @@
 filename(SchemaName) ->
     binary_to_list(SchemaName) ++ ".xml".
 
--spec get(schema_name()) -> raw_schema() | {notfound, schema_name()}.
+-spec get(schema_name()) -> {ok, raw_schema()} | {error, schema_name(), term()}.
 get(Name) ->
     C = yz_kv:client(),
     R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
     case {Name, R} of
-        {?YZ_DEFAULT_SCHEMA_NAME, {error, notfound}} ->
-            {ok, RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE),
-            RawSchema;
-        {_, {error, notfound}} ->
-            {notfound, Name};
+        {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
+            {ok, RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
+        {_, {error, Reason}} ->
+            {error, Name, Reason};
         {_, {value, RawSchema}} ->
-            RawSchema
+            {ok, RawSchema}
     end.
 
 %% @doc Store the `RawSchema' with `Name'.
@@ -56,7 +55,7 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
 -spec exists(schema_name()) -> true | false.
 exists(SchemaName) ->
     case yz_schema:get(SchemaName) of
-        {notfound, _} -> false;
+        {error, _, _} -> false;
         _ -> true
     end.
 

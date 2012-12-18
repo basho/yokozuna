@@ -52,10 +52,37 @@ get(C, Bucket, Key) ->
             Other
     end.
 
+-spec hash_object(obj()) -> binary().
+hash_object(Obj) ->
+    Vclock = riak_object:vclock(Obj),
+    Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
+    Hash = erlang:phash2(term_to_binary(Obj2)),
+    term_to_binary(Hash).
+
 %% @doc Get the content-type of the object.
 -spec get_obj_ct(obj_metadata()) -> binary().
 get_obj_ct(MD) ->
     dict:fetch(<<"content-type">>, MD).
+
+-spec get_obj_bucket(obj()) -> binary().
+get_obj_bucket(Obj) ->
+    riak_object:bucket(Obj).
+
+-spec get_obj_key(obj()) -> binary().
+get_obj_key(Obj) ->
+    riak_object:key(Obj).
+
+-spec get_obj_md(obj()) -> undefined | dict().
+get_obj_md(Obj) ->
+    riak_object:get_metadata(Obj).
+
+-spec get_obj_value(obj()) -> binary().
+get_obj_value(Obj) ->
+    riak_object:get_value(Obj).
+
+-spec index_content(term()) -> boolean().
+index_content(BProps) ->
+    proplists:get_value(?YZ_INDEX_CONTENT, BProps, false).
 
 %% @doc Determine if the `Obj' is a tombstone.
 -spec is_tombstone(obj_metadata()) -> boolean().
@@ -71,68 +98,109 @@ get_md_entry(MD, Key) ->
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
-%% NOTE: This code runs on the vnode process.
+%% NOTE: For a normal update this hook runs on the vnode process.
+%%       During active anti-entropy runs on spawned process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), term()) -> ok.
-index(Obj, delete, _) ->
+index(Obj, delete, VNodeState) ->
+    Ring = yz_misc:get_ring(transformed),
     {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    NVal = riak_core_bucket:n_val(BProps),
+    Idx = riak_core_util:chash_key(BKey),
+    IdealPreflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), NVal),
+    IdxN = {first_partition(IdealPreflist), riak_core_bucket:n_val(BProps)},
+
     try
         XML = yz_solr:encode_delete({key, Key}),
-        yz_solr:delete_by_query(binary_to_list(Bucket), XML)
+        yz_solr:delete_by_query(which_index(Bucket, BProps), XML)
     catch _:Err ->
         ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
-    end;
+    end,
+
+    update_hashtree(delete, get_partition(VNodeState), IdxN, BKey),
+    ok;
 
 index(Obj, Reason, VNodeState) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    Ring = yz_misc:get_ring(transformed),
     LI = yz_cover:logical_index(Ring),
     {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-    ok = maybe_wait(Reason, Bucket),
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    Index = which_index(Bucket, BProps),
+    ok = maybe_wait(Reason, Index),
     AllowMult = proplists:get_value(allow_mult, BProps),
     NVal = riak_core_bucket:n_val(BProps),
     Idx = riak_core_util:chash_key(BKey),
     IdealPreflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), NVal),
     LFPN = yz_cover:logical_partition(LI, first_partition(IdealPreflist)),
-    LP = yz_cover:logical_partition(LI, get_partition(VNodeState)),
-    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+    P = get_partition(VNodeState),
+    LP = yz_cover:logical_partition(LI, P),
+    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
+                            index_content(BProps)),
+
 
     try
-        ok = yz_solr:index(binary_to_list(Bucket), Docs),
+        ok = yz_solr:index(Index, Docs),
         case riak_object:value_count(Obj) of
             2 ->
                 case AllowMult of
                     true  ->
-                        %% An object has crossed the threshold from being a single value
-                        %% Object, to a sibling value Object, delete the non-sibling ID
-                        DocID = binary_to_list(yz_doc:doc_id(Obj, ?INT_TO_BIN(LP))),
-                        yz_solr:delete(binary_to_list(Bucket), DocID);
+                        %% An object has crossed the threshold from
+                        %% being a single value Object, to a sibling
+                        %% value Object, delete the non-sibling ID
+                        DocID = binary_to_list(yz_doc:doc_id(Obj,
+                                                             ?INT_TO_BIN(LP))),
+                        yz_solr:delete(Index, DocID);
                     _ -> ok
                 end;
-            %% Delete any siblings
             1 ->
+                %% Delete any siblings
                 XML = yz_solr:encode_delete({key, Key, siblings}),
-                yz_solr:delete_by_query(binary_to_list(Bucket), XML);
-            _ -> ok
+                yz_solr:delete_by_query(Index, XML);
+            _ ->
+                ok
         end
     catch _:Err ->
         ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
+    end,
+
+    IdxN = {first_partition(IdealPreflist), NVal},
+    update_hashtree({insert, yz_kv:hash_object(Obj)}, P, IdxN, BKey),
+    ok.
+
+-spec update_hashtree(delete | {insert, binary()}, p(), {p(),n()},
+                      {binary(), binary()}) -> ok.
+update_hashtree(Action, Partition, IdxN, BKey) ->
+    try
+        case get_tree(Partition) of
+            not_registered ->
+                ok;
+            Tree ->
+                case Action of
+                    {insert, ObjHash} ->
+                        ok = yz_index_hashtree:insert(IdxN, BKey,
+                                                      ObjHash, Tree, []);
+                    delete ->
+                        ok = yz_index_hashtree:delete(IdxN, BKey, Tree)
+                end
+        end
+    catch _:Reason ->
+            lager:debug("Failed to update hashtree: ~p ~p", [BKey, Reason])
     end.
 
 %% @doc Install the object modified hook on the given `Bucket'.
 -spec install_hook(binary()) -> ok.
 install_hook(Bucket) when is_binary(Bucket) ->
-    Mod = yz_kv,
-    Fun = index,
-    ok = riak_kv_vnode:add_obj_modified_hook(Bucket, Mod, Fun).
+    set_index_flag(Bucket, true).
 
 %% @doc Uninstall the object modified hook on the given `Bucket'.
 -spec uninstall_hook(binary()) -> ok.
 uninstall_hook(Bucket) when is_binary(Bucket) ->
-    Mod = yz_kv,
-    Fun = index,
-    ok = remove_obj_modified_hook(Bucket, Mod, Fun).
+    set_index_flag(Bucket, false).
+
+set_index_flag(Bucket, Bool) ->
+    ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX_CONTENT, Bool}]).
 
 %% @doc Write a value
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
@@ -178,10 +246,45 @@ get_partition(VNodeState) ->
 
 %% @private
 %%
+%% @doc Get the tree.
+%%
+%% NOTE: Relies on the fact that this code runs on the KV vnode
+%%       process.
+-spec get_tree(p()) -> tree() | not_registered.
+get_tree(Partition) ->
+    case erlang:get(tree) of
+        undefined ->
+            lager:debug("Tree cache miss (undefined): ~p", [Partition]),
+            get_and_set_tree(Partition);
+        Pid ->
+            case is_process_alive(Pid) of
+                true ->
+                    Pid;
+                false ->
+                    lager:debug("Tree cache miss (dead): ~p", [Partition]),
+                    get_and_set_tree(Partition)
+            end
+    end.
+
+%% @private
+-spec get_and_set_tree(p()) -> tree() | not_registered.
+get_and_set_tree(Partition) ->
+    case yz_entropy_mgr:get_tree(Partition) of
+        {ok, Tree} ->
+            erlang:put(tree, Tree),
+            Tree;
+        not_registered ->
+            erlang:put(tree, undefined),
+            not_registered
+    end.
+
+%% @private
+%%
 %% @doc Wait for index creation if hook was invoked for handoff write.
--spec maybe_wait(write_reason(), binary()) -> ok.
-maybe_wait(handoff, Bucket) ->
-    Index = binary_to_list(Bucket),
+%%
+%% NOTE: This function assumes it is running on a long-lived process.
+-spec maybe_wait(write_reason(), index_name()) -> ok.
+maybe_wait(handoff, Index) ->
     Flag = ?WAIT_FLAG(Index),
     case check_flag(Flag) of
         false ->
@@ -211,4 +314,14 @@ wait_for(Check={M,F,A}, Seconds) when Seconds > 0 ->
         false ->
             timer:sleep(?ONE_SECOND),
             wait_for(Check, Seconds - 1)
+    end.
+
+%% @private
+%%
+%% @doc Determine the index to write to.
+-spec which_index(binary(), term()) -> index_name().
+which_index(Bucket, BProps) ->
+    case index_content(BProps) of
+        true -> binary_to_list(Bucket);
+        false -> ?YZ_DEFAULT_INDEX
     end.
