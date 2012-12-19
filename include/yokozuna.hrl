@@ -33,12 +33,6 @@
           req_id :: non_neg_integer()
          }).
 
--record(solr_vclocks, {
-          more=false :: boolean(),
-          continuation :: base64() | none,
-          pairs :: [{DocID::binary(), VClock::base64()}]
-         }).
-
 %% A reference to a merkle tree.
 -record(tree_ref, {
           index :: string(),
@@ -51,16 +45,21 @@
 %%% Types
 %%%===================================================================
 
--type index_set() :: ordset(index_name()).
--type base64() :: binary().
+%% Shorthand for existing types
+-type datetime() :: calendar:datetime().
+-type orddict(K,V) :: [{K,V}].
 -type ordset(T) :: ordsets:ordset(T).
 -type proplist() :: proplists:proplist().
 -type ring() :: riak_core_ring:riak_core_ring().
--type solr_vclocks() :: #solr_vclocks{}.
--type iso8601() :: string().
+-type timestamp() :: erlang:timestamp().
+
+-type index_set() :: ordset(index_name()).
+-type base64() :: binary().
+
+%% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
+-type iso8601() :: binary().
 -type tree_name() :: atom().
 -type tree_ref() :: #tree_ref{}.
--type orddict(K,V) :: [{K,V}].
 
 %% N value
 -type n() :: pos_integer().
@@ -129,6 +128,18 @@
 -type exchange_mode() :: automatic | manual.
 -type tree() :: pid().
 -type trees() :: orddict(p(), tree()).
+-type ed_filter() :: [{before, iso8601()} |
+                      {continuation, ed_continuation()} |
+                      {partition, lp()} |
+                      {limit, pos_integer()}].
+-type ed_continuation() :: none | base64().
+
+-record(entropy_data, {
+          more=false :: boolean(),
+          continuation :: ed_continuation(),
+          pairs :: [{DocID::binary(), Hash::base64()}]
+         }).
+-type entropy_data() :: #entropy_data{}.
 
 
 %%%===================================================================

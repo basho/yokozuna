@@ -26,7 +26,8 @@
                        {cfg_file, config},
                        {schema_file, schema},
                        {delete_instance, deleteInstanceDir}]).
--define(FIELD_ALIASES, []).
+-define(FIELD_ALIASES, [{continuation, continue},
+                        {limit,n}]).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {'query', [], [Str]}).
@@ -108,29 +109,43 @@ delete_by_query(Core, XML) ->
         Err -> throw({"Failed to delete by query", XML, Err})
     end.
 
-%% @doc Get `N' key-vclock pairs that occur before the `Before'
-%%      timestamp.
--spec get_vclocks(string(), iso8601(), list()) -> solr_vclocks().
-get_vclocks(Core, Before, Filter) ->
-    get_vclocks(Core, Before, Filter, none, ?DEFAULT_VCLOCK_N).
-
-get_vclocks(Core, Before, Filter, Continue, N) when N > 0 ->
+%% @doc Get slice of entropy data.  Entropy data is used to build
+%%      hashtrees for active anti-entropy.  This is meant to be called
+%%      in an iterative fashion in order to page through the entropy
+%%      data.
+%%
+%%  `Core' - The core to get entropy data for.
+%%
+%%  `Filter' - The list of constraints to filter out entropy
+%%             data.
+%%
+%%    `before' - An ios8601 datetime, return data for docs written
+%%               before and including this moment.
+%%
+%%    `continuation' - An opaque value used to continue where a
+%%                     previous return left off.
+%%
+%%    `limit' - The maximum number of entries to return.
+%%
+%%    `partition' - Return entries for specific logical partition.
+%%
+%%  `ED' - An entropy data record containing list of entries and
+%%         continuation value.
+-spec entropy_data(string(), ed_filter()) ->
+                          ED::entropy_data() | {error, term()}.
+entropy_data(Core, Filter) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/entropy_data",
-    Params = proplists:substitute_aliases(?FIELD_ALIASES, Filter),
-    Params2 = [{before, Before}, {wt, json}, {n, N}|Params],
-    Params3 = if Continue == none -> Params2;
-                 true -> [{continue, Continue}|Params2]
-              end,
-    Encoded = mochiweb_util:urlencode(Params3),
+    Params = [{wt, json}|Filter] -- [{continuation, none}],
+    Params2 = proplists:substitute_aliases(?FIELD_ALIASES, Params),
     Opts = [{response_format, binary}],
-    URL = BaseURL ++ "?" ++ Encoded,
+    URL = BaseURL ++ "?" ++ mochiweb_util:urlencode(Params2),
     case ibrowse:send_req(URL, [], get, [], Opts) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
             More = json_get_key(<<"more">>, R),
             Continuation = get_continuation(More, R),
             Pairs = get_pairs(R),
-            make_solr_vclocks(More, Continuation, Pairs);
+            make_ed(More, Continuation, Pairs);
         X ->
             {error, X}
     end.
@@ -300,8 +315,8 @@ json_get_key(Key, {struct, PL}) ->
 json_get_key(_Key, Term) ->
     throw({error, "json_get_key: Term not a struct", Term}).
 
-make_solr_vclocks(More, Continuation, Pairs) ->
-    #solr_vclocks{more=More, continuation=Continuation, pairs=Pairs}.
+make_ed(More, Continuation, Pairs) ->
+    #entropy_data{more=More, continuation=Continuation, pairs=Pairs}.
 
 shard_frag(Core, {Host, Port}) ->
     Host ++ ":" ++ Port ++ "/solr/" ++ Core.

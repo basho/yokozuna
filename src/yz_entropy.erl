@@ -48,20 +48,24 @@ iterate_entropy_data(Index, Filter, Fun) ->
         true ->
             DateTime = calendar:now_to_universal_time(os:timestamp()),
             Before = to_datetime(minus_period(DateTime, [{mins, 5}])),
-            SV = yz_solr:get_vclocks(Index, Before, Filter, none, 100),
-            iterate_entropy_data(Index, Before, Filter, Fun, SV);
+            Filter2 = [{before, Before},
+                       {continuation, none},
+                       {limit, 100}|Filter],
+            ED = yz_solr:entropy_data(Index, Filter2),
+            iterate_entropy_data(Index, Filter2, Fun, ED);
         false ->
             ok
     end.
 
-iterate_entropy_data(Index, Before, Filter, Fun, #solr_vclocks{more=true,
-                                                               continuation=Cont,
-                                                               pairs=Pairs}) ->
+iterate_entropy_data(Index, Filter, Fun, #entropy_data{more=true,
+                                                       continuation=Cont,
+                                                       pairs=Pairs}) ->
     lists:foreach(Fun, Pairs),
-    SV = yz_solr:get_vclocks(Index, Before, Filter, Cont, 100),
-    iterate_entropy_data(Index, Before, Filter, Fun, SV);
-iterate_entropy_data(_, _, _, Fun, #solr_vclocks{more=false,
-                                                 pairs=Pairs}) ->
+    Filter2 = lists:keyreplace(continuation, 1, Filter, {continuation, Cont}),
+    ED = yz_solr:entropy_data(Index, Filter2),
+    iterate_entropy_data(Index, Filter2, Fun, ED);
+iterate_entropy_data(_, _, Fun, #entropy_data{more=false,
+                                              pairs=Pairs}) ->
     lists:foreach(Fun, Pairs).
 
 %% @doc Minus Period from DateTime.
@@ -79,15 +83,10 @@ minus_period(DateTime, Periods) ->
     calendar:gregorian_seconds_to_datetime(DateTimeSecs - PeriodSecs).
 
 %% @doc Convert `erlang:now/0' or calendar datetime type to an ISO8601
-%% datetime string.
-%%
-%% @spec(Now | DateTime) -> ISO8601
-%%   Now = {MegaSecs, Secs, MicroSecs}
-%%   DateTime = {{Year, Month, Day}, {Hour, Min, Sec}}
-%%   ISO8601 = binary()
-%%
+%%      datetime.
 %%
 %% TODO: rename to_iso8601
+-spec to_datetime(timestamp() | datetime()) -> iso8601().
 to_datetime({_Mega, _Secs, _Micro}=Now) ->
     to_datetime(calendar:now_to_datetime(Now));
 to_datetime({{Year, Month, Day}, {Hour, Min, Sec}}) ->
