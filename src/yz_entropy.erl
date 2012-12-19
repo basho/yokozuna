@@ -26,19 +26,10 @@
 -define(DAY_SEC, ?HOUR_SEC * 24).
 
 %% @doc This module contains functionality related to entropy.
-%%
-%% TODO: proper supervision and probably make tree proc a gen_server
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
-gen_before() ->
-    DateTime = calendar:now_to_universal_time(os:timestamp()),
-    to_datetime(minus_period(DateTime, [{mins, 5}])).
-
-ht_insert({Key, VCHash}, Tree) ->
-    hashtree:insert(Key, VCHash, Tree).
 
 %% @doc Iterate all the entropy data in `Index' calling `Fun' for
 %%      every 100 entries.
