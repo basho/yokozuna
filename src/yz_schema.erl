@@ -28,10 +28,12 @@
 %%% API
 %%%===================================================================
 
+%% @doc Convert a schema name into a file name.
 -spec filename(schema_name()) -> string().
 filename(SchemaName) ->
     binary_to_list(SchemaName) ++ ".xml".
 
+%% @doc Retrieve the raw schema from Riak.
 -spec get(schema_name()) -> {ok, raw_schema()} | {error, schema_name(), term()}.
 get(Name) ->
     C = yz_kv:client(),
