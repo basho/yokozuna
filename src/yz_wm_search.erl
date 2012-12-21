@@ -40,12 +40,24 @@ init(_) ->
     {ok, none}.
 
 allowed_methods(Req, S) ->
-    Methods = ['GET'],
+    Methods = ['GET', 'POST'],
     {Methods, Req, S}.
 
 content_types_provided(Req, S) ->
     Types = [{"text/xml", search}],
     {Types, Req, S}.
+
+%% Treat POST as GET in order to work with existing Solr clients.
+process_post(Req, S) ->
+    case search(Req, S) of
+        {Val, Req2, S2} when is_binary(Val) ->
+            Req3 = wrq:set_resp_body(Val, Req2),
+            {true, Req3, S2};
+        Other ->
+            %% In this case assume Val is `{halt,Code}' or
+            %% `{error,Term}'
+            Other
+    end.
 
 search(Req, S) ->
     Index = wrq:path_info(index, Req),
@@ -53,12 +65,15 @@ search(Req, S) ->
     Mapping = yz_events:get_mapping(),
     try
         %% TODO: this isn't always XML, user can pass wt
-        XML = yz_solr:search(Index, Params, Mapping),
-        Req2 = wrq:set_resp_header("Content-Type", "text/xml", Req),
-        {XML, Req2, S}
+        {Headers, Body} = yz_solr:search(Index, Params, Mapping),
+        Req2 = wrq:set_resp_header("Content-Type", get_ct(Headers), Req),
+        {Body, Req2, S}
     catch throw:insufficient_vnodes_available ->
             ErrReq = wrq:set_resp_header("Content-Type", "text/plain", Req),
             ErrReq2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n",
                                         ErrReq),
             {{halt, 503}, ErrReq2, S}
     end.
+
+get_ct(Headers) ->
+    proplists:get_value("Content-Type", Headers, "text/plain").
