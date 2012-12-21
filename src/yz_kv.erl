@@ -114,12 +114,11 @@ index(Obj, delete, VNodeState) ->
 
     try
         XML = yz_solr:encode_delete({key, Key}),
-        yz_solr:delete_by_query(which_index(Bucket, BProps), XML)
+        ok = yz_solr:delete_by_query(which_index(Bucket, BProps), XML),
+        ok = update_hashtree(delete, get_partition(VNodeState), IdxN, BKey)
     catch _:Err ->
         ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
     end,
-
-    update_hashtree(delete, get_partition(VNodeState), IdxN, BKey),
     ok;
 
 index(Obj, Reason, VNodeState) ->
@@ -138,35 +137,15 @@ index(Obj, Reason, VNodeState) ->
     LP = yz_cover:logical_partition(LI, P),
     Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
                             index_content(BProps)),
-
+    IdxN = {first_partition(IdealPreflist), NVal},
 
     try
         ok = yz_solr:index(Index, Docs),
-        case riak_object:value_count(Obj) of
-            2 ->
-                case AllowMult of
-                    true  ->
-                        %% An object has crossed the threshold from
-                        %% being a single value Object, to a sibling
-                        %% value Object, delete the non-sibling ID
-                        DocID = binary_to_list(yz_doc:doc_id(Obj,
-                                                             ?INT_TO_BIN(LP))),
-                        yz_solr:delete(Index, DocID);
-                    _ -> ok
-                end;
-            1 ->
-                %% Delete any siblings
-                XML = yz_solr:encode_delete({key, Key, siblings}),
-                yz_solr:delete_by_query(Index, XML);
-            _ ->
-                ok
-        end
+        ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
+        ok = update_hashtree({insert, yz_kv:hash_object(Obj)}, P, IdxN, BKey)
     catch _:Err ->
         ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
     end,
-
-    IdxN = {first_partition(IdealPreflist), NVal},
-    update_hashtree({insert, yz_kv:hash_object(Obj)}, P, IdxN, BKey),
     ok.
 
 -spec update_hashtree(delete | {insert, binary()}, p(), {p(),n()},
@@ -231,6 +210,23 @@ remove_obj_modified_hook(Bucket, Mod, Fun) ->
 -spec check_flag(term()) -> boolean().
 check_flag(Flag) ->
     true == erlang:get(Flag).
+
+%% @private
+cleanup(1, {Index, _Obj, Key, _LP}) ->
+    %% Delete any siblings
+    XML = yz_solr:encode_delete({key, Key, siblings}),
+    ok = yz_solr:delete_by_query(Index, XML);
+
+cleanup(2, {Index, Obj, _Key, LP}) ->
+    %% An object has crossed the threshold from
+    %% being a single value Object, to a sibling
+    %% value Object, delete the non-sibling ID
+    DocID = binary_to_list(yz_doc:doc_id(Obj,
+                                         ?INT_TO_BIN(LP))),
+    ok = yz_solr:delete(Index, DocID);
+
+cleanup(_, _) ->
+    ok.
 
 %% @private
 %%
