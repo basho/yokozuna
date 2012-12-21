@@ -65,12 +65,15 @@ search(Req, S) ->
     Mapping = yz_events:get_mapping(),
     try
         %% TODO: this isn't always XML, user can pass wt
-        XML = yz_solr:search(Index, Params, Mapping),
-        Req2 = wrq:set_resp_header("Content-Type", "text/xml", Req),
-        {XML, Req2, S}
+        {Headers, Body} = yz_solr:search(Index, Params, Mapping),
+        Req2 = wrq:set_resp_header("Content-Type", get_ct(Headers), Req),
+        {Body, Req2, S}
     catch throw:insufficient_vnodes_available ->
             ErrReq = wrq:set_resp_header("Content-Type", "text/plain", Req),
             ErrReq2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n",
                                         ErrReq),
             {{halt, 503}, ErrReq2, S}
     end.
+
+get_ct(Headers) ->
+    proplists:get_value("Content-Type", Headers, "text/plain").

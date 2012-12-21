@@ -213,7 +213,7 @@ search(Core, Params, Mapping) ->
     Body = [],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, get, Body, Opts) of
-        {ok, "200", _, Resp} -> Resp;
+        {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
         Err -> throw({"Failed to search", URL, Err})
     end.
 
