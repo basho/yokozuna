@@ -41,8 +41,9 @@ start_link() ->
 init(_Args) ->
     Dir = ?YZ_ROOT_DIR,
     SolrPort = yz_solr:port(),
+    SolrJMXPort = yz_solr:jmx_port(),
     SolrProc = {yz_solr_proc,
-                {yz_solr_proc, start_link, [Dir, SolrPort]},
+                {yz_solr_proc, start_link, [Dir, SolrPort, SolrJMXPort]},
                 permanent, 5000, worker, [yz_solr_proc]},
 
     {ok, {{one_for_one, 5, 60}, [SolrProc]}}.

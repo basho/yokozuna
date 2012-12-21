@@ -98,6 +98,7 @@
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
+-define(YZ_DEFAULT_SOLR_JMX_PORT, "8985").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_EVENTS_TAB, yz_events_tab).
