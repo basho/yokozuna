@@ -40,12 +40,24 @@ init(_) ->
     {ok, none}.
 
 allowed_methods(Req, S) ->
-    Methods = ['GET'],
+    Methods = ['GET', 'POST'],
     {Methods, Req, S}.
 
 content_types_provided(Req, S) ->
     Types = [{"text/xml", search}],
     {Types, Req, S}.
+
+%% Treat POST as GET in order to work with existing Solr clients.
+process_post(Req, S) ->
+    case search(Req, S) of
+        {Val, Req2, S2} when is_binary(Val) ->
+            Req3 = wrq:set_resp_body(Val, Req2),
+            {true, Req3, S2};
+        Other ->
+            %% In this case assume Val is `{halt,Code}' or
+            %% `{error,Term}'
+            Other
+    end.
 
 search(Req, S) ->
     Index = wrq:path_info(index, Req),

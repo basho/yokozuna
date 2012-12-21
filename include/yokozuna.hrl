@@ -94,6 +94,7 @@
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 -define(INT_TO_STR(I), integer_to_list(I)).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
+-define(HEAD_CTYPE, "content-type").
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
