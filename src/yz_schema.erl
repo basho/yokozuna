@@ -38,7 +38,7 @@ get(Name) ->
     R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
     case {Name, R} of
         {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
-            {ok, RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
+            {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
         {_, {error, Reason}} ->
             {error, Name, Reason};
         {_, {value, RawSchema}} ->
