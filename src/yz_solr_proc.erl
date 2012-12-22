@@ -62,9 +62,9 @@ start_link(Dir, SolrPort) ->
 %%       properly.
 init([Dir, SolrPort]) ->
     process_flag(trap_exit, true),
-    Cmd = build_cmd(SolrPort, Dir),
-    ?INFO("Starting solr: ~p", [Cmd]),
-    Port = run_cmd(Cmd),
+    {Cmd, Args} = build_cmd(SolrPort, Dir),
+    ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
+    Port = run_cmd(Cmd, Args),
     wait_for_solr(solr_startup_wait()),
     S = #state{
       dir=Dir,
@@ -93,28 +93,31 @@ code_change(_, S, _) ->
 
 terminate(_, S) ->
     Port = ?S_PORT(S),
-    port_command(Port, ?SHUTDOWN_MSG),
+    os:cmd("kill -TERM " ++ integer_to_list(get_pid(Port))),
     port_close(Port),
     ok.
-
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
 
+-spec build_cmd(string(), string()) -> {string(), [string()]}.
 build_cmd(SolrPort, Dir) ->
-    Wrapper = filename:join([?YZ_PRIV, "sig-wrapper"]),
-    Java = "java",
-    SolrHomeArg = "-Dsolr.solr.home=" ++ Dir,
-    JettyHomeArg = "-Djetty.home=" ++ Dir,
-    PortArg = "-Djetty.port=" ++ SolrPort,
+    SolrHome = "-Dsolr.solr.home=" ++ Dir,
+    JettyHome = "-Djetty.home=" ++ Dir,
+    Port = "-Djetty.port=" ++ SolrPort,
     LoggingProps = filename:join([Dir, "logging.properties"]),
-    LoggingArg = "-Djava.util.logging.config.file=" ++ LoggingProps,
-    LibDir = filename:join([?YZ_PRIV, "java_lib"]),
-    LibArg = "-Dyz.lib.dir=" ++ LibDir,
-    JarArg = "-jar " ++ filename:join([Dir, "start.jar"]),
-    string:join([Wrapper, Java, JettyHomeArg, PortArg,
-                 SolrHomeArg, LoggingArg, LibArg, JarArg], " ").
+    Logging = "-Djava.util.logging.config.file=" ++ LoggingProps,
+    LibDir = "-Dyz.lib.dir=" ++ filename:join([?YZ_PRIV, "java_lib"]),
+    Jar = "-jar",
+    JarName = filename:join([Dir, "start.jar"]),
+
+    Args = [JettyHome, Port, SolrHome, Logging, LibDir, Jar, JarName],
+    {os:find_executable("java"), Args}.
+
+-spec get_pid(port()) -> pos_integer().
+get_pid(Port) ->
+    proplists:get_value(os_pid, erlang:port_info(Port)).
 
 is_up() ->
     try
@@ -124,8 +127,8 @@ is_up() ->
             false
     end.
 
-run_cmd(Cmd) ->
-    open_port({spawn, Cmd}, [exit_status]).
+run_cmd(Cmd, Args) ->
+    open_port({spawn_executable, Cmd}, [exit_status, {args, Args}, use_stdio, stderr_to_stdout]).
 
 solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
