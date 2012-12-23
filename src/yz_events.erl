@@ -62,8 +62,7 @@ init([]) ->
     ok = watch_ring_events(),
     ok = create_events_table(),
     ok = set_tick(),
-    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
-    {ok, #state{previous_ring=Ring}}.
+    {ok, #state{previous_ring=yz_misc:get_ring(raw)}}.
 
 handle_cast({ring_event, Ring}=RE, S) ->
     PrevRing = ?PREV_RING(S),
