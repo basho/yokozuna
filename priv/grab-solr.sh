@@ -99,6 +99,6 @@ if $FROM_SRC; then
 fi
 
 cp -vr $example_dir $dir
-rm -rf $dir/{multicore,solr,README.txt}
+rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt}
 cp -v solr.xml $dir
 cp -v *.properties $dir
