@@ -37,7 +37,6 @@
           solr_port=exit(solr_port_undefined)
          }).
 
--define(SHUTDOWN_MSG, "INT\n").
 -define(S_MATCH, #state{dir=_Dir, port=_Port, solr_port=_SolrPort}).
 -define(S_PORT(S), S#state.port).
 
