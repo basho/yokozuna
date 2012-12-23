@@ -121,7 +121,7 @@ name(Info) ->
 %%      node.  Return the list of non-owned partitions found.
 -spec remove_non_owned_data(string()) -> [{ordset(p()), ordset(lp())}].
 remove_non_owned_data(Index) ->
-    {ok, Ring} = riak_core_ring_manager:get_raw_ring(),
+    Ring = yz_misc:get_ring(raw),
     IndexPartitions = yz_cover:reify_partitions(Ring,
                                                 yokozuna:partition_list(Index)),
     OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),

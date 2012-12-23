@@ -527,9 +527,8 @@ maybe_exchange(Ring, S) ->
 
 -spec init_next_exchange(state()) -> state().
 init_next_exchange(S) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Trees = S#state.trees,
-    Exchanges = all_exchanges(Ring, Trees),
+    Exchanges = all_exchanges(yz_misc:get_ring(transformed), Trees),
     S#state{exchange_queue=Exchanges}.
 
 -spec next_exchange(ring(), state()) -> {exchange(), state()} | {none, state()}.

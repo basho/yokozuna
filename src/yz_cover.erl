@@ -35,7 +35,7 @@ logical_partitions(Ring, Partitions) ->
     ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
 
 plan(Index) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    Ring = yz_misc:get_ring(transformed),
     Q = riak_core_ring:num_partitions(Ring),
     BProps = riak_core_bucket:get_bucket(Index, Ring),
     Selector = all,
