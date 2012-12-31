@@ -201,6 +201,9 @@ jmx_port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_jmx_port, undefined).
 
 search(Core, Params, Mapping) ->
+    search(Core, [], Params, Mapping).
+
+search(Core, Headers, Params, Mapping) ->
     {Nodes, FilterPairs} = yz_cover:plan(Core),
     HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
     ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
@@ -212,7 +215,6 @@ search(Core, Params, Mapping) ->
     %% NOTE: For some reason ShardFrags2 breaks urlencode so add it
     %%       manually
     URL = BaseURL ++ "?shards=" ++ ShardFrags2 ++ "&" ++ Encoded,
-    Headers = [],
     Body = [],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, get, Body, Opts) of

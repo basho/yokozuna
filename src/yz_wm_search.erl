@@ -63,10 +63,11 @@ search(Req, S) ->
     Index = wrq:path_info(index, Req),
     Params = wrq:req_qs(Req),
     Mapping = yz_events:get_mapping(),
+    ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        %% TODO: this isn't always XML, user can pass wt
-        {Headers, Body} = yz_solr:search(Index, Params, Mapping),
-        Req2 = wrq:set_resp_header("Content-Type", get_ct(Headers), Req),
+        {RespHeaders, Body} = yz_solr:search(Index, ReqHeaders,
+                                             Params, Mapping),
+        Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
         {Body, Req2, S}
     catch throw:insufficient_vnodes_available ->
             ErrReq = wrq:set_resp_header("Content-Type", "text/plain", Req),
@@ -75,5 +76,7 @@ search(Req, S) ->
             {{halt, 503}, ErrReq2, S}
     end.
 
-get_ct(Headers) ->
-    proplists:get_value("Content-Type", Headers, "text/plain").
+scrub_headers(RespHeaders) ->
+    %% Solr returns as chunked but not going to return as chunked from
+    %% Yokozuna.
+    lists:keydelete("Transfer-Encoding", 1, RespHeaders).
