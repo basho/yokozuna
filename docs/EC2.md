@@ -81,11 +81,8 @@ indexing coming soon.
 
 ## The AMI
 
-The AMI is a customization of Amazon Linux ami-8d9c20e4.  It
-is x86_64 using instance storage.
-
-    $ ec2-describe-images ami-9c2d96f5
-    IMAGE   ami-9c2d96f5    682127949672/yz_ami_0.1.0       682127949672    available       public          x86_64  machine aki-88aa75e1                    instance-store  paravirtual     xen
+The AMI is a customization of Amazon Linux `ami-f565ba9c`.  It is x86_64
+using instance storage.
 
 Yokozuna is a moving target.  If you run into issues you may want to
 check which commit of Yokozuna is being used and compare it against
