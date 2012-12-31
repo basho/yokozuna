@@ -75,9 +75,7 @@ Yokozuna.
 ### Index/Query Data
 
 To start indexing and querying data take a look at the
-[Getting Started] [gs] guide.  At the moment there is only support for
-`text/plain` and `text/xml` content types.  More thorough docs on
-indexing coming soon.
+[Getting Started] [gs] guide.
 
 ## The AMI
 
