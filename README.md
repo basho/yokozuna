@@ -90,29 +90,9 @@ may eventually change to a 1:M mapping from index to bucket.
 
 You can create an index via the HTTP interface.
 
-    curl -XPUT -i -H 'content-type:application/json' http://localhost:8091/yz/index/name_of_index
+    curl -XPUT -i -H 'content-type: application/json' http://localhost:8091/yz/index/name_of_index
 
 Optionally, you may create an index from the console.
-
-#### Index from Console
-
-This command must be run from the Riak console--you must first attach
-to it.
-
-    ./dev/dev1/bin/riak attach
-
-An _index_ must be created in order for Yokozuna to index data.
-Currently the index name is a 1:1 mapping with the bucket name.  I
-may change this me a 1:M mapping from index to bucket.
-
-    yz_index:create("name_of_index").
-
-### Install the Post-commit Hook ###
-
-Yokozuna hooks into KV using a post-commit hook.  This may change
-soon.  Remember, the bucket and index name must be the same.
-
-    yz_kv:install_hook(<<"name_of_bucket">>).
 
 ### Index Some Data ###
 
