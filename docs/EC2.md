@@ -18,7 +18,7 @@ I recommend [using five nodes][five_nodes].  If you just want to
 experiment one node will work.  [Performance Tuning for AWS][perf_aws]
 contains advice in regards to running Riak on EC2.
 
-    ec2-run-instances ami-9c2d96f5 -k <YOUR_KEY> -n <NUM_NODES>
+    ec2-run-instances ami-8b8d03e2 -k <YOUR_KEY> -n <NUM_NODES>
 
 Each instance contains a self-contained Riak release under
 `~ec2-user/riak/rel/riak`.  Many of the following sections assume a
