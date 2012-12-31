@@ -187,7 +187,7 @@ BUNDLE_DIR=/media/ephemeral0/bundle
 rm -vrf $BUNDLE_DIR
 mkdir -v $BUNDLE_DIR
 
-sudo su -c "cd /media/ephemeral0 && ec2-bundle-vol -k pk-* -c cert-* -r x86_64 -d $BUNDLE_DIR -e /home/ec2-user/.ssh/authorized_keys -e /etc/ssh/ssh_host_dsa_key -e /etc/ssh/ssh_host_dsa_key.pub -e /etc/ssh/ssh_host_key -e /etc/ssh/ssh_host_key.pub -e /etc/ssh/ssh_host_rsa_key -e /etc/ssh/ssh_host_rsa_key.pub -u $AWS_USER_ID" - root
+sudo su -c "cd /media/ephemeral0 && ec2-bundle-vol -k pk-* -c cert-* -r x86_64 -d $BUNDLE_DIR -e /home/ec2-user/.ssh/authorized_keys -e /etc/ssh/ssh_host_dsa_key -e /etc/ssh/ssh_host_dsa_key.pub -e /etc/ssh/ssh_host_key -e /etc/ssh/ssh_host_key.pub -e /etc/ssh/ssh_host_rsa_key -e /etc/ssh/ssh_host_rsa_key.pub -p $AMI_NAME -u $AWS_USER_ID" - root
 if_failed "failure bundling volume"
 
 sudo su -c "cd /media/ephemeral0 && ec2-upload-bundle -b $BUCKET -m $BUNDLE_DIR/image.manifest.xml -a $AWS_ACCESS_KEY_ID -s $AWS_SECRET_KEY" - root
