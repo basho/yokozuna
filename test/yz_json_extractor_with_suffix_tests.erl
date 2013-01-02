@@ -6,8 +6,8 @@ json_extract_test() ->
     %% Actual
     {ok, TestJSON} = file:read_file("../test/with_suffix.json"),
     Fields = yz_json_extractor_with_suffix:extract(TestJSON),
-    Xml = yz_solr:prepare_xml([{doc, Fields}]),
+    JSON = yz_solr:prepare_json([{doc, Fields}]),
     %% Expected
-    {ok, TestXML} = file:read_file("../test/with_suffix.xml"),
-    Xml1 = binary:replace(TestXML, <<"\n">>, <<"">>, [global]),
-    ?assertEqual(Xml1, iolist_to_binary(Xml)).
+    {ok, TestJSONExp} = file:read_file("../test/with_suffix_expected.json"),
+    JSON1 = binary:replace(TestJSONExp, <<"\n">>, <<"">>, [global]),
+    ?assertEqual(JSON1, iolist_to_binary(JSON)).
