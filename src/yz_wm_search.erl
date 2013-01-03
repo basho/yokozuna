@@ -29,7 +29,8 @@
 
 %% @doc Return the list of routes provided by this resource.
 routes() ->
-    [{["search", index], yz_wm_search, []}].
+    [{["solr", index, "select"], ?MODULE, []},
+     {["search", index], ?MODULE, []}].
 
 
 %%%===================================================================
