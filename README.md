@@ -78,10 +78,8 @@ Optionally, you may create an index from the console.
 
 ### Index Some Data ###
 
-Indexing data is a matter of writing data to KV.  At the moment
-Yokozuna is hard coded to treat all objects as `text/plain`.  The
-value of an object is stored under the `text` field in the Yokozuna
-schema.  This will become more sophisticated as I iterate.
+Indexing data is a matter of writing data to KV.  Currently Yokozuna
+knows hows to index plain text, XML, and JSON.
 
     curl -H 'content-type: text/plain' -X PUT 'http://localhost:8091/riak/name_of_bucket/name' -d "Ryan Zezeski"
 
