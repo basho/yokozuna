@@ -101,7 +101,8 @@ content_types_provided(RD, S) ->
     {Types, RD, S}.
 
 content_types_accepted(RD, S) ->
-    Types = [{"application/json", create_index}],
+    Types = [{"application/json", create_index},
+             {"application/octet-stream", create_index}],
     {Types, RD, S}.
 
 % Responsed to a DELETE request by removing the
@@ -173,10 +174,11 @@ malformed_request(RD, S) when S#ctx.method =:= 'PUT' ->
     case S#ctx.index_name of
         undefined -> {{halt, 404}, RD, S};
         _ ->
-            case wrq:get_req_header("Content-Type", RD) of
-                undefined ->
+            CT = wrq:get_req_header("Content-Type", RD),
+            case CT =:= undefined andalso (not(S#ctx.props =:= [])) of
+                true ->
                     text_response(true, "Missing Content-Type request header~n", [], RD, S);
-                _  ->
+                false  ->
                     schema_exists_response(RD, S)
             end
     end;

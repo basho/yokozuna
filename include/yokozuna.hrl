@@ -114,6 +114,8 @@
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
+-define(YZ_ERR_INDEX_NOT_FOUND,
+        "No index ~p found.").
 
 %%%===================================================================
 %%% Anti Entropy
