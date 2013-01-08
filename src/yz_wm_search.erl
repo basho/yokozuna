@@ -70,7 +70,15 @@ search(Req, S) ->
                                              Params, Mapping),
         Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
         {Body, Req2, S}
-    catch throw:insufficient_vnodes_available ->
+    catch
+        throw:not_found ->
+            ErrReq = wrq:append_to_response_body(
+                io_lib:format(?YZ_ERR_INDEX_NOT_FOUND ++ "\n", [Index]),
+                Req),
+            ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
+                                        ErrReq),
+            {{halt, 404}, ErrReq2, S};
+        throw:insufficient_vnodes_available ->
             ErrReq = wrq:set_resp_header("Content-Type", "text/plain", Req),
             ErrReq2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n",
                                         ErrReq),

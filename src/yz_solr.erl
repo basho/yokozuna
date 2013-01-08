@@ -219,6 +219,7 @@ search(Core, Headers, Params, Mapping) ->
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, get, Body, Opts) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
+        {ok, "404", _, _} -> throw(not_found);
         Err -> throw({"Failed to search", URL, Err})
     end.
 
