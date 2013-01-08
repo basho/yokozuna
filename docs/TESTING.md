@@ -47,13 +47,7 @@ fresh state.
 ### Compile Yokozuna Riak Test
 
     cd <path-to-yokozuna>
-    make
-
-At this point Riak Test will be pulled down and compiled but for
-whatever reason the Riak Test plugin will not execute on the first
-pass.  A second invocation of make is required.
-
-    make
+    make compile-riak-test
 
 At this point you should see `.beam` files in `riak_test/ebin`.
 
@@ -86,7 +80,7 @@ Basho Bench.
 Finally, run the test.
 
     cd <path-to-yokozuna>
-    ./rebar config=yokozuna test=yokozuna_essential rt_run | tee rtrun.out
+    <path-to-riak-test>/riak_test -c yokozuna -d riak_test/ebin | tee rt.out
 
 [rt_readme]: https://github.com/basho/riak_test/blob/master/README.md
 

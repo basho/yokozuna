@@ -7,11 +7,15 @@ all: deps compile
 compile:
 	$(REBAR) compile
 
+compile-riak-test: all
+	$(REBAR) skip_deps=true riak_test_compile
+
 deps:
 	$(REBAR) get-deps
 
 clean:
 	$(REBAR) clean
+	rm -rf riak_test/ebin
 
 distclean: clean devclean relclean
 	$(REBAR) delete-deps
