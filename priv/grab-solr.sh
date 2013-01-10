@@ -77,7 +77,7 @@ get_solr()
     if $FROM_SRC; then
         git clone git://github.com/apache/lucene-solr.git
     else
-        wget http://apache.mesi.com.ar/lucene/solr/4.0.0/apache-solr-4.0.0.tgz
+        wget http://s3.amazonaws.com/files.basho.com/solr/apache-solr-4.0.0.tgz
         tar zxvf apache-solr-4.0.0.tgz
     fi
 }
