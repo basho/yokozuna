@@ -43,4 +43,4 @@ json_extract_test() ->
     Pairs = lists:zip(lists:sort(Expect), lists:sort(Result)),
     [?assertEqual(E,R) || {E,R} <- Pairs],
     %% Verify XML conversion doesn't error
-    ?STACK_IF_FAIL(yz_solr:prepare_xml([{doc, Result}])).
+    ?STACK_IF_FAIL(yz_solr:prepare_json([{doc, Result}])).
