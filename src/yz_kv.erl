@@ -38,10 +38,23 @@
 %%% API
 %%%===================================================================
 
+all_exchanges(Ring, Index) ->
+    {Index, yz_entropy_mgr:all_pairwise_exchanges(Index, Ring)}.
+
 -spec client() -> any().
 client() ->
     {ok,C} = riak:local_client(),
     C.
+
+%% @doc Compute the AAE exchange info.
+-spec compute_exchange_info() -> [{p(), t_now(), t_now(), term()}].
+compute_exchange_info() ->
+    riak_kv_entropy_info:compute_exchange_info(yz, {?MODULE, all_exchanges}).
+
+%% @doc Compute the AAE hashtree info.
+-spec compute_tree_info() -> [{p(), t_now()}].
+compute_tree_info() ->
+    riak_kv_entropy_info:compute_tree_info(yz).
 
 -spec get(any(), binary(), binary()) -> any().
 get(C, Bucket, Key) ->
@@ -79,6 +92,11 @@ get_obj_md(Obj) ->
 -spec get_obj_value(obj()) -> binary().
 get_obj_value(Obj) ->
     riak_object:get_value(Obj).
+
+%% @doc Get the build time of the tree.
+-spec get_tree_build_time(tree()) -> calendar:t_now().
+get_tree_build_time(Tree) ->
+    riak_kv_index_hashtree:get_build_time(Tree).
 
 -spec index_content(term()) -> boolean().
 index_content(BProps) ->
@@ -146,6 +164,18 @@ index(Obj, Reason, VNodeState) ->
     catch _:Err ->
         ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
     end,
+    ok.
+
+%% @doc Update AAE exchange stats for Yokozuna.
+-spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
+update_aae_exchange_stats(Index, IndexN, Count) ->
+    riak_kv_entropy_info:exchange_complete(yz, Index, Index, IndexN, Count),
+    ok.
+
+%% @doc Update AAE hashtree status for Yokozuna.
+-spec update_aae_tree_stats(p(), non_neg_integer()) -> ok.
+update_aae_tree_stats(Index, BuildTime) ->
+    riak_kv_entropy_info:tree_built(yz, Index, BuildTime),
     ok.
 
 -spec update_hashtree(delete | {insert, binary()}, p(), {p(),n()},

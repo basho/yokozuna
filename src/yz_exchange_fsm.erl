@@ -179,8 +179,10 @@ key_exchange(timeout, S=#state{index=Index,
 
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, YZTree) of
         [] ->
+            yz_kv:update_aae_exchange_stats(Index, IndexN, 0),
             ok;
         [Count] ->
+            yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
             lager:info("Repaired ~b keys during active anti-entropy exchange "
                        "of ~p", [Count, IndexN])
     end,

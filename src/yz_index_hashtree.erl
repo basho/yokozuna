@@ -327,8 +327,11 @@ apply_tree(Id, Fun, S=#state{trees=Trees}) ->
 do_build_finished(S=#state{index=Index, built=_Pid}) ->
     lager:debug("Finished build: ~p", [Index]),
     {_,Tree0} = hd(S#state.trees),
+    BuildTime = yz_kv:get_tree_build_time(Tree0),
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
-    S#state{built=true, build_time=os:timestamp()}.
+    hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
+    yz_kv:update_aae_tree_stats(Index, BuildTime),
+    S#state{built=true, build_time=BuildTime}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
