@@ -175,7 +175,8 @@ fruit_key_val_gen(Id, NumKeys) ->
     fun() ->
             %% Need to add 1 to NumToWrite because sequential gen
             %% doesn't write last value
-            K = basho_bench_keygen:sequential_int_generator(Ref, NumToWrite + 1, Id) + Start,
+            K = basho_bench_keygen:sequential_int_generator(Ref, NumToWrite + 1,
+                                                            Id, false) + Start,
             V = first_large_enough(K, Fruits2),
             {K, V}
     end.
