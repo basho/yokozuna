@@ -23,7 +23,7 @@
           [{handlers,
             [{lager_file_backend,
               [{"./log/error.log",error,10485760,"$D0",5},
-               {"./log/console.log",debug,104857600,"$D0",10}]}]}]}
+               {"./log/console.log",info,104857600,"$D0",10}]}]}]}
         ]).
 
 confirm() ->
