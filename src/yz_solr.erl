@@ -30,7 +30,7 @@
                         {limit,n}]).
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
--define(QUERY(Str), {'query', [], [Str]}).
+-define(QUERY(Str), {struct, [{'query', Str}]}).
 
 %% @doc This module provides the interface for making calls to Solr.
 %%      All interaction with Solr should go through this API.
@@ -41,24 +41,19 @@
 
 -spec build_partition_delete_query(ordset(lp())) -> term().
 build_partition_delete_query(LPartitions) ->
-    Queries = [?QUERY(?YZ_PN_FIELD_S ++ ":" ++ ?INT_TO_STR(LP))
+    Deletes = [{delete, ?QUERY(<<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>)}
                || LP <- LPartitions],
-    xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
-
--spec build_rk_delete_query(binary()) -> term().
-build_rk_delete_query(RiakKey) ->
-    Queries = [?QUERY(?YZ_RK_FIELD_S ++ ":" ++ binary_to_list(RiakKey))],
-    xmerl:export_simple([{delete, [], Queries}], xmerl_xml).
+    mochijson2:encode({struct, Deletes}).
 
 commit(Core) ->
     BaseURL = base_url() ++ "/" ++ Core ++  "/update",
-    XML = encode_commit(),
+    JSON = encode_commit(),
     Params = [{commit, true}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
-    Headers = [{content_type, "text/xml"}],
+    Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, XML, Opts) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to commit", Err})
     end.
@@ -90,23 +85,23 @@ cores() ->
 -spec delete(string(), string()) -> ok.
 delete(Core, DocID) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    XML = encode_delete({id,DocID}),
+    JSON = encode_delete({id,DocID}),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
-    Headers = [{content_type, "text/xml"}],
+    Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, XML, Opts) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to delete doc", DocID, Err})
     end.
 
-delete_by_query(Core, XML) ->
+delete_by_query(Core, JSON) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    Headers = [{content_type, "text/xml"}],
-    case ibrowse:send_req(BaseURL, Headers, post, XML, []) of
+    Headers = [{content_type, "application/json"}],
+    case ibrowse:send_req(BaseURL, Headers, post, JSON, []) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to delete by query", XML, Err})
+        Err -> throw({"Failed to delete by query", JSON, Err})
     end.
 
 %% @doc Get slice of entropy data.  Entropy data is used to build
@@ -153,20 +148,20 @@ entropy_data(Core, Filter) ->
 %% @doc Index the given `Docs'.
 index(Core, Docs) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    XML = prepare_xml(Docs),
+    JSON = prepare_json(Docs),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
-    Headers = [{content_type, "text/xml"}],
+    Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, XML, Opts) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to index docs", Docs, Err})
     end.
 
-prepare_xml(Docs) ->
-    Content = {add, [], lists:map(fun encode_doc/1, Docs)},
-    xmerl:export_simple([Content], xmerl_xml).
+prepare_json(Docs) ->
+    Content = {struct, [{add, encode_doc(D)} || D <- Docs]},
+    mochijson2:encode(Content).
 
 %% @doc Return the set of unique partitions stored on this node.
 -spec partition_list(string()) -> binary().
@@ -252,38 +247,38 @@ convert_action(create) -> "CREATE";
 convert_action(status) -> "STATUS";
 convert_action(remove) -> "UNLOAD".
 
-%% TODO: Encoding functions copied from esolr, redo this.
 encode_commit() ->
-	xmerl:export_simple([{commit, []}], xmerl_xml).
+    <<"{}">>.
 
-encode_delete({key,Key})->
-    Query = "_yz_rk:" ++ binary_to_list(Key),
-    xmerl:export_simple([{delete, [], [{'query', [], [Query]}]}], xmerl_xml);
+encode_delete({key,Key}) ->
+    Query = ?YZ_RK_FIELD_S ++ ":" ++ binary_to_list(Key),
+    mochijson2:encode({struct, [{delete, ?QUERY(list_to_binary(Query))}]});
 
-encode_delete({key,Key,siblings})->
-    Query = "_yz_rk:" ++ binary_to_list(Key) ++ " AND _yz_vtag:[* TO *]",
-    xmerl:export_simple([{delete, [], [{'query', [], [Query]}]}], xmerl_xml);
+encode_delete({key,Key,siblings}) ->
+    Query = ?YZ_RK_FIELD_S ++ ":" ++ binary_to_list(Key) ++ " AND " ++ ?YZ_VTAG_FIELD_S ++ ":[* TO *]",
+    mochijson2:encode({struct, [{delete, ?QUERY(list_to_binary(Query))}]});
 
-encode_delete({id,Id})->
-    xmerl:export_simple([{delete, [], [{id, [], [Id]}]}], xmerl_xml).
+encode_delete({id,Id}) ->
+    mochijson2:encode({struct, [{delete, {struct, [{id, list_to_binary(Id)}]}}]}).
 
 encode_doc({doc, Fields}) ->
-	{doc, [], lists:map(fun encode_field/1,Fields)};
+    {struct, [{doc, lists:map(fun encode_field/1,Fields)}] };
 
 encode_doc({doc, Boost, Fields}) ->
-	{doc, [{boost, Boost}], lists:map(fun encode_field/1, Fields)}.
+	{struct, [{doc, [{boost, Boost}], lists:map(fun encode_field/1, Fields)}]}.
 
-encode_field({Name, Value}) when is_binary(Value)->
-	{field, [{name,Name}], [[Value]]};
+% encode_field({Name,Value}) when is_binary(Value) ->
+%     {Name, Value};
+
+encode_field({Name,Value}) when is_list(Value) ->
+    {Name, list_to_binary(Value)};
 
 encode_field({Name,Value}) ->
-	{field, [{name,Name}], [Value]};
-
-encode_field({Name,Value,Boost}) when is_binary(Value)->
-	{field, [{name,Name}, {boost,Boost}], [[Value]]};
+    {Name, Value};
 
 encode_field({Name,Value,Boost}) ->
-	{field, [{name,Name}, {boost,Boost}], [Value]}.
+    FieldContent = {struct, [{boost, Boost}, {value, Value}]},
+    {struct, [{Name, FieldContent}]}.
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->

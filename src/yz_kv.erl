@@ -113,8 +113,8 @@ index(Obj, delete, VNodeState) ->
     IdxN = {first_partition(IdealPreflist), riak_core_bucket:n_val(BProps)},
 
     try
-        XML = yz_solr:encode_delete({key, Key}),
-        ok = yz_solr:delete_by_query(which_index(Bucket, BProps), XML),
+        Query = yz_solr:encode_delete({key, Key}),
+        ok = yz_solr:delete_by_query(which_index(Bucket, BProps), Query),
         ok = update_hashtree(delete, get_partition(VNodeState), IdxN, BKey)
     catch _:Err ->
         ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
@@ -214,8 +214,8 @@ check_flag(Flag) ->
 %% @private
 cleanup(1, {Index, _Obj, Key, _LP}) ->
     %% Delete any siblings
-    XML = yz_solr:encode_delete({key, Key, siblings}),
-    ok = yz_solr:delete_by_query(Index, XML);
+    JSON = yz_solr:encode_delete({key, Key, siblings}),
+    ok = yz_solr:delete_by_query(Index, JSON);
 
 cleanup(2, {Index, Obj, _Key, LP}) ->
     %% An object has crossed the threshold from
