@@ -360,7 +360,7 @@ handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
     RP = riak_kv_util:responsible_preflists(Partition),
     case lists:member(Id, RP) of
         false ->
-            %% The encountered object does not belong to any preflists thata
+            %% The encountered object does not belong to any preflists that
             %% this partition is associated with. Under normal Riak operation,
             %% this should only happen when the `n_val' for an object is
             %% reduced. For example, write an object with N=3, then change N to
@@ -368,13 +368,6 @@ handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
             %% longer needed. We should probably just delete these objects, but
             %% to be safe rather than sorry, the first version of AAE simply
             %% ignores these objects.
-            %%
-            %% TODO: We should probably remove these warnings before final
-            %%       release, as reducing N will result in a ton of log/console
-            %%       spam.
-            lager:warning("Object ~p encountered during fold over partition "
-                          "~p, but key does not hash to an index handled by "
-                          "this partition", [Key, Partition]),
             S;
 
         true ->
