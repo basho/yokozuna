@@ -179,8 +179,10 @@ key_exchange(timeout, S=#state{index=Index,
 
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, YZTree) of
         [] ->
+            yz_kv:update_aae_exchange_stats(Index, IndexN, 0),
             ok;
         [Count] ->
+            yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
             lager:info("Repaired ~b keys during active anti-entropy exchange "
                        "of ~p", [Count, IndexN])
     end,
@@ -218,7 +220,6 @@ read_repair_keydiff(_RC, {remote_missing, KeyBin}) ->
 
 read_repair_keydiff(RC, {Reason, KeyBin}) ->
     BKey = {Bucket, Key} = binary_to_term(KeyBin),
-    lager:debug("Anti-entropy forced read repair and re-index: ~p/~p (~p)", [Bucket, Key, Reason]),
     {ok, Obj} = RC:get(Bucket, Key),
     Ring = yz_misc:get_ring(transformed),
     BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),

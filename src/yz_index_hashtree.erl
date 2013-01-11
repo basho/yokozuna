@@ -327,8 +327,11 @@ apply_tree(Id, Fun, S=#state{trees=Trees}) ->
 do_build_finished(S=#state{index=Index, built=_Pid}) ->
     lager:debug("Finished build: ~p", [Index]),
     {_,Tree0} = hd(S#state.trees),
+    BuildTime = yz_kv:get_tree_build_time(Tree0),
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
-    S#state{built=true, build_time=os:timestamp()}.
+    hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
+    yz_kv:update_aae_tree_stats(Index, BuildTime),
+    S#state{built=true, build_time=BuildTime}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
@@ -357,7 +360,7 @@ handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
     RP = riak_kv_util:responsible_preflists(Partition),
     case lists:member(Id, RP) of
         false ->
-            %% The encountered object does not belong to any preflists thata
+            %% The encountered object does not belong to any preflists that
             %% this partition is associated with. Under normal Riak operation,
             %% this should only happen when the `n_val' for an object is
             %% reduced. For example, write an object with N=3, then change N to
@@ -365,13 +368,6 @@ handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
             %% longer needed. We should probably just delete these objects, but
             %% to be safe rather than sorry, the first version of AAE simply
             %% ignores these objects.
-            %%
-            %% TODO: We should probably remove these warnings before final
-            %%       release, as reducing N will result in a ton of log/console
-            %%       spam.
-            lager:warning("Object ~p encountered during fold over partition "
-                          "~p, but key does not hash to an index handled by "
-                          "this partition", [Key, Partition]),
             S;
 
         true ->
