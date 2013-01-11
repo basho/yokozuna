@@ -206,30 +206,28 @@ read_repair_keydiff(_RC, {remote_missing, KeyBin}) ->
     BKey = {Bucket, Key} = binary_to_term(KeyBin),
     Ring = yz_misc:get_ring(transformed),
     BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    Idx = riak_core_util:chash_key(BKey),
     N = proplists:get_value(n_val,BucketProps),
-    Preflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), N),
+    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
     FakeObj = fake_kv_object(Bucket, Key),
 
     lists:foreach(fun({Partition, Node}) ->
                           FakeState = fake_kv_vnode_state(Partition),
                           rpc:call(Node, yz_kv, index, [FakeObj, delete, FakeState])
-                  end, Preflist),
+                  end, PrimaryPL),
 
     ok;
 
-read_repair_keydiff(RC, {Reason, KeyBin}) ->
+read_repair_keydiff(RC, {_Reason, KeyBin}) ->
     BKey = {Bucket, Key} = binary_to_term(KeyBin),
     {ok, Obj} = RC:get(Bucket, Key),
     Ring = yz_misc:get_ring(transformed),
     BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    Idx = riak_core_util:chash_key(BKey),
     N = proplists:get_value(n_val,BucketProps),
-    Preflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), N),
+    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
     lists:foreach(fun({Partition, Node}) ->
                           FakeState = fake_kv_vnode_state(Partition),
                           rpc:call(Node, yz_kv, index, [Obj, anti_entropy, FakeState])
-                  end, Preflist),
+                  end, PrimaryPL),
     ok.
 
 %% @private

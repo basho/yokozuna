@@ -148,6 +148,14 @@ owned_and_next_partitions(Node, Ring) ->
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
     ordsets:from_list([P || {P,_} <- Next ++ Owned]).
 
+%% @doc Calculate the primary preflist for a given Bucket/Key and N
+%%      value.  It is a "primary" preflist because it assumes all nodes
+%%      in the cluster are reachable.
+-spec primary_preflist(bkey(), ring(), n()) -> preflist().
+primary_preflist(BKey, Ring, N) ->
+    Idx = riak_core_util:chash_key(BKey),
+    lists:sublist(riak_core_ring:preflist(Idx, Ring), N).
+
 %% NOTE: This could get in inifinite loop if `Queue' runs out and
 %%       `Refill' produces [].
 -spec queue_pop(list(), function()) ->

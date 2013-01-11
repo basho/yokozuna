@@ -61,14 +61,24 @@
 -type tree_name() :: atom().
 -type tree_ref() :: #tree_ref{}.
 
+%% Index into the ring
+-type idx() :: non_neg_integer().
 %% N value
 -type n() :: pos_integer().
 %% Number of partitions
 -type q() :: pos_integer().
-%% Partition
+%% Partition, the starting idx() of a partition
 -type p() :: non_neg_integer().
 %% Logical Partition
 -type lp() :: pos_integer().
+%% Preflist, list of partition/owner pairs
+-type preflist() :: [{p(),term()}].
+%% Riak bucket
+-type bucket() :: binary().
+%% Riak key
+-type key() :: binary().
+%% Bucket/Key pair
+-type bkey() :: {bucket(), key()}.
 %% Distance between LPs
 -type dist() :: non_neg_integer().
 %% Mapping from logical partition to partition

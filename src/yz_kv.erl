@@ -126,9 +126,8 @@ index(Obj, delete, VNodeState) ->
     {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
     NVal = riak_core_bucket:n_val(BProps),
-    Idx = riak_core_util:chash_key(BKey),
-    IdealPreflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), NVal),
-    IdxN = {first_partition(IdealPreflist), riak_core_bucket:n_val(BProps)},
+    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
+    IdxN = {first_partition(PrimaryPL), riak_core_bucket:n_val(BProps)},
 
     try
         Query = yz_solr:encode_delete({key, Key}),
@@ -148,14 +147,13 @@ index(Obj, Reason, VNodeState) ->
     ok = maybe_wait(Reason, Index),
     AllowMult = proplists:get_value(allow_mult, BProps),
     NVal = riak_core_bucket:n_val(BProps),
-    Idx = riak_core_util:chash_key(BKey),
-    IdealPreflist = lists:sublist(riak_core_ring:preflist(Idx, Ring), NVal),
-    LFPN = yz_cover:logical_partition(LI, first_partition(IdealPreflist)),
+    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
+    LFPN = yz_cover:logical_partition(LI, first_partition(PrimaryPL)),
     P = get_partition(VNodeState),
     LP = yz_cover:logical_partition(LI, P),
     Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
                             index_content(BProps)),
-    IdxN = {first_partition(IdealPreflist), NVal},
+    IdxN = {first_partition(PrimaryPL), NVal},
 
     try
         ok = yz_solr:index(Index, Docs),
