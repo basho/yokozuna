@@ -47,12 +47,12 @@ client() ->
     C.
 
 %% @doc Compute the AAE exchange info.
--spec compute_exchange_info() -> [{p(), t_now(), t_now(), term()}].
+-spec compute_exchange_info() -> [{p(), timestamp(), timestamp(), term()}].
 compute_exchange_info() ->
     riak_kv_entropy_info:compute_exchange_info(yz, {?MODULE, all_exchanges}).
 
 %% @doc Compute the AAE hashtree info.
--spec compute_tree_info() -> [{p(), t_now()}].
+-spec compute_tree_info() -> [{p(), timestamp()}].
 compute_tree_info() ->
     riak_kv_entropy_info:compute_tree_info(yz).
 
@@ -94,7 +94,7 @@ get_obj_value(Obj) ->
     riak_object:get_value(Obj).
 
 %% @doc Get the build time of the tree.
--spec get_tree_build_time(tree()) -> calendar:t_now().
+-spec get_tree_build_time(tree()) -> timestamp().
 get_tree_build_time(Tree) ->
     riak_kv_index_hashtree:get_build_time(Tree).
 

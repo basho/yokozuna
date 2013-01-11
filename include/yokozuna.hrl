@@ -51,7 +51,6 @@
 -type ordset(T) :: ordsets:ordset(T).
 -type proplist() :: proplists:proplist().
 -type ring() :: riak_core_ring:riak_core_ring().
--type t_now() :: calendar:t_now().
 -type timestamp() :: erlang:timestamp().
 
 -type index_set() :: ordset(index_name()).
