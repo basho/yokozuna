@@ -184,7 +184,8 @@ key_exchange(timeout, S=#state{index=Index,
         [Count] ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
             lager:info("Repaired ~b keys during active anti-entropy exchange "
-                       "of ~p", [Count, IndexN])
+                       "of partition ~p for preflist ~p",
+                       [Count, Index, IndexN])
     end,
     {stop, normal, S}.
 
