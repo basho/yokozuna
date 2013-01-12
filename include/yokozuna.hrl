@@ -153,7 +153,7 @@
           pairs :: [{DocID::binary(), Hash::base64()}]
          }).
 -type entropy_data() :: #entropy_data{}.
-
+-type keydiff() :: hashtree:keydiff().
 
 %%%===================================================================
 %%% Riak KV

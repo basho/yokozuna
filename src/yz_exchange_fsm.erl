@@ -202,6 +202,7 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
 %% @private
+-spec read_repair_keydiff(term(), keydiff()) -> ok.
 read_repair_keydiff(_RC, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
     BKey = {Bucket, Key} = binary_to_term(KeyBin),
@@ -220,16 +221,28 @@ read_repair_keydiff(_RC, {remote_missing, KeyBin}) ->
 
 read_repair_keydiff(RC, {_Reason, KeyBin}) ->
     BKey = {Bucket, Key} = binary_to_term(KeyBin),
-    {ok, Obj} = RC:get(Bucket, Key),
-    Ring = yz_misc:get_ring(transformed),
-    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    N = proplists:get_value(n_val,BucketProps),
-    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
-    lists:foreach(fun({Partition, Node}) ->
-                          FakeState = fake_kv_vnode_state(Partition),
-                          rpc:call(Node, yz_kv, index, [Obj, anti_entropy, FakeState])
-                  end, PrimaryPL),
-    ok.
+    case RC:get(Bucket, Key) of
+        {ok, Obj} ->
+            Ring = yz_misc:get_ring(transformed),
+            BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
+            N = proplists:get_value(n_val,BucketProps),
+            PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
+            lists:foreach(fun({Partition, Node}) ->
+                                  FakeState = fake_kv_vnode_state(Partition),
+                                  rpc:call(Node, yz_kv, index,
+                                           [Obj, anti_entropy, FakeState])
+                          end, PrimaryPL),
+            ok;
+        Other ->
+            %% In most cases Other will be `{error, notfound}' which
+            %% is fine because hashtree updates are async and the
+            %% Yokozuna tree could see the delete before the KV tree.
+            %% That would cause exchange to trigger repair but then in
+            %% the meantime the KV object has since been deleted.  In
+            %% the case of other errors just ignore them and let the
+            %% next exchange retry the repair if it is still needed.
+            ok
+    end.
 
 %% @private
 fake_kv_object(Bucket, Key) ->
