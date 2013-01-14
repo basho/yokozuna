@@ -18,5 +18,9 @@
 
 <solr persistent="true">
   <cores adminPath="/admin/cores">
+    <core schema="_yz_default.xml"
+          instanceDir="_yz_default"
+          name="_yz_default"
+          config="config.xml"/>
   </cores>
 </solr>
