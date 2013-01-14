@@ -440,11 +440,19 @@ do_exchange_status(_Pid, Index, {StartIdx, N}, Status, S) ->
 
 -spec start_exchange(p(), {p(),n()}, ring(), state()) -> {any(), state()}.
 start_exchange(Index, Preflist, Ring, S) ->
-    case riak_core_ring:index_owner(Ring, Index) == node() of
-        false ->
+    IsOwner = riak_core_ring:index_owner(Ring, Index) == node(),
+    PendingChange = is_pending_change(Ring, Index),
+
+    case {IsOwner, PendingChange} of
+        {false, _} ->
             {not_responsible, S};
-        true ->
+        {true, false} ->
             %% TODO: check for not_registered
+            %%
+            %% TODO: even though ownership change is checked this
+            %%       could still return {error,wrong_node} because
+            %%       ownership change could have started since the
+            %%       check.
             {ok, YZTree} = get_tree(Index, S),
             %% TODO: use async version in case vnode is backed up
             %%
@@ -461,7 +469,18 @@ start_exchange(Index, Preflist, Ring, S) ->
                     {ok, S#state{exchanges=[{Index,Ref,FsmPid}|E]}};
                 {error, Reason} ->
                     {Reason, S}
-            end
+            end;
+        {true, true} ->
+            {pending_ownership_change, S}
+    end.
+
+%% @doc Predicate to determine if the `Partition' is currently under
+%%      ownership change according to `Ring'.
+-spec is_pending_change(ring(), p()) -> boolean().
+is_pending_change(Ring, Partition) ->
+    case lists:keyfind(Partition, 1, riak_core_ring:pending_changes(Ring)) of
+        false -> false;
+        _ -> true
     end.
 
 -spec all_pairwise_exchanges(p(), ring()) -> [exchange()].
