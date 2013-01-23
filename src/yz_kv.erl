@@ -145,7 +145,6 @@ index(Obj, Reason, VNodeState) ->
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
     Index = which_index(Bucket, BProps),
     ok = maybe_wait(Reason, Index),
-    AllowMult = proplists:get_value(allow_mult, BProps),
     NVal = riak_core_bucket:n_val(BProps),
     PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
     LFPN = yz_cover:logical_partition(LI, first_partition(PrimaryPL)),

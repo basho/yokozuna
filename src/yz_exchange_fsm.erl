@@ -233,7 +233,7 @@ read_repair_keydiff(RC, {_Reason, KeyBin}) ->
                                            [Obj, anti_entropy, FakeState])
                           end, PrimaryPL),
             ok;
-        Other ->
+        _Other ->
             %% In most cases Other will be `{error, notfound}' which
             %% is fine because hashtree updates are async and the
             %% Yokozuna tree could see the delete before the KV tree.
