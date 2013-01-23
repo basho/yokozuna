@@ -70,7 +70,7 @@ allowed_methods(RD, S) ->
     {Methods, RD, S}.
 
 content_types_provided(RD, S) ->
-    Types = [{"application/json", read_schema}],
+    Types = [{"application/xml", read_schema}],
     {Types, RD, S}.
 
 content_types_accepted(RD, S) ->
