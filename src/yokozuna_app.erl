@@ -33,7 +33,7 @@ start(_StartType, _StartArgs) ->
     riak_core:wait_for_service(riak_kv),
     case yokozuna_sup:start_link() of
         {ok, Pid} ->
-            Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++ yz_wm_index:routes(),
+            Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++ yz_wm_index:routes() ++ yz_wm_schema:routes(),
             yz_misc:add_routes(Routes),
             riak_core_node_watcher:service_up(yokozuna, Pid),
             {ok, Pid};
