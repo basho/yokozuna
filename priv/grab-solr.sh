@@ -26,14 +26,16 @@ do
 done
 
 if $FROM_SRC; then
+    VSN=lucene-solr
     dir=$PWD/solr
-    src_dir=$PWD/lucene-solr
+    src_dir=$PWD/$VSN
     example_dir=$src_dir/solr/example
     patch_dir=$PWD/solr-patches
     branch=branch_4x
 else
+    VSN=solr-4.1.0
     dir=$PWD/solr
-    src_dir=$PWD/apache-solr-4.0.0
+    src_dir=$PWD/$VSN
     example_dir=$src_dir/example
 fi
 
@@ -75,10 +77,10 @@ check_for_solr()
 get_solr()
 {
     if $FROM_SRC; then
-        git clone git://github.com/apache/lucene-solr.git
+        git clone git://github.com/apache/$VSN.git
     else
-        wget http://s3.amazonaws.com/files.basho.com/solr/apache-solr-4.0.0.tgz
-        tar zxvf apache-solr-4.0.0.tgz
+        wget http://s3.amazonaws.com/files.basho.com/solr/$VSN.tgz
+        tar zxvf $VSN.tgz
     fi
 }
 

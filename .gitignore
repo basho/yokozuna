@@ -2,7 +2,7 @@ deps
 ebin
 priv/*.jar
 priv/java_lib
-priv/solr
+priv/solr*
 priv/apache*
 priv/solr-jars
 priv/lucene-solr
