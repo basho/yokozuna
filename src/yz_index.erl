@@ -88,7 +88,7 @@ local_create(Ring, Name) ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
 
             yz_misc:make_dirs([ConfDir, DataDir]),
-            yz_misc:copy_files(ConfFiles, ConfDir),
+            yz_misc:copy_files(ConfFiles, ConfDir, update),
             ok = file:write_file(SchemaFile, RawSchema),
 
             CoreProps = [

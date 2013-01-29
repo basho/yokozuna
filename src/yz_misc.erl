@@ -22,6 +22,7 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
+-include_lib("kernel/include/file.hrl").
 
 %%%===================================================================
 %%% API
@@ -42,10 +43,14 @@ convert_pl_entry({Partition,Node}, logical, Map) ->
     {LPartition,Node}.
 
 %% @doc Recursively copy each file to `Dir'.
--spec copy_files([string()], string()) -> ok.
-copy_files([], _) ->
+%% Defaults to `overwrite' existing files. You may also
+%% set to only `update' with more recent files,
+%% which first compares timestamps. Finally, you can
+%% `skip' any duplicate files.
+-spec copy_files([string()], string(), overwrite | update | skip) -> ok.
+copy_files([], _, _) ->
     ok;
-copy_files([File|Rest], Dir) ->
+copy_files([File|Rest], Dir, Action) ->
     Basename = filename:basename(File),
     case filelib:is_dir(File) of
         true ->
@@ -54,9 +59,46 @@ copy_files([File|Rest], Dir) ->
             copy_files(filelib:wildcard(filename:join([File, "*"])), NewDir),
             copy_files(Rest, Dir);
         false ->
-            {ok, _} = file:copy(File, filename:join([Dir, Basename])),
+            DestFile = filename:join([Dir, Basename]),
+            case should_copy(Action, File, DestFile) of
+                true ->
+                    {ok, _} = file:copy(File, DestFile);
+                false -> noop
+            end,
             copy_files(Rest, Dir)
     end.
+
+%% @doc Recursively copy each file to `Dir',
+%% overwriting any exiting files
+-spec copy_files([string()], string()) -> ok.
+copy_files([], _) ->
+    ok;
+copy_files([File|Rest], Dir) ->
+    copy_files([File|Rest], Dir, overwrite).
+
+%% If destination exists, skip the copy
+should_copy(skip, _Source, Destination) ->
+    case file:read_file_info(Destination) of
+        {error, enoent} -> true;
+        {ok, _}    -> false;
+        {error, _} -> false
+    end;
+%% If source timestamp is newer than destination, or
+%% if destination does not exist, perform the copy
+should_copy(update, Source, Destination) ->
+    case file:read_file_info(Destination) of
+        {error, enoent} -> true;
+        {ok, DestFileInfo} ->
+            case file:read_file_info(Source) of
+                {ok, SourceFileInfo} ->
+                    SourceFileInfo#file_info.mtime > DestFileInfo#file_info.mtime;
+                {error, _} -> false
+            end;
+        {error, _} -> false
+    end;
+should_copy(overwrite, _Source, _Destination) ->
+    true.
+
 
 %% @doc Calculate the delta between `Old' and `New'.
 -spec delta(ordset(any()), ordset(any())) ->
