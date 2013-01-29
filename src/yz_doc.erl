@@ -64,8 +64,13 @@ make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
             true -> extract_fields({MD, V});
             false -> []
         end,
-    Tags = extract_tags(MD),
-    {doc, lists:append([Tags, ExtractedFields, Fields])}.
+    case ExtractedFields of
+        {error, Reason} ->
+            {error, {extract, Reason}};
+        _ ->
+            Tags = extract_tags(MD),
+            {doc, lists:append([Tags, ExtractedFields, Fields])}
+    end.
 
 make_fields({DocId, Key, FPN, Partition, none, EntropyData}) ->
     [{id, DocId},

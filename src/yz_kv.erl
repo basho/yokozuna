@@ -150,13 +150,14 @@ index(Obj, Reason, VNodeState) ->
     LFPN = yz_cover:logical_partition(LI, first_partition(PrimaryPL)),
     P = get_partition(VNodeState),
     LP = yz_cover:logical_partition(LI, P),
-    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
+    AllDocs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
                             index_content(BProps)),
+    ValidDocs = [D || D <- AllDocs, element(1, D) == doc],
     IdxN = {first_partition(PrimaryPL), NVal},
 
     try
-        ok = yz_solr:index(Index, Docs),
-        ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
+        ok = yz_solr:index(Index, ValidDocs),
+        ok = cleanup(length(ValidDocs), {Index, Obj, Key, LP}),
         ok = update_hashtree({insert, yz_kv:hash_object(Obj)}, P, IdxN, BKey)
     catch _:Err ->
         ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
