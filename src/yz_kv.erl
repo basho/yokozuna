@@ -195,16 +195,17 @@ update_hashtree(Action, Partition, IdxN, BKey) ->
             lager:debug("Failed to update hashtree: ~p ~p", [BKey, Reason])
     end.
 
-%% @doc Install the object modified hook on the given `Bucket'.
--spec install_hook(binary()) -> ok.
-install_hook(Bucket) when is_binary(Bucket) ->
+%% @doc Set's the yz_index_content flag to true on the given `Bucket',
+%% ensuring the object's value will be indexes.
+-spec set_index_flag(binary()) -> ok.
+set_index_flag(Bucket) when is_binary(Bucket) ->
     set_index_flag(Bucket, true).
 
-%% @doc Uninstall the object modified hook on the given `Bucket'.
--spec uninstall_hook(binary()) -> ok.
-uninstall_hook(Bucket) when is_binary(Bucket) ->
-    set_index_flag(Bucket, false).
-
+%% @doc Set's the yz_index_content flag to the boolean value
+%% on the given `Bucket'. If `false' then minimal object information
+%% is indexed (for AAE). If `true', then values in this bucket
+%% will be indexed.
+-spec set_index_flag(binary(), boolean()) -> ok.
 set_index_flag(Bucket, Bool) ->
     ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX_CONTENT, Bool}]).
 
