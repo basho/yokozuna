@@ -33,8 +33,6 @@
 -define(QC_OUT(P),
         eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
 
-% -behaviour(eqc_statem).
-
 -record(state, {server_pid,
                 cores=[]}).
 
@@ -109,50 +107,37 @@ setup() ->
   application:stop(yokozuna),
   State.
 
-stop_servers() ->
-    %% Make sure VMaster is killed before sup as start_vnode is a cast
-    %% and there may be a pending request to start the vnode.
-    stop_pid(whereis(mock_vnode_master)),
-    stop_pid(whereis(riak_core_vnode_manager)),
-    stop_pid(whereis(riak_core_vnode_sup)).
-
 build_yz_dir() ->
   yz_misc:make_dirs(["data"]),
   yz_misc:copy_files(["../priv/solr"], "data"),
   file:rename("data/solr", "data/yz").
 
-stop_pid(undefined) ->
-    ok;
-stop_pid(Pid) ->
-    unlink(Pid),
-    exit(Pid, shutdown),
-    ok = wait_for_pid(Pid).
+% stop_servers() ->
+%     %% Make sure VMaster is killed before sup as start_vnode is a cast
+%     %% and there may be a pending request to start the vnode.
+%     stop_pid(whereis(riak_core_vnode_manager)),
+%     stop_pid(whereis(riak_core_vnode_sup)).
 
-wait_for_pid(Pid) ->
-    Mref = erlang:monitor(process, Pid),
-    receive
-        {'DOWN',Mref,process,_,_} ->
-            ok
-    after
-        5000 ->
-            {error, didnotexit}
-    end.
+% stop_pid(undefined) ->
+%     ok;
+% stop_pid(Pid) ->
+%     unlink(Pid),
+%     exit(Pid, shutdown),
+%     ok = wait_for_pid(Pid).
+
+% wait_for_pid(Pid) ->
+%     Mref = erlang:monitor(process, Pid),
+%     receive
+%         {'DOWN',Mref,process,_,_} ->
+%             ok
+%     after
+%         5000 ->
+%             {error, didnotexit}
+%     end.
 
 
 cleanup(running) ->
   application:stop(yokozuna),
-  % application:stop(lager),
-  % application:unload(lager),
-  % cleanup_javascript(),
-  % fsm_eqc_util:cleanup_mock_servers(),
-  % %% Cleanup the JS manager process
-  % %% since it tends to hang around too long.
-  % case whereis(?JSPOOL_HOOK) of
-  %     undefined ->
-  %         ignore;
-  %     Pid ->
-  %         exit(Pid, put_fsm_eqc_js_cleanup)
-  % end,
   ok;
 cleanup(started) ->
   ok = net_kernel:stop(),
@@ -210,16 +195,12 @@ postcondition(_S,{call,_,_,_},_R) ->
 prop_solr() ->
   ok = application:start(yokozuna),
 
-  % true.
-  % ok = application:start(yokozuna),
-
-  % % ?FORALL(Cmds,fault_rate(1,10,commands(?MODULE)),
-  ?FORALL(Cmds, commands(?MODULE),
+  ?FORALL(Cmds,fault_rate(1,10,commands(?MODULE)),
+    % ?FORALL(Cmds, commands(?MODULE),
     ?TRAPEXIT(
     begin
         {H,S,Res} = run_commands(?MODULE,Cmds),
-        % cleanup
-        % application:stop(yokozuna),
+        cleanup(running),
         pretty_commands(?MODULE,Cmds,{H,S,Res}, Res == ok)
     end)).
 
