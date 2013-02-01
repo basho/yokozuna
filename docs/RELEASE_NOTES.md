@@ -1,6 +1,74 @@
 Yokozuna Release Notes
 ==========
 
+0.3.0
+----------
+
+The third pre-release of Yokozuna.
+
+* Listen on canonical Solr URL ([yz_39][]).
+
+* Added new target (`yz-setup`) to Riak branch to make it easier to
+  build Yokozuna/Riak from source ([d32a20][]).
+
+* Disable Solr realtime get.  It is not used by Yokozuna and greatly
+  reduced write performance when enabled ([9e7e4f][]).
+
+* Return a better error message when searching nonexistent index ([yz_33][]).
+
+* Don't require a `content-type` header when creating an index with no
+  body ([74492c][]).
+
+* Use Solr's JSON update instead of XML update.  One benchmark showed
+  approximately 15% improvement in write throughput ([yz_31][]).
+
+* Port the latest AAE updated from Riak KV to Yokozuna ([yz_30][], [yz_61][]).
+
+* More robust AAE ([510d30][]  & [892bf5][]).
+
+* Pre-create the default schema ([7a2167][]).
+
+* Add basic support for storing and retrieving of schemas via
+  HTTP. Thanks to Marcel Neuhausler ([yz_42][]).
+
+* Don't overwrite modified Solr Core config files ([yz_14][]).
+
+* Update to [Solr 4.1.0][solr41_relnotes] ([yz_45][]).
+
+* Update to the latest Riak.
+
+
+[d32a20]: https://github.com/rzezeski/yokozuna/commit/d32a20c26eb8fc092c71dbc3879552433a9930b5
+
+[9e7e4f]: https://github.com/rzezeski/yokozuna/commit/9e7e4f4577575ce4d1f5e8b9356d46f0f787b5c9
+
+[74492c]: https://github.com/rzezeski/yokozuna/commit/74492cd86e27aa3d18c159194734466c6f67b29a
+
+[510d30]: https://github.com/rzezeski/yokozuna/commit/510d30d7beea3d4a7cca2b0b327f171567b0042c
+
+[892bf5]: https://github.com/rzezeski/yokozuna/commit/892bf585d0bbece6c305b0251f5820926b8e224d
+
+[7a2167]: https://github.com/rzezeski/yokozuna/commit/7a21679a28087f2222261c70958d7eeb06cbdb65
+
+[yz_14]: https://github.com/rzezeski/yokozuna/pull/14
+
+[yz_30]: https://github.com/rzezeski/yokozuna/pull/30
+
+[yz_31]: https://github.com/rzezeski/yokozuna/pull/33
+
+[yz_33]: https://github.com/rzezeski/yokozuna/pull/33
+
+[yz_39]: https://github.com/rzezeski/yokozuna/pull/39
+
+[yz_42]: https://github.com/rzezeski/yokozuna/pull/42
+
+[yz_45]: https://github.com/rzezeski/yokozuna/pull/45
+
+[yz_61]: https://github.com/rzezeski/yokozuna/pull/61
+
+[solr41_relnotes]: http://lucene.apache.org/solr/4_1_0/changes/Changes.html
+
+
 0.2.0
 ----------
 
