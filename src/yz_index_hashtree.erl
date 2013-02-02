@@ -180,9 +180,8 @@ handle_call({compare, Id, Remote, AccFun}, From, S) ->
     {noreply, S};
 
 handle_call(destroy, _From, S) ->
-    {_,Tree0} = hd(S#state.trees),
-    hashtree:destroy(Tree0),
-    {stop, normal, ok, S};
+    S2 = destroy_trees(S),
+    {stop, normal, ok, S2};
 
 handle_call(_Request, _From, S) ->
     Reply = ok,
@@ -210,9 +209,8 @@ handle_cast({delete, IdxN, BKey}, S) ->
     {noreply, S2};
 
 handle_cast(stop, S) ->
-    {_,Tree0} = hd(S#state.trees),
-    hashtree:close(Tree0),
-    {stop, normal, S};
+    S2 = close_trees(S),
+    {stop, normal, S2};
 
 handle_cast(_Msg, S) ->
     {noreply, S}.
@@ -475,13 +473,18 @@ maybe_clear(S=#state{lock=undefined, built=true}) ->
 maybe_clear(S) ->
     S.
 
-clear_tree(S=#state{index=Index, trees=Trees}) ->
+clear_tree(S=#state{index=Index}) ->
     lager:debug("Clearing tree ~p", [S#state.index]),
-    {_,Tree0} = hd(Trees),
-    hashtree:destroy(Tree0),
+    S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
-    S2 = init_trees(IndexN, S#state{trees=orddict:new()}),
-    S2#state{built=false}.
+    S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
+    S3#state{built=false}.
+
+destroy_trees(S) ->
+    S2 = close_trees(S),
+    {_,Tree0} = hd(S2#state.trees),
+    hashtree:destroy(Tree0),
+    S2.
 
 maybe_build(S=#state{built=false}) ->
     Self = self(),
@@ -491,6 +494,10 @@ maybe_build(S=#state{built=false}) ->
 maybe_build(S) ->
     %% Already built or build in progress
     S.
+
+close_trees(S=#state{trees=Trees}) ->
+    Trees2 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees],
+    S#state{trees=Trees2}.
 
 build_or_rehash(Self, S=#state{index=Index, trees=Trees}) ->
     Type = case load_built(S) of
