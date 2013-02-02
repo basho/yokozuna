@@ -1,4 +1,4 @@
-Yokozuna
+Yokozuna [![travis](https://secure.travis-ci.org/rzezeski/yokozuna.png)](http://travis-ci.org/rzezeski/yokozuna)
 ==========
 
 **NOTICE:** This is an experiment and prototype.  The copyright is
