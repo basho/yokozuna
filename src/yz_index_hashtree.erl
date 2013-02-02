@@ -51,15 +51,26 @@ start(Index, RPs) ->
 start_link(Index, RPs) ->
     gen_server:start_link(?MODULE, [Index, RPs], []).
 
-%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given `Id'
--spec insert({p(),n()}, {binary(),binary()}, binary(), tree(), list()) -> ok.
-insert(Id, BKey, Hash, Tree, Options) ->
-    gen_server:cast(Tree, {insert, Id, BKey, Hash, Options}).
+%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given
+%%      `Id'.  The result of a sync call should be ignored since it
+%%      uses `catch'.
+-spec insert(async | sync, {p(),n()}, bkey(), binary(), tree(), list()) ->
+                    ok | term().
+insert(async, Id, BKey, Hash, Tree, Options) ->
+    gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
-%% @doc Delete the `BKey' from `Tree'.  The id will be determined from `BKey'.
--spec delete({p(),n()}, {binary(),binary()}, tree()) -> ok.
-delete(Id, BKey, Tree) ->
-    gen_server:cast(Tree, {delete, Id, BKey}).
+insert(sync, Id, BKey, Hash, Tree, Options) ->
+    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, 1000).
+
+%% @doc Delete the `BKey' from `Tree'.  The id will be determined from
+%%      `BKey'.  The result of the sync call should be ignored since
+%%      it uses catch.
+-spec delete(async | sync, {p(),n()}, bkey(), tree()) -> ok.
+delete(async, Id, BKey, Tree) ->
+    gen_server:cast(Tree, {delete, Id, BKey});
+
+delete(sync, Id, BKey, Tree) ->
+    catch gen_server:call(Tree, {delete, Id, BKey}, 1000).
 
 -spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
@@ -134,6 +145,14 @@ init([Index, RPs]) ->
             S2 = init_trees(RPs, S),
             {ok, S2}
     end.
+
+handle_call({insert, Id, BKey, Hash, Options}, _From, S) ->
+    S2 = do_insert(Id, term_to_binary(BKey), Hash, Options, S),
+    {reply, ok, S2};
+
+handle_call({delete, IdxN, BKey}, _From, S) ->
+    S2 = do_delete(IdxN, term_to_binary(BKey), S),
+    {reply, ok, S2};
 
 handle_call(get_index, _From, S) ->
     {reply, S#state.index, S};
@@ -257,7 +276,7 @@ fold_keys(Partition, Tree) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
                 IndexN = get_index_n(BKey),
-                insert(IndexN, BKey, Hash, Tree, [if_missing])
+                insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
     [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes],
