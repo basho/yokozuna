@@ -79,7 +79,7 @@ pushd riak
 if [ ! -d rel/riak ]; then
     git checkout rz-yokozuna-2
     make deps
-    (cd deps && rm -rf riak_kv && git clone git://github.com/basho/riak_kv.git && cd riak_kv && git checkout rz-yokozuna-3)
+    (cd deps && rm -rf riak_kv && git clone git://github.com/basho/riak_kv.git && cd riak_kv && git checkout yz-merge)
     make
     make stage
 fi
