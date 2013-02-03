@@ -18,7 +18,7 @@ I recommend [using five nodes][five_nodes].  If you just want to
 experiment one node will work.  [Performance Tuning for AWS][perf_aws]
 contains advice in regards to running Riak on EC2.
 
-    ec2-run-instances ami-8b8d03e2 -k <YOUR_KEY> -n <NUM_NODES>
+    ec2-run-instances ami-0f910666 -k <YOUR_KEY> -n <NUM_NODES>
 
 Each instance contains a self-contained Riak release under
 `~ec2-user/riak/rel/riak`.  Many of the following sections assume a
@@ -38,6 +38,11 @@ you should change the cookie to prevent outside access to your Erlang
 cluster.
 
     -cookie <SOME_TEXT>
+
+Make sure enable SMP, even if on single core machine.  Otherwise Riak
+will fail to start.
+
+    -smp true
 
 ### Open HTTP to Outside
 
