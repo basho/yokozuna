@@ -51,15 +51,26 @@ start(Index, RPs) ->
 start_link(Index, RPs) ->
     gen_server:start_link(?MODULE, [Index, RPs], []).
 
-%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given `Id'
--spec insert({p(),n()}, {binary(),binary()}, binary(), tree(), list()) -> ok.
-insert(Id, BKey, Hash, Tree, Options) ->
-    gen_server:cast(Tree, {insert, Id, BKey, Hash, Options}).
+%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given
+%%      `Id'.  The result of a sync call should be ignored since it
+%%      uses `catch'.
+-spec insert(async | sync, {p(),n()}, bkey(), binary(), tree(), list()) ->
+                    ok | term().
+insert(async, Id, BKey, Hash, Tree, Options) ->
+    gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
-%% @doc Delete the `BKey' from `Tree'.  The id will be determined from `BKey'.
--spec delete({p(),n()}, {binary(),binary()}, tree()) -> ok.
-delete(Id, BKey, Tree) ->
-    gen_server:cast(Tree, {delete, Id, BKey}).
+insert(sync, Id, BKey, Hash, Tree, Options) ->
+    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, 1000).
+
+%% @doc Delete the `BKey' from `Tree'.  The id will be determined from
+%%      `BKey'.  The result of the sync call should be ignored since
+%%      it uses catch.
+-spec delete(async | sync, {p(),n()}, bkey(), tree()) -> ok.
+delete(async, Id, BKey, Tree) ->
+    gen_server:cast(Tree, {delete, Id, BKey});
+
+delete(sync, Id, BKey, Tree) ->
+    catch gen_server:call(Tree, {delete, Id, BKey}, 1000).
 
 -spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
@@ -135,6 +146,14 @@ init([Index, RPs]) ->
             {ok, S2}
     end.
 
+handle_call({insert, Id, BKey, Hash, Options}, _From, S) ->
+    S2 = do_insert(Id, term_to_binary(BKey), Hash, Options, S),
+    {reply, ok, S2};
+
+handle_call({delete, IdxN, BKey}, _From, S) ->
+    S2 = do_delete(IdxN, term_to_binary(BKey), S),
+    {reply, ok, S2};
+
 handle_call(get_index, _From, S) ->
     {reply, S#state.index, S};
 
@@ -161,9 +180,8 @@ handle_call({compare, Id, Remote, AccFun}, From, S) ->
     {noreply, S};
 
 handle_call(destroy, _From, S) ->
-    {_,Tree0} = hd(S#state.trees),
-    hashtree:destroy(Tree0),
-    {stop, normal, ok, S};
+    S2 = destroy_trees(S),
+    {stop, normal, ok, S2};
 
 handle_call(_Request, _From, S) ->
     Reply = ok,
@@ -191,9 +209,8 @@ handle_cast({delete, IdxN, BKey}, S) ->
     {noreply, S2};
 
 handle_cast(stop, S) ->
-    {_,Tree0} = hd(S#state.trees),
-    hashtree:close(Tree0),
-    {stop, normal, S};
+    S2 = close_trees(S),
+    {stop, normal, S2};
 
 handle_cast(_Msg, S) ->
     {noreply, S}.
@@ -257,7 +274,7 @@ fold_keys(Partition, Tree) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
                 IndexN = get_index_n(BKey),
-                insert(IndexN, BKey, Hash, Tree, [if_missing])
+                insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
     [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes],
@@ -456,13 +473,18 @@ maybe_clear(S=#state{lock=undefined, built=true}) ->
 maybe_clear(S) ->
     S.
 
-clear_tree(S=#state{index=Index, trees=Trees}) ->
+clear_tree(S=#state{index=Index}) ->
     lager:debug("Clearing tree ~p", [S#state.index]),
-    {_,Tree0} = hd(Trees),
-    hashtree:destroy(Tree0),
+    S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
-    S2 = init_trees(IndexN, S#state{trees=orddict:new()}),
-    S2#state{built=false}.
+    S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
+    S3#state{built=false}.
+
+destroy_trees(S) ->
+    S2 = close_trees(S),
+    {_,Tree0} = hd(S2#state.trees),
+    hashtree:destroy(Tree0),
+    S2.
 
 maybe_build(S=#state{built=false}) ->
     Self = self(),
@@ -472,6 +494,10 @@ maybe_build(S=#state{built=false}) ->
 maybe_build(S) ->
     %% Already built or build in progress
     S.
+
+close_trees(S=#state{trees=Trees}) ->
+    Trees2 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees],
+    S#state{trees=Trees2}.
 
 build_or_rehash(Self, S=#state{index=Index, trees=Trees}) ->
     Type = case load_built(S) of

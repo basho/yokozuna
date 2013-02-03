@@ -185,10 +185,10 @@ update_hashtree(Action, Partition, IdxN, BKey) ->
             Tree ->
                 case Action of
                     {insert, ObjHash} ->
-                        ok = yz_index_hashtree:insert(IdxN, BKey,
-                                                      ObjHash, Tree, []);
+                        yz_index_hashtree:insert(sync, IdxN, BKey,
+                                                 ObjHash, Tree, []);
                     delete ->
-                        ok = yz_index_hashtree:delete(IdxN, BKey, Tree)
+                        yz_index_hashtree:delete(sync, IdxN, BKey, Tree)
                 end
         end
     catch _:Reason ->
