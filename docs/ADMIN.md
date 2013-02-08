@@ -41,7 +41,7 @@ If you leave off the index name from the GET request, all installed
 indexes will be installed as a JSON array.
 
 Finally, when you are done with the index, you can issue a DELETE
-method with an index name. This will both remove the index.
+method with an index name to remove the index.
 
 ```bash
 curl -XDELETE http://localhost:8098/yz/index/my_bucket

@@ -195,13 +195,13 @@ update_hashtree(Action, Partition, IdxN, BKey) ->
             lager:debug("Failed to update hashtree: ~p ~p", [BKey, Reason])
     end.
 
-%% @doc Set's the yz_index_content flag to true on the given `Bucket',
+%% @doc Set the yz_index_content flag to true on the given `Bucket',
 %% ensuring the object's value will be indexes.
 -spec set_index_flag(binary()) -> ok.
 set_index_flag(Bucket) when is_binary(Bucket) ->
     set_index_flag(Bucket, true).
 
-%% @doc Set's the yz_index_content flag to the boolean value
+%% @doc Set the yz_index_content flag to the boolean value
 %% on the given `Bucket'. If `false' then minimal object information
 %% is indexed (for AAE). If `true', then values in this bucket
 %% will be indexed.
