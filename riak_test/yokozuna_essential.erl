@@ -276,9 +276,9 @@ delete_some_data(Cluster, ReapSleep) ->
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
 
-install_hook(Node, Index) ->
+set_index_flag(Node, Index) ->
     lager:info("Install index hook on bucket ~s [~p]", [Index, Node]),
-    rpc:call(Node, yz_kv, install_hook, [Index]).
+    rpc:call(Node, yz_kv, set_index_flag, [Index]).
 
 join_three(Nodes) ->
     [NodeA|Others] = All = lists:sublist(Nodes, 3),
@@ -336,13 +336,13 @@ setup_indexing(Cluster, YZBenchDir) ->
     RawSchema = read_schema(YZBenchDir),
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
-    ok = install_hook(Node, ?INDEX_B),
+    ok = set_index_flag(Node, ?INDEX_B),
     ok = create_index(Node, "fruit_aae", ?FRUIT_SCHEMA_NAME),
-    ok = install_hook(Node, <<"fruit_aae">>),
+    ok = set_index_flag(Node, <<"fruit_aae">>),
     ok = create_index(Node, "tagging"),
-    ok = install_hook(Node, <<"tagging">>),
+    ok = set_index_flag(Node, <<"tagging">>),
     ok = create_index(Node, "siblings"),
-    ok = install_hook(Node, <<"siblings">>),
+    ok = set_index_flag(Node, <<"siblings">>),
     %% Give Solr time to build index
     timer:sleep(5000).
 

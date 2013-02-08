@@ -111,7 +111,7 @@ delete_resource(RD, S) ->
     IndexName = S#ctx.index_name,
     case yz_index:exists(IndexName) of
         true  ->
-            ok = yz_kv:uninstall_hook(list_to_binary(IndexName)),
+            ok = yz_kv:set_index_flag(list_to_binary(IndexName), false),
             ok = yz_index:remove(IndexName),
             {true, RD, S};
         false -> {true, RD, S}
@@ -230,6 +230,6 @@ create_install_index(IndexName, SchemaName)->
         true  -> "exists";
         false ->
             ok = yz_index:create(IndexName, SchemaName),
-            ok = yz_kv:install_hook(list_to_binary(IndexName)),
+            ok = yz_kv:set_index_flag(list_to_binary(IndexName)),
             "ok"
     end.
