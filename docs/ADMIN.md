@@ -3,10 +3,9 @@ Administration
 
 ## Index Creation
 
-Before Riak data may be indexed an _index_ must be created and
-Yokozuna must hook into the KV object modifications.  The easiest way
-to accomplish both of these things is to use the HTTP index resource.
-It performs both steps at once.
+Before Riak data may be indexed an _index_ must be created.
+The easiest way to accomplish this is to use the HTTP index
+resource.
 
 **NOTE:** Currently the index name is a 1:1 mapping with a KV bucket
           name. This may eventually change to a 1:M mapping from index
@@ -42,8 +41,7 @@ If you leave off the index name from the GET request, all installed
 indexes will be installed as a JSON array.
 
 Finally, when you are done with the index, you can issue a DELETE
-method with an index name. This will both remove the index and the
-hook into KV.
+method with an index name to remove the index.
 
 ```bash
 curl -XDELETE http://localhost:8098/yz/index/my_bucket
