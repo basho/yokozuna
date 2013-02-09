@@ -45,66 +45,9 @@
     that avoids logging every request
 -->
 
-<schema name="example" version="1.5">
-  <!-- attribute "name" is the name of this schema and is only used for display purposes.
-       version="x.y" is Solr's version number for the schema syntax and semantics.  It should
-       not normally be changed by applications.
-       1.0: multiValued attribute did not exist, all fields are multiValued by nature
-       1.1: multiValued attribute introduced, false by default 
-       1.2: omitTermFreqAndPositions attribute introduced, true by default except for text fields.
-       1.3: removed optional field compress feature
-       1.4: default auto-phrase (QueryParser feature) to off
-       1.5: omitNorms defaults to true for primitive field types (int, float, boolean, string...)
-     -->
-
+<schema name="default" version="1.5">
  <fields>
-   <!-- Valid attributes for fields:
-     name: mandatory - the name for the field
-     type: mandatory - the name of a field type from the 
-       <types> fieldType section
-     indexed: true if this field should be indexed (searchable or sortable)
-     stored: true if this field should be retrievable
-     multiValued: true if this field may contain multiple values per document
-     omitNorms: (expert) set to true to omit the norms associated with
-       this field (this disables length normalization and index-time
-       boosting for the field, and saves some memory).  Only full-text
-       fields or fields that need an index-time boost need norms.
-       Norms are omitted for primitive (non-analyzed) types by default.
-     termVectors: [false] set to true to store the term vector for a
-       given field.
-       When using MoreLikeThis, fields used for similarity should be
-       stored for best performance.
-     termPositions: Store position information with the term vector.  
-       This will increase storage costs.
-     termOffsets: Store offset information with the term vector. This 
-       will increase storage costs.
-     required: The field is required.  It will throw an error if the
-       value does not exist
-     default: a value that should be used if no value is specified
-       when adding a document.
-   -->
-
-   <!-- field names should consist of alphanumeric or underscore characters only and
-      not start with a digit.  This is not currently strictly enforced,
-      but other field names will not have first class support from all components
-      and back compatibility is not guaranteed.  Names with both leading and
-      trailing underscores (e.g. _version_) are reserved.
-   -->
-        
    <field name="id" type="string" indexed="true" stored="true" required="true" /> 
-   <field name="sku" type="text_en_splitting_tight" indexed="true" stored="true" omitNorms="true"/>
-   <field name="name" type="text_general" indexed="true" stored="true"/>
-   <field name="manu" type="text_general" indexed="true" stored="true" omitNorms="true"/>
-   <field name="cat" type="string" indexed="true" stored="true" multiValued="true"/>
-   <field name="features" type="text_general" indexed="true" stored="true" multiValued="true"/>
-   <field name="includes" type="text_general" indexed="true" stored="true" termVectors="true" termPositions="true" termOffsets="true" />
-
-   <field name="weight" type="float" indexed="true" stored="true"/>
-   <field name="price"  type="float" indexed="true" stored="true"/>
-   <field name="popularity" type="int" indexed="true" stored="true" />
-   <field name="inStock" type="boolean" indexed="true" stored="true" />
-
-   <field name="store" type="location" indexed="true" stored="true"/>
 
    <!-- Common metadata fields, named specifically to match up with
      SolrCell metadata when parsing rich documents such as Word, PDF.
@@ -131,21 +74,7 @@
         leading wildcard queries. -->
    <field name="text_rev" type="text_general_rev" indexed="true" stored="false" multiValued="true"/>
 
-   <!-- non-tokenized version of manufacturer to make it easier to sort or group
-        results by manufacturer.  copied from "manu" via copyField -->
-   <field name="manu_exact" type="string" indexed="true" stored="false"/>
-
-   <field name="payloads" type="payloads" indexed="true" stored="true"/>
-
-
    <field name="_version_" type="long" indexed="true" stored="true"/>
-
-   <!-- Uncommenting the following will create a "timestamp" field using
-        a default value of "NOW" to indicate when each document was indexed.
-     -->
-   <!--
-   <field name="timestamp" type="date" indexed="true" stored="true" default="NOW" multiValued="false"/>
-     -->
 
    <!-- Entropy Data: Data related to anti-entropy -->
    <field name="_yz_ed" type="string" indexed="true" stored="true"/>
@@ -166,13 +95,6 @@
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
    <field name="_yz_rk" type="string" indexed="true" stored="true"/>
 
-
-   <!-- Dynamic field definitions allow using convention over configuration
-       for fields via the specification of patterns to match field names. 
-       EXAMPLE:  name="*_i" will match any field ending in _i (like myid_i, z_i)
-       RESTRICTION: the glob-like pattern in the name attribute must have
-       a "*" only at the start or the end.  -->
-   
    <dynamicField name="*_i"  type="int"    indexed="true"  stored="true"/>
    <dynamicField name="*_is" type="int"    indexed="true"  stored="true"  multiValued="true"/>
    <dynamicField name="*_s"  type="string"  indexed="true"  stored="true" />
@@ -209,13 +131,6 @@
    <dynamicField name="attr_*" type="text_general" indexed="true" stored="true" multiValued="true"/>
 
    <dynamicField name="random_*" type="random" />
-
-   <!-- uncomment the following to ignore any fields that don't already match an existing 
-        field name or dynamic field, rather than reporting them as an error. 
-        alternately, change the type="ignored" to some other type e.g. "text" if you want 
-        unknown fields indexed and/or stored by default --> 
-   <!--dynamicField name="*" type="ignored" multiValued="true" /-->
-   
  </fields>
 
 
@@ -224,42 +139,6 @@
    -->
  <uniqueKey>id</uniqueKey>
 
- <!-- DEPRECATED: The defaultSearchField is consulted by various query parsers when
-  parsing a query string that isn't explicit about the field.  Machine (non-user)
-  generated queries are best made explicit, or they can use the "df" request parameter
-  which takes precedence over this.
-  Note: Un-commenting defaultSearchField will be insufficient if your request handler
-  in solrconfig.xml defines "df", which takes precedence. That would need to be removed.
- <defaultSearchField>text</defaultSearchField> -->
-
- <!-- DEPRECATED: The defaultOperator (AND|OR) is consulted by various query parsers
-  when parsing a query string to determine if a clause of the query should be marked as
-  required or optional, assuming the clause isn't already marked by some operator.
-  The default is OR, which is generally assumed so it is not a good idea to change it
-  globally here.  The "q.op" request parameter takes precedence over this.
- <solrQueryParser defaultOperator="OR"/> -->
-
-  <!-- copyField commands copy one field to another at the time a document
-        is added to the index.  It's used either to index the same field differently,
-        or to add multiple fields to the same field for easier/faster searching.  -->
-
-   <copyField source="cat" dest="text"/>
-   <copyField source="name" dest="text"/>
-   <copyField source="manu" dest="text"/>
-   <copyField source="features" dest="text"/>
-   <copyField source="includes" dest="text"/>
-   <copyField source="manu" dest="manu_exact"/>
-
-   <!-- Above, multiple source fields are copied to the [text] field. 
-	  Another way to map multiple source fields to the same 
-	  destination field is to use the dynamic field syntax. 
-	  copyField also supports a maxChars to copy setting.  -->
-	   
-   <!-- <copyField source="*_t" dest="text" maxChars="3000"/> -->
-
-   <!-- copy name to alphaNameSort, a field designed for sorting by name -->
-   <!-- <copyField source="name" dest="alphaNameSort"/> -->
- 
 
  <!-- Similarity is the scoring routine for each document vs. a query.
       A custom similarity may be specified here, but the default is fine
