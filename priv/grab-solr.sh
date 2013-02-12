@@ -5,7 +5,7 @@
 # Usage:
 #     ./grab-solr.sh
 
-FROM_SRC=false
+SRC="bin-tar"
 
 if [ $(basename $PWD) != "priv" ]
 then
@@ -15,8 +15,12 @@ fi
 while [ $# -gt 0 ]
 do
     case $1 in
-        from-src)
-            FROM_SRC=true
+        git)
+            SRC="git"
+            shift
+            ;;
+        src-tar)
+            SRC="src-tar"
             shift
             ;;
         *)
@@ -25,13 +29,20 @@ do
     esac
 done
 
-if $FROM_SRC; then
+echo "Create solr dir..."
+dir=$PWD/solr
+
+if [ $SRC == "git" ]; then
     VSN=lucene-solr
-    dir=$PWD/solr
     src_dir=$PWD/$VSN
     example_dir=$src_dir/solr/example
-    patch_dir=$PWD/solr-patches
+    patch_dir=$PWD/../solr-patches
     branch=branch_4x
+elif [ $SRC == "src-tar" ]; then
+    VSN=solr-4.1.0-src
+    src_dir=$PWD/${VSN%-src}
+    example_dir=$src_dir/solr/example
+    patch_dir=$PWD/../solr-patches
 else
     VSN=solr-4.1.0
     dir=$PWD/solr
@@ -51,6 +62,7 @@ apply_patches()
 
 build_solr()
 {
+    echo "Building Solr..."
     pushd $src_dir
     apply_patches
     ant compile
@@ -76,11 +88,12 @@ check_for_solr()
 
 get_solr()
 {
-    if $FROM_SRC; then
+    echo "Getting Solr..."
+    if [ $SRC == "git" ]; then
         git clone git://github.com/apache/$VSN.git
     else
         wget http://s3.amazonaws.com/files.basho.com/solr/$VSN.tgz
-        tar zxvf $VSN.tgz
+        tar zxf $VSN.tgz
     fi
 }
 
@@ -95,12 +108,17 @@ then
     get_solr
 fi
 
-if $FROM_SRC; then
+if [ $SRC == "git" ]; then
     checkout_branch $branch
+    build_solr
+elif [ $SRC == "src-tar" ]; then
     build_solr
 fi
 
-cp -vr $example_dir $dir
+echo "Creating solr dir from Solr example..."
+cp -r $example_dir $dir
 rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt}
-cp -v solr.xml $dir
-cp -v *.properties $dir
+cp solr.xml $dir
+cp *.properties $dir
+
+echo "Finished creating solr dir..."
