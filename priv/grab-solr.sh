@@ -65,6 +65,7 @@ build_solr()
     echo "Building Solr..."
     pushd $src_dir
     apply_patches
+    ant ivy-bootstrap
     ant compile
     pushd solr
     mkdir test-framework/lib
