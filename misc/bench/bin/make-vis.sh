@@ -22,7 +22,7 @@ WWW_DIR=$1; shift
 RUN_DIR=$BENCH_RESULTS_DIR/$BENCH_NAME
 WWW_DIR=$WWW_DIR/$BENCH_NAME
 
-mkdir $WWW_DIR
+mkdir -p $WWW_DIR
 cp -vr $RUN_DIR/* $WWW_DIR
 cp -v $SCRIPT_DIR/visualize.html $WWW_DIR
 cp -vr $SCRIPT_DIR/js $WWW_DIR
