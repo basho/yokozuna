@@ -29,7 +29,7 @@ you should be able to complete these steps.
         git clone -b rz-yokozuna-2 git://github.com/basho/riak.git
         cd riak
 
-2. Verify that you have ant installed. It is needed to build solr.
+2. Verify that you have ant (>= 1.8.2) installed. It is needed to build solr.
 
         ant -version
 
