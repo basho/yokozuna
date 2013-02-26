@@ -35,6 +35,8 @@ confirm() ->
     wait_for_joins(Cluster),
     setup_indexing(Cluster, YZBenchDir),
     load_data(Cluster, "fruit", YZBenchDir),
+    %% wait for soft-commit
+    timer:sleep(1000),
     Ref = async_query(Cluster, YZBenchDir),
     %% Verify data exists before running join
     timer:sleep(10000),
