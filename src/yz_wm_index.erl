@@ -22,12 +22,12 @@
 %% @doc Resource for managing Yokozuna Indexes over HTTP.
 %%
 %% Available operations:
-%% 
+%%
 %% GET /yz/index
 %%   Get information about every index in JSON format.
 %%   Currently the same information as /yz/index/Index,
 %%   but as an array of JSON objects.
-%%   
+%%
 %% GET /yz/index/Index
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
@@ -53,7 +53,7 @@
 %%
 %% DELETE /yz/index/Index
 %%   Deletes the index with the given index name.
-%%   
+%%
 
 -module(yz_wm_index).
 -compile(export_all).
@@ -202,7 +202,7 @@ malformed_request(RD, S) ->
 is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
     IndexName = S#ctx.index_name,
     case yz_index:exists(IndexName) of
-        true  -> 
+        true  ->
             {true, RD, S};
         false ->
             {false, RD, S}
@@ -216,7 +216,7 @@ is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
 decode_json(RDBody) ->
     case (RDBody == <<>>) or (RDBody == []) of
       true  -> [];
-      false -> 
+      false ->
           case mochijson2:decode(RDBody) of
               {struct, BodyData} -> BodyData;
               _ -> []
