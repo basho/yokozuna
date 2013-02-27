@@ -10,6 +10,7 @@ confirm() ->
     Cluster = prepare_cluster(4),
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
+    confirm_409(Cluster),
     pass.
 
 %% @doc Test basic creation, no body.
@@ -33,6 +34,19 @@ confirm_create_index_2(Cluster) ->
     Body = <<"{\"schema\":\"_yz_default\"}">>,
     {ok, Status, _, _} = http(put, URL, Headers, Body),
     ?assertEqual("204", Status).
+
+confirm_409(Cluster) ->
+    Node = select_random(Cluster),
+    Index = "test_index_409",
+    lager:info("confirm_409 ~s [~p]", [Index, Node]),
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = index_url(HP, Index),
+    {ok, Status1, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("204", Status1),
+    %% Currently need to sleep to wait for Solr to create index
+    timer:sleep(5000),
+    {ok, Status2, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("409", Status2).
 
 %%%===================================================================
 %%% Helpers
