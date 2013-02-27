@@ -22,12 +22,12 @@
 %% @doc Resource for managing Yokozuna Indexes over HTTP.
 %%
 %% Available operations:
-%% 
+%%
 %% GET /yz/index
 %%   Get information about every index in JSON format.
 %%   Currently the same information as /yz/index/Index,
 %%   but as an array of JSON objects.
-%%   
+%%
 %% GET /yz/index/Index
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
@@ -53,7 +53,7 @@
 %%
 %% DELETE /yz/index/Index
 %%   Deletes the index with the given index name.
-%%   
+%%
 
 -module(yz_wm_index).
 -compile(export_all).
@@ -63,7 +63,8 @@
 -record(ctx, {api_version :: atom(),  % Determine which version of the API to use.
               index_name :: string(), % name the index
               props :: proplist(),    % properties of the body
-              method :: atom()        % HTTP method for the request
+              method :: atom(),       % HTTP method for the request
+              ring :: ring()
              }).
 
 %%%===================================================================
@@ -83,13 +84,17 @@ routes() ->
 init(_Props) ->
     {ok, #ctx{api_version='0.1'}}.
 
+%% NOTE: Need to grab the ring once at beginning of request because it
+%%       could change as this request is being serviced.
 service_available(RD, Ctx=#ctx{}) ->
     {true,
-        RD,
-        Ctx#ctx{
-            method=wrq:method(RD),
-            index_name=wrq:path_info(index, RD),
-            props=decode_json(wrq:req_body(RD))}
+     RD,
+     Ctx#ctx{
+       method=wrq:method(RD),
+       index_name=wrq:path_info(index, RD),
+       props=decode_json(wrq:req_body(RD)),
+       ring=yz_misc:get_ring(transformed)
+      }
     }.
 
 allowed_methods(RD, S) ->
@@ -117,25 +122,22 @@ delete_resource(RD, S) ->
         false -> {true, RD, S}
     end.
 
-%% Responds to a PUT request by creating an index
-%% and hook for the "index" name given in the route
-%% Returns "ok" if created, or "exists" if an index
-%% of that name already exists. Returns a 500 error if
-%% the given schema does not exist.
+%% Responds to a PUT request by creating an index and setting the
+%% index flag for the "index" name given in the route. Returns 204 if
+%% created, or 409 if an index of that name already exists. Returns a
+%% 500 error if the schema does not exist.
 create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
-    Body = create_install_index(IndexName, SchemaName),
-    RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
-    RD2 = wrq:append_to_response_body(Body, RD1),
-    {Body, RD2, S}.
+    ok = create_install_index(IndexName, SchemaName),
+    {<<>>, RD, S}.
 
 
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
 read_index(RD, S) ->
-    Ring = yz_misc:get_ring(transformed),
+    Ring = S#ctx.ring,
     case S#ctx.index_name of
         undefined  ->
             Indexes = yz_index:get_indexes_from_ring(Ring),
@@ -202,7 +204,7 @@ malformed_request(RD, S) ->
 is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
     IndexName = S#ctx.index_name,
     case yz_index:exists(IndexName) of
-        true  -> 
+        true  ->
             {true, RD, S};
         false ->
             {false, RD, S}
@@ -216,20 +218,19 @@ is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
 decode_json(RDBody) ->
     case (RDBody == <<>>) or (RDBody == []) of
       true  -> [];
-      false -> 
+      false ->
           case mochijson2:decode(RDBody) of
               {struct, BodyData} -> BodyData;
               _ -> []
           end
     end.
 
-%% If the index exists, return "exists".
-%% If not, create it and return "ok"
+-spec create_install_index(index_name(), schema_name()) -> ok.
 create_install_index(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
-        true  -> "exists";
+        true  ->
+            ok;
         false ->
             ok = yz_index:create(IndexName, SchemaName),
-            ok = yz_kv:set_index_flag(list_to_binary(IndexName)),
-            "ok"
+            ok = yz_kv:set_index_flag(list_to_binary(IndexName))
     end.
