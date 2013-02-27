@@ -63,7 +63,8 @@
 -record(ctx, {api_version :: atom(),  % Determine which version of the API to use.
               index_name :: string(), % name the index
               props :: proplist(),    % properties of the body
-              method :: atom()        % HTTP method for the request
+              method :: atom(),       % HTTP method for the request
+              ring :: ring()
              }).
 
 %%%===================================================================
@@ -83,13 +84,17 @@ routes() ->
 init(_Props) ->
     {ok, #ctx{api_version='0.1'}}.
 
+%% NOTE: Need to grab the ring once at beginning of request because it
+%%       could change as this request is being serviced.
 service_available(RD, Ctx=#ctx{}) ->
     {true,
-        RD,
-        Ctx#ctx{
-            method=wrq:method(RD),
-            index_name=wrq:path_info(index, RD),
-            props=decode_json(wrq:req_body(RD))}
+     RD,
+     Ctx#ctx{
+       method=wrq:method(RD),
+       index_name=wrq:path_info(index, RD),
+       props=decode_json(wrq:req_body(RD)),
+       ring=yz_misc:get_ring(transformed)
+      }
     }.
 
 allowed_methods(RD, S) ->
@@ -132,7 +137,7 @@ create_index(RD, S) ->
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
 read_index(RD, S) ->
-    Ring = yz_misc:get_ring(transformed),
+    Ring = S#ctx.ring,
     case S#ctx.index_name of
         undefined  ->
             Indexes = yz_index:get_indexes_from_ring(Ring),
