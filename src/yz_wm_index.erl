@@ -117,19 +117,16 @@ delete_resource(RD, S) ->
         false -> {true, RD, S}
     end.
 
-%% Responds to a PUT request by creating an index
-%% and hook for the "index" name given in the route
-%% Returns "ok" if created, or "exists" if an index
-%% of that name already exists. Returns a 500 error if
-%% the given schema does not exist.
+%% Responds to a PUT request by creating an index and setting the
+%% index flag for the "index" name given in the route. Returns 204 if
+%% created, or 409 if an index of that name already exists. Returns a
+%% 500 error if the schema does not exist.
 create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
-    Body = create_install_index(IndexName, SchemaName),
-    RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
-    RD2 = wrq:append_to_response_body(Body, RD1),
-    {Body, RD2, S}.
+    ok = create_install_index(IndexName, SchemaName),
+    {<<>>, RD, S}.
 
 
 %% Responds to a GET request by returning index info for
@@ -223,13 +220,12 @@ decode_json(RDBody) ->
           end
     end.
 
-%% If the index exists, return "exists".
-%% If not, create it and return "ok"
+-spec create_install_index(index_name(), schema_name()) -> ok.
 create_install_index(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
-        true  -> "exists";
+        true  ->
+            ok;
         false ->
             ok = yz_index:create(IndexName, SchemaName),
-            ok = yz_kv:set_index_flag(list_to_binary(IndexName)),
-            "ok"
+            ok = yz_kv:set_index_flag(list_to_binary(IndexName))
     end.
