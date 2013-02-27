@@ -12,24 +12,25 @@ confirm() ->
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
     confirm_list(Cluster, ["test_index_1", "test_index_2", "test_index_409"]),
+    confirm_delete(Cluster, "test_index_1"),
+    confirm_get(Cluster, "test_index_2"),
+    confirm_404(Cluster, "not_an_index"),
     pass.
 
 %% @doc Test basic creation, no body.
 confirm_create_index_1(Cluster) ->
-    Node = select_random(Cluster),
     Index = "test_index_1",
-    lager:info("confirm_create_index_1 ~s [~p]", [Index, Node]),
     HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_create_index_1 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, Status, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status).
 
 %% @doc Test index creation when passing schema name.
 confirm_create_index_2(Cluster) ->
-    Node = select_random(Cluster),
     Index = "test_index_2",
-    lager:info("confirm_create_index_2 ~s [~p]", [Index, Node]),
     HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_create_index_2 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     Body = <<"{\"schema\":\"_yz_default\"}">>,
@@ -37,10 +38,9 @@ confirm_create_index_2(Cluster) ->
     ?assertEqual("204", Status).
 
 confirm_409(Cluster) ->
-    Node = select_random(Cluster),
     Index = "test_index_409",
-    lager:info("confirm_409 ~s [~p]", [Index, Node]),
     HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_409 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, Status1, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status1),
@@ -50,13 +50,43 @@ confirm_409(Cluster) ->
     ?assertEqual("409", Status2).
 
 confirm_list(Cluster, Indexes) ->
-    Node = select_random(Cluster),
-    lager:info("confirm_list ~p [~p]", [Indexes, Node]),
     HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_list ~p [~p]", [Indexes, HP]),
     URL = index_list_url(HP),
     {ok, Status, _, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("200", Status),
     ?assert(check_list(Indexes, Body)).
+
+confirm_delete(Cluster, Index) ->
+    confirm_get(Cluster, Index),
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_delete ~s [~p]", [Index, HP]),
+    URL = index_url(HP, Index),
+    %% Don't use confirm_get of confirm_404 here as want to hit the
+    %% same node, otherwise have to sleep for ring propagation.
+    %% Should look into storing the index list in Riak now that PR/PW
+    %% has been fixed.
+    {ok, Status1, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("200", Status1),
+    {ok, Status2, _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("204", Status2),
+    {ok, Status3, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("404", Status3).
+
+confirm_get(Cluster, Index) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_get ~s [~p]", [Index, HP]),
+    URL = index_url(HP, Index),
+    {ok, Status, Headers, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("200", Status),
+    ?assertEqual("application/json", ct(Headers)).
+
+confirm_404(Cluster, Index) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_404 ~s [~p]", [Index, HP]),
+    URL = index_url(HP, Index),
+    {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("404", Status).
 
 %%%===================================================================
 %%% Helpers
@@ -70,6 +100,10 @@ check_list(Indexes, Body) ->
 
 contains_index(_Body) ->
     undefined.
+
+ct(Headers) ->
+    Headers2 = [{string:to_lower(Key), Value} || {Key, Value} <- Headers],
+    proplists:get_value("content-type", Headers2).
 
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
@@ -97,6 +131,7 @@ prepare_cluster(NumNodes) ->
     Nodes = rt:deploy_nodes(NumNodes),
     Cluster = join(Nodes),
     wait_for_joins(Cluster),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     Cluster.
 
 select_random(List) ->
