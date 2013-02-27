@@ -11,6 +11,7 @@ confirm() ->
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
+    confirm_list(Cluster, ["test_index_1", "test_index_2", "test_index_409"]),
     pass.
 
 %% @doc Test basic creation, no body.
@@ -48,9 +49,24 @@ confirm_409(Cluster) ->
     {ok, Status2, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("409", Status2).
 
+confirm_list(Cluster, Indexes) ->
+    Node = select_random(Cluster),
+    lager:info("confirm_list ~p [~p]", [Indexes, Node]),
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = index_list_url(HP),
+    {ok, Status, _, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("200", Status),
+    ?assert(check_list(Indexes, Body)).
+
 %%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+check_list(Indexes, Body) ->
+    Decoded = mochijson2:decode(Body),
+    Names = [binary_to_list(proplists:get_value(<<"name">>, Obj))
+             || {struct, Obj} <- Decoded],
+    lists:sort(Indexes) == lists:sort(Names).
 
 contains_index(_Body) ->
     undefined.
@@ -61,6 +77,9 @@ host_entries(ClusterConnInfo) ->
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
+
+index_list_url({Host, Port}) ->
+    ?FMT("http://~s:~B/yz/index", [Host, Port]).
 
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
