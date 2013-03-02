@@ -44,13 +44,21 @@ run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
+run({search, Qry}, KG, VG, S) ->
+    run({search, Qry, none}, KG, VG, S);
+
 run({search, Qry, FL}, KG, VG, S) ->
     run({search, Qry, FL, ?DONT_VERIFY}, KG, VG, S);
 
 run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
     Base = get_base(URLs),
-    Params = mochiweb_util:urlencode([{q, Qry}, {wt, <<"json">>}, {fl, FL}]),
-    URL = ?FMT("~s?~s", [Base, Params]),
+    Params1 = [{q, Qry}, {wt, <<"json">>}],
+    Params2 = case FL of
+                  none -> Params1;
+                  _ -> [{fl, FL}|Params1]
+              end,
+    Params3 = mochiweb_util:urlencode(Params2),
+    URL = ?FMT("~s?~s", [Base, Params3]),
     S2 = S#state{surls=wrap(URLs)},
     case {Expected, http_get(URL)} of
         {?DONT_VERIFY, {ok,_}} ->
