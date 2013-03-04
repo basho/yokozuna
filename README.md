@@ -85,7 +85,7 @@ Optionally, you may create an index from the console.
 Indexing data is a matter of writing data to KV.  Currently Yokozuna
 knows hows to index plain text, XML, and JSON.
 
-    curl -H 'content-type: text/plain' -X PUT 'http://localhost:8091/riak/name_of_bucket/name' -d "Ryan Zezeski"
+    curl -H 'content-type: text/plain' -X PUT 'http://localhost:8091/buckets/name_of_bucket/keys/name' -d "Ryan Zezeski"
 
 ### Searching ###
 
