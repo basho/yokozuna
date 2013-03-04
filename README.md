@@ -1,11 +1,11 @@
 Yokozuna [![travis](https://secure.travis-ci.org/rzezeski/yokozuna.png)](http://travis-ci.org/rzezeski/yokozuna)
 ==========
 
-**NOTICE:** This is an experiment and prototype.  The copyright is
-owned by Basho but is not an official repository.  Currently, this is
-a side project of the author and not supported in any way by Basho.
-
-**USE AT YOUR OWN RISK**
+**NOTICE:** This is a prototype.  It is in developmental stages and is
+  not recommended for production use at this time.  Breaking changes
+  could be made on any commit.  After more testing and verification
+  has been performed this will be considered as a replacement for Riak
+  Search.
 
 _Yokozuna_ - Horizontal rope.  The top rank in sumo, usually
 translated _Grand Champion_.  The name comes from the rope a yokozuna
