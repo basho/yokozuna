@@ -17,6 +17,12 @@ release.
 * A couple of integration tests were added for schema and index
   administration ([yz_65][]).
 
+* This release is based on Riak 1.3.0.  It uses the same tags as 1.3.0
+  as opposed to basing off the current state of master as done in
+  previous releases.  This means that 0.4.0 is Riak 1.3.0 with the
+  Yokozuna bits added along with two small changes to Riak to
+  integrate the two.
+
 * Yokozuna is now under the [Basho organization on GitHub][yz_basho],
   where it belongs.  This does not change the prototype status but
   does mean that Yokozuna is a step closer to being integrated with
