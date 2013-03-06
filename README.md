@@ -26,20 +26,18 @@ you should be able to complete these steps.
 
 1. Clone my fork of Riak's Yokozuna branch
 
-        git clone -b rz-yokozuna-2 git://github.com/basho/riak.git
+        git clone -b yz-merge-1.3.0 git://github.com/basho/riak.git
         cd riak
 
 2. Verify that you have ant (>= 1.8.2) installed. It is needed to build solr.
 
         ant -version
 
-3. Setup and compile yokozuna. Setup will replace riak_kv with
-   the correct YZ branch. Compile will take a long time because
-   it must clone Solr source and build it.  The first time you do
-   this is the longest as Ivy may have to download all the
-   dependencies if you don't regularly develop on Java projects.
+3. Compile Riak and Yokozuna.  The first time you do this is the
+   longest as Ivy may have to download all the dependencies if you
+   don't regularly develop Java projects.
 
-        make yz-setup
+        make
 
 4. Make a stage rel or stage devrel.  At this point it's no different
    from building a vanilla Riak release.

@@ -17,9 +17,8 @@ The rest is like the [Yokozuna Getting Started][yz_gs] guide but
 checkout riak as `riak_yz`.  Don't start the cluster.  Just build the
 devrel.
 
-    git clone -b rz-yokozuna-2 git://github.com/basho/riak.git riak_yz
+    git clone -b yz-merge-1.3.0 git://github.com/basho/riak.git riak_yz
     cd riak_yz
-    make yz-setup
     make stagedevrel
 
 ### Setup rtdev
