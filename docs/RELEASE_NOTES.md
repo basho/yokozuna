@@ -1,6 +1,36 @@
 Yokozuna Release Notes
 ==========
 
+0.4.0
+----------
+
+The fourth pre-release of Yokozuna.  This is a small release but
+important because it bases Yokozuna against the official Riak 1.3.0
+release.
+
+* Potentially major performance improvements in Solr's distributed
+  search ([yz_26][]).  Improvement will depend on environment but
+  non-trivial performance increase has been reproduced on two
+  different clusters on different hardware and operating systems.  An
+  upstream patch to Solr has been proposed as well, see [SOLR-4509][].
+
+* A couple of integration tests were added for schema and index
+  administration ([yz_65][]).
+
+* Yokozuna is now under the [Basho organization on GitHub][yz_basho],
+  where it belongs.  This does not change the prototype status but
+  does mean that Yokozuna is a step closer to being integrated with
+  mainline Riak.
+
+[yz_basho]: https://github.com/basho/yokozuna
+
+[yz_26]: https://github.com/basho/yokozuna/pull/26
+
+[yz_65]: https://github.com/basho/yokozuna/pull/65
+
+[SOLR-4509]: https://issues.apache.org/jira/browse/SOLR-4509
+
+
 0.3.0
 ----------
 
