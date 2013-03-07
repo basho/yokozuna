@@ -3,9 +3,9 @@
 # Use to calculate the median latency for a particular run of basho
 # bench.
 #
-# ./calc-mean-thru.sh <results-dir>
+# ./calc-median-latency.sh <results-dir>
 #
-# for d in yz-fruit-query-*; do ~/stories/solr-dist-search/plots/calc-mean-thru.sh $d; done
+# for d in yz-fruit-query-*; do ./calc-median-latency.sh $d; done
 
 RESULTS_DIR=$1
 

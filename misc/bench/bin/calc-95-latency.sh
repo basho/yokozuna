@@ -3,9 +3,9 @@
 # Use to calculate the 95th latency for a particular run of basho
 # bench.
 #
-# ./calc-mean-thru.sh <results-dir>
+# ./calc-95-latency.sh <results-dir>
 #
-# for d in yz-fruit-query-*; do ~/stories/solr-dist-search/plots/calc-mean-thru.sh $d; done
+# for d in query-*; do ./calc-95-latency.sh $d; done
 
 RESULTS_DIR=$1
 
