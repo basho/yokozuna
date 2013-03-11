@@ -52,7 +52,7 @@ build.  The following instructions assume a devrel.
 
 1. Start the nodes.  After this has complete `ps` should show 4
    `beam.smp` processes and 4 `java` processes.  The Solr instances
-   should be listening on ports 7981-7984.
+   should be listening on ports 10016, 10026, 10036, and 10046.
 
         for d in dev/dev*; do $d/bin/riak start; done
         for d in dev/dev*; do $d/bin/riak ping; done
@@ -74,7 +74,7 @@ may eventually change to a 1:M mapping from index to bucket.
 
 You can create an index via the HTTP interface.
 
-    curl -XPUT -i -H 'content-type: application/json' http://localhost:8091/yz/index/name_of_index
+    curl -XPUT -i -H 'content-type: application/json' http://localhost:10018/yz/index/name_of_index
 
 Optionally, you may create an index from the console.
 
@@ -83,7 +83,7 @@ Optionally, you may create an index from the console.
 Indexing data is a matter of writing data to KV.  Currently Yokozuna
 knows hows to index plain text, XML, and JSON.
 
-    curl -H 'content-type: text/plain' -X PUT 'http://localhost:8091/buckets/name_of_bucket/keys/name' -d "Ryan Zezeski"
+    curl -H 'content-type: text/plain' -X PUT 'http://localhost:10018/buckets/name_of_bucket/keys/name' -d "Ryan Zezeski"
 
 ### Searching ###
 
@@ -93,4 +93,4 @@ API but that is hidden for you.  This means you don't have to worry
 about where your shards are located.  This also means you should be
 able to use any off-the-shelf Solr client to query Yokozuna.
 
-    curl 'http://localhost:8091/search/name_of_index?q=text:Ryan'
+    curl 'http://localhost:10018/search/name_of_index?q=text:Ryan'
