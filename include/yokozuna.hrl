@@ -47,7 +47,8 @@
 
 %% Shorthand for existing types
 -type datetime() :: calendar:datetime().
--type orddict(K,V) :: [{K,V}].
+-type orddict(K,V) :: orddict:orddict(K,V).
+-type od() :: orddict:orddict().
 -type ordset(T) :: ordsets:ordset(T).
 -type proplist() :: proplists:proplist().
 -type ring() :: riak_core_ring:riak_core_ring().

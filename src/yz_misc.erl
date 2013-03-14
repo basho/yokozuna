@@ -129,6 +129,28 @@ get_ring(transformed) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Ring.
 
+%% @doc Group a list of tuples by common key.  Builds a list of all
+%%      values associated with the same key.  Returns a list in
+%%      `orddict()' format.
+%%
+%%   `PL' - List of tuples of form `[{Key,Value}]'.
+%%
+%%   `Transform' - Function which takes `{Key,Value}' and transforms
+%%                 into a potentially different `{Key,Value}'.
+-type xform() :: fun(({term(),term()}) -> {term(),term()}).
+-spec group_by(proplist(), xform()) -> od().
+group_by(PL, Transform) ->
+    lists:foldl(group_by_1(Transform), orddict:new(), PL).
+
+%% @private
+-spec group_by_1(xform()) -> fun(({term(),term()}, od()) -> od()).
+group_by_1(Transform) ->
+    fun(Elem, Acc) ->
+            {K,V} = Transform(Elem),
+            Cons = fun(CurrentVal) -> [V|CurrentVal] end,
+            orddict:update(K, Cons, [V], Acc)
+    end.
+
 %% @doc Create the `Dir' if it doesn't already exist.
 -spec make_dir(string()) -> ok.
 make_dir(Dir) ->
