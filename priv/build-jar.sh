@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Temporary script to build JAR file containing customer Solr request
 # handlers.
