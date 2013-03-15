@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # The main script for building a custom AMI.  The actual customization
 # and AMI bundle creation is performed in a second script which is

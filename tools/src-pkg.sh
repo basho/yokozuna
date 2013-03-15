@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Build a source package of Yokozuna.
 #
@@ -44,6 +44,3 @@ popd
 rm -f $TGZ
 tar -zcvf $TGZ $RIAK_DIR
 popd
-
-
-

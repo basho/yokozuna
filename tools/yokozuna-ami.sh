@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # This script builds a Riak/Yokozuna AMI by running on an existing
 # instance created by build-ami.sh.  All actions should be idempotent
