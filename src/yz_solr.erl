@@ -227,18 +227,31 @@ base_url() ->
     "http://localhost:" ++ port() ++ "/solr".
 
 build_fq(Partitions) ->
-    Fields = [filter_to_str(P) || P <- Partitions],
+    GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
+    Fields = [group_to_str(G) || G <- GroupedByNode],
     string:join(Fields, " OR ").
 
-filter_to_str({{Partition, Owner}, all}) ->
+group_by_node({{Partition, Owner}, all}) ->
+    {Owner, Partition};
+group_by_node({{Partition, Owner}, FPFilter}) ->
+    {Owner, {Partition, FPFilter}}.
+
+group_to_str({Owner, Partitions}) ->
     OwnerQ = ?YZ_NODE_FIELD_S ++ ":" ++ atom_to_list(Owner),
-    PNQ = ?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(Partition),
-    "(" ++ OwnerQ ++ " AND " ++ PNQ ++ ")";
-filter_to_str({{Partition, Owner}, FPFilter}) ->
-    OwnerQ = ?YZ_NODE_FIELD_S ++ ":" ++ atom_to_list(Owner),
-    PNQ = ?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(Partition),
-    FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),
-    "(" ++ OwnerQ ++ " AND " ++ PNQ ++ " AND (" ++ FPQ ++ "))".
+    "(" ++ OwnerQ ++ " AND " ++ "(" ++ partitions_to_str(Partitions) ++ "))".
+
+partitions_to_str(Partitions) ->
+    F = fun({Partition, FPFilter}) ->
+                PNQ = pn_str(Partition),
+                FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),
+                "(" ++ PNQ ++ " AND " ++ "(" ++ FPQ ++ "))";
+           (Partition) ->
+                pn_str(Partition)
+        end,
+    string:join(lists:map(F, Partitions), " OR ").
+
+pn_str(Partition) ->
+    ?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(Partition).
 
 fpn_str(FPN) ->
     ?YZ_FPN_FIELD_S ++ ":" ++ integer_to_list(FPN).
