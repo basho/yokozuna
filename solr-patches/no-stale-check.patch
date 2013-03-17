@@ -1,4 +1,4 @@
-From 7ea3406740b6829174df3cb50b9cd1b80d61adc5 Mon Sep 17 00:00:00 2001
+From 47a169fe3eee2ff8edc2fbea15040993fd48c81b Mon Sep 17 00:00:00 2001
 From: Ryan Zezeski <rzezeski@gmail.com>
 Date: Tue, 12 Feb 2013 11:54:21 -0500
 Subject: [PATCH] Disable stale check and nagle
@@ -12,9 +12,9 @@ Subject: [PATCH] Disable stale check and nagle
 
 * Disable nagle as it's meant for protocols that use many small messages.
 ---
- .../solr/handler/component/HttpShardHandlerFactory.java      |  3 +++
- .../org/apache/solr/client/solrj/impl/HttpClientUtil.java    | 12 ++++++++++++
- 2 files changed, 15 insertions(+)
+ .../solr/handler/component/HttpShardHandlerFactory.java   |    3 +++
+ .../org/apache/solr/client/solrj/impl/HttpClientUtil.java |   13 +++++++++++++
+ 2 files changed, 16 insertions(+)
 
 diff --git a/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java b/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
 index 27f9f79..2537705 100644
@@ -38,7 +38,7 @@ index 27f9f79..2537705 100644
      try {
        loadbalancer = new LBHttpSolrServer(defaultClient);
 diff --git a/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java b/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
-index cc78279..c07b03b 100644
+index 3887302..4649138 100644
 --- a/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
 +++ b/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
 @@ -18,6 +18,9 @@ package org.apache.solr.client.solrj.impl;
@@ -51,10 +51,11 @@ index cc78279..c07b03b 100644
  import java.util.zip.GZIPInputStream;
  import java.util.zip.InflaterInputStream;
  
-@@ -102,6 +105,15 @@ public class HttpClientUtil {
+@@ -102,6 +105,16 @@ public class HttpClientUtil {
+     final ModifiableSolrParams config = new ModifiableSolrParams(params);
      logger.info("Creating new http client, config:" + config);
-     final ThreadSafeClientConnManager mgr = new ThreadSafeClientConnManager();
-     final DefaultHttpClient httpClient = new DefaultHttpClient(mgr);
+     final DefaultHttpClient httpClient = new SystemDefaultHttpClient();
++    final org.apache.http.conn.ClientConnectionManager mgr = httpClient.getConnectionManager();
 +
 +    // NOTE: The sweeper task is assuming hard-coded Jetty max-idle of 50s.
 +    final Runnable sweeper = new Runnable() {
@@ -68,5 +69,5 @@ index cc78279..c07b03b 100644
      return httpClient;
    }
 -- 
-1.8.1
+1.7.10.4
 
