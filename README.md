@@ -24,23 +24,16 @@ you should be able to complete these steps.
 
 ### Building ###
 
-1. Clone my fork of Riak's Yokozuna branch
+1. Clone the Yokozuna branch of Riak
 
         git clone -b yz-merge-1.3.0 git://github.com/basho/riak.git
         cd riak
 
-2. Verify that you have ant (>= 1.8.2) installed. It is needed to build solr.
-
-        ant -version
-
-3. Compile Riak and Yokozuna.  The first time you do this is the
-   longest as Ivy may have to download all the dependencies if you
-   don't regularly develop Java projects.
+2. Compile Riak and Yokozuna.
 
         make
 
-4. Make a stage rel or stage devrel.  At this point it's no different
-   from building a vanilla Riak release.
+3. Make a stage rel or stage devrel.
 
         make stagedevrel
 
@@ -57,13 +50,11 @@ build.  The following instructions assume a devrel.
         for d in dev/dev*; do $d/bin/riak start; done
         for d in dev/dev*; do $d/bin/riak ping; done
 
-2. Join the nodes.  I am using the force (`-f`) option here as this is
-   just a development release.  In a production environment you should
-   use the new cluster staging commands as they are more efficient
-   when doing multiple operations and can save you from making costly
-   mistakes.
+2. Form a cluster.
 
-        for d in dev/dev{2,3,4}; do $d/bin/riak-admin join -f dev1@127.0.0.1; done
+        for d in dev/dev{2,3,4}; do $d/bin/riak-admin cluster join dev1@127.0.0.1; done
+        ./dev/dev1/bin/riak-admin cluster plan
+        ./dev/dev1/bin/riak-admin cluster commit
 
 ### Creating an Index ###
 
