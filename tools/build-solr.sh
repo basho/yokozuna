@@ -4,11 +4,11 @@
 #
 #> Usage:
 #>
-#>   ./build-solr.sh [--git] [--patch-dir <PATCH DIR>] <WORK DIR> <URL>
+#>   ./build-solr.sh [--git] [--patch-dir <PATCH DIR>] <WORK DIR> <NAME> <URL>
 #>
 #> Example:
 #>
-#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr http://www.motorlogy.com/apache/lucene/solr/4.2.0/solr-4.2.0-src.tgz | tee build-solr.out
+#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.2.0-yz http://www.motorlogy.com/apache/lucene/solr/4.2.0/solr-4.2.0-src.tgz | tee build-solr.out
 
 error()
 {
@@ -58,13 +58,14 @@ do
     shift
 done
 
-if test $# != 2; then
+if test $# != 3; then
     echo "ERROR: incorrect number of arguments: $#"
     usage
     exit 1
 fi
 
 WORK_DIR=$1; shift
+NAME=$1; shift
 URL=$1; shift
 
 mkdir $WORK_DIR
@@ -93,6 +94,9 @@ else
     fi
 fi
 
+mv $SOLR_DIR $NAME
+SOLR_DIR=$NAME
+
 cd $SOLR_DIR
 echo "buildling Solr from $SOLR_DIR"
 
@@ -105,4 +109,18 @@ cd solr
 # mkdir test-framework/lib
 ant dist example
 
-# TODO: tar.gz example dir
+cd ..
+mv solr $NAME
+tar zcvf $NAME.tgz \
+    --exclude='build*' \
+    --exclude=cloud-dev \
+    --exclude=core \
+    --exclude=package \
+    --exclude=scripts \
+    --exclude=site \
+    --exclude=solrj \
+    --exclude=test-framework \
+    --exclude=testlogging.properties \
+    $NAME
+mv $NAME solr
+
