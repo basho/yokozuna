@@ -44,7 +44,7 @@ elif [ $SRC == "src-tar" ]; then
     example_dir=$src_dir/solr/example
     patch_dir=$PWD/../solr-patches
 else
-    VSN=solr-4.1.0
+    VSN=solr-4.2.0-yz1
     dir=$PWD/solr
     src_dir=$PWD/$VSN
     example_dir=$src_dir/example
@@ -93,7 +93,7 @@ get_solr()
     if [ $SRC == "git" ]; then
         git clone git://github.com/apache/$VSN.git
     else
-        wget http://s3.amazonaws.com/files.basho.com/solr/$VSN.tgz
+        wget https://s3.amazonaws.com/yzami/pkgs/$VSN.tgz
         tar zxf $VSN.tgz
     fi
 }
