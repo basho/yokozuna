@@ -1,8 +1,10 @@
 language: erlang
 notifications:
-  webhooks: http://basho-engbot.herokuapp.com/travis?key=b14e7fcd31e159a43d50e01bb0b2e36cb1b04d0d
+  webhooks: http://basho-engbot.herokuapp.com/travis?key=231f8ea730b9def7d90eae258fb9f390627f45dc
   email: eng@basho.com
 before_script:
   - "ulimit -n 4096"
+before_install:
+  - sudo apt-get install -qq libc6-dev-i386
 otp_release:
-  - R15B01
+  - R15B02
