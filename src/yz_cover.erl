@@ -47,7 +47,8 @@ plan(Index) ->
                                                  NVal,
                                                  NumPrimaries,
                                                  ReqId,
-                                                 ?YZ_SVC_NAME),
+                                                 ?YZ_SVC_NAME,
+                                                 nodes),
     case Result of
         {error, Error} ->
             throw(Error);
