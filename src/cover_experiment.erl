@@ -87,8 +87,20 @@ preflist_nodes(LPStart, LPToOwner, RingSize, NVal) ->
 
 -spec node_vector([node()], node_num_map()) -> bits().
 node_vector(Nodes, NodeNumMap) ->
-    [element(2, lists:keyfind(Node, 1, NodeNumMap)) || Node <- Nodes].
-    
+    node_vec([element(2, lists:keyfind(Node, 1, NodeNumMap)) || Node <- Nodes]).
+
+%% @doc Same as convert_preflists_to_bit_vector.
+-spec node_vec([node()]) -> bits().
+node_vec(Nodes) ->
+    node_vec(Nodes, 0).
+
+node_vec([Node|Nodes], Bits) ->
+    NodeBits = trunc(math:pow(2, Node)),
+    NewBits = Bits bor NodeBits,
+    node_vec(Nodes, NewBits);
+node_vec([], Bits) ->
+    %% Node numbers start at 1, need to shift to map 1 to 0
+    Bits bsr 1.
 
 %% Ring2 = riak_core_ring:add_member(foobar, Ring, foobar2).
 %% Ring3 = riak_core_ring:add_member(foobar, Ring2, foobar3).
@@ -132,8 +144,67 @@ group_by_node(LPToOwner) ->
 %% cover_experiment:node_p_vec_map(LPToOwner).
 
 %%%===================================================================
+%%% Target Preflists To Node Ratio
+%%%
+%%% For each target preflists calculate the ratio owned by each node.
+%%%===================================================================
+
+%% @doc For each node in `NodePVecMap' calculate number of partitions
+%%      it owners in `TargetPreflists'.  Return the list sorted by
+%%      count descending.
+-spec node_ratios([lp()], node_p_vec_map()) -> [{node(), integer(), integer()}].
+node_ratios(TargetPreflist, NodePVecMap) ->
+    PreflistsVector = convert_preflists_to_bit_vector(TargetPreflist),
+    Total = count_ones(PreflistsVector),
+    Ratios = [{Node, count_ones(PreflistsVector band PVec), Total}
+              || {Node, PVec} <- NodePVecMap],
+    lists:keysort(2, Ratios).
+
+%% NodePVecMap = cover_experiment:node_p_vec_map(LPToOwner).
+%% cover_experiment:node_ratios(TP1, NodePVecMap).
+
+%%%===================================================================
+%%% Determine Min Coverage
+%%%===================================================================
+
+-spec does_one_node_cover(p_node_vec_map(), node_num_map()) -> [node()].
+does_one_node_cover([{_,NodeVec}|PNodeVecMap], NodeNumMap) ->
+    does_one_node_cover(PNodeVecMap, NodeVec, NodeNumMap).
+
+does_one_node_cover([{_,NodeVec2}|PNodeVecMap], AccVec, NodeNumMap) ->
+    does_one_node_cover(PNodeVecMap, AccVec band NodeVec2, NodeNumMap);
+does_one_node_cover([], AccVec, NodeNumMap) ->
+    if AccVec > 0 -> which_nodes(NodeNumMap, AccVec, []);
+       true -> []
+    end.
+
+%% PNodeVecMap = cover_experiment:partition_node_vector_map(TP1, Ring3, 3, NodeNumMap).
+%% cover_experiment:does_one_node_cover(PNodeVecMap, NodeNumMap).
+
+which_nodes([{Node,Num}|NodeNumMap], AccVec, Match) ->
+    %% Need to subtract by 1 because node numbers are 1-based
+    Check = trunc(math:pow(2, Num - 1)) band AccVec,
+    if Check > 0 ->
+            which_nodes(NodeNumMap, AccVec, [Node|Match]);
+       true ->
+            which_nodes(NodeNumMap, AccVec, Match)
+    end;
+which_nodes([], _, Match) ->
+    Match.
+
+%%%===================================================================
 %%% Misc
 %%%===================================================================
+
+%% @doc Count the number of bits turned on.
+-spec count_ones(bits()) -> integer().
+count_ones(Bits) ->
+    count_ones(Bits, 0).
+
+count_ones(0, Count) ->
+    Count;
+count_ones(Bits, Count) ->
+    count_ones(Bits band (Bits - 1), Count + 1).
 
 %% @doc Print base-2 representation of `Bits'.
 print_bits(Bits, NumBuckets) ->    
@@ -150,3 +221,7 @@ ring_size(Ring) ->
 %% TargetPreflists = cover_experiment:target_preflists(Ring, 3).
 %% TV1 = cover_experiment:convert_preflists_to_bit_vector(hd(TargetPreflists)).
 %% cover_experiment:print_bits(TV1, 64).
+
+test(RingSize, NumNodes, NVal) ->
+    [Node1|Nodes] = [gen_node(I) || I <- lists:seq(1,NumNodes)],
+    Ring1 = riak_core_ring:fresh(RingSize, Node1).
