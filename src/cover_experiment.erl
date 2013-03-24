@@ -13,7 +13,6 @@
 %%      which may be used to cover the keyspace.
 -spec target_preflists(ring(), n_val()) -> [[lp()]].
 target_preflists(Ring, NVal) ->
-    %% LI = logical_index(Ring),
     RingSize = ring_size(Ring),
     StartLPs = lists:seq(1, NVal),
     [cover_preflists(RingSize, NVal, [LP]) || LP <- StartLPs].
@@ -29,8 +28,11 @@ target_preflists(Ring, NVal) ->
 -spec cover_preflists(ring_size(), n_val(), lp()) -> [lp()].
 cover_preflists(RingSize, NVal, Preflists=[Last|_]) ->
     LP = Last + NVal,
-    if LP > RingSize ->
-            Preflists;
+    if LP >= RingSize ->
+            %% If >= then you have wrapped, just choose last preflist
+            %% because you know it will cover up to the first
+            %% partition.
+            [RingSize|Preflists];
        true ->
             cover_preflists(RingSize, NVal, [LP|Preflists])
     end.
@@ -122,6 +124,57 @@ node_vec([], Bits) ->
 node_p_vec_map(LPToOwner) ->
     Grouped = group_by_node(LPToOwner),
     [{Node, p_vec(LPs)} || {Node, LPs} <- Grouped].
+
+%% PVec is vector for all partitions turned on for a node.
+-spec p_vec_cover(bits(), ring_size(), n_val()) -> bits().
+p_vec_cover(PVec, RingSize, NVal) ->
+    PositionsOn = positions_on(PVec, RingSize),
+    io:format("PositionsOn: ~p~n", [PositionsOn]),
+    %% NVal - 1 because already have 1 bit on
+    CoverBits = [cover_bits(Bits, RingSize, NVal - 1) || Bits <- PositionsOn],
+    bit_or(CoverBits, 0).
+
+cover_bits(Bits, _RingSize, 0) ->
+    Bits;
+cover_bits(Bits, RingSize, NVal) ->
+    io:format("cover_bits ~p ~p~n", [Bits, NVal]),
+    if Bits == 1 ->
+            %% At right-most bit, turn on NVal left-most bits, I - 1
+            %% because mapping 1-indexed to 0-indexed
+            %% 
+            %% NVal - 1 because seq is inclusive in range
+            %%
+            %% TODO: this can be converted to function head
+            bit_or([trunc(math:pow(2, I - 1))
+                    || I <- lists:seq(RingSize - (NVal - 1), RingSize)], Bits);
+       true ->
+            cover_bits(Bits bor (Bits div 2), RingSize, NVal - 1)
+    end.
+
+bit_or([Bits|Rest], Acc) ->
+    bit_or(Rest, Bits bor Acc);
+bit_or([], Acc) ->
+    Acc.
+
+-spec positions_on(bits(), ring_size()) -> [bits()].
+positions_on(Bits, Buckets) ->
+    positions_on(Bits, Buckets, []).
+
+positions_on(_Bits, 0, Match) ->
+    Match;
+positions_on(Bits, Bucket, Match) ->
+    BucketVec = trunc(math:pow(2, Bucket - 1)),
+    if (BucketVec band Bits) > 0 ->
+            positions_on(Bits, Bucket - 1, [BucketVec|Match]);
+       true ->
+            positions_on(Bits, Bucket - 1, Match)
+    end.
+    
+%% PBIts is vector for given PNum.
+%%
+%% Which partitions are turned on for a given `PVec'.
+%% which_partitions([{PNum, PBits}|PBitList], PVec, Match) ->
+    
 
 %% @doc Same as convert_preflists_to_bit_vector.
 -spec p_vec([lp()]) -> bits().
@@ -227,12 +280,31 @@ ring_size(Ring) ->
 
 %% Relies on riak_core_claim_sim which relies on actuall running Riak
 %% instance.
-simulate(RingSize, NumNodes, _NVal) ->
+simulate(RingSize, NumNodes, NVal) ->
     [Node1|Nodes] = [gen_node(I) || I <- lists:seq(1,NumNodes)],
     Ring1 = riak_core_ring:fresh(RingSize, Node1),
     Cmds = [{join, Node} || Node <- Nodes],
     Opts = [{ring, Ring1}, {cmds, Cmds}, {return_ring, true}],
-    _Ring2 = riak_core_claim_sim:run(Opts).
+    Ring2 = riak_core_claim_sim:run(Opts),
+    LPToOwner = lp_to_owner(Ring2),
+    io:format("LPToOwner: ~p~n", [LPToOwner]),
+    NodePVecMap = node_p_vec_map(LPToOwner),
+    io:format("NodePVecMap: ~p~n", [NodePVecMap]),
+    TPs = target_preflists(Ring2, NVal),
+    io:format("TPs: ~p~n", [TPs]),
+    NodeNumMap = node_num_map(Ring2),
+    io:format("NodeNumMap: ~p~n", [NodeNumMap]),
+    TP1 = lists:nth(1, TPs),
+    io:format("TP1: ~p~n", [TP1]),
+    PNodeVecMap1 = partition_node_vector_map(TP1, Ring2, NVal, NodeNumMap),
+    io:format("PNodeVecMap1: ~p~n", [PNodeVecMap1]),
+    Ratio1 = node_ratios(TP1, NodePVecMap),
+    io:format("Ratio1: ~p~n", [Ratio1]),
+    NodePVecMapCover = [{Node, p_vec_cover(PVec, RingSize, NVal)}
+                        || {Node, PVec} <- NodePVecMap],
+    CorrectRatio1 = node_ratios(TP1, NodePVecMapCover),
+    io:format("CorrectRatio1: ~p~n", [CorrectRatio1]),
+    Ring2.
 
 gen_node(I) ->
-    list_to_atom(io_lib:format("node~p", [I])).
+    list_to_atom(lists:flatten(io_lib:format("node~p", [I]))).
