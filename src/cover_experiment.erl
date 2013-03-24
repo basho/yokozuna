@@ -18,6 +18,11 @@ target_preflists(Ring, NVal) ->
     StartLPs = lists:seq(1, NVal),
     [cover_preflists(RingSize, NVal, [LP]) || LP <- StartLPs].
 
+%% Ring = riak_core_ring:fresh(64, foobar).
+%% TargetPreflists = cover_experiment:target_preflists(Ring, 3).
+%% TV1 = cover_experiment:convert_preflists_to_bit_vector(hd(TargetPreflists)).
+%% cover_experiment:print_bits(TV1, 64).
+
 %% @doc Determine the set of preflists (represented by their first
 %%      partition), starting at the initial `Last' value, which cover
 %%      the ring space based on the `NVal'.
@@ -215,13 +220,19 @@ print_bits(Bits, NumBuckets) ->
 ring_size(Ring) ->
     riak_core_ring:num_partitions(Ring).
 
-%% testing:
-%%
-%% Ring = riak_core_ring:fresh(64, foobar).
-%% TargetPreflists = cover_experiment:target_preflists(Ring, 3).
-%% TV1 = cover_experiment:convert_preflists_to_bit_vector(hd(TargetPreflists)).
-%% cover_experiment:print_bits(TV1, 64).
+%%%===================================================================
+%%% Simulation
+%%%===================================================================
 
-test(RingSize, NumNodes, NVal) ->
+
+%% Relies on riak_core_claim_sim which relies on actuall running Riak
+%% instance.
+simulate(RingSize, NumNodes, _NVal) ->
     [Node1|Nodes] = [gen_node(I) || I <- lists:seq(1,NumNodes)],
-    Ring1 = riak_core_ring:fresh(RingSize, Node1).
+    Ring1 = riak_core_ring:fresh(RingSize, Node1),
+    Cmds = [{join, Node} || Node <- Nodes],
+    Opts = [{ring, Ring1}, {cmds, Cmds}, {return_ring, true}],
+    _Ring2 = riak_core_claim_sim:run(Opts).
+
+gen_node(I) ->
+    list_to_atom(io_lib:format("node~p", [I])).
