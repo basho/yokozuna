@@ -218,6 +218,11 @@ node_ratios(TargetPreflist, NodePVecMap) ->
               || {Node, PVec} <- NodePVecMap],
     lists:keysort(2, Ratios).
 
+-spec node_ratios_2(node_p_vec_map(), ring_size()) -> [{node(), integer(), integer()}].
+node_ratios_2(NodePVecMap, RingSize) ->
+    Ratios = [{Node, count_ones(PVec), RingSize} || {Node, PVec} <- NodePVecMap],
+    lists:reverse(lists:keysort(2, Ratios)).
+
 %% NodePVecMap = cover_experiment:node_p_vec_map(LPToOwner).
 %% cover_experiment:node_ratios(TP1, NodePVecMap).
 
@@ -304,6 +309,8 @@ simulate(RingSize, NumNodes, NVal) ->
                         || {Node, PVec} <- NodePVecMap],
     CorrectRatio1 = node_ratios(TP1, NodePVecMapCover),
     io:format("CorrectRatio1: ~p~n", [CorrectRatio1]),
+    Ratio1_2 = node_ratios_2(NodePVecMapCover, RingSize),
+    io:format("Ratio1_2: ~p~n", [Ratio1_2]),
     Ring2.
 
 gen_node(I) ->
