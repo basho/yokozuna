@@ -32,8 +32,6 @@
 
 <schema name="default" version="1.5">
  <fields>
-   <!-- TODO: change id to _yz_id as id is a common field name -->
-   <field name="id" type="string" indexed="true" stored="true" required="true" />
 
    <!-- TODO: is this needed? -->
    <field name="_version_" type="long" indexed="true" stored="true"/>
@@ -55,8 +53,8 @@
    <dynamicField name="*_t"  type="text_general" indexed="true"  stored="false"/>
    <dynamicField name="*_ts" type="text_general" indexed="true"  stored="false" multiValued="true"/>
 
-   <dynamicField name="*_td" type="text_general" indexed="true" stored="true"/>
-   <dynamicField name="*_tds" type="text_general" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_tsd" type="text_general" indexed="true" stored="true"/>
+   <dynamicField name="*_tssd" type="text_general" indexed="true" stored="true" multiValued="true"/>
 
    <!-- TODO: add fields for other languages -->
    <dynamicField name="*_en"  type="text_en"    indexed="true"  stored="true" multiValued="true"/>
@@ -77,8 +75,9 @@
    <dynamicField name="*_ig" type="ignored" multiValued="true"/>
    <dynamicField name="random_*" type="random" />
 
+   <field name="_yz_id" type="string" indexed="true" stored="true" required="true"/>
+
    <!-- Entropy Data: Data related to anti-entropy -->
-   <!-- TODO: don't index for now as not searched on directly -->
    <field name="_yz_ed" type="string" indexed="true" stored="true"/>
 
    <!-- Partition Number: Used as a filter query param -->
@@ -98,7 +97,7 @@
    <field name="_yz_rk" type="string" indexed="true" stored="true"/>
  </fields>
 
- <uniqueKey>id</uniqueKey>
+ <uniqueKey>_yz_id</uniqueKey>
 
   <types>
     <fieldType name="string" class="solr.StrField" sortMissingLast="true" />
@@ -149,9 +148,6 @@
       <analyzer type="index">
         <tokenizer class="solr.StandardTokenizerFactory"/>
         <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" enablePositionIncrements="true" />
-        <!-- in this example, we will only use synonyms at query time
-        <filter class="solr.SynonymFilterFactory" synonyms="index_synonyms.txt" ignoreCase="true" expand="false"/>
-        -->
         <filter class="solr.LowerCaseFilterFactory"/>
       </analyzer>
       <analyzer type="query">
@@ -170,13 +166,6 @@
     <fieldType name="text_en" class="solr.TextField" positionIncrementGap="100">
       <analyzer type="index">
         <tokenizer class="solr.StandardTokenizerFactory"/>
-        <!-- in this example, we will only use synonyms at query time
-        <filter class="solr.SynonymFilterFactory" synonyms="index_synonyms.txt" ignoreCase="true" expand="false"/>
-        -->
-        <!-- Case insensitive stop word removal.
-          add enablePositionIncrements=true in both the index and query
-          analyzers to leave a 'gap' for more accurate phrase queries.
-        -->
         <filter class="solr.StopFilterFactory"
                 ignoreCase="true"
                 words="lang/stopwords_en.txt"
@@ -185,9 +174,6 @@
         <filter class="solr.LowerCaseFilterFactory"/>
 	<filter class="solr.EnglishPossessiveFilterFactory"/>
         <filter class="solr.KeywordMarkerFilterFactory" protected="protwords.txt"/>
-	<!-- Optionally you may want to use this less aggressive stemmer instead of PorterStemFilterFactory:
-        <filter class="solr.EnglishMinimalStemFilterFactory"/>
-	-->
         <filter class="solr.PorterStemFilterFactory"/>
       </analyzer>
       <analyzer type="query">
@@ -201,9 +187,6 @@
         <filter class="solr.LowerCaseFilterFactory"/>
 	<filter class="solr.EnglishPossessiveFilterFactory"/>
         <filter class="solr.KeywordMarkerFilterFactory" protected="protwords.txt"/>
-	<!-- Optionally you may want to use this less aggressive stemmer instead of PorterStemFilterFactory:
-        <filter class="solr.EnglishMinimalStemFilterFactory"/>
-	-->
         <filter class="solr.PorterStemFilterFactory"/>
       </analyzer>
     </fieldType>
@@ -220,13 +203,6 @@
     <fieldType name="text_en_splitting" class="solr.TextField" positionIncrementGap="100" autoGeneratePhraseQueries="true">
       <analyzer type="index">
         <tokenizer class="solr.WhitespaceTokenizerFactory"/>
-        <!-- in this example, we will only use synonyms at query time
-        <filter class="solr.SynonymFilterFactory" synonyms="index_synonyms.txt" ignoreCase="true" expand="false"/>
-        -->
-        <!-- Case insensitive stop word removal.
-          add enablePositionIncrements=true in both the index and query
-          analyzers to leave a 'gap' for more accurate phrase queries.
-        -->
         <filter class="solr.StopFilterFactory"
                 ignoreCase="true"
                 words="lang/stopwords_en.txt"
@@ -263,8 +239,6 @@
         <filter class="solr.LowerCaseFilterFactory"/>
         <filter class="solr.KeywordMarkerFilterFactory" protected="protwords.txt"/>
         <filter class="solr.EnglishMinimalStemFilterFactory"/>
-        <!-- this filter can remove any duplicate tokens that appear at the same position - sometimes
-             possible with WordDelimiterFilter in conjuncton with stemming. -->
         <filter class="solr.RemoveDuplicatesTokenFilterFactory"/>
       </analyzer>
     </fieldType>
