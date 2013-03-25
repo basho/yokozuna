@@ -129,16 +129,14 @@ node_p_vec_map(LPToOwner) ->
 -spec p_vec_cover(bits(), ring_size(), n_val()) -> bits().
 p_vec_cover(PVec, RingSize, NVal) ->
     PositionsOn = positions_on(PVec, RingSize),
-    io:format("PositionsOn: ~p~n", [PositionsOn]),
     %% NVal - 1 because already have 1 bit on
-    CoverBits = [cover_bits(Bits, RingSize, NVal - 1) || Bits <- PositionsOn],
+    CoverBits = [cover_bits(Bits, Bits, RingSize, NVal - 1) || Bits <- PositionsOn],
     bit_or(CoverBits, 0).
 
-cover_bits(Bits, _RingSize, 0) ->
+cover_bits(Bits, _, _RingSize, 0) ->
     Bits;
-cover_bits(Bits, RingSize, NVal) ->
-    io:format("cover_bits ~p ~p~n", [Bits, NVal]),
-    if Bits == 1 ->
+cover_bits(Bits, LastNum, RingSize, NVal) ->
+    if LastNum == 1 ->
             %% At right-most bit, turn on NVal left-most bits, I - 1
             %% because mapping 1-indexed to 0-indexed
             %% 
@@ -148,7 +146,8 @@ cover_bits(Bits, RingSize, NVal) ->
             bit_or([trunc(math:pow(2, I - 1))
                     || I <- lists:seq(RingSize - (NVal - 1), RingSize)], Bits);
        true ->
-            cover_bits(Bits bor (Bits div 2), RingSize, NVal - 1)
+            NewNum = LastNum div 2,
+            cover_bits(Bits bor NewNum, NewNum, RingSize, NVal - 1)
     end.
 
 bit_or([Bits|Rest], Acc) ->
@@ -219,8 +218,8 @@ node_ratios(TargetPreflist, NodePVecMap) ->
     lists:keysort(2, Ratios).
 
 -spec node_ratios_2(node_p_vec_map(), ring_size()) -> [{node(), integer(), integer()}].
-node_ratios_2(NodePVecMap, RingSize) ->
-    Ratios = [{Node, count_ones(PVec), RingSize} || {Node, PVec} <- NodePVecMap],
+node_ratios_2(NodePVecMapCover, RingSize) ->
+    Ratios = [{Node, count_ones(PVec), RingSize} || {Node, PVec} <- NodePVecMapCover],
     lists:reverse(lists:keysort(2, Ratios)).
 
 %% NodePVecMap = cover_experiment:node_p_vec_map(LPToOwner).
@@ -300,9 +299,10 @@ simulate(RingSize, NumNodes, NVal) ->
     NodeNumMap = node_num_map(Ring2),
     io:format("NodeNumMap: ~p~n", [NodeNumMap]),
     TP1 = lists:nth(1, TPs),
-    io:format("TP1: ~p~n", [TP1]),
-    PNodeVecMap1 = partition_node_vector_map(TP1, Ring2, NVal, NodeNumMap),
-    io:format("PNodeVecMap1: ~p~n", [PNodeVecMap1]),
+    io:format("TP1: "),
+    print_bits(convert_preflists_to_bit_vector(TP1), RingSize),
+    %% PNodeVecMap1 = partition_node_vector_map(TP1, Ring2, NVal, NodeNumMap),
+    %% io:format("PNodeVecMap1: ~p~n", [PNodeVecMap1]),
     Ratio1 = node_ratios(TP1, NodePVecMap),
     io:format("Ratio1: ~p~n", [Ratio1]),
     NodePVecMapCover = [{Node, p_vec_cover(PVec, RingSize, NVal)}
@@ -311,6 +311,11 @@ simulate(RingSize, NumNodes, NVal) ->
     io:format("CorrectRatio1: ~p~n", [CorrectRatio1]),
     Ratio1_2 = node_ratios_2(NodePVecMapCover, RingSize),
     io:format("Ratio1_2: ~p~n", [Ratio1_2]),
+
+    [begin
+         io:format("node cover ~p ", [Node]),
+         print_bits(PVecCover, RingSize)
+     end || {Node, PVecCover} <- NodePVecMapCover],
     Ring2.
 
 gen_node(I) ->
