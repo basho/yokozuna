@@ -2,7 +2,7 @@
 <schema name="fruit" version="1.5">
 
  <fields>
-   <field name="id" type="string" indexed="true" stored="true" required="true" />
+   <field name="_yz_id" type="string" indexed="true" stored="true" required="true" />
 rue"/>
 
    <field name="text" type="text_ws" indexed="true" stored="false" multiValued="true"/>
@@ -29,7 +29,7 @@ rue"/>
    <field name="_yz_rk" type="string" indexed="true" stored="true"/>
  </fields>
 
- <uniqueKey>id</uniqueKey>
+ <uniqueKey>_yz_id</uniqueKey>
 
   <types>
 
