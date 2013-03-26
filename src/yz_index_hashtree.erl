@@ -270,6 +270,7 @@ fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
     Indexes = yz_index:get_indexes_from_ring(yz_misc:get_ring(transformed)),
+    Indexes2 = [{?YZ_DEFAULT_INDEX, ignored}|Indexes],
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -277,7 +278,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes],
+    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes2],
     ok.
 
 -spec do_new_tree({p(),n()}, state()) -> state().
