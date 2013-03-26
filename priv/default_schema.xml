@@ -95,6 +95,9 @@
 
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
    <field name="_yz_rk" type="string" indexed="true" stored="true"/>
+
+   <!-- Riak Bucket: The bucket of the Riak object this doc corresponds to. -->
+   <field name="_yz_rb" type="string" indexed="true" stored="true"/>
  </fields>
 
  <uniqueKey>_yz_id</uniqueKey>
