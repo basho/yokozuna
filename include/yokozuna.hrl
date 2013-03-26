@@ -226,6 +226,9 @@
 %%% Solr Fields
 %%%===================================================================
 
+%% ID
+-define(YZ_ID_FIELD, '_yz_id').
+
 %% Entropy Data
 -define(YZ_ED_FIELD, '_yz_ed').
 

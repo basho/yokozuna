@@ -68,7 +68,7 @@ make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
     {doc, lists:append([Tags, ExtractedFields, Fields])}.
 
 make_fields({DocId, Key, FPN, Partition, none, EntropyData}) ->
-    [{id, DocId},
+    [{?YZ_ID_FIELD, DocId},
      {?YZ_ED_FIELD, EntropyData},
      {?YZ_FPN_FIELD, FPN},
      {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},

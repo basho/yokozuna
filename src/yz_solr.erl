@@ -85,7 +85,7 @@ cores() ->
 -spec delete(string(), string()) -> ok.
 delete(Core, DocID) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    JSON = encode_delete({id,DocID}),
+    JSON = encode_delete({?YZ_ID_FIELD, DocID}),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
@@ -271,8 +271,8 @@ encode_delete({key,Key,siblings}) ->
     Query = ?YZ_RK_FIELD_S ++ ":" ++ binary_to_list(Key) ++ " AND " ++ ?YZ_VTAG_FIELD_S ++ ":[* TO *]",
     mochijson2:encode({struct, [{delete, ?QUERY(list_to_binary(Query))}]});
 
-encode_delete({id,Id}) ->
-    mochijson2:encode({struct, [{delete, {struct, [{id, list_to_binary(Id)}]}}]}).
+encode_delete({?YZ_ID_FIELD, Id}) ->
+    mochijson2:encode({struct, [{delete, {struct, [{?YZ_ID_FIELD, list_to_binary(Id)}]}}]}).
 
 encode_doc({doc, Fields}) ->
     {struct, [{doc, lists:map(fun encode_field/1,Fields)}] };
