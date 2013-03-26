@@ -108,6 +108,11 @@ get_lock(Tree, Type, Pid) ->
 poke(Tree) ->
     gen_server:cast(Tree, poke).
 
+%% @doc Clear the tree.
+-spec clear(tree()) -> ok.
+clear(Tree) ->
+    gen_server:cast(Tree, clear).
+
 %% @doc Terminate the `Tree'.
 stop(Tree) ->
     gen_server:cast(Tree, stop).
@@ -206,6 +211,10 @@ handle_cast({insert, Id, BKey, Hash, Options}, S) ->
 
 handle_cast({delete, IdxN, BKey}, S) ->
     S2 = do_delete(IdxN, term_to_binary(BKey), S),
+    {noreply, S2};
+
+handle_cast(clear, S) ->
+    S2 = clear_tree(S),
     {noreply, S2};
 
 handle_cast(stop, S) ->
