@@ -46,3 +46,22 @@ search(Index, Query, Mapping) ->
 
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
+
+
+%% @doc get an associated flag, true if some action
+%%      (eg indexing, searching) should be supressed
+-spec noop_flag(atom()) -> binary() | undefined.
+noop_flag(index) ->
+    app_helper:get_env(?YZ_APP_NAME, index_noop, false);
+noop_flag(search) ->
+    app_helper:get_env(?YZ_APP_NAME, search_noop, false).
+
+%% @doc set an associated flag, true if some action
+%%      (eg indexing, searching) should be supressed
+-spec noop_flag(atom(), boolean()) -> binary() | undefined.
+noop_flag(index, Switch) ->
+    ?INFO("Indexing Objects in yokozuna has been changed to ~s", [Switch]),
+    application:set_env(?YZ_APP_NAME, index_noop, true);
+noop_flag(search, Switch) ->
+    ?INFO("Ability to search yokozuna has been changed to ~s", [Switch]),
+    application:set_env(?YZ_APP_NAME, search_noop, true).
