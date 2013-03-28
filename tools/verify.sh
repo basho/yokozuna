@@ -27,6 +27,8 @@
 #>
 #>  --riak-branch: Usage a specific branch of Riak.
 #>
+#>  --test: Run only a specific test.
+#>
 #> Example:
 #>
 #>  ./verify.sh /tmp/yz-verify | tee verify.out
@@ -60,9 +62,14 @@ function maybe_clone()
     branch=${1:-master}
 
     if [ ! -e $dir ]; then
-        info "cloning branch $branch of $url to $dir"
-        if ! git clone -b $branch $url $dir; then
-            error "failed to clone $url to $dir"
+        if echo "$url" | egrep "^git:|@"; then
+            info "cloning branch $branch of $url to $dir"
+            if ! git clone -b $branch $url $dir; then
+                error "failed to clone $url to $dir"
+            fi
+        else
+            info "linking directory $url to $dir"
+            ln -s $url $dir
         fi
     else
         info "$url already cloned to dir $dir"
@@ -85,11 +92,7 @@ function sanity_check()
         error "Erlang 15B02 or greater required"
     fi
 
-    if ! java -version 2>&1 | grep '1\.7\.0' > /dev/null; then
-        error "Java 1.7.0 or greater required"
-    fi
-
-    if ! ant_version | egrep '1\.8\.[234]?||1\.9' > /dev/null; then
+    if ! ant_version | egrep '1\.8\.[234]?|1\.9' > /dev/null; then
         error "Apache Ant 1.8.2 or greater required"
     fi
 
@@ -208,6 +211,11 @@ function run_riak_test_tests()
         error "failed to make Yokozuna's riak_test tests"
     fi
 
+    if echo "$TEST_ONLY" > /dev/null; then
+        info "only running $TEST_ONLY"
+        (cd riak_test/ebin && ls | grep -v $TEST_ONLY | xargs rm)
+    fi
+
     info "run yokozuna riak_test tests"
     export YZ_BENCH_DIR=$(pwd)/misc/bench
     if ! $WORK_DIR/riak_test/riak_test -c yz_verify -d riak_test/ebin; then
@@ -227,6 +235,7 @@ YZ_SRC=git://github.com/basho/yokozuna.git
 YZ_BRANCH=master
 RIAK_SRC=git://github.com/basho/riak.git
 RIAK_BRANCH=yz-merge-1.3.0
+TEST_ONLY=
 
 while [ $# -gt 0 ]
 do
@@ -245,6 +254,10 @@ do
             ;;
         --riak-branch)
             RIAK_BRANCH=$2
+            shift
+            ;;
+        --test)
+            TEST_ONLY=$2
             shift
             ;;
         -*)
