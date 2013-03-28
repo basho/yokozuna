@@ -126,7 +126,7 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
-    Args = [JettyHome, Port, SolrHome, Logging, LibDir, Jar, JarName] ++ JMX,
+    Args = [JettyHome, Port, SolrHome, Logging, LibDir, Jar, JarName] ++ solr_vm_args() ++ JMX,
     {os:find_executable("java"), Args}.
 
 -spec get_pid(port()) -> pos_integer().
@@ -148,6 +148,11 @@ solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_startup_wait,
                        ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
+
+solr_vm_args() ->
+    app_helper:get_env(?YZ_APP_NAME,
+                       solr_vm_args,
+                       ?YZ_DEFAULT_SOLR_VM_ARGS).
 
 wait_for_solr(0) ->
     throw({error, "Solr didn't start in alloted time"});
