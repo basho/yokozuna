@@ -98,8 +98,8 @@ the [commit log] [yz_commit_log].
 
 [five_nodes]: http://basho.com/blog/technical/2012/04/27/Why-Your-Riak-Cluster-Should-Have-At-Least-Five-Nodes/
 
-[gs]: https://github.com/rzezeski/yokozuna#creating-an-index
+[gs]: https://github.com/basho/yokozuna#creating-an-index
 
 [perf_aws]: http://docs.basho.com/riak/latest/cookbooks/Performance-Tuning-AWS/
 
-[yz_commit_log]: https://github.com/rzezeski/yokozuna/commits/master
+[yz_commit_log]: https://github.com/basho/yokozuna/commits/master
