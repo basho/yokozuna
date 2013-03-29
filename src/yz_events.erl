@@ -74,7 +74,13 @@ handle_cast({ring_event, Ring}=RE, S) ->
     Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
     Current = names(yz_index:get_indexes_from_ring(Ring)),
     {Removed, Added, Same} = yz_misc:delta(Previous, Current),
+
+    PreviousFlags = flagged_buckets(PrevRing),
+    CurrentFlags = flagged_buckets(Ring),
+    {FlagsRemoved, FlagsAdded, _} = yz_misc:delta(PreviousFlags, CurrentFlags),
+
     ok = sync_indexes(Ring, Removed, Added, Same),
+    ok = sync_data(FlagsRemoved, FlagsAdded),
 
     {noreply, S2}.
 
@@ -106,8 +112,10 @@ terminate(_Reason, _S) ->
 -spec add_index(ring(), index_name()) -> ok.
 add_index(Ring, Name) ->
     case yz_index:exists(Name) of
-        true -> ok;
-        false -> ok = yz_index:local_create(Ring, Name)
+        true ->
+            ok;
+        false ->
+            ok = yz_index:local_create(Ring, Name)
     end.
 
 -spec add_indexes(ring(), index_set()) -> ok.
@@ -139,6 +147,11 @@ create_events_table() ->
 destroy_events_table() ->
     true = ets:delete(?YZ_EVENTS_TAB),
     ok.
+
+flagged_buckets(Ring) ->
+    Buckets = riak_core_bucket:get_buckets(Ring),
+    [proplists:get_value(name, BProps)
+     || BProps <- Buckets, proplists:get_bool(?YZ_INDEX_CONTENT, BProps)].
 
 get_tick_interval() ->
     app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
@@ -232,6 +245,36 @@ set_mapping(Mapping) ->
 set_tick() ->
     Interval = get_tick_interval(),
     erlang:send_after(Interval, ?MODULE, tick),
+    ok.
+
+sync_data(Removed, Added) ->
+    [sync_added(Bucket) || Bucket <- Added],
+    [sync_removed(Bucket) || Bucket <- Removed],
+    ok.
+
+sync_added(Bucket) ->
+    Params = [{q, <<"_yz_rb:",Bucket/binary>>},{wt,<<"json">>}],
+    case yz_solr:search(?YZ_DEFAULT_INDEX, [], Params) of
+        {_, Resp} ->
+            Struct = mochijson2:decode(Resp),
+            NumFound = yz_solr:get_path(Struct, [<<"response">>, <<"numFound">>]),
+            if NumFound > 0 ->
+                    lager:info("index flag enabled for bucket ~s with existing data", [Bucket]),
+                    Qry = mochijson:encode({struct, [{delete, {struct, [{'query', list_to_binary("_yz_rb:" ++ Bucket)}]}}, {commit, {struct, []}}]}),
+                    ok = yz_solr:delete_by_query(?YZ_DEFAULT_INDEX, Qry),
+                    yz_entropy_mgr:clear_trees();
+               true ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+sync_removed(Bucket) ->
+    lager:info("index flag disabled for bucket ~s", [Bucket]),
+    Qry = mochijson:encode({struct, [{delete, {struct, [{'query', <<"*:*">>}]}}, {commit, {struct, []}}]}),
+    ok = yz_solr:delete_by_query(binary_to_list(Bucket), Qry),
+    yz_entropy_mgr:clear_trees(),
     ok.
 
 sync_indexes(Ring, Removed, Added, Same) ->

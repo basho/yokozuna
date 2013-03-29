@@ -195,21 +195,22 @@ port() ->
 jmx_port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_jmx_port, undefined).
 
-search(Core, Params, Mapping) ->
-    search(Core, [], Params, Mapping).
+dist_search(Core, Params, Mapping) ->
+    dist_search(Core, [], Params, Mapping).
 
-search(Core, Headers, Params, Mapping) ->
+dist_search(Core, Headers, Params, Mapping) ->
     {Nodes, FilterPairs} = yz_cover:plan(Core),
     HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
     ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
     ShardFrags2 = string:join(ShardFrags, ","),
     FQ = build_fq(FilterPairs),
+    Params2 = Params ++ [{shards, ShardFrags2}, {fq, FQ}],
+    search(Core, Headers, Params2).
+
+search(Core, Headers, Params) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/select",
-    Params2 = Params ++ [{fq, FQ}],
-    Encoded = mochiweb_util:urlencode(Params2),
-    %% NOTE: For some reason ShardFrags2 breaks urlencode so add it
-    %%       manually
-    URL = BaseURL ++ "?shards=" ++ ShardFrags2 ++ "&" ++ Encoded,
+    Encoded = mochiweb_util:urlencode(Params),
+    URL = BaseURL ++ "?" ++ Encoded,
     Body = [],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, get, Body, Opts) of
@@ -217,6 +218,7 @@ search(Core, Headers, Params, Mapping) ->
         {ok, "404", _, _} -> throw(not_found);
         Err -> throw({"Failed to search", URL, Err})
     end.
+
 
 %%%===================================================================
 %%% Private

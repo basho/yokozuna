@@ -25,6 +25,9 @@ rue"/>
    <!-- Node: The name of the node that this doc was created on. -->
    <field name="_yz_node" type="string" indexed="true" stored="true"/>
 
+   <!-- Riak Bucket: The bucket of the Riak object this doc corresponds to. -->
+   <field name="_yz_rb" type="string" indexed="true" stored="true"/>
+
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
    <field name="_yz_rk" type="string" indexed="true" stored="true"/>
  </fields>

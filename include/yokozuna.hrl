@@ -256,3 +256,8 @@
 -define(YZ_RK_FIELD, '_yz_rk').
 -define(YZ_RK_FIELD_S, "_yz_rk").
 -define(YZ_RK_FIELD_B, <<"_yz_rk">>).
+
+%% Riak bucket
+-define(YZ_RB_FIELD, '_yz_rb').
+-define(YZ_RB_FIELD_S, "_yz_rb").
+-define(YZ_RB_FIELD_B, <<"_yz_rk">>).

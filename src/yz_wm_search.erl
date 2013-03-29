@@ -74,8 +74,8 @@ search(Req, S) ->
     Mapping = yz_events:get_mapping(),
     ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        {RespHeaders, Body} = yz_solr:search(Index, ReqHeaders,
-                                             Params, Mapping),
+        {RespHeaders, Body} = yz_solr:dist_search(Index, ReqHeaders,
+                                                  Params, Mapping),
         Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
         {Body, Req2, S}
     catch

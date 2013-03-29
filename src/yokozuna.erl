@@ -42,7 +42,7 @@ partition_list(Index) ->
     ordsets:from_list([?BIN_TO_INT(P) || P <- Partitions]).
 
 search(Index, Query, Mapping) ->
-    yz_solr:search(Index, [{q, Query}], Mapping).
+    yz_solr:dist_search(Index, [{q, Query}], Mapping).
 
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).

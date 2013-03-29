@@ -108,6 +108,11 @@ get_lock(Tree, Type, Pid) ->
 poke(Tree) ->
     gen_server:cast(Tree, poke).
 
+%% @doc Clear the tree.
+-spec clear(tree()) -> ok.
+clear(Tree) ->
+    gen_server:cast(Tree, clear).
+
 %% @doc Terminate the `Tree'.
 stop(Tree) ->
     gen_server:cast(Tree, stop).
@@ -208,6 +213,10 @@ handle_cast({delete, IdxN, BKey}, S) ->
     S2 = do_delete(IdxN, term_to_binary(BKey), S),
     {noreply, S2};
 
+handle_cast(clear, S) ->
+    S2 = clear_tree(S),
+    {noreply, S2};
+
 handle_cast(stop, S) ->
     S2 = close_trees(S),
     {stop, normal, S2};
@@ -270,6 +279,7 @@ fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
     Indexes = yz_index:get_indexes_from_ring(yz_misc:get_ring(transformed)),
+    Indexes2 = [{?YZ_DEFAULT_INDEX, ignored}|Indexes],
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -277,7 +287,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes],
+    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes2],
     ok.
 
 -spec do_new_tree({p(),n()}, state()) -> state().

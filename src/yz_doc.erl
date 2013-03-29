@@ -57,7 +57,8 @@ make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
     EntropyData = gen_ed(O, Partition),
-    Fields = make_fields({DocId, yz_kv:get_obj_key(O), FPN,
+    Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
+    Fields = make_fields({DocId, Bkey, FPN,
                           Partition, Vtag, EntropyData}),
     ExtractedFields =
         case IndexContent of
@@ -67,16 +68,17 @@ make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
     Tags = extract_tags(MD),
     {doc, lists:append([Tags, ExtractedFields, Fields])}.
 
-make_fields({DocId, Key, FPN, Partition, none, EntropyData}) ->
+make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
     [{?YZ_ID_FIELD, DocId},
      {?YZ_ED_FIELD, EntropyData},
      {?YZ_FPN_FIELD, FPN},
      {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
      {?YZ_PN_FIELD, Partition},
-     {?YZ_RK_FIELD, Key}];
+     {?YZ_RK_FIELD, Key},
+     {?YZ_RB_FIELD, Bucket}];
 
-make_fields({DocId, Key, FPN, Partition, Vtag, EntropyData}) ->
-    make_fields({DocId, Key, FPN, Partition, none, EntropyData}) ++
+make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
+    make_fields({DocId, BKey, FPN, Partition, none, EntropyData}) ++
       [{?YZ_VTAG_FIELD, Vtag}].
 
 %% @doc If this is a sibling, return its binary vtag
