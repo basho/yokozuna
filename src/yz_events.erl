@@ -248,15 +248,13 @@ set_tick() ->
     ok.
 
 sync_data(Removed, Added) ->
-    Mapping = yz_events:get_mapping(),
-    [sync_added(Bucket, Mapping) || Bucket <- Added],
+    [sync_added(Bucket) || Bucket <- Added],
     [sync_removed(Bucket) || Bucket <- Removed],
     ok.
 
-sync_added(Bucket, Mapping) ->
+sync_added(Bucket) ->
     Params = [{q, <<"_yz_rb:",Bucket/binary>>},{wt,<<"json">>}],
-    %% TODO: node-local search
-    case yz_solr:search(?YZ_DEFAULT_INDEX, Params, Mapping) of
+    case yz_solr:search(?YZ_DEFAULT_INDEX, [], Params) of
         {_, Resp} ->
             Struct = mochijson2:decode(Resp),
             NumFound = yz_solr:get_path(Struct, [<<"response">>, <<"numFound">>]),
