@@ -126,7 +126,7 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
-    Args = [JettyHome, Port, SolrHome, Logging, LibDir, Jar, JarName] ++ solr_vm_args() ++ JMX,
+    Args = [JettyHome, Port, SolrHome, Logging, LibDir] ++ solr_vm_args() ++ JMX ++ [Jar, JarName],
     {os:find_executable("java"), Args}.
 
 -spec get_pid(port()) -> pos_integer().
