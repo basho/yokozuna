@@ -36,9 +36,6 @@
                 exchanges :: [{p(),reference(), pid()}]}).
 -type state() :: #state{}.
 
--define(DEFAULT_CONCURRENCY, 2).
--define(DEFAULT_BUILD_LIMIT, {1, 3600000}). %% Once per hour
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -225,24 +222,25 @@ code_change(_OldVsn, S, _Extra) ->
 %%%===================================================================
 
 schedule_reset_build_tokens() ->
-    {_, Reset} = app_helper:get_env(riak_kv, anti_entropy_build_limit,
-                                    ?DEFAULT_BUILD_LIMIT),
+    {_, Reset} = ?YZ_ENTROPY_BUILD_LIMIT,
     erlang:send_after(Reset, self(), reset_build_tokens).
 
 reset_build_tokens(S) ->
-    {Tokens, _} = app_helper:get_env(riak_kv, anti_entropy_build_limit,
-                                     ?DEFAULT_BUILD_LIMIT),
+    {Tokens, _} = ?YZ_ENTROPY_BUILD_LIMIT,
     S#state{build_tokens=Tokens}.
 
 -spec settings() -> {boolean(), proplists:proplist()}.
 settings() ->
-    case app_helper:get_env(riak_kv, anti_entropy, {off, []}) of
+    case app_helper:get_env(?YZ_APP_NAME, anti_entropy,
+            app_helper:get_env(riak_kv, anti_entropy, {off, []})
+        ) of
         {on, Opts} ->
             {true, Opts};
         {off, Opts} ->
             {false, Opts};
         X ->
             lager:warning("Invalid setting for riak_kv/anti_entropy: ~p", [X]),
+            application:set_env(?YZ_APP_NAME, anti_entropy, {off, []}),
             application:set_env(riak_kv, anti_entropy, {off, []}),
             {false, []}
     end.
@@ -320,10 +318,7 @@ remove_trees(Trees, ToRemove) ->
 -spec do_get_lock(term(), pid(), state()) ->
                          {ok | max_concurrency | build_limit_reached, state()}.
 do_get_lock(Type, Pid, S=#state{locks=Locks}) ->
-    Concurrency = app_helper:get_env(riak_kv,
-                                     anti_entropy_concurrency,
-                                     ?DEFAULT_CONCURRENCY),
-    case length(Locks) >= Concurrency of
+    case length(Locks) >= ?YZ_ENTROPY_CONCURRENCY of
         true ->
             {max_concurrency, S};
         false ->

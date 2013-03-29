@@ -10,4 +10,5 @@ index_noop_test()->
 
 search_noop_test()->
   yokozuna:noop_flag(search, true),
-  ?assertEqual(yz_wm_search:service_available({},{}), false).
+  {Available, _, _} = yz_wm_search:service_available({},{}),
+  ?assertEqual(Available, false).

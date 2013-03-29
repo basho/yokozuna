@@ -49,11 +49,12 @@ content_types_provided(Req, S) ->
     {Types, Req, S}.
 
 %% if search_noop is true, then search service is unavailable
-service_available(_Req, _S) ->
-    case yokozuna:noop_flag(search) of
+service_available(Req, S) ->
+    Available = case yokozuna:noop_flag(search) of
         true -> false;
         _    -> true
-    end.
+    end,
+    {Available, Req, S}.
 
 %% Treat POST as GET in order to work with existing Solr clients.
 process_post(Req, S) ->

@@ -34,9 +34,6 @@
                 built :: integer(),
                 timeout :: pos_integer()}).
 
-%% Per state transition timeout used by certain transitions
--define(DEFAULT_ACTION_TIMEOUT, 300000). %% 5 minutes
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -53,10 +50,6 @@ start(Index, Preflist, YZTree, KVTree, Manager) ->
 %%%===================================================================
 
 init([Index, Preflist, YZTree, KVTree, Manager]) ->
-    Timeout = app_helper:get_env(riak_kv,
-                                 anti_entropy_timeout,
-                                 ?DEFAULT_ACTION_TIMEOUT),
-
     monitor(process, Manager),
     monitor(process, YZTree),
     monitor(process, KVTree),
@@ -66,7 +59,7 @@ init([Index, Preflist, YZTree, KVTree, Manager]) ->
                yz_tree=YZTree,
                kv_tree=KVTree,
                built=0,
-               timeout=Timeout},
+               timeout=?YZ_ENTROPY_TIMEOUT},
     gen_fsm:send_event(self(), start_exchange),
     lager:debug("Starting exchange between KV and Yokozuna: ~p", [Index]),
     {ok, prepare_exchange, S}.
