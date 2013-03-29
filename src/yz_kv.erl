@@ -122,46 +122,59 @@ get_md_entry(MD, Key) ->
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), term()) -> ok.
 index(Obj, delete, VNodeState) ->
-    Ring = yz_misc:get_ring(transformed),
-    {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    NVal = riak_core_bucket:n_val(BProps),
-    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-    IdxN = {first_partition(PrimaryPL), riak_core_bucket:n_val(BProps)},
-
-    try
-        Query = yz_solr:encode_delete({key, Key}),
-        ok = yz_solr:delete_by_query(which_index(Bucket, BProps), Query),
-        ok = update_hashtree(delete, get_partition(VNodeState), IdxN, BKey)
-    catch _:Err ->
-        ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
-    end,
-    ok;
+    case yokozuna:noop_flag(index) of
+        true -> ok;
+        _    ->
+            Ring = yz_misc:get_ring(transformed),
+            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+            {Bucket, Key} = BKey,
+            BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+            NVal = riak_core_bucket:n_val(BProps),
+            PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
+            IdxN = {first_partition(PrimaryPL),
+                    riak_core_bucket:n_val(BProps)},
+            try
+                Query = yz_solr:encode_delete({key, Key}),
+                ok = yz_solr:delete_by_query(which_index(Bucket, BProps),
+                                             Query),
+                ok = update_hashtree(delete, get_partition(VNodeState), IdxN,
+                                     BKey)
+            catch _:Err ->
+                ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
+            end,
+            ok
+    end;
 
 index(Obj, Reason, VNodeState) ->
-    Ring = yz_misc:get_ring(transformed),
-    LI = yz_cover:logical_index(Ring),
-    {Bucket, Key} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    Index = which_index(Bucket, BProps),
-    ok = maybe_wait(Reason, Index),
-    NVal = riak_core_bucket:n_val(BProps),
-    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-    LFPN = yz_cover:logical_partition(LI, first_partition(PrimaryPL)),
-    P = get_partition(VNodeState),
-    LP = yz_cover:logical_partition(LI, P),
-    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
-                            index_content(BProps)),
-    IdxN = {first_partition(PrimaryPL), NVal},
+    case yokozuna:noop_flag(index) of
+        true -> ok;
+        _    ->
+            Ring = yz_misc:get_ring(transformed),
+            LI = yz_cover:logical_index(Ring),
+            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+            {Bucket, Key} = BKey,
+            BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+            Index = which_index(Bucket, BProps),
+            ok = maybe_wait(Reason, Index),
+            NVal = riak_core_bucket:n_val(BProps),
+            PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
+            LFPN = yz_cover:logical_partition(LI, first_partition(PrimaryPL)),
+            P = get_partition(VNodeState),
+            LP = yz_cover:logical_partition(LI, P),
+            Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
+                                    index_content(BProps)),
+            IdxN = {first_partition(PrimaryPL), NVal},
 
-    try
-        ok = yz_solr:index(Index, Docs),
-        ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
-        ok = update_hashtree({insert, yz_kv:hash_object(Obj)}, P, IdxN, BKey)
-    catch _:Err ->
-        ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
-    end,
-    ok.
+            try
+                ok = yz_solr:index(Index, Docs),
+                ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
+                ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
+                                      P, IdxN, BKey)
+            catch _:Err ->
+                ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
+            end,
+            ok
+    end.
 
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
