@@ -120,6 +120,11 @@ cancel_exchange(Index) ->
 cancel_exchanges() ->
     gen_server:call(?MODULE, cancel_exchanges, infinity).
 
+%% @doc Clear all the trees.
+-spec clear_trees() -> ok.
+clear_trees() ->
+    gen_server:cast(?MODULE, clear_trees).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -164,10 +169,7 @@ handle_call({cancel_exchange, Index}, _From, S) ->
     end;
 
 handle_call(cancel_exchanges, _From, S=#state{exchanges=Exchanges}) ->
-    Indices = [begin
-                   exit(Pid, kill),
-                   Index
-               end || {Index, _Ref, Pid} <- Exchanges],
+    Indices = clear_all_exchanges(Exchanges),
     {reply, Indices, S};
 
 handle_call(disable, _From, S) ->
@@ -189,6 +191,11 @@ handle_cast({requeue_poke, Index}, S) ->
 handle_cast({exchange_status, Pid, Index, {StartIdx, N}, Status}, S) ->
     S2 = do_exchange_status(Pid, Index, {StartIdx, N}, Status, S),
     {noreply, S2};
+
+handle_cast(clear_trees, S) ->
+    clear_all_exchanges(S#state.exchanges),
+    clear_all_trees(S#state.trees),
+    {noreply, S};
 
 handle_cast(_Msg, S) ->
     lager:warning("Unexpected cast: ~p", [_Msg]),
@@ -223,6 +230,16 @@ code_change(_OldVsn, S, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+-spec clear_all_exchanges(list()) -> [p()].
+clear_all_exchanges(Exchanges) ->
+    [begin
+         exit(Pid, kill),
+         Index
+     end || {Index, _Ref, Pid} <- Exchanges].
+
+clear_all_trees(Trees) ->
+    [yz_index_hashtree:clear(TPid) || {_, TPid} <- Trees].
 
 schedule_reset_build_tokens() ->
     {_, Reset} = app_helper:get_env(riak_kv, anti_entropy_build_limit,
