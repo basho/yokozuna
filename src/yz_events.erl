@@ -259,6 +259,7 @@ sync_added(Bucket) ->
             Struct = mochijson2:decode(Resp),
             NumFound = yz_solr:get_path(Struct, [<<"response">>, <<"numFound">>]),
             if NumFound > 0 ->
+                    lager:info("index flag enabled for bucket ~s with existing data", [Bucket]),
                     Qry = mochijson:encode({struct, [{delete, {struct, [{'query', list_to_binary("_yz_rb:" ++ Bucket)}]}}, {commit, {struct, []}}]}),
                     ok = yz_solr:delete_by_query(?YZ_DEFAULT_INDEX, Qry),
                     yz_entropy_mgr:clear_trees();
@@ -270,6 +271,7 @@ sync_added(Bucket) ->
     end.
 
 sync_removed(Bucket) ->
+    lager:info("index flag disabled for bucket ~s", [Bucket]),
     Qry = mochijson:encode({struct, [{delete, {struct, [{'query', <<"*:*">>}]}}, {commit, {struct, []}}]}),
     ok = yz_solr:delete_by_query(binary_to_list(Bucket), Qry),
     yz_entropy_mgr:clear_trees(),
