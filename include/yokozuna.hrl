@@ -136,7 +136,32 @@
 -define(YZ_AE_DIR,
         application:get_env(?YZ_APP_NAME, anti_entropy_data_dir)).
 -define(YZ_ENTROPY_TICK,
-        app_helper:get_env(?YZ_APP_NAME, entropy_tick, 60000)).
+        app_helper:get_env(?YZ_APP_NAME, entropy_tick,
+            app_helper:get_env(riak_kv, anti_entropy_tick, 60000)
+        )).
+%% Time from build to expiration of tree, in microseconds.
+%% Defaults to 1 week.
+-define(YZ_ENTROPY_EXPIRE,
+        app_helper:get_env(?YZ_APP_NAME, anti_entropy_expire,
+            app_helper:get_env(riak_kv, anti_entropy_expire, 604800000)
+        )).
+%% Per state transition timeout used by certain transitions
+%% Defaults to 5 minutes
+-define(YZ_ENTROPY_TIMEOUT,
+        app_helper:get_env(?YZ_APP_NAME, anti_entropy_timeout,
+            app_helper:get_env(riak_kv, anti_entropy_timeout, 300000)
+        )).
+%% Defines the max number of concurrent AAE tree exchanges
+%% Defaults to 2
+-define(YZ_ENTROPY_CONCURRENCY,
+        app_helper:get_env(?YZ_APP_NAME, anti_entropy_concurrency,
+            app_helper:get_env(riak_kv, anti_entropy_concurrency, 2)
+        )).
+%% Defaults to once per hour
+-define(YZ_ENTROPY_BUILD_LIMIT,
+        app_helper:get_env(?YZ_APP_NAME, anti_entropy_build_limit,
+            app_helper:get_env(riak_kv, anti_entropy_build_limit, {1, 3600000})
+        )).
 
 -type hashtree() :: hashtree:hashtree().
 -type exchange() :: {p(), {p(), n()}}.

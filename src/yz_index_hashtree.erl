@@ -36,9 +36,6 @@
 
 -compile(export_all).
 
-%% Time from build to expiration of tree, in microseconds.
--define(DEFAULT_EXPIRE, 604800000). %% 1 week
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -472,10 +469,7 @@ do_poke(S) ->
 
 maybe_clear(S=#state{lock=undefined, built=true}) ->
     Diff = timer:now_diff(os:timestamp(), S#state.build_time),
-    Expire = app_helper:get_env(riak_kv,
-                                anti_entropy_expire,
-                                ?DEFAULT_EXPIRE),
-    case Diff > (Expire * 1000)  of
+    case Diff > (?YZ_ENTROPY_EXPIRE * 1000)  of
         true -> clear_tree(S);
         false -> S
     end;
