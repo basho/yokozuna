@@ -56,11 +56,41 @@
    <dynamicField name="*_tsd" type="text_general" indexed="true" stored="true"/>
    <dynamicField name="*_tssd" type="text_general" indexed="true" stored="true" multiValued="true"/>
 
-   <!-- TODO: add fields for other languages -->
-   <dynamicField name="*_en"  type="text_en"    indexed="true"  stored="true" multiValued="true"/>
+   <!-- languages -->
+   <dynamicField name="*_en" type="text_en" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_ar" type="text_ar" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_bg" type="text_bg" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_ca" type="text_ca" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_cjk" type="text_cjk" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_cz" type="text_cz" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_da" type="text_da" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_de" type="text_de" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_el" type="text_el" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_es" type="text_es" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_eu" type="text_eu" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_fa" type="text_fa" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_fi" type="text_fi" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_fr" type="text_fr" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_ga" type="text_ga" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_gl" type="text_gl" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_hi" type="text_hi" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_hu" type="text_hu" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_hy" type="text_hy" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_id" type="text_id" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_it" type="text_it" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_ja" type="text_ja" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_lv" type="text_lv" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_nl" type="text_nl" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_no" type="text_no" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_pt" type="text_pt" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_ro" type="text_ro" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_ru" type="text_ru" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_sv" type="text_sv" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_th" type="text_th" indexed="true" stored="true" multiValued="true"/>
+   <dynamicField name="*_tr" type="text_tr" indexed="true" stored="true" multiValued="true"/>
+
    <dynamicField name="*_b"  type="boolean" indexed="true" stored="true"/>
    <dynamicField name="*_bs" type="boolean" indexed="true" stored="true"  multiValued="true"/>
-
    <dynamicField name="*_dt"  type="date"    indexed="true"  stored="true"/>
    <dynamicField name="*_dts" type="date"    indexed="true"  stored="true" multiValued="true"/>
    <dynamicField name="*_p"  type="location" indexed="true" stored="true"/>
