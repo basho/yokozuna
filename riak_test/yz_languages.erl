@@ -6,63 +6,12 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
--define(TEST_SCHEMA,
-        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
-<schema name=\"test\" version=\"1.5\">
-<fields>
-   <field name=\"id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rk\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
-   <field name=\"text_t\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
-   <field name=\"text_ja\" type=\"text_ja\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
-   <dynamicField name=\"*_s\"  type=\"string\"  indexed=\"true\"  stored=\"true\" />
-</fields>
-
- <uniqueKey>id</uniqueKey>
-
-<types>
-    <fieldType name=\"string\" class=\"solr.StrField\" sortMissingLast=\"true\" />
-    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
-      <analyzer type=\"index\">
-        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
-        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
-        <!-- in this example, we will only use synonyms at query time
-        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"index_synonyms.txt\" ignoreCase=\"true\" expand=\"false\"/>
-        -->
-        <filter class=\"solr.LowerCaseFilterFactory\"/>
-      </analyzer>
-      <analyzer type=\"query\">
-        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
-        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
-        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
-        <filter class=\"solr.LowerCaseFilterFactory\"/>
-      </analyzer>
-    </fieldType>
-    <fieldType name=\"text_ja\" class=\"solr.TextField\" positionIncrementGap=\"100\" autoGeneratePhraseQueries=\"false\">
-      <analyzer>
-        <tokenizer class=\"solr.JapaneseTokenizerFactory\" mode=\"search\"/>
-        <filter class=\"solr.JapaneseBaseFormFilterFactory\"/>
-        <filter class=\"solr.JapanesePartOfSpeechStopFilterFactory\" tags=\"lang/stoptags_ja.txt\" enablePositionIncrements=\"true\"/>
-        <filter class=\"solr.CJKWidthFilterFactory\"/>
-        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"lang/stopwords_ja.txt\" enablePositionIncrements=\"true\" />
-        <filter class=\"solr.JapaneseKatakanaStemFilterFactory\" minimumLength=\"4\"/>
-        <filter class=\"solr.LowerCaseFilterFactory\"/>
-      </analyzer>
-    </fieldType>
-</types>
-</schema>">>).
 
 confirm() ->
     YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = prepare_cluster(4),
-    confirm_create_schema(Cluster, <<"language_schema">>, ?TEST_SCHEMA),
     confirm_body_search_encoding(Cluster),
     confirm_language_field_type(Cluster),
     confirm_tag_encoding(Cluster),
@@ -126,8 +75,7 @@ create_index(HP, Index) ->
     lager:info("create_index ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
-    {ok, Status, _, _} = http(put, URL, Headers, <<"{\"schema\":\"language_schema\"}">>),
-    % TODO: shouldn't need this
+    {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
     timer:sleep(4000),
     ?assertEqual("204", Status).
 
