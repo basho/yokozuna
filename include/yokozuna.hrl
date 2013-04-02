@@ -133,31 +133,36 @@
 %%% Anti Entropy
 %%%===================================================================
 
--define(YZ_AE_DIR,
+%% Directory to store the hashtrees.
+-define(YZ_AAE_DIR,
         application:get_env(?YZ_APP_NAME, anti_entropy_data_dir)).
+%% How often to check for entropy, in milliseconds.  Defaults to 1
+%% minute.
 -define(YZ_ENTROPY_TICK,
         app_helper:get_env(?YZ_APP_NAME, entropy_tick,
             app_helper:get_env(riak_kv, anti_entropy_tick, 60000)
         )).
-%% Time from build to expiration of tree, in microseconds.
-%% Defaults to 1 week.
+%% The length of time a tree is considered valid, in milliseconds.  If
+%% a tree is older than it is considered expired and must be rebuilt
+%% from scratch.  Defaults to 1 week.
 -define(YZ_ENTROPY_EXPIRE,
         app_helper:get_env(?YZ_APP_NAME, anti_entropy_expire,
             app_helper:get_env(riak_kv, anti_entropy_expire, 604800000)
         )).
-%% Per state transition timeout used by certain transitions
-%% Defaults to 5 minutes
+%% The amount of time to wait for progress to be made before declaring
+%% a timeout, in milliseconds.
 -define(YZ_ENTROPY_TIMEOUT,
         app_helper:get_env(?YZ_APP_NAME, anti_entropy_timeout,
             app_helper:get_env(riak_kv, anti_entropy_timeout, 300000)
         )).
-%% Defines the max number of concurrent AAE tree exchanges
-%% Defaults to 2
+%% The maximum number of concurrent anti-entropy operations such as
+%% building trees or performing exchanges.  The default is 2.
 -define(YZ_ENTROPY_CONCURRENCY,
         app_helper:get_env(?YZ_APP_NAME, anti_entropy_concurrency,
             app_helper:get_env(riak_kv, anti_entropy_concurrency, 2)
         )).
-%% Defaults to once per hour
+%% How many trees can be built per time period, in milliseconds:
+%% `{Trees, Period}'.  Defaults to 1 tree per hour.
 -define(YZ_ENTROPY_BUILD_LIMIT,
         app_helper:get_env(?YZ_APP_NAME, anti_entropy_build_limit,
             app_helper:get_env(riak_kv, anti_entropy_build_limit, {1, 3600000})

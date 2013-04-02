@@ -240,7 +240,7 @@ code_change(_OldVsn, S, _Extra) ->
 
 -spec determine_data_root() -> string() | undefined.
 determine_data_root() ->
-    case ?YZ_AE_DIR of
+    case ?YZ_AAE_DIR of
         {ok, EntropyRoot} ->
             EntropyRoot;
         undefined ->
