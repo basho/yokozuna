@@ -43,12 +43,20 @@
 </types>
 </schema>">>).
 
+-define(TRUNCATED_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"string\" indexed=\"tru">>).
+
 confirm() ->
     Cluster = prepare_cluster(4),
     confirm_create_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_get_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_not_found(Cluster, <<"not_a_schema">>),
     confirm_bad_ct(Cluster, <<"bad_ct">>, ?TEST_SCHEMA),
+    confirm_truncated(Cluster, <<"truncated">>, ?TRUNCATED_SCHEMA),
     pass.
 
 %% @doc Confirm a custom schema may be added.
@@ -87,6 +95,18 @@ confirm_bad_ct(Cluster, Name, RawSchema) ->
     {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
     ?assertEqual("415", Status),
     ?assertEqual(<<>>, Body).
+
+%% @doc Confirm that truncated schema fails, returning 400.
+confirm_truncated(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_truncated ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    %% assert the body contains some kind of msg as to why the schema
+    %% failed to parse
+    ?assert(size(Body) > 0).
 
 %%%===================================================================
 %%% Helpers
