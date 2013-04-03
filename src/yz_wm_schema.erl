@@ -92,8 +92,15 @@ malformed_request(RD, S) ->
 store_schema(RD, S) ->
     SchemaName = S#ctx.schema_name,
     Schema = wrq:req_body(RD),
-    yz_schema:store(list_to_binary(SchemaName), Schema),
-    {true, RD, S}.
+    case yz_schema:store(list_to_binary(SchemaName), Schema) of
+        ok  ->
+            {true, RD, S};
+        {error, Reason} ->
+            Msg = io_lib:format("Error storing schema ~p~n", [Reason]),
+            RD2 = wrq:append_to_response_body(Msg, RD),
+            RD3 = wrq:set_resp_header("Content-Type", "text/plain", RD2),
+            {{halt,400}, RD3, S}
+    end.
 
 %% Responds to a GET request by returning schema
 read_schema(RD, S) ->

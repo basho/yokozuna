@@ -251,6 +251,7 @@
 -define(YZ_SCHEMA_BUCKET, <<"_yz_schema">>).
 
 -type raw_schema() :: binary().
+-type schema() :: xmerl_scan:document().
 -type schema_name() :: binary().
 
 %%%===================================================================

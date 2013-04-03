@@ -48,10 +48,16 @@ get(Name) ->
     end.
 
 %% @doc Store the `RawSchema' with `Name'.
--spec store(schema_name(), raw_schema()) -> ok.
+-spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
 store(Name, RawSchema) when is_binary(RawSchema) ->
-    C = yz_kv:client(),
-    yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml").
+    case parse(RawSchema) of
+        {ok, _Schema} ->
+            %% TODO: x-form schema, ensuring special fields
+            C = yz_kv:client(),
+            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
+        {error, _} = Err ->
+            Err
+    end.
 
 %% @doc Checks if the given `SchemaName' actually exists.
 -spec exists(schema_name()) -> true | false.
@@ -61,4 +67,12 @@ exists(SchemaName) ->
         _ -> true
     end.
 
-
+%% @doc Parse the schema.
+-spec parse(raw_schema()) -> {ok, schema()} | {error, term()}.
+parse(RawSchema) ->
+    try
+        {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), [{document, true}]),
+        {ok, Schema}
+    catch exit:Reason ->
+            {error, Reason}
+    end.
