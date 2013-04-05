@@ -4,7 +4,8 @@ Yokozuna Release Notes
 0.5.0
 ----------
 
-The fifth pre-release of Yokozuna.
+The fifth pre-release of Yokozuna.  It includes new features, bug
+fixes, a performance improvment for search, and an upgrade of Solr.
 
 ### Features
 
