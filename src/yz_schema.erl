@@ -20,6 +20,7 @@
 
 -module(yz_schema).
 -include("yokozuna.hrl").
+-include_lib("xmerl/include/xmerl.hrl").
 -compile(export_all).
 
 %% @doc Administration of schemas.
@@ -50,11 +51,10 @@ get(Name) ->
 %% @doc Store the `RawSchema' with `Name'.
 -spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
 store(Name, RawSchema) when is_binary(RawSchema) ->
-    case parse(RawSchema) of
-        {ok, _Schema} ->
-            %% TODO: x-form schema, ensuring special fields
+    case parse_and_xform(RawSchema) of
+        {ok, RawSchema2} ->
             C = yz_kv:client(),
-            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
+            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema2, "text/xml");
         {error, _} = Err ->
             Err
     end.
@@ -67,12 +67,70 @@ exists(SchemaName) ->
         _ -> true
     end.
 
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
+%% @private
+%%
 %% @doc Parse the schema.
--spec parse(raw_schema()) -> {ok, schema()} | {error, term()}.
-parse(RawSchema) ->
+-spec parse_and_xform(raw_schema()) -> {ok, raw_schema()} | {error, term()}.
+parse_and_xform(RawSchema) ->
     try
-        {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), [{document, true}]),
-        {ok, Schema}
+        Opts = [{comments, false},
+                {acc_fun, fun ?MODULE:xform_acc/3}],
+        {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), Opts),
+        RawSchema2 = iolist_to_binary(xmerl:export_simple([Schema], xmerl_xml)),
+        {ok, RawSchema2}
     catch exit:Reason ->
             {error, Reason}
     end.
+
+-define(FIELD, #xmlElement{name='field', attributes=Attrs}).
+-define(FIELD_TYPE, #xmlElement{name='fieldType', attributes=Attrs}).
+-define(UK, #xmlElement{name='uniqueKey'}).
+
+%% @private
+xform_add_yz_fields(E=#xmlElement{content=C}) ->
+    C2 = ["\n\n    ",
+          ?YZ_ID_FIELD_XML, "\n    ",
+          ?YZ_ED_FIELD_XML, "\n    ",
+          ?YZ_FPN_FIELD_XML, "\n    ",
+          ?YZ_VTAG_FIELD_XML, "\n    ",
+          ?YZ_NODE_FIELD_XML, "\n    ",
+          ?YZ_PN_FIELD_XML, "\n    ",
+          ?YZ_RK_FIELD_XML, "\n    ",
+          ?YZ_RB_FIELD_XML, "\n"|C],
+    E#xmlElement{content=C2}.
+
+%% @private
+xform_add_yz_fts(E=#xmlElement{content=C}) ->
+    C2 = ["\n\n    ",
+          ?YZ_STR_FT_XML, "\n"|C],
+    E#xmlElement{content=C2}.
+
+%% @private
+xform_acc(E=?FIELD, Acc, GlobalState) ->
+    NameAttr = lists:keyfind(name, #xmlAttribute.name, Attrs),
+    FieldName = NameAttr#xmlAttribute.value,
+    case ?YZ_IS_YZ_FIELD_S(FieldName) of
+        true -> {Acc, GlobalState};
+        false -> {[E|Acc], GlobalState}
+    end;
+xform_acc(E=?FIELD_TYPE, Acc, GlobalState) ->
+    NameAttr = lists:keyfind(name, #xmlAttribute.name, Attrs),
+    FTName = NameAttr#xmlAttribute.value,
+    case ?YZ_IS_YZ_FT_S(FTName) of
+        true -> {Acc, GlobalState};
+        false -> {[E|Acc], GlobalState}
+    end;
+xform_acc(?UK, Acc, GlobalState) ->
+    {Acc, GlobalState};
+xform_acc(E=#xmlElement{name='fields'}, Acc, GlobalState) ->
+    E2 = xform_add_yz_fields(E),
+    {[E2|Acc], GlobalState};
+xform_acc(E=#xmlElement{name='types'}, Acc, GlobalState) ->
+    E2 = xform_add_yz_fts(E),
+    {[E2,"\n\n",?YZ_UK_XML|Acc], GlobalState};
+xform_acc(E, Acc, GlobalState) ->
+    {[E|Acc], GlobalState}.

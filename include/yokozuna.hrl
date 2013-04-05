@@ -260,35 +260,77 @@
 
 %% ID
 -define(YZ_ID_FIELD, '_yz_id').
+-define(YZ_ID_FIELD_S, "_yz_id").
+-define(YZ_ID_FIELD_XML, ?YZ_FIELD_XML(?YZ_ID_FIELD_S, "true")).
 
 %% Entropy Data
 -define(YZ_ED_FIELD, '_yz_ed').
+-define(YZ_ED_FIELD_S, "_yz_ed").
+-define(YZ_ED_FIELD_XML, ?YZ_FIELD_XML(?YZ_ED_FIELD_S)).
 
 %% First Partition Number
 -define(YZ_FPN_FIELD, '_yz_fpn').
 -define(YZ_FPN_FIELD_S, "_yz_fpn").
 -define(YZ_FPN_FIELD_B, <<"_yz_fpn">>).
+-define(YZ_FPN_FIELD_XML, ?YZ_FIELD_XML(?YZ_FPN_FIELD_S)).
 
 %% Sibling VTags
 -define(YZ_VTAG_FIELD, '_yz_vtag').
 -define(YZ_VTAG_FIELD_S, "_yz_vtag").
 -define(YZ_VTAG_FIELD_B, <<"_yz_vtag">>).
+-define(YZ_VTAG_FIELD_XML, ?YZ_FIELD_XML(?YZ_VTAG_FIELD_S)).
 
 %% Node
 -define(YZ_NODE_FIELD, '_yz_node').
 -define(YZ_NODE_FIELD_S, "_yz_node").
+-define(YZ_NODE_FIELD_XML, ?YZ_FIELD_XML(?YZ_NODE_FIELD_S)).
 
 %% Partition Number
 -define(YZ_PN_FIELD, '_yz_pn').
 -define(YZ_PN_FIELD_S, "_yz_pn").
 -define(YZ_PN_FIELD_B, <<"_yz_pn">>).
+-define(YZ_PN_FIELD_XML, ?YZ_FIELD_XML(?YZ_PN_FIELD_S)).
 
 %% Riak key
 -define(YZ_RK_FIELD, '_yz_rk').
 -define(YZ_RK_FIELD_S, "_yz_rk").
 -define(YZ_RK_FIELD_B, <<"_yz_rk">>).
+-define(YZ_RK_FIELD_XML, ?YZ_FIELD_XML(?YZ_RK_FIELD_S)).
 
 %% Riak bucket
 -define(YZ_RB_FIELD, '_yz_rb').
 -define(YZ_RB_FIELD_S, "_yz_rb").
 -define(YZ_RB_FIELD_B, <<"_yz_rk">>).
+-define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
+
+-define(YZ_IS_YZ_FIELD_S(Name),
+        Name == ?YZ_ID_FIELD_S orelse
+        Name == ?YZ_ED_FIELD_S orelse
+        Name == ?YZ_FPN_FIELD_S orelse
+        Name == ?YZ_VTAG_FIELD_S orelse
+        Name == ?YZ_NODE_FIELD_S orelse
+        Name == ?YZ_PN_FIELD_S orelse
+        Name == ?YZ_RK_FIELD_S orelse
+        Name == ?YZ_RB_FIELD_S).
+
+-define(YZ_UK_XML, {uniqueKey, [?YZ_ID_FIELD_S]}).
+
+-define(YZ_FIELD_XML(Name), ?YZ_FIELD_XML(Name, false)).
+-define(YZ_FIELD_XML(Name, Required),
+        {field,
+         [{name,Name},
+          {type,?YZ_STR_FT_S},
+          {indexed,"true"},
+          {stored,"true"},
+          {required,Required}],
+         []}).
+
+%% Field Types
+-define(YZ_STR_FT_S, "_yz_str").
+-define(YZ_STR_FT_XML,
+        {fieldType,
+         [{name,?YZ_STR_FT_S},
+          {class,"solr.StrField"},
+          {sortMissingLast,"true"}],
+         []}).
+-define(YZ_IS_YZ_FT_S(Name), Name == ?YZ_STR_FT_S).
