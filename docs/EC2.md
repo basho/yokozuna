@@ -18,7 +18,7 @@ I recommend [using five nodes][five_nodes].  If you just want to
 experiment one node will work.  [Performance Tuning for AWS][perf_aws]
 contains advice in regards to running Riak on EC2.
 
-    ec2-run-instances ami-72ae321b -k <YOUR_KEY> -n <NUM_NODES>
+    ec2-run-instances ami-401c7829 -k <YOUR_KEY> -n <NUM_NODES>
 
 Each instance contains a self-contained Riak release under
 `~ec2-user/riak/rel/riak`.  Many of the following sections assume a
@@ -54,6 +54,14 @@ First, change the default security group to allow traffic on 8098.
 Second, modify `app.config` to listen for HTTP on an external
 interface.  I.e. changing `{http, [ {"127.0.0.1", 8098 } ]}` to
 `{http, [ {"0.0.0.0", 8098 } ]}`.
+
+### Remove JVM Option
+
+Currently one of the default JVM options passed by Yokozuna are not
+supported by the JVM on the Yokozuna AMI.  This will be addressed in
+the 0.6.0 release but until then the option
+`-XX:+UseCompressedStrings` needs to be removed from the
+`solr_vm_args` config.
 
 ### Create the Data Dir
 
