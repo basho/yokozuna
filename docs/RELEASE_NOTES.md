@@ -1,6 +1,90 @@
 Yokozuna Release Notes
 ==========
 
+0.5.0
+----------
+
+The fifth pre-release of Yokozuna.
+
+### Features
+
+* [YZ-78][]: Bump to [Solr 4.2.0][solr-420]. Use custom binary package
+  to avoid need to compile Solr when building.  Thus reduced time and
+  complexity of build.
+
+* [YZ-71][]: Allow passing of JVM options via `app.config`.  The
+  following options were added as defaults.
+  * XX:+UseStringCache
+  * XX:+UseCompressedStrings
+  * XX:+UseCompressedOops
+  * Xms1g
+  * Xmx1g
+
+* [YZ-47][]: Add kill switch for both index and search.
+
+* [YZ-36][], [YZ-81][]: Take appropriate action during index flag
+  transitions.
+
+* [YZ-49][]: Allow Yokozuna to have it's own AAE settings but fallback
+  to KV.
+
+* [YZ-80][]: Trim down default schema.
+
+* [YZ-83][]: Add dynamic fields for all langs in default schema.
+
+* [YZ-76][]: Add filter query compression.  A 17% improvement in
+  throughput was found in one benchmark.
+
+### Bugs/Misc
+
+* [YZ-50][]: Add tests for other languages.
+
+* [YZ-74][]: Make scripts more portable.
+
+* [YZ-51][]: Rename app and sup modules to follow naming convention.
+
+* [52e56c][]: Fix Travis CI build.
+
+* [YZ-69][]: Fix port numbers in README.  Thanks timdoug.
+
+* [YZ-82][]: Fix links in docs.  Thanks kyleslattery.
+
+* [YZ-15][]: Provide extractors access to full riak object.  Closed
+  without change.
+
+* [YZ-52][]: Ring event + downed solr proc causes issues.  Closed
+  without change.
+
+* [acf462][], [1e870a][]: Make verify script more robust.  This script
+  is used for verifying the correctness of Yokozuna.
+
+* [01f4e6][]: Rename `uniqueKey` from `id` to `_yz_id`.
+
+[YZ-15]: https://github.com/basho/yokozuna/pull/15
+[YZ-36]: https://github.com/basho/yokozuna/pull/36
+[YZ-47]: https://github.com/basho/yokozuna/pull/47
+[YZ-49]: https://github.com/basho/yokozuna/pull/49
+[YZ-50]: https://github.com/basho/yokozuna/pull/50
+[YZ-51]: https://github.com/basho/yokozuna/pull/51
+[YZ-52]: https://github.com/basho/yokozuna/pull/52
+[YZ-69]: https://github.com/basho/yokozuna/pull/69
+[YZ-71]: https://github.com/basho/yokozuna/pull/71
+[YZ-74]: https://github.com/basho/yokozuna/pull/74
+[YZ-76]: https://github.com/basho/yokozuna/pull/76
+[YZ-78]: https://github.com/basho/yokozuna/pull/78
+[YZ-80]: https://github.com/basho/yokozuna/pull/80
+[YZ-81]: https://github.com/basho/yokozuna/pull/81
+[YZ-82]: https://github.com/basho/yokozuna/pull/81
+[YZ-83]: https://github.com/basho/yokozuna/pull/83
+
+[acf462]: https://github.com/basho/yokozuna/commit/acf4627992053f7b08859d885bf6710ba47d3b77
+[1e870a]: https://github.com/basho/yokozuna/commit/1e870a6178119e32215a986391fef4e3fc762bdb
+[52e56c]: https://github.com/basho/yokozuna/commit/52e56cd4199ea89fb0d8ffe005a491b57bfa9b9e
+[01f4e6]: https://github.com/basho/yokozuna/commit/01f4e66f45a83d676f3d4dde4b31484b6474fd18
+
+[solr-420]: http://lucene.apache.org/solr/4_2_0/changes/Changes.html
+
+
 0.4.0
 ----------
 
