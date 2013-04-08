@@ -262,54 +262,54 @@
 -define(YZ_ID_FIELD, '_yz_id').
 -define(YZ_ID_FIELD_S, "_yz_id").
 -define(YZ_ID_FIELD_XML, ?YZ_FIELD_XML(?YZ_ID_FIELD_S, "true")).
--define(YZ_ID_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_id\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\" and @required=\"true\"]").
+-define(YZ_ID_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_id\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\" and @required=\"true\"]").
 
 %% Entropy Data
 -define(YZ_ED_FIELD, '_yz_ed').
 -define(YZ_ED_FIELD_S, "_yz_ed").
 -define(YZ_ED_FIELD_XML, ?YZ_FIELD_XML(?YZ_ED_FIELD_S)).
--define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% First Partition Number
 -define(YZ_FPN_FIELD, '_yz_fpn').
 -define(YZ_FPN_FIELD_S, "_yz_fpn").
 -define(YZ_FPN_FIELD_B, <<"_yz_fpn">>).
 -define(YZ_FPN_FIELD_XML, ?YZ_FIELD_XML(?YZ_FPN_FIELD_S)).
--define(YZ_FPN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_fpn\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_FPN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_fpn\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% Sibling VTags
 -define(YZ_VTAG_FIELD, '_yz_vtag').
 -define(YZ_VTAG_FIELD_S, "_yz_vtag").
 -define(YZ_VTAG_FIELD_B, <<"_yz_vtag">>).
 -define(YZ_VTAG_FIELD_XML, ?YZ_FIELD_XML(?YZ_VTAG_FIELD_S)).
--define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% Node
 -define(YZ_NODE_FIELD, '_yz_node').
 -define(YZ_NODE_FIELD_S, "_yz_node").
 -define(YZ_NODE_FIELD_XML, ?YZ_FIELD_XML(?YZ_NODE_FIELD_S)).
--define(YZ_NODE_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_node\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_NODE_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_node\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% Partition Number
 -define(YZ_PN_FIELD, '_yz_pn').
 -define(YZ_PN_FIELD_S, "_yz_pn").
 -define(YZ_PN_FIELD_B, <<"_yz_pn">>).
 -define(YZ_PN_FIELD_XML, ?YZ_FIELD_XML(?YZ_PN_FIELD_S)).
--define(YZ_PN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_pn\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_PN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_pn\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% Riak key
 -define(YZ_RK_FIELD, '_yz_rk').
 -define(YZ_RK_FIELD_S, "_yz_rk").
 -define(YZ_RK_FIELD_B, <<"_yz_rk">>).
 -define(YZ_RK_FIELD_XML, ?YZ_FIELD_XML(?YZ_RK_FIELD_S)).
--define(YZ_RK_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rk\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_RK_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rk\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% Riak bucket
 -define(YZ_RB_FIELD, '_yz_rb').
 -define(YZ_RB_FIELD_S, "_yz_rb").
 -define(YZ_RB_FIELD_B, <<"_yz_rk">>).
 -define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
--define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"string\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 -define(YZ_IS_YZ_FIELD_S(Name),
         Name == ?YZ_ID_FIELD_S orelse
@@ -342,4 +342,4 @@
           {sortMissingLast,"true"}],
          []}).
 -define(YZ_IS_YZ_FT_S(Name), Name == ?YZ_STR_FT_S).
--define(YZ_STR_FT_XPATH, "/schema/types/fieldType[@name=\"string\" and @class=\"solr.StrField\" and @sortMissingLast=\"true\"]").
+-define(YZ_STR_FT_XPATH, "/schema/types/fieldType[@name=\"_yz_str\" and @class=\"solr.StrField\" and @sortMissingLast=\"true\"]").

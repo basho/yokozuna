@@ -10,21 +10,21 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rk\" type=\"string\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rb\" type=\"string\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
  <uniqueKey>_yz_id</uniqueKey>
 
 <types>
-    <fieldType name=\"string\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
     <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
       <analyzer type=\"index\">
         <tokenizer class=\"solr.StandardTokenizerFactory\"/>
@@ -48,8 +48,8 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"string\" indexed=\"tru">>).
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"tru">>).
 
 confirm() ->
     Cluster = prepare_cluster(4),
