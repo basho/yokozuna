@@ -29,9 +29,6 @@
       <analyzer type=\"index\">
         <tokenizer class=\"solr.StandardTokenizerFactory\"/>
         <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
-        <!-- in this example, we will only use synonyms at query time
-        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"index_synonyms.txt\" ignoreCase=\"true\" expand=\"false\"/>
-        -->
         <filter class=\"solr.LowerCaseFilterFactory\"/>
       </analyzer>
       <analyzer type=\"query\">
@@ -51,6 +48,105 @@
    <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
    <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"tru">>).
 
+-define(MISSING_YZ_FIELDS_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
+-define(BAD_UK_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>foobar</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
+%% Change _yz_id to type `string'
+-define(BAD_YZ_FIELD_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
+
 confirm() ->
     Cluster = prepare_cluster(4),
     confirm_create_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
@@ -58,6 +154,10 @@ confirm() ->
     confirm_not_found(Cluster, <<"not_a_schema">>),
     confirm_bad_ct(Cluster, <<"bad_ct">>, ?TEST_SCHEMA),
     confirm_truncated(Cluster, <<"truncated">>, ?TRUNCATED_SCHEMA),
+    confirm_missing_yz_fields(Cluster, <<"missing_yz_fields">>, ?MISSING_YZ_FIELDS_SCHEMA),
+    confirm_bad_uk(Cluster, <<"bad_uk">>, ?BAD_UK_SCHEMA),
+    confirm_bad_yz_field(Cluster, <<"bad_yz_field">>, ?BAD_YZ_FIELD_SCHEMA),
+    confirm_default_schema(Cluster, <<"default">>, default_schema(Cluster)),
     pass.
 
 %% @doc Confirm a custom schema may be added.
@@ -109,6 +209,48 @@ confirm_truncated(Cluster, Name, RawSchema) ->
     %% failed to parse
     ?assert(size(Body) > 0).
 
+%% @doc Confirm missing `_yz' fields return 400.
+confirm_missing_yz_fields(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_missing_yz_fields ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm bad `uniqueKey' returns 400.
+confirm_bad_uk(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_bad_uk ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm a bad yz field returns 400.
+confirm_bad_yz_field(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_bad_yz_field ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm that the default schema passes verification.  Yokozuna
+%%      assumes the default schema is correct so this test is useful
+%%      for catching regression between the default schema and
+%%      verification code.
+confirm_default_schema(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_default_schema ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, _} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("204", Status).
+
 %%%===================================================================
 %%% Helpers
 %%%===================================================================
@@ -116,6 +258,12 @@ confirm_truncated(Cluster, Name, RawSchema) ->
 ct(Headers) ->
     Headers2 = [{string:to_lower(Key), Value} || {Key, Value} <- Headers],
     proplists:get_value("content-type", Headers2).
+
+default_schema(Cluster) ->
+    Node = select_random(Cluster),
+    lager:info("get default schema from ~p", [Node]),
+    {ok, RawSchema} = rpc:call(Node, yz_schema, get, [<<"_yz_default">>]),
+    RawSchema.
 
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
