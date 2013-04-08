@@ -10,17 +10,18 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
    <field name=\"_yz_ed\" type=\"string\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_pn\" type=\"string\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_fpn\" type=\"string\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_vtag\" type=\"string\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_node\" type=\"string\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rk\" type=\"string\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"string\" indexed=\"true\" stored=\"true\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
- <uniqueKey>id</uniqueKey>
+ <uniqueKey>_yz_id</uniqueKey>
 
 <types>
     <fieldType name=\"string\" class=\"solr.StrField\" sortMissingLast=\"true\" />
@@ -47,7 +48,7 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
    <field name=\"_yz_ed\" type=\"string\" indexed=\"tru">>).
 
 confirm() ->

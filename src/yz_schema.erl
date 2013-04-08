@@ -51,10 +51,10 @@ get(Name) ->
 %% @doc Store the `RawSchema' with `Name'.
 -spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
 store(Name, RawSchema) when is_binary(RawSchema) ->
-    case parse_and_xform(RawSchema) of
-        {ok, RawSchema2} ->
+    case parse_and_verify(RawSchema) of
+        {ok, RawSchema} ->
             C = yz_kv:client(),
-            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema2, "text/xml");
+            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
         {error, _} = Err ->
             Err
     end.
@@ -73,18 +73,89 @@ exists(SchemaName) ->
 
 %% @private
 %%
-%% @doc Parse the schema.
--spec parse_and_xform(raw_schema()) -> {ok, raw_schema()} | {error, term()}.
-parse_and_xform(RawSchema) ->
+%% @doc Parse the schema and verify it contains necessary elements.
+-spec parse_and_verify(raw_schema()) -> {ok, raw_schema()} | {error, term()}.
+parse_and_verify(RawSchema) ->
     try
-        Opts = [{comments, false},
-                {acc_fun, fun ?MODULE:xform_acc/3}],
-        {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), Opts),
-        RawSchema2 = iolist_to_binary(xmerl:export_simple([Schema], xmerl_xml)),
-        {ok, RawSchema2}
+        {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), []),
+        case verify(Schema) of
+            {ok, _} ->
+                {ok, RawSchema};
+            {error, _} = Err ->
+                Err
+        end
     catch exit:Reason ->
             {error, Reason}
     end.
+
+%% @doc Verify the `Schema' contains all necessary configuration for
+%%      Yokozuna to function properly.
+-spec verify(schema()) -> {ok, schema()} | {error, term()}.
+verify(Schema) ->
+    verify_fts(verify_fields(verify_uk(Schema))).
+
+%% @private
+%%
+%% @doc Verify the `uniqueKey' element is correct.
+-spec verify_uk(schema()) -> {ok, schema()} | {error, term()}.
+verify_uk(Schema) ->
+    case xmerl_xpath:string("/schema/uniqueKey/text()", Schema) of
+        [#xmlText{value="_yz_id"}] ->
+            {ok, Schema};
+        _ ->
+            {error, 'uniqueKey'}
+    end.
+
+%% @private
+%%
+%% @doc Verify the necessary fields are present with correct attributes.
+-spec verify_fields({ok, schema()} | {error, term()}) ->
+                           {ok, schema()} | {error, term()}.
+verify_fields({ok, Schema}) ->
+    Fields = [?YZ_ID_FIELD_XPATH,
+              ?YZ_ED_FIELD_XPATH,
+              ?YZ_FPN_FIELD_XPATH,
+              ?YZ_VTAG_FIELD_XPATH,
+              ?YZ_NODE_FIELD_XPATH,
+              ?YZ_PN_FIELD_XPATH,
+              ?YZ_RK_FIELD_XPATH,
+              ?YZ_RB_FIELD_XPATH],
+    Checks = [verify_field(F, Schema) || F <- Fields],
+    IsError = fun(X) -> X /= ok end,
+    case lists:filter(IsError, Checks) of
+        [] ->
+            {ok, Schema};
+        Errs ->
+            {error, {missing_fields, Errs}}
+    end;
+verify_fields({error, _}=Err) ->
+    Err.
+
+%% @private
+-spec verify_field(string(), schema()) -> ok | {error, term()}.
+verify_field(Path, Schema) ->
+    case xmerl_xpath:string(Path, Schema) of
+        [] ->
+            {error, {missing_field, Path}};
+        _ ->
+            ok
+    end.
+
+%% @private
+%%
+%% @doc Verify the necessary field types are present with correct
+%%      attributes.
+-spec verify_fts({ok, schema()} | {error, term()}) ->
+                        {ok, schema()} | {error, term()}.
+verify_fts({ok, Schema}) ->
+    case xmerl_xpath:string(?YZ_STR_FT_XPATH, Schema) of
+        [] ->
+            {error, {missing_field_type, ?YZ_STR_FT_XPATH}};
+        _ ->
+            {ok, Schema}
+    end;
+verify_fts({error,_}=Err) ->
+    Err.
 
 -define(FIELD, #xmlElement{name='field', attributes=Attrs}).
 -define(FIELD_TYPE, #xmlElement{name='fieldType', attributes=Attrs}).
