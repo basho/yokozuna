@@ -262,8 +262,7 @@ cleanup(2, {Index, Obj, _Key, LP}) ->
     %% An object has crossed the threshold from
     %% being a single value Object, to a sibling
     %% value Object, delete the non-sibling ID
-    DocID = binary_to_list(yz_doc:doc_id(Obj,
-                                         ?INT_TO_BIN(LP))),
+    DocID = yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)),
     ok = yz_solr:delete(Index, DocID);
 
 cleanup(_, _) ->
