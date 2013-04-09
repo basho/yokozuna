@@ -105,34 +105,37 @@
    <dynamicField name="*_ig" type="ignored" multiValued="true"/>
    <dynamicField name="random_*" type="random" />
 
-   <field name="_yz_id" type="string" indexed="true" stored="true" required="true"/>
+   <field name="_yz_id" type="_yz_str" indexed="true" stored="true" required="true"/>
 
    <!-- Entropy Data: Data related to anti-entropy -->
-   <field name="_yz_ed" type="string" indexed="true" stored="true"/>
+   <field name="_yz_ed" type="_yz_str" indexed="true" stored="true"/>
 
    <!-- Partition Number: Used as a filter query param -->
-   <field name="_yz_pn" type="string" indexed="true" stored="true"/>
+   <field name="_yz_pn" type="_yz_str" indexed="true" stored="true"/>
 
    <!-- First Partition Number: The first partition in this doc's
         preflist, used for further filtering on overlapping partitions. -->
-   <field name="_yz_fpn" type="string" indexed="true" stored="true"/>
+   <field name="_yz_fpn" type="_yz_str" indexed="true" stored="true"/>
 
    <!-- If there is a sibling, use vtag to differentiate them -->
-   <field name="_yz_vtag" type="string" indexed="true" stored="true"/>
+   <field name="_yz_vtag" type="_yz_str" indexed="true" stored="true"/>
 
    <!-- Node: The name of the node that this doc was created on. -->
-   <field name="_yz_node" type="string" indexed="true" stored="true"/>
+   <field name="_yz_node" type="_yz_str" indexed="true" stored="true"/>
 
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
-   <field name="_yz_rk" type="string" indexed="true" stored="true"/>
+   <field name="_yz_rk" type="_yz_str" indexed="true" stored="true"/>
 
    <!-- Riak Bucket: The bucket of the Riak object this doc corresponds to. -->
-   <field name="_yz_rb" type="string" indexed="true" stored="true"/>
+   <field name="_yz_rb" type="_yz_str" indexed="true" stored="true"/>
  </fields>
 
  <uniqueKey>_yz_id</uniqueKey>
 
   <types>
+    <!-- YZ String: Used for non-analyzed fields -->
+    <fieldType name="_yz_str" class="solr.StrField" sortMissingLast="true" />
+
     <fieldType name="string" class="solr.StrField" sortMissingLast="true" />
     <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true"/>
 
