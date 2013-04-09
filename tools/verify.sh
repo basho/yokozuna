@@ -213,7 +213,7 @@ function run_riak_test_tests()
 
     if echo "$TEST_ONLY" > /dev/null; then
         info "only running $TEST_ONLY"
-        (cd riak_test/ebin && ls | grep -v $TEST_ONLY | xargs rm)
+        (cd riak_test/ebin && ls | egrep -v "$TEST_ONLY|yz_rt" | xargs rm)
     fi
 
     info "run yokozuna riak_test tests"
