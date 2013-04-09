@@ -3,8 +3,12 @@
 
 create_index(Node, Index) ->
     lager:info("Creating index ~s [~p]", [Index, Node]),
-    ok = rpc:call(Node, yz_index, create, [Index]),
-    ok = rpc:call(Node, yz_kv, set_index_flag, [list_to_binary(Index), true]).
+    ok = rpc:call(Node, yz_index, create, [Index]).
+
+create_index(Node, Index, SchemaName) ->
+    lager:info("Creating index ~s using schema ~s [~p]",
+               [Index, SchemaName, Node]),
+    ok = rpc:call(Node, yz_index, create, [Index, SchemaName]).
 
 get_count(Resp) ->
     Struct = mochijson2:decode(Resp),
@@ -60,6 +64,13 @@ select_random(List) ->
     Length = length(List),
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
+
+set_index_flag(Node, Bucket) ->
+    set_index_flag(Node, Bucket, true).
+
+set_index_flag(Node, Bucket, Value) ->
+    lager:info("Set index flag on bucket ~s [~p]", [Bucket, Node]),
+    ok = rpc:call(Node, yz_kv, set_index_flag, [Bucket, Value]).
 
 verify_count(Expected, Resp) ->
     Expected == get_count(Resp).

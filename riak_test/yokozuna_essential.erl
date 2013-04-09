@@ -1,5 +1,11 @@
 -module(yokozuna_essential).
 -compile(export_all).
+-import(yz_rt, [create_index/2, create_index/3,
+                host_entries/1,
+                run_bb/2, search/4, search/5,
+                set_index_flag/2,
+                select_random/1, verify_count/2,
+                wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
@@ -62,8 +68,7 @@ test_siblings(Cluster) ->
 
 verify_reconcile(HP) ->
     lager:info("Verify sibling indexes were deleted after reconcile"),
-    R1 = search(HP, "siblings", "_yz_rk", "test"),
-    verify_count(1, R1),
+    true = search(HP, "siblings", "_yz_rk", "test", 1),
     ok.
 
 reconcile_sibs(HP) ->
@@ -94,10 +99,9 @@ http_put({Host, Port}, Bucket, Key, VClock, Value) ->
 
 verify_sibs(HP) ->
     lager:info("Verify siblings are indexed"),
-    R1 = search(HP, "siblings", "_yz_rk", "test"),
-    verify_count(4, R1),
+    true = search(HP, "siblings", "_yz_rk", "test", 4),
     Values = ["alpha", "beta", "charlie", "delta"],
-    [verify_count(1, search(HP, "siblings", "text", S)) || S <- Values],
+    [true = search(HP, "siblings", "text", S, 1) || S <- Values],
     ok.
 
 write_sibs({Host, Port}) ->
@@ -187,10 +191,8 @@ test_tagging(Cluster) ->
     ok = write_with_tag(HP),
     %% TODO: the test fails if this sleep isn't here
     timer:sleep(5000),
-    R1 = search(HP, "tagging", "user_s", "rzezeski"),
-    verify_count(1, R1),
-    R2 = search(HP, "tagging", "desc_t", "description"),
-    verify_count(1, R2),
+    true = search(HP, "tagging", "user_s", "rzezeski", 1),
+    true = search(HP, "tagging", "desc_t", "description", 1),
     ok.
 
 write_with_tag({Host, Port}) ->
@@ -205,30 +207,6 @@ write_with_tag({Host, Port}) ->
                {"x-riak-meta-desc_t", "This is a description"}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
     ok.
-
-search(HP, Index, Name, Term, Expect) ->
-    R = search(HP, Index, Name, Term),
-    verify_count(Expect, R).
-
-search({Host, Port}, Index, Name, Term) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/search/~s?q=~s:~s&wt=json",
-                                      [Host, integer_to_list(Port), Index, Name, Term])),
-    lager:info("Run search ~s", [URL]),
-    Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, [], get, [], Opts) of
-        {ok, "200", _, Resp} ->
-            lager:info("Search resp ~p", [Resp]),
-            Resp;
-        Other ->
-            {bad_response, Other}
-    end.
-
-get_count(Resp) ->
-    Struct = mochijson2:decode(Resp),
-    yz_driver:get_path(Struct, [<<"response">>, <<"numFound">>]).
-
-verify_count(Expected, Resp) ->
-    Expected == get_count(Resp).
 
 async_query(Cluster, YZBenchDir) ->
     lager:info("Run async query against cluster ~p", [Cluster]),
@@ -253,14 +231,6 @@ async_query(Cluster, YZBenchDir) ->
 check_status({Status,_}) ->
     ?assertEqual(?SUCCESS, Status).
 
-create_index(Node, Index) ->
-    lager:info("Creating index ~s [~p]", [Index, Node]),
-    rpc:call(Node, yz_index, create, [Index]).
-
-create_index(Node, Index, SchemaName) ->
-    lager:info("Creating index ~s [~p]", [Index, Node]),
-    rpc:call(Node, yz_index, create, [Index, SchemaName]).
-
 delete_key(Cluster, Key) ->
     Node = select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
@@ -274,13 +244,6 @@ delete_some_data(Cluster, ReapSleep) ->
     lager:info("Sleeping ~ps to allow for reap", [ReapSleep]),
     timer:sleep(timer:seconds(ReapSleep)),
     Keys.
-
-host_entries(ClusterConnInfo) ->
-    [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
-
-set_index_flag(Node, Index) ->
-    lager:info("Install index hook on bucket ~s [~p]", [Index, Node]),
-    rpc:call(Node, yz_kv, set_index_flag, [Index]).
 
 join_three(Nodes) ->
     [NodeA|Others] = All = lists:sublist(Nodes, 3),
@@ -321,18 +284,6 @@ reap_sleep() ->
     %%       calculated.
     10.
 
-run_bb(Method, File) ->
-    Fun = case Method of
-              sync -> cmd;
-              async -> spawn_cmd
-          end,
-    rt:Fun("$YZ_BENCH_DIR/deps/basho_bench/basho_bench " ++ File).
-
-select_random(List) ->
-    Length = length(List),
-    Idx = random:uniform(Length),
-    lists:nth(Idx, List).
-
 setup_indexing(Cluster, YZBenchDir) ->
     Node = select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
@@ -349,6 +300,7 @@ setup_indexing(Cluster, YZBenchDir) ->
     timer:sleep(5000).
 
 store_schema(Node, Name, RawSchema) ->
+    lager:info("Storing schema ~p [~p]", [Name, Node]),
     ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]).
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
@@ -375,16 +327,6 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
 
 wait_for(Ref) ->
     rt:wait_for_cmd(Ref).
-
-wait_for_joins(Cluster) ->
-    lager:info("Waiting for ownership handoff to finish"),
-    rt:wait_until_nodes_ready(Cluster),
-    rt:wait_until_no_pending_changes(Cluster).
-
-write_terms(File, Terms) ->
-    {ok, IO} = file:open(File, [write]),
-    [io:fwrite(IO, "~p.~n", [T]) || T <- Terms],
-    file:close(IO).
 
 random_keys() ->
     random_keys(random:uniform(100)).

@@ -1,6 +1,7 @@
 %% @doc Test the index schema API in various ways.
 -module(yz_schema_admin).
 -compile(export_all).
+-import(yz_rt, [host_entries/1, select_random/1]).
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
@@ -265,9 +266,6 @@ default_schema(Cluster) ->
     {ok, RawSchema} = rpc:call(Node, yz_schema, get, [<<"_yz_default">>]),
     RawSchema.
 
-host_entries(ClusterConnInfo) ->
-    [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
-
 http(Method, URL, Headers, Body) ->
     Opts = [{response_format, binary}],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
@@ -287,16 +285,6 @@ prepare_cluster(NumNodes) ->
     %% Nodes = rt:deploy_nodes(NumNodes, ?CFG),
     Nodes = rt:deploy_nodes(NumNodes),
     Cluster = join(Nodes),
-    wait_for_joins(Cluster),
+    yz_rt:wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     Cluster.
-
-select_random(List) ->
-    Length = length(List),
-    Idx = random:uniform(Length),
-    lists:nth(Idx, List).
-
-wait_for_joins(Cluster) ->
-    lager:info("Waiting for ownership handoff to finish"),
-    rt:wait_until_nodes_ready(Cluster),
-    rt:wait_until_no_pending_changes(Cluster).
