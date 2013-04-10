@@ -88,7 +88,7 @@ cores() ->
             Err
     end.
 
--spec delete(string(), string()) -> ok.
+-spec delete(string(), binary()) -> ok.
 delete(Core, DocID) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
     JSON = encode_delete({id, DocID}),
