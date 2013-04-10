@@ -85,11 +85,25 @@ handle_cast({ring_event, Ring}=RE, S) ->
     {noreply, S2}.
 
 handle_info(tick, S) ->
+    %% TODO: tick and ring_event should be merged, actions taken in
+    %% ring_event could fail and should be retried during tick, may
+    %% need to rely on something other than ring to determine when to
+    %% retry certain actions, e.g. if the `sync_data' call fails then
+    %% AAE trees will be incorrect until the next ring_event or until
+    %% tree rebuild
     ok = remove_non_owned_data(),
 
     Mapping = get_mapping(),
     Mapping2 = check_unkown(Mapping),
     ok = set_mapping(Mapping2),
+
+    %% Index creation may have failed during ring event.
+    PrevRing = ?PREV_RING(S),
+    Ring = yz_misc:get_ring(raw),
+    Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
+    Current = names(yz_index:get_indexes_from_ring(Ring)),
+    {Removed, Added, Same} = yz_misc:delta(Previous, Current),
+    ok = sync_indexes(Ring, Removed, Added, Same),
 
     ok = set_tick(),
     {noreply, S}.
@@ -229,10 +243,15 @@ remove_nodes(Nodes, Mapping) ->
 %% @doc Remove documents for any data not owned by this node.
 -spec remove_non_owned_data() -> ok.
 remove_non_owned_data() ->
-    Indexes = ordsets:to_list(yz_solr:cores()),
-    Removed = [{Index, yz_index:remove_non_owned_data(Index)}
-               || Index <- Indexes],
-    [maybe_log(R) || R <- Removed],
+    case yz_solr:cores() of
+        {ok, Cores} ->
+            Indexes = ordsets:to_list(Cores),
+            Removed = [{Index, yz_index:remove_non_owned_data(Index)}
+                       || Index <- Indexes],
+            [maybe_log(R) || R <- Removed];
+        _ ->
+            ok
+    end,
     ok.
 
 send_ring_event(Ring) ->

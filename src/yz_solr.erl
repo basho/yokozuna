@@ -59,7 +59,7 @@ commit(Core) ->
     end.
 
 %% @doc Perform Core related actions.
--spec core(atom(), proplists:proplist()) -> {ok, any(), any()}.
+-spec core(atom(), proplists:proplist()) -> {ok, any(), any()} | {error, term()}.
 core(Action, Props) ->
     BaseURL = base_url() ++ "/admin/cores",
     Action2 = convert_action(Action),
@@ -73,16 +73,22 @@ core(Action, Props) ->
         {ok, "200", Headers, Body} ->
             {ok, Headers, Body};
         X ->
-            throw({error_calling_solr, core, Action, X})
+            {error, X}
     end.
 
--spec cores() -> ordset(index_name()).
+-spec cores() -> {ok, ordset(index_name())} | {error, term()}.
 cores() ->
-    {ok, _, Body} = yz_solr:core(status, [{wt,json}]),
-    Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
-    ordsets:from_list([binary_to_list(Name) || {Name, _} <- Status]).
+    case yz_solr:core(status, [{wt,json}]) of
+        {ok, _, Body} ->
+            Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
+            Cores = ordsets:from_list([binary_to_list(Name)
+                                       || {Name, _} <- Status]),
+            {ok, Cores};
+        {error,_} = Err ->
+            Err
+    end.
 
--spec delete(string(), string()) -> ok.
+-spec delete(string(), binary()) -> ok.
 delete(Core, DocID) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
     JSON = encode_delete({id, DocID}),

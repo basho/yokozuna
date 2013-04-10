@@ -46,8 +46,6 @@ should_copy_update_test() ->
         ok = file:write_file(Newfile, "data"),
         ?assert(yz_misc:should_copy(update, Newfile, Thisfile)),
         ?assertNot(yz_misc:should_copy(update, Thisfile, Newfile))
-    catch _:_Err ->
-        ?assert(false)
     after
         file:delete(Newfile)
     end.
