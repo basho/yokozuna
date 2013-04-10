@@ -1,6 +1,21 @@
 Yokozuna Release Notes
 ==========
 
+WIP
+----------
+
+### Bugs/Misc
+
+* [YZ-58][]: Add resilience around bad schemas.  Make index creation a
+  best effort with periodic retry.
+
+* [YZ-88][], [YZ-94][]: Update to newer rebar to fix erlang_js build.
+
+[YZ-58]: https://github.com/basho/yokozuna/issues/58
+[YZ-88]: https://github.com/basho/yokozuna/pull/88
+[YZ-94]: https://github.com/basho/yokozuna/pull/94
+
+
 0.5.0
 ----------
 
