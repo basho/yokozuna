@@ -133,12 +133,14 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
 get_pid(Port) ->
     proplists:get_value(os_pid, erlang:port_info(Port)).
 
+%% @private
+%%
+%% @doc Determine if Solr is running.
+-spec is_up() -> boolean().
 is_up() ->
-    try
-        _ = yz_solr:cores(),
-        true
-    catch throw:{error_calling_solr,core,_,_} ->
-            false
+    case yz_solr:cores() of
+        {ok, _} -> true;
+        _ -> false
     end.
 
 run_cmd(Cmd, Args) ->
