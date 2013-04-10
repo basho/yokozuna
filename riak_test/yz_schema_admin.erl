@@ -147,6 +147,41 @@
 </types>
 </schema>">>).
 
+-define(BAD_CLASS_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextFieldFoo\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
 
 confirm() ->
     Cluster = prepare_cluster(4),
@@ -159,6 +194,7 @@ confirm() ->
     confirm_bad_uk(Cluster, <<"bad_uk">>, ?BAD_UK_SCHEMA),
     confirm_bad_yz_field(Cluster, <<"bad_yz_field">>, ?BAD_YZ_FIELD_SCHEMA),
     confirm_default_schema(Cluster, <<"default">>, default_schema(Cluster)),
+    confirm_bad_schema(Cluster),
     pass.
 
 %% @doc Confirm a custom schema may be added.
@@ -252,6 +288,45 @@ confirm_default_schema(Cluster, Name, RawSchema) ->
     {ok, Status, _, _} = http(put, URL, Headers, RawSchema),
     ?assertEqual("204", Status).
 
+%% @doc Confirm that an index created with a bad schema causing a Solr
+%%      runtime error doesn't crash the cluster.  Furthermore, verify
+%%      that the index is eventually created after the schema is fixed.
+confirm_bad_schema(Cluster) ->
+    Name = <<"bad_class">>,
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_bad_schema ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, _} = http(put, URL, Headers, ?BAD_CLASS_SCHEMA),
+    ?assertEqual("204", Status),
+
+    URL2 = index_url(HP, Name),
+    Headers2 = [{"content-type", "application/json"}],
+    Body = {struct, [{schema, Name}]},
+    lager:info("create ~s index using ~s schema", [Name, Name]),
+    {ok, Status2, _, _} = http(put, URL2, Headers2, mochijson2:encode(Body)),
+    %% This should return 204 because it simply adds an entry to the
+    %% ring.  The actual Solr Core creation is async.
+    ?assertEqual("204", Status2),
+
+    lager:info("give solr time to attempt to create core ~s", [Name]),
+    timer:sleep(5000),
+    lager:info("verify solr core ~s is not up", [Name]),
+    ?assertNot(yz_solr:ping(binary_to_list(Name))),
+
+    lager:info("upload corrected schema ~s", [Name]),
+    {ok, Status3, _, _} = http(put, URL, Headers, ?TEST_SCHEMA),
+    ?assertEqual("204", Status),
+
+    lager:info("wait for yz to retry creation of core ~s", [Name]),
+    Node = select_random(Cluster),
+    F = fun(Node) ->
+                lager:info("try to ping core ~s", [Name]),
+                rpc:call(Node, yz_solr, ping, [binary_to_list(Name)])
+        end,
+    ?assertEqual(ok, rt:wait_until(Node, F)).
+
+
 %%%===================================================================
 %%% Helpers
 %%%===================================================================
@@ -269,6 +344,9 @@ default_schema(Cluster) ->
 http(Method, URL, Headers, Body) ->
     Opts = [{response_format, binary}],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
+
+index_url({Host,Port}, Name) ->
+    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Name]).
 
 schema_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/yz/schema/~s", [Host, Port, Name]).
