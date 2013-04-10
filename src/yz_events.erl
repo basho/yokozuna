@@ -243,12 +243,15 @@ remove_nodes(Nodes, Mapping) ->
 %% @doc Remove documents for any data not owned by this node.
 -spec remove_non_owned_data() -> ok.
 remove_non_owned_data() ->
-    %% TODO: yz_solr:cores() could return {error, T}
-    {ok, Cores} = yz_solr:cores(),
-    Indexes = ordsets:to_list(Cores),
-    Removed = [{Index, yz_index:remove_non_owned_data(Index)}
-               || Index <- Indexes],
-    [maybe_log(R) || R <- Removed],
+    case yz_solr:cores() of
+        {ok, Cores} ->
+            Indexes = ordsets:to_list(Cores),
+            Removed = [{Index, yz_index:remove_non_owned_data(Index)}
+                       || Index <- Indexes],
+            [maybe_log(R) || R <- Removed];
+        _ ->
+            ok
+    end,
     ok.
 
 send_ring_event(Ring) ->
