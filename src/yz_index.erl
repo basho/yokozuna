@@ -73,7 +73,8 @@ get_info_from_ring(Ring, Name) ->
     Indexes = get_indexes_from_ring(Ring),
     orddict:fetch(Name, Indexes).
 
-%% @doc Create the index `Name' locally.
+%% @doc Create the index `Name' locally.  Make best attempt to create
+%%      the index, log if a failure occurs.  Always return `ok'.
 %%
 %% NOTE: This should typically be called by a the ring handler in
 %%       `yz_event'.  The `create/1' API should be used to create a
@@ -101,10 +102,15 @@ local_create(Ring, Name) ->
                          {cfg_file, ?YZ_CORE_CFG_FILE},
                          {schema_file, SchemaFile}
                         ],
-            {ok, _, _} = yz_solr:core(create, CoreProps),
+            case yz_solr:core(create, CoreProps) of
+                {ok, _, _} ->
+                    ok;
+                {error, Err} ->
+                    lager:error("Couldn't create index ~s: ~p", [Name, Err])
+            end,
             ok;
         {error, _, Reason} ->
-            lager:warning("Couldn't create index ~s: ~p", [Name, Reason]),
+            lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
             ok
     end.
 
