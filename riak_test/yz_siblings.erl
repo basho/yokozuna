@@ -2,7 +2,7 @@
 -module(yz_siblings).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
-                run_bb/2, search/4, search/5,
+                run_bb/2, search_expect/5,
                 set_index_flag/2,
                 select_random/1, verify_count/2,
                 wait_for_joins/1, write_terms/2]).
@@ -64,9 +64,9 @@ write_sibs({Host, Port}) ->
 
 verify_sibs(HP) ->
     lager:info("Verify siblings are indexed"),
-    true = yz_rt:search(HP, "siblings", "_yz_rk", "test", 4),
+    true = yz_rt:search_expect(HP, "siblings", "_yz_rk", "test", 4),
     Values = ["alpha", "beta", "charlie", "delta"],
-    [true = yz_rt:search(HP, "siblings", "text", S, 1) || S <- Values],
+    [true = yz_rt:search_expect(HP, "siblings", "text", S, 1) || S <- Values],
     ok.
 
 reconcile_sibs(HP) ->
@@ -79,7 +79,7 @@ reconcile_sibs(HP) ->
 
 verify_reconcile(HP) ->
     lager:info("Verify sibling indexes were deleted after reconcile"),
-    true = yz_rt:search(HP, "siblings", "_yz_rk", "test", 1),
+    true = yz_rt:search_expect(HP, "siblings", "_yz_rk", "test", 1),
     ok.
 
 http_put({Host, Port}, Bucket, Key, VClock, Value) ->
