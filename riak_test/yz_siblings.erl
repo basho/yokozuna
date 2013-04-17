@@ -74,7 +74,7 @@ reconcile_sibs(HP) ->
     {VClock, _} = http_get(HP, "siblings", "test"),
     NewValue = <<"This is value alpha, beta, charlie, and delta">>,
     ok = http_put(HP, "siblings", "test", VClock, NewValue),
-    timer:sleep(1000),
+    timer:sleep(1100),
     ok.
 
 verify_reconcile(HP) ->
@@ -126,5 +126,5 @@ create_index(HP, Index) ->
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    timer:sleep(4000),
+    timer:sleep(5000),
     ?assertEqual("204", Status).
