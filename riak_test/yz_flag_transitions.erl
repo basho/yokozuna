@@ -43,9 +43,9 @@ verify_flag_add(Cluster, YZBenchDir) ->
     Hosts = yz_rt:host_entries(rt:connection_info(Cluster)),
     HP = yz_rt:select_random(Hosts),
     lager:info("Verify fruit index doesn't exist"),
-    {ok, "404", _, _} = yz_rt:search(HP, "fruit", "*", "*"),
+    {ok, "404", _, _} = yz_rt:search(yokozuna, HP, "fruit", "*", "*"),
     lager:info("Verify objects are indexed under default index"),
-    yz_rt:search(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS),
+    ?assert(yz_rt:search_expect(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS)),
     lager:info("Create fruit index + set flag"),
     yz_rt:create_index(yz_rt:select_random(Cluster), "fruit"),
     yz_rt:set_index_flag(yz_rt:select_random(Cluster), <<"fruit">>),
@@ -55,7 +55,7 @@ verify_flag_add(Cluster, YZBenchDir) ->
     F = fun(Cluster2) ->
                 Hosts2 = yz_rt:host_entries(rt:connection_info(Cluster2)),
                 HP2 = yz_rt:select_random(Hosts2),
-                yz_rt:search(HP2, "fruit", "*", "*", ?NUM_KEYS)
+                yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
         end,
     lager:info("Verify that AAE re-indexes objects under fruit index"),
     yz_rt:wait_for_aae(Cluster, F).
@@ -70,8 +70,9 @@ verify_flag_remove(Cluster) ->
     F = fun(Cluster2) ->
                 Hosts = yz_rt:host_entries(rt:connection_info(Cluster2)),
                 HP = yz_rt:select_random(Hosts),
-                yz_rt:search(HP, "fruit", "*", "*", 0),
-                yz_rt:search(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS)
+                R1 = yz_rt:search_expect(HP, "fruit", "*", "*", 0),
+                R2 = yz_rt:search_expect(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS),
+                R1 and R2
         end,
     lager:info("Verify fruit indexes are deleted + objects re-indexed under default index"),
     yz_rt:wait_for_aae(Cluster, F).

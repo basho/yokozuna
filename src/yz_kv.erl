@@ -113,6 +113,28 @@ is_tombstone(MD) ->
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
+index(Obj, Reason, VNodeState) ->
+    case yokozuna:noop_flag(index) of
+        true ->
+            ok;
+        false ->
+            Ring = yz_misc:get_ring(transformed),
+            P = get_partition(VNodeState),
+            case is_owner_or_future_owner(P, node(), Ring) of
+                true ->
+                    {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+                    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+                    NVal = riak_core_bucket:n_val(BProps),
+                    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
+                    Index = which_index(Bucket, BProps),
+                    IndexContent = index_content(BProps),
+                    IdxN = {first_partition(PrimaryPL), NVal},
+                    index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent);
+                false ->
+                    ok
+            end
+    end.
+
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
 %%
@@ -120,61 +142,36 @@ get_md_entry(MD, Key) ->
 %%       During active anti-entropy runs on spawned process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
--spec index(obj(), write_reason(), term()) -> ok.
-index(Obj, delete, VNodeState) ->
-    case yokozuna:noop_flag(index) of
-        true -> ok;
-        _    ->
-            Ring = yz_misc:get_ring(transformed),
-            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-            {Bucket, Key} = BKey,
-            BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-            NVal = riak_core_bucket:n_val(BProps),
-            PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-            IdxN = {first_partition(PrimaryPL),
-                    riak_core_bucket:n_val(BProps)},
-            try
-                Query = yz_solr:encode_delete({key, Key}),
-                ok = yz_solr:delete_by_query(which_index(Bucket, BProps),
-                                             Query),
-                ok = update_hashtree(delete, get_partition(VNodeState), IdxN,
-                                     BKey)
-            catch _:Err ->
-                ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
-            end,
-            ok
-    end;
+-spec index(obj(), write_reason(), ring(), p(), bkey(),
+            {p(), n()}, index_name(), boolean()) -> ok.
+index(_, delete, _, P, BKey, IdxN, Index, _) ->
+    {_, Key} = BKey,
+    try
+        Query = yz_solr:encode_delete({key, Key}),
+        ok = yz_solr:delete_by_query(Index, Query),
+        ok = update_hashtree(delete, P, IdxN, BKey)
+    catch _:Err ->
+            ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
+    end,
+    ok;
 
-index(Obj, Reason, VNodeState) ->
-    case yokozuna:noop_flag(index) of
-        true -> ok;
-        _    ->
-            Ring = yz_misc:get_ring(transformed),
-            LI = yz_cover:logical_index(Ring),
-            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-            {Bucket, Key} = BKey,
-            BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-            Index = which_index(Bucket, BProps),
-            ok = maybe_wait(Reason, Index),
-            NVal = riak_core_bucket:n_val(BProps),
-            PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-            LFPN = yz_cover:logical_partition(LI, first_partition(PrimaryPL)),
-            P = get_partition(VNodeState),
-            LP = yz_cover:logical_partition(LI, P),
-            Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
-                                    index_content(BProps)),
-            IdxN = {first_partition(PrimaryPL), NVal},
-
-            try
-                ok = yz_solr:index(Index, Docs),
-                ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
-                ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
-                                      P, IdxN, BKey)
-            catch _:Err ->
-                ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
-            end,
-            ok
-    end.
+index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
+    LI = yz_cover:logical_index(Ring),
+    {_, Key} = BKey,
+    ok = maybe_wait(Reason, Index),
+    LFPN = yz_cover:logical_partition(LI, element(1, IdxN)),
+    LP = yz_cover:logical_partition(LI, P),
+    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
+                            IndexContent),
+    try
+        ok = yz_solr:index(Index, Docs),
+        ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
+        ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
+                             P, IdxN, BKey)
+    catch _:Err ->
+            ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
+    end,
+    ok.
 
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
@@ -313,6 +310,15 @@ get_and_set_tree(Partition) ->
             erlang:put(tree, undefined),
             not_registered
     end.
+
+%% @private
+%%
+%% @doc Determine if the `Node' is the current owner or next owner of
+%%      partition `P'.
+-spec is_owner_or_future_owner(p(), node(), ring()) -> boolean().
+is_owner_or_future_owner(P, Node, Ring) ->
+    OwnedAndNext = yz_misc:owned_and_next_partitions(Node, Ring),
+    ordsets:is_element(P, OwnedAndNext).
 
 %% @private
 %%
