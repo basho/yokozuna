@@ -2,7 +2,8 @@
 -compile(export_all).
 -import(yz_rt, [create_index/2, create_index/3,
                 host_entries/1,
-                run_bb/2, search/4, search/5,
+                run_bb/2,
+                search_expect/5, search_expect/6,
                 set_index_flag/2,
                 select_random/1, verify_count/2,
                 wait_for_joins/1, write_terms/2]).
@@ -14,7 +15,11 @@
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
 -define(CFG,
-        [{riak_kv,
+        [{riak_core,
+          [
+           {ring_creation_size, 16}
+          ]},
+         {riak_kv,
           [
            %% build/expire often
            {anti_entropy_build_limit, {100, 1000}},
@@ -99,7 +104,7 @@ wait_for_aae(_, Index, _, 24) ->
     lager:error("Hit limit waiting for AAE to repair indexes for ~p", [Index]),
     aae_failed;
 wait_for_aae(HP, Index, ExpectedNumFound, Tries) ->
-    case search(HP, "fruit_aae", "text", "apricot", ExpectedNumFound) of
+    case search_expect(HP, "fruit_aae", "text", "apricot", ExpectedNumFound) of
         true -> ok;
         _ ->
             timer:sleep(5000),
@@ -140,8 +145,8 @@ test_tagging(Cluster) ->
     ok = write_with_tag(HP),
     %% TODO: the test fails if this sleep isn't here
     timer:sleep(5000),
-    true = search(HP, "tagging", "user_s", "rzezeski", 1),
-    true = search(HP, "tagging", "desc_t", "description", 1),
+    true = search_expect(HP, "tagging", "user_s", "rzezeski", 1),
+    true = search_expect(HP, "tagging", "desc_t", "description", 1),
     ok.
 
 write_with_tag({Host, Port}) ->
