@@ -107,8 +107,7 @@
          If both ramBufferSizeMB and maxBufferedDocs is set, then
          Lucene will flush based on whichever limit is hit first.  -->
     <!-- Reduce disk flushes. If YZ loses data on crash, AAE will repair anyway -->
-    <ramBufferSizeMB>128</ramBufferSizeMB>
-    <maxBufferedDocs>10000</maxBufferedDocs>
+    <ramBufferSizeMB>32</ramBufferSizeMB>
 
     <!-- Expert: Merge Policy
          The Merge Policy in Lucene controls how merging of segments is done.
