@@ -410,7 +410,6 @@
          Caches results of searches - ordered lists of document ids
          (DocList) based on a query, a sort, and the range of documents requested.
       -->
-    <!--  -->
     <queryResultCache class="solr.LRUCache"
                      size="1024"
                      initialSize="512"
@@ -480,42 +479,6 @@
         queryResultCache.
      -->
    <queryResultMaxDocsCached>200</queryResultMaxDocsCached>
-
-   <!-- Query Related Event Listeners
-
-        Various IndexSearcher related events can trigger Listeners to
-        take actions.
-
-        newSearcher - fired whenever a new searcher is being prepared
-        and there is a current searcher handling requests (aka
-        registered).  It can be used to prime certain caches to
-        prevent long request times for certain requests.
-
-        firstSearcher - fired whenever a new searcher is being
-        prepared but there is no current registered searcher to handle
-        requests or to gain autowarming data from.
-
-
-     -->
-    <!-- QuerySenderListener takes an array of NamedList and executes a
-         local query request for each NamedList in sequence.
-      -->
-    <!-- KILL We could write warmers, but these defaults do nothing -->
-    <!-- <listener event="newSearcher" class="solr.QuerySenderListener">
-      <arr name="queries"> -->
-        <!--
-           <lst><str name="q">solr</str><str name="sort">price asc</str></lst>
-           <lst><str name="q">rocks</str><str name="sort">weight asc</str></lst>
-          -->
-      <!-- </arr>
-    </listener>
-    <listener event="firstSearcher" class="solr.QuerySenderListener">
-      <arr name="queries">
-        <lst>
-          <str name="q">static firstSearcher warming in solrconfig.xml</str>
-        </lst>
-      </arr>
-    </listener> -->
 
     <!-- Use Cold Searcher
 
@@ -690,17 +653,6 @@
       -->
     </requestHandler>
 
-  <!-- A request handler that returns indented JSON by default -->
-<!-- KILL unused
-  <requestHandler name="/query" class="solr.SearchHandler">
-     <lst name="defaults">
-       <str name="echoParams">explicit</str>
-       <str name="wt">json</str>
-       <str name="indent">true</str>
-       <str name="df">text</str>
-     </lst>
-  </requestHandler>
- -->
   <!-- Update Request Handler.
 
        http://wiki.apache.org/solr/UpdateXmlMessages
@@ -737,7 +689,7 @@
        http://wiki.apache.org/solr/ExtractingRequestHandler
 
     -->
-<!-- KILL
+<!-- TODO: Enable SolrCell
   <requestHandler name="/update/extract"
                   startup="lazy"
                   class="solr.extraction.ExtractingRequestHandler" >
@@ -770,11 +722,10 @@
            field value analysis will be marked as "matched" for every
            token that is produces by the query analysis
    -->
-<!-- KILL
+
   <requestHandler name="/analysis/field"
                   startup="lazy"
                   class="solr.FieldAnalysisRequestHandler" />
- -->
 
   <!-- Document Analysis Handler
 
@@ -806,11 +757,11 @@
     true, all field tokens that match the query tokens will be marked
     as a "match".
   -->
-<!-- KILL
+
   <requestHandler name="/analysis/document"
                   class="solr.DocumentAnalysisRequestHandler"
                   startup="lazy" />
- -->
+
   <!-- Admin Handlers
 
        Admin Handlers - This will register all the standard admin
@@ -856,15 +807,6 @@
     <!-- <str name="healthcheckFile">server-enabled.txt</str> -->
   </requestHandler>
 
-  <!-- Echo the request contents back to the client -->
-<!-- KILL removing for now, but perhaps this could be useful
-  <requestHandler name="/debug/dump" class="solr.DumpRequestHandler" >
-    <lst name="defaults">
-     <str name="echoParams">explicit</str>
-     <str name="echoHandler">true</str>
-    </lst>
-  </requestHandler>
- -->
   <!-- Search Components
 
        Search components are registered to SolrCore and used by
@@ -984,35 +926,6 @@
        already specified request handlers.
     -->
 
-<!-- KILL
-  <requestHandler name="/clustering"
-                  startup="lazy"
-                  enable="${solr.clustering.enabled:false}"
-                  class="solr.SearchHandler">
-    <lst name="defaults">
-      <bool name="clustering">true</bool>
-      <str name="clustering.engine">default</str>
-      <bool name="clustering.results">true</bool>
-      <str name="carrot.title">name</str>
-      <str name="carrot.url">id</str>
-       <str name="carrot.snippet">features</str>
-       <bool name="carrot.produceSummary">true</bool>
-       <bool name="carrot.outputSubClusters">false</bool>
-
-       <str name="defType">edismax</str>
-       <str name="qf">
-         text^0.5 features^1.0 name^1.2 sku^1.5 id^10.0 manu^1.1 cat^1.4
-       </str>
-       <str name="q.alt">*:*</str>
-       <str name="rows">10</str>
-       <str name="fl">*,score</str>
-    </lst>
-    <arr name="last-components">
-      <str>clustering</str>
-    </arr>
-  </requestHandler>
- -->
-
   <!-- Terms Component
 
        http://wiki.apache.org/solr/TermsComponent
@@ -1023,7 +936,6 @@
   <searchComponent name="terms" class="solr.TermsComponent"/>
 
   <!-- A request handler for demonstrating the terms component -->
-<!-- KILL
   <requestHandler name="/terms" class="solr.SearchHandler" startup="lazy">
      <lst name="defaults">
       <bool name="terms">true</bool>
@@ -1032,7 +944,7 @@
       <str>terms</str>
     </arr>
   </requestHandler>
- -->
+
   <!-- Highlighting Component
 
        http://wiki.apache.org/solr/HighlightingParameters
