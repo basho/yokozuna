@@ -21,6 +21,6 @@
     <core schema="_yz_default.xml"
           instanceDir="_yz_default"
           name="_yz_default"
-          config="config.xml"/>
+          config="solrconfig.xml"/>
   </cores>
 </solr>
