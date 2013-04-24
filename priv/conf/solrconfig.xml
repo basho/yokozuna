@@ -541,7 +541,8 @@
 
       -->
     <requestParsers enableRemoteStreaming="false"
-                    multipartUploadLimitInKB="2048000" />
+                    multipartUploadLimitInKB="2048000"
+                    formdataUploadLimitInKB="102400"/>
 
     <!-- HTTP Caching
 
