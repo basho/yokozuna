@@ -166,8 +166,9 @@ index(Core, Docs) ->
     end.
 
 prepare_json(Docs) ->
-    Content = {struct, [{add, encode_doc(D)} || D <- Docs]},
-    mochijson2:encode(Content).
+    %% Content = {struct, [{add, encode_doc(D)} || D <- Docs]},
+    %% mochijson2:encode(Content).
+    mochijson2:encode([{add, Docs}]).
 
 %% @doc Return the set of unique partitions stored on this node.
 -spec partition_list(string()) -> binary().
@@ -285,23 +286,7 @@ encode_delete({id, Id}) ->
     mochijson2:encode({struct, [{delete, {struct, [{id, Id}]}}]}).
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}] };
-
-encode_doc({doc, Boost, Fields}) ->
-	{struct, [{doc, [{boost, Boost}], lists:map(fun encode_field/1, Fields)}]}.
-
-% encode_field({Name,Value}) when is_binary(Value) ->
-%     {Name, Value};
-
-encode_field({Name,Value}) when is_list(Value) ->
-    {Name, list_to_binary(Value)};
-
-encode_field({Name,Value}) ->
-    {Name, Value};
-
-encode_field({Name,Value,Boost}) ->
-    FieldContent = {struct, [{boost, Boost}, {value, Value}]},
-    {struct, [{Name, FieldContent}]}.
+    {struct, [{doc, {struct, Fields}}]}.
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->

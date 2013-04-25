@@ -199,7 +199,7 @@
 %%%===================================================================
 
 -type field_name() :: atom() | binary().
--type field_value() :: binary().
+-type field_value() :: binary() | number() | boolean().
 -type field() :: {field_name(), field_value()}.
 -type fields() :: [field()].
 -type doc() :: {doc, fields()}.
