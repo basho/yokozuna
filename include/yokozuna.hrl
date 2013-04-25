@@ -112,7 +112,7 @@
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
--define(YZ_DEFAULT_SOLR_VM_ARGS, ["-XX:+UseStringCache","-XX:+UseCompressedStrings","-XX:+UseCompressedOops","-Xms1g","-Xmx1g"]).
+-define(YZ_DEFAULT_SOLR_VM_ARGS, []).
 -define(YZ_EVENTS_TAB, yz_events_tab).
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
