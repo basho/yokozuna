@@ -122,4 +122,8 @@ rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.tx
 cp solr.xml $dir
 cp *.properties $dir
 
+# Copy jars required for Solr Cell support
+cp -v $src_dir/dist/solr-cell* $dir/lib
+cp -v $src_dir/contrib/extraction/lib/* $dir/lib
+
 echo "Finished creating solr dir..."

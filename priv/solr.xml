@@ -16,7 +16,7 @@
  limitations under the License.
 -->
 
-<solr persistent="true">
+<solr persistent="true" sharedLib="lib">
   <cores adminPath="/admin/cores">
     <core schema="_yz_default.xml"
           instanceDir="_yz_default"

@@ -685,11 +685,8 @@
 
 
   <!-- Solr Cell Update Request Handler
-
        http://wiki.apache.org/solr/ExtractingRequestHandler
-
     -->
-<!-- TODO: Enable SolrCell
   <requestHandler name="/update/extract"
                   startup="lazy"
                   class="solr.extraction.ExtractingRequestHandler" >
@@ -702,7 +699,6 @@
       <str name="fmap.div">ignored_</str>
     </lst>
   </requestHandler>
- -->
 
   <!-- Field Analysis Request Handler
 
