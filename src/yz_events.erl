@@ -220,7 +220,7 @@ node_ops(Mapping, Nodes) ->
 
 -spec remove_index(index_name()) -> ok.
 remove_index(Name) ->
-    case yz_index:exists(Name) of
+    case yz_solr:ping(Name) of
         true -> ok = yz_index:local_remove(Name);
         false -> ok
     end.
