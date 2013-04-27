@@ -38,15 +38,6 @@ wait_for_joins(Cluster) ->
     rt:wait_until_nodes_ready(Cluster),
     rt:wait_until_no_pending_changes(Cluster).
 
-%% @doc Confirm a custom schema may be added.
-confirm_create_schema(Cluster, Name, RawSchema) ->
-    HP = select_random(host_entries(rt:connection_info(Cluster))),
-    lager:info("confirm_create_schema ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
-    Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, _} = http(put, URL, Headers, RawSchema),
-    ?assertEqual("204", Status).
-
 select_random(List) ->
     Length = length(List),
     Idx = random:uniform(Length),
