@@ -62,16 +62,37 @@ confirm_delete(Cluster, Index) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_delete ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
-    %% Don't use confirm_get of confirm_404 here as want to hit the
-    %% same node, otherwise have to sleep for ring propagation.
-    %% Should look into storing the index list in Riak now that PR/PW
-    %% has been fixed.
-    {ok, Status1, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
-    ?assertEqual("200", Status1),
+
+    Suffix = "yz/index/" ++ Index,
+    Is200 = is_status("200", get, Suffix, ?NO_HEADERS, ?NO_BODY),
+    [ ?assertEqual(ok, rt:wait_until(Node, Is200)) || Node <- Cluster],
+
+    %% Only run DELETE on one node
     {ok, Status2, _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status2),
-    {ok, Status3, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
-    ?assertEqual("404", Status3).
+
+    Is404 = is_status("404", get, Suffix, ?NO_HEADERS, ?NO_BODY),
+    [ ?assertEqual(ok, rt:wait_until(Node, Is404)) || Node <- Cluster],
+
+    %% Verify the index dir was removed from disk as well
+    [ ?assertEqual(ok, rt:wait_until(Node, is_deleted("data/yz/" ++ Index)))
+      || Node <- Cluster].
+
+is_status(ExpectedStatus, Method, URLSuffix, Headers, Body) ->
+    fun(Node) ->
+            HP = hd(host_entries(rt:connection_info([Node]))),
+            URL = url(HP, URLSuffix),
+            lager:info("checking for expected status ~p from ~p ~p",
+                       [ExpectedStatus, Method, URL]),
+            {ok, Status, _, _} = http(Method, URL, Headers, Body),
+            ExpectedStatus == Status
+    end.
+
+is_deleted(Dir) ->
+    fun(Node) ->
+            lager:info("checking if dir ~p is deleted for node ~p", [Dir, Node]),
+            not rpc:call(Node, filelib, is_dir, [Dir])
+    end.
 
 confirm_get(Cluster, Index) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
@@ -117,6 +138,9 @@ index_list_url({Host, Port}) ->
 
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
+
+url({Host,Port}, Suffix) ->
+    ?FMT("http://~s:~B/~s", [Host, Port, Suffix]).
 
 join(Nodes) ->
     [NodeA|Others] = Nodes,
