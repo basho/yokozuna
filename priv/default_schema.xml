@@ -105,6 +105,9 @@
    <dynamicField name="*_ig" type="ignored" multiValued="true"/>
    <dynamicField name="random_*" type="random" />
 
+   <!-- catch-all field -->
+   <dynamicField name="*" type="text_general" indexed="true" stored="false" multiValued="true" />
+
    <field name="_yz_id" type="_yz_str" indexed="true" stored="true" required="true"/>
 
    <!-- Entropy Data: Data related to anti-entropy -->
