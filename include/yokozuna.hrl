@@ -100,6 +100,10 @@
 %%% Macros
 %%%===================================================================
 
+-define(IF(Expression, Action),
+        if Expression -> Action, ok;
+           true -> ok
+        end).
 -define(ATOM_TO_BIN(A), list_to_binary(atom_to_list(A))).
 -define(BIN_TO_INT(B), list_to_integer(binary_to_list(B))).
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
