@@ -7,8 +7,20 @@
 -compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {pb_conns, index, iurls, surls}).
+-record(state, {fruits, pb_conns, index, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
+-define(M1, 1000000).
+-define(K100, 100000).
+-define(K10, 10000).
+-define(K1, 1000).
+-define(FRUITS,
+        [{?M1, "blueberry apricot guava feijoa jackfruit jambul"},
+         {?K100, "apple grape orange pineapple strawberry kiwi"},
+         {?K10, "avocado raspberry persimmon blackberry cherry tomato"},
+         {?K1, "clementine lime lemon melon plum pear"},
+         {100, "marang nutmeg olive pecan peanut tangerine"},
+         {10, "nunga nance mulberry langsat karonda kumquat"},
+         {1, "korlan jocote genip elderberry citron jujube"}]).
 
 %% ====================================================================
 %% API
@@ -60,6 +72,27 @@ run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
         {_, {error, Reason}} ->
             {error, Reason, S2}
     end;
+
+run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=undefined}) ->
+    %% Make a list of shuffled fruits to use for qurying
+    Fruits = lists:append([string:tokens(X, " ")
+                           || {C,X} <- ?FRUITS, C =< MaxCardinality]),
+    Fruits2 = lists:keysort(1, [{random:uniform(1000), X} || X <- Fruits]),
+    Fruits3 = [X || {_,X} <- Fruits2],
+    lager:debug("Fruits: ~p", [Fruits3]),
+    %% Double it to fake wrap-around (for Offset + NumTerms > length(Fruits))
+    Fruits4 = Fruits3 ++ Fruits3,
+    S2 = S#state{fruits={length(Fruits3), Fruits4}},
+    run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
+
+run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits}}) ->
+    %% Select a random number of terms, NumTerms, from the shuffled
+    %% Fruits list.
+    NumTerms = random:uniform(MaxTerms),
+    Offset = random:uniform(Len),
+    TermList = lists:sublist(Fruits, Offset, NumTerms),
+    Query = string:join(TermList, " AND "),
+    run({search, Query, FL}, K, V, S);
 
 run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
@@ -136,20 +169,6 @@ mfa_valgen_i(index) ->
         Val ->
             Val
     end.
-
--define(M1, 1000000).
--define(K100, 100000).
--define(K10, 10000).
--define(K1, 1000).
-
--define(FRUITS,
-        [{?M1, "blueberry apricot guava feijoa jackfruit jambul"},
-         {?K100, "apple grape orange pineapple strawberry kiwi"},
-         {?K10, "avocado raspberry persimmon blackberry cherry tomato"},
-         {?K1, "clementine lime lemon melon plum pear"},
-         {100, "marang nutmeg olive pecan peanut tangerine"},
-         {10, "nunga nance mulberry langsat karonda kumquat"},
-         {1, "korlan jocote genip elderberry citron jujube"}]).
 
 key_range(Id, NumKeys, NumWorkers) ->
     Range = NumKeys div NumWorkers,
