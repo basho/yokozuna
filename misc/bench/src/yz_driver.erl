@@ -155,10 +155,10 @@ valgen_i(search) ->
     yz_file_terms:get_ft().
 
 mfa_valgen(Id, LoadMFA, ReadMFA) ->
-    N = basho_bench_config:get(concurrent),
-    if Id == N ->
+    if Id == 1 ->
             {ok, _} = yz_file_terms:start_mfa(LoadMFA, ReadMFA);
-       true -> ok
+       true ->
+            ok
     end,
     fun ?MODULE:mfa_valgen_i/1.
 
