@@ -22,6 +22,7 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
+-define(YZ_HEAD_FPROF, "yz-fprof").
 
 %%%===================================================================
 %%% API
@@ -69,6 +70,8 @@ process_post(Req, S) ->
     end.
 
 search(Req, S) ->
+    {FProf, FProfFile} = check_for_fprof(Req),
+    ?IF(FProf, fprof:trace(start, FProfFile)),
     Index = wrq:path_info(index, Req),
     Params = wrq:req_qs(Req),
     Mapping = yz_events:get_mapping(),
@@ -77,6 +80,7 @@ search(Req, S) ->
         {RespHeaders, Body} = yz_solr:dist_search(Index, ReqHeaders,
                                                   Params, Mapping),
         Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
+        ?IF(FProf, fprof_analyse(FProfFile)),
         {Body, Req2, S}
     catch
         throw:not_found ->
@@ -97,3 +101,14 @@ scrub_headers(RespHeaders) ->
     %% Solr returns as chunked but not going to return as chunked from
     %% Yokozuna.
     lists:keydelete("Transfer-Encoding", 1, RespHeaders).
+
+check_for_fprof(Req) ->
+    case wrq:get_req_header(?YZ_HEAD_FPROF, Req) of
+        undefined -> {false, none};
+        File -> {true, File}
+    end.
+
+fprof_analyse(FileName) ->
+    fprof:trace(stop),
+    fprof:profile(file, FileName),
+    fprof:analyse([{dest, FileName ++ ".analysis"}, {cols, 120}]).

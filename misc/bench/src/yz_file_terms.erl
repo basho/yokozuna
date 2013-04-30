@@ -11,7 +11,7 @@
 
 -include_lib("basho_bench/include/basho_bench.hrl").
 -define(MB, 1048576).
--record(state, {cache, i, fields, file, read_mfa, schema}).
+-record(state, {cache, i, fields, file, finished=false, read_mfa, schema}).
 
 -type field() :: binary().
 -type sterm() :: binary().
@@ -66,6 +66,9 @@ init([Path]) ->
     {ok, F} = file:open(Path, [read, raw, binary, {read_ahead, ?MB}]),
     {ok, #state{cache=[], i=1, file=F}}.
 
+handle_call(_, _, S=#state{finished=true}) ->
+    {reply, finished, S};
+
 handle_call({read_mfa, Op}, _From, S) ->
     Cache = S#state.cache,
     {M, F, A} = S#state.read_mfa,
@@ -73,8 +76,9 @@ handle_call({read_mfa, Op}, _From, S) ->
         {KeyValue, Cache2} ->
             {reply, KeyValue, S#state{cache=Cache2}};
         finished ->
-            gen_server:reply(_From, finished),
-            {stop, normal, S#state{cache=finished}}
+            %% Rather than stop the server stay up so that all workers
+            %% can see 'finished' state and shutdown properly.
+            {reply, finished, S#state{finished=true}}
     end;
 
 handle_call({ft, N}, _From, S=#state{cache=[],
