@@ -27,7 +27,6 @@
           content :: binary(),
           extractor_name :: extractor_name()
          }).
--define(YZ_HEAD_EXTRACTOR, "yz-extractor").
 
 routes() ->
     [{["extract"], yz_wm_extract, []}].
@@ -40,7 +39,7 @@ allowed_methods(RD, S) ->
     {Methods, RD, S}.
 
 malformed_request(RD, S) ->
-    E = wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD),
+    E = list_to_atom(wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD)),
     CT = wrq:get_req_header(?HEAD_CTYPE, RD),
     Content = wrq:req_body(RD),
 
@@ -61,7 +60,7 @@ malformed_request(RD, S) ->
 %% Accept the mime-type provided by user, if one is not provided use
 %% extractor specified in header.
 content_types_accepted(RD, S) ->
-    E = wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD),
+    E = list_to_atom(wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD)),
     CT = wrq:get_req_header(?HEAD_CTYPE, RD),
 
     case {E, CT} of
