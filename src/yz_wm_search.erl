@@ -22,10 +22,6 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
--record(state, {
-          fprof=false,
-          fprof_file=undefined
-         }).
 -define(YZ_HEAD_FPROF, "yz-fprof").
 
 %%%===================================================================
@@ -43,7 +39,7 @@ routes() ->
 %%%===================================================================
 
 init(_) ->
-    {ok, #state{}}.
+    {ok, none}.
 
 allowed_methods(Req, S) ->
     Methods = ['GET', 'POST'],
@@ -59,11 +55,7 @@ service_available(Req, S) ->
         true -> false;
         _    -> true
     end,
-    S2 = case wrq:get_req_header(?YZ_HEAD_FPROF, Req) of
-             undefined -> S;
-             File -> S#state{fprof=true, fprof_file=File}
-         end,
-    {Available, Req, S2}.
+    {Available, Req, S}.
 
 %% Treat POST as GET in order to work with existing Solr clients.
 process_post(Req, S) ->
@@ -78,8 +70,7 @@ process_post(Req, S) ->
     end.
 
 search(Req, S) ->
-    FProf = S#state.fprof,
-    FProfFile = S#state.fprof_file,
+    {FProf, FProfFile} = check_for_fprof(Req),
     ?IF(FProf, fprof:trace(start, FProfFile)),
     Index = wrq:path_info(index, Req),
     Params = wrq:req_qs(Req),
@@ -110,6 +101,12 @@ scrub_headers(RespHeaders) ->
     %% Solr returns as chunked but not going to return as chunked from
     %% Yokozuna.
     lists:keydelete("Transfer-Encoding", 1, RespHeaders).
+
+check_for_fprof(Req) ->
+    case wrq:get_req_header(?YZ_HEAD_FPROF, Req) of
+        undefined -> {false, none};
+        File -> {true, File}
+    end.
 
 fprof_analyse(FileName) ->
     fprof:trace(stop),
