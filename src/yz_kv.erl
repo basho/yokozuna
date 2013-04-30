@@ -223,7 +223,10 @@ set_index_flag(Bucket, Bool) ->
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
 put(Client, Bucket, Key, Value, ContentType) ->
     O = riak_object:new(Bucket, Key, Value, ContentType),
-    Client:put(O, [{pw,3},{w,3},{dw,3}]).
+    Ring = yz_misc:get_ring(transformed),
+    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    N = proplists:get_value(n_val, BucketProps),
+    Client:put(O, [{pw,N},{w,N},{dw,N}]).
 
 %%%===================================================================
 %%% Private
