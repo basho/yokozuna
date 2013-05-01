@@ -25,7 +25,7 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
+    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Nodes = rt:deploy_nodes(4, ?CFG),

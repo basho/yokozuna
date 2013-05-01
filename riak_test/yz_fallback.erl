@@ -14,7 +14,7 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
+    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     Cluster = rt:build_cluster(2, ?CFG),
     create_index(Cluster, ?INDEX),
