@@ -13,7 +13,7 @@
 -define(NO_BODY, <<>>).
 
 confirm() ->
-    YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
+    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = prepare_cluster(4),
