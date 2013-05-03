@@ -55,15 +55,13 @@ encode(Message) ->
 
 %% @doc process/2 callback. Handles an incoming request message.
 process(Msg, #state{client=_Client}=State) ->
-    #rpbsearchqueryreq{index=IndexBin, sort=_Sort0,
-                       fl=_FL0, presort=_Presort0}=Msg,
+    #rpbsearchqueryreq{index=IndexBin}=Msg,
     case extract_params(Msg) of
         {ok, Params} ->
             Mapping = yz_events:get_mapping(),
             Index = binary_to_list(IndexBin),
             try
                 {_Headers, Body} = yz_solr:dist_search(Index,
-                                                       [{content_type, "application/json"}],
                                                        Params,
                                                        Mapping),
                 R = mochijson2:decode(Body),
@@ -83,7 +81,12 @@ process(Msg, #state{client=_Client}=State) ->
                     ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
                     {error, ErrMsg, State};
                 throw:insufficient_vnodes_available ->
-                    {error, ?YZ_ERR_NOT_ENOUGH_NODES, State}
+                    {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
+                throw:{Message, URL, Err} ->
+                    ?INFO("~p ~p ~p~n", [Message, URL, Err]),
+                    {error, Message, State};
+                _:_ ->
+                    {error, ?YZ_ERR_QUERY_FAILURE, State}
             end;
         {error, missing_query} ->
             {error, "Missing query", State}
@@ -99,21 +102,28 @@ process_stream(_,_,State) ->
 
 extract_params(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};
-extract_params(#rpbsearchqueryreq{q=Query,
+extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
                                 rows=Rows, start=Start,
-                                filter=Filter,
-                                df=DefaultField, op=_DefaultOp}) ->
+                                filter=Filter, fl=FilterList,
+                                df=DefaultField, op=DefaultOp}) ->
     {ok, [{q, Query},
           {wt, "json"},
           {omitHeader, true},
+          {'q.op', default(DefaultOp, "AND")},
+          {sort, default(Sort, "")},
           {fq, default(Filter, "")},
-          {fl, <<"*,score">>},
+          {fl, default(FilterList, <<"*,score">>)},
           {df, default(DefaultField, "")},
           {start, default(Start, 0)},
           {rows, default(Rows, 10)}]}.
 
 default(undefined, Default) ->
     Default;
+default([], Default) ->
+    Default;
+default([H|T], _) ->
+    unicode:characters_to_binary(
+      string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ","));
 default(Value, _) ->
     Value.
 
@@ -124,4 +134,4 @@ to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
 to_binary(B) when is_binary(B) -> B;
 to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
 to_binary(F) when is_float(F) -> to_binary(float_to_list(F));
-to_binary(L) when is_list(L) -> list_to_binary(L).
+to_binary(L) when is_list(L) -> unicode:characters_to_binary(L).

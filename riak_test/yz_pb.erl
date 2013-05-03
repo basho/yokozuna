@@ -1,6 +1,3 @@
-%% Running this test requires the `riak-erlang-client' project
-%% in the yokozuna/deps directory.
-
 %% @doc Test the index adminstration API in various ways.
 -module(yz_pb).
 -compile(export_all).
@@ -11,18 +8,13 @@
 -define(NO_BODY, <<>>).
 
 confirm() ->
-    case riak_client_exists() of
-        true ->
-            YZBenchDir = rt:get_os_env("YZ_BENCH_DIR"),
-            code:add_path(filename:join([YZBenchDir, "ebin"])),
-            random:seed(now()),
-            Cluster = prepare_cluster(4),
-            confirm_basic_search(Cluster),
-            confirm_encoded_search(Cluster),
-            pass;
-        _ ->
-            pass
-    end.
+    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
+    code:add_path(filename:join([YZBenchDir, "ebin"])),
+    random:seed(now()),
+    Cluster = prepare_cluster(4),
+    confirm_basic_search(Cluster),
+    confirm_encoded_search(Cluster),
+    pass.
 
 
 prepare_cluster(NumNodes) ->
@@ -76,10 +68,10 @@ create_index(HP, Index) ->
     timer:sleep(4000),
     ?assertEqual("204", Status).
 
-store_and_search(Cluster, Bucket, Body, Search) ->
+store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     create_index(HP, Bucket),
-    URL = bucket_url(HP, Bucket, "test"),
+    URL = bucket_url(HP, Bucket, Key),
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     %% populate a value
@@ -89,7 +81,7 @@ store_and_search(Cluster, Bucket, Body, Search) ->
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     lager:info("search_results"),
     {ok,{search_results,[{Bucket,Results}],Score,Found}} =
-            riakc_pb_socket:search(Pid, Bucket, Search),
+            riakc_pb_socket:search(Pid, Bucket, Search, Params),
     Bucket == binary_to_list(proplists:get_value(<<"_yz_rk">>, Results)),
     Found == 1,
     ok.
@@ -98,17 +90,12 @@ confirm_basic_search(Cluster) ->
     Bucket = "basic",
     lager:info("confirm_basic_search ~s", [Bucket]),
     Body = "herp derp",
-    store_and_search(Cluster, Bucket, Body, <<"text:herp">>).
+    Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
+    store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
 
 confirm_encoded_search(Cluster) ->
     Bucket = "encoded",
     lager:info("confirm_encoded_search ~s", [Bucket]),
     Body = "א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ",
-    store_and_search(Cluster, Bucket, Body, <<"text:בָּרָא">>).
-
-riak_client_exists() ->
-    try riakc_pb_socket:module_info() of
-        _InfoList -> true
-    catch
-        _:_       -> false
-    end.
+    Params = [{sort, <<"score desc">>}, {fl, ["_yz_rk"]}],
+    store_and_search(Cluster, Bucket, "וְאֵת", Body, <<"text:בָּרָא">>, Params).
