@@ -226,7 +226,7 @@ partition(LogicalIndex, LP) ->
 %% @doc Schedule next tick to be sent to this server.
 -spec schedule_tick() -> ok.
 schedule_tick() ->
-    erlang:send_after(2000, ?MODULE, tick),
+    erlang:send_after(?YZ_COVER_TICK_INTERVAL, ?MODULE, tick),
     ok.
 
 %% @private

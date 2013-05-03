@@ -114,6 +114,7 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+-define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
