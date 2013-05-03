@@ -90,6 +90,11 @@ search(Req, S) ->
             ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
                                         ErrReq),
             {{halt, 404}, ErrReq2, S};
+        throw:{solr_error, {Code, _URL, Err}} ->
+            ErrReq = wrq:append_to_response_body(Err, Req),
+            ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
+                                        ErrReq),
+            {{halt, Code}, ErrReq2, S};
         throw:insufficient_vnodes_available ->
             ErrReq = wrq:set_resp_header("Content-Type", "text/plain", Req),
             ErrReq2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n",

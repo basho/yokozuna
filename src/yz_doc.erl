@@ -94,12 +94,17 @@ extract_fields({MD, V}) ->
         false ->
             CT = yz_kv:get_obj_ct(MD),
             ExtractorDef = yz_extractor:get_def(CT, [check_default]),
-            case yz_extractor:run(V, ExtractorDef) of
-                {error, Reason} ->
-                    ?ERROR("failed to index with reason ~s~nValue: ~s", [Reason, V]),
-                    {error, Reason};
-                Fields ->
-                    Fields
+            try
+                case yz_extractor:run(V, ExtractorDef) of
+                    {error, Reason} ->
+                        ?WARN("failed to index fields from value with reason ~s~nValue: ~s", [Reason, V]),
+                        [{?YZ_ERR_FIELD_S, 1}];
+                    Fields ->
+                        Fields
+                end
+            catch _:Err ->
+                ?ERROR("failed to index fields from value with reason ~s~nValue: ~s", [Err, V]),
+                [{?YZ_ERR_FIELD_S, 1}]
             end;
         true ->
             []

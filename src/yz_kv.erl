@@ -169,9 +169,9 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
         ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
                              P, IdxN, BKey)
     catch _:Err ->
-            ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
-    end,
-    ok.
+        ?ERROR("failed to index object ~p with error ~p", [BKey, Err]),
+        {error, Err}
+    end.
 
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
