@@ -119,6 +119,7 @@
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_DEFAULT_SOLR_VM_ARGS, []).
+-define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_EVENTS_TAB, yz_events_tab).
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
