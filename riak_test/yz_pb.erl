@@ -82,8 +82,11 @@ store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     lager:info("search_results"),
     {ok,{search_results,[{Bucket,Results}],Score,Found}} =
             riakc_pb_socket:search(Pid, Bucket, Search, Params),
-    Bucket == binary_to_list(proplists:get_value(<<"_yz_rk">>, Results)),
-    Found == 1,
+    ?assertEqual(
+        Key,
+        binary_to_list(proplists:get_value(<<"_yz_rk">>, Results))),
+    ?assertEqual(Found, 1),
+    ?assertNot(Score == 0.0),
     ok.
 
 confirm_basic_search(Cluster) ->

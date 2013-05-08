@@ -85,7 +85,8 @@ process(Msg, #state{client=_Client}=State) ->
                 throw:{Message, URL, Err} ->
                     ?INFO("~p ~p ~p~n", [Message, URL, Err]),
                     {error, Message, State};
-                _:_ ->
+                _:Content ->
+                    ?ERROR("~p~n", [Content]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}
             end;
         {error, missing_query} ->
@@ -104,7 +105,7 @@ extract_params(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};
 extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
                                 rows=Rows, start=Start,
-                                filter=Filter, fl=FilterList,
+                                filter=Filter, fl=FieldList,
                                 df=DefaultField, op=DefaultOp}) ->
     {ok, [{q, Query},
           {wt, "json"},
@@ -112,7 +113,7 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
           {'q.op', default(DefaultOp, "AND")},
           {sort, default(Sort, "")},
           {fq, default(Filter, "")},
-          {fl, default(FilterList, <<"*,score">>)},
+          {fl, default(FieldList, <<"*,score">>)},
           {df, default(DefaultField, "")},
           {start, default(Start, 0)},
           {rows, default(Rows, 10)}]}.
@@ -134,4 +135,12 @@ to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
 to_binary(B) when is_binary(B) -> B;
 to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
 to_binary(F) when is_float(F) -> to_binary(float_to_list(F));
-to_binary(L) when is_list(L) -> unicode:characters_to_binary(L).
+to_binary(L) when is_list(L) ->
+  [H|_] = L,
+  %% If the first item in the list is an integer, we
+  %% assume this is a string
+  %% TODO: What about lists of integers?
+  case is_integer(H) of
+      true  -> unicode:characters_to_binary(L);
+      false -> [to_binary(V) || V <- L]
+  end.
