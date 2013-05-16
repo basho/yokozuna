@@ -34,6 +34,7 @@
          encode/1,
          process/2,
          process_stream/3]).
+-compile(export_all).
 
 -import(riak_pb_search_codec, [encode_search_doc/1]).
 
@@ -85,8 +86,9 @@ process(Msg, #state{client=_Client}=State) ->
                 throw:{Message, URL, Err} ->
                     ?INFO("~p ~p ~p~n", [Message, URL, Err]),
                     {error, Message, State};
-                _:Content ->
-                    ?ERROR("~p~n", [Content]),
+                _:Reason ->
+		    Trace = erlang:get_stacktrace(),
+                    ?ERROR("~p ~p~n", [Reason, Trace]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}
             end;
         {error, missing_query} ->
@@ -129,18 +131,16 @@ default(Value, _) ->
     Value.
 
 encode_doc(Doc) ->
-    riak_pb_search_codec:encode_search_doc([{Prop, to_binary(Value)} || {Prop, Value} <- Doc]).
+    EncodedDoc = lists:foldl(fun ?MODULE:encode_field/2, [], Doc),
+    riak_pb_search_codec:encode_search_doc(EncodedDoc).
 
-to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
+encode_field({Prop, Val}, EncodedDoc) when is_list(Val) ->
+    %% if `Val' is list then dealing with multi-valued field
+    MultiVals = [{Prop, to_binary(V)} || V <- Val],
+    MultiVals ++ EncodedDoc;
+encode_field({Prop, V}, EncodedDoc) ->
+    [{Prop, to_binary(V)}|EncodedDoc].
+
 to_binary(B) when is_binary(B) -> B;
-to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
-to_binary(F) when is_float(F) -> to_binary(float_to_list(F));
-to_binary(L) when is_list(L) ->
-  [H|_] = L,
-  %% If the first item in the list is an integer, we
-  %% assume this is a string
-  %% TODO: What about lists of integers?
-  case is_integer(H) of
-      true  -> unicode:characters_to_binary(L);
-      false -> [to_binary(V) || V <- L]
-  end.
+to_binary(I) when is_integer(I) -> list_to_binary(integer_to_list(I));
+to_binary(F) when is_float(F) -> list_to_binary(float_to_list(F)).
