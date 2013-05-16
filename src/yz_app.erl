@@ -24,6 +24,9 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 
+%% 27 is message type rpbsearchqueryreq
+%% 28 is message type rpbsearchqueryresp
+-define(SERVICES, [{yz_pb_search, 27, 28}]).
 
 %%%===================================================================
 %%% Callbacks
@@ -41,6 +44,7 @@ start(_StartType, _StartArgs) ->
     end.
 
 stop(_State) ->
+    ok = riak_api_pb_service:deregister(?SERVICES),
     ok.
 
 maybe_setup(false, _) ->
@@ -49,6 +53,7 @@ maybe_setup(true, SupPid) ->
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
+    ok = riak_api_pb_service:register(?SERVICES),
     riak_core_node_watcher:service_up(yokozuna, SupPid),
     ok.
 
