@@ -321,6 +321,13 @@ get_pairs(R) ->
 to_pair({struct, [{_,Bucket},{_,Key},{_,Base64Hash}]}) ->
     {{Bucket,Key}, base64:decode(Base64Hash)}.
 
+get_doc_pairs(Resp) ->
+    Docs = json_get_key(<<"docs">>, Resp),
+    [to_doc_pairs(DocStruct) || DocStruct <- Docs].
+
+to_doc_pairs({struct, Values}) ->
+    Values.
+
 get_path({struct, PL}, Path) ->
     get_path(PL, Path);
 get_path(PL, [Name]) ->

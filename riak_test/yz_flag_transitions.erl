@@ -15,6 +15,7 @@
           ]},
          {yokozuna,
           [
+	   {enabled, true},
            {entropy_tick, 1000}
           ]},
          {lager,

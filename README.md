@@ -43,14 +43,18 @@ Yokozuna is merely an extension to Riak.  This means that the basics
 of running and administrating Riak are no different than a vanilla
 build.  The following instructions assume a devrel.
 
-1. Start the nodes.  After this has complete `ps` should show 4
+1. Enable Yokozuna. By default, Yokozuna is disabled, and you toggle this by changing the enabled flag to true.
+
+        for d in dev/dev*; do sed -e '/{yokozuna,/,/]}/{s/{enabled, false}/{enabled, true}/;}' -i.back $d/etc/app.config; done
+
+2. Start the nodes.  After this has complete `ps` should show 4
    `beam.smp` processes and 4 `java` processes.  The Solr instances
    should be listening on ports 10016, 10026, 10036, and 10046.
 
         for d in dev/dev*; do $d/bin/riak start; done
         for d in dev/dev*; do $d/bin/riak ping; done
 
-2. Form a cluster.
+3. Form a cluster.
 
         for d in dev/dev{2,3,4}; do $d/bin/riak-admin cluster join dev1@127.0.0.1; done
         ./dev/dev1/bin/riak-admin cluster plan

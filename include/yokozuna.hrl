@@ -135,6 +135,8 @@
         "Not enough nodes are up to service this request.").
 -define(YZ_ERR_INDEX_NOT_FOUND,
         "No index ~p found.").
+-define(YZ_ERR_QUERY_FAILURE,
+        "Query unsuccessful check the logs.").
 
 %%%===================================================================
 %%% Anti Entropy
