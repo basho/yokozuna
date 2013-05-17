@@ -108,8 +108,12 @@ add_filtering(N, Q, LPI, CS) ->
 %%      the plan-cache.
 -spec cache_plan(index_name()) -> ok.
 cache_plan(Index) ->
-    Plan = calc_plan(Index),
-    mochiglobal:put(list_to_atom(Index), Plan),
+    case calc_plan(Index) of
+        {error, _} ->
+            mochiglobal:put(list_to_atom(Index), undefined);
+        Plan ->
+            mochiglobal:put(list_to_atom(Index), Plan)
+    end,
     ok.
 
 %% @private
@@ -131,8 +135,8 @@ calc_plan(Index) ->
                                                  ReqId,
                                                  ?YZ_SVC_NAME),
     case Result of
-        {error, Error} ->
-            throw(Error);
+        {error, _} = Err ->
+            Err;
         {CoverSet, _} ->
             {_Partitions, Nodes} = lists:unzip(CoverSet),
             UniqNodes = lists:usort(Nodes),
