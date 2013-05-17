@@ -7,6 +7,7 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
+-define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(TEST_SCHEMA,
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
@@ -361,7 +362,7 @@ prepare_cluster(NumNodes) ->
     %% deploy_nodes/1 & /2
     %%
     %% Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Nodes = rt:deploy_nodes(NumNodes),
+    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
     Cluster = join(Nodes),
     yz_rt:wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),

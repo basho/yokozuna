@@ -6,6 +6,8 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
+-define(CFG, [{yokozuna, [{enabled, true}]}]).
+
 confirm() ->
     Cluster = prepare_cluster(4),
     confirm_create_index_1(Cluster),
@@ -148,11 +150,7 @@ join(Nodes) ->
     Nodes.
 
 prepare_cluster(NumNodes) ->
-    %% Note: may need to use below call b/c of diff between
-    %% deploy_nodes/1 & /2
-    %%
-    %% Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Nodes = rt:deploy_nodes(NumNodes),
+    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
     Cluster = join(Nodes),
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),

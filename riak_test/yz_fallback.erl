@@ -10,7 +10,11 @@
         [{riak_core,
           [
            {ring_creation_size, 16}
-          ]}
+          ]},
+	 {yokozuna,
+	  [
+	   {enabled, true}
+	  ]}
         ]).
 
 confirm() ->
