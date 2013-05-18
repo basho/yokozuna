@@ -62,32 +62,33 @@ process(Msg, #state{client=_Client}=State) ->
             Mapping = yz_events:get_mapping(),
             Index = binary_to_list(IndexBin),
             try
-                {_Headers, Body} = yz_solr:dist_search(Index,
-                                                       Params,
-                                                       Mapping),
-                R = mochijson2:decode(Body),
-                Resp = yz_solr:get_response(R),
-                Pairs = yz_solr:get_doc_pairs(Resp),
-                MaxScore = yz_solr:json_get_key(<<"maxScore">>, Resp),
-                NumFound = yz_solr:json_get_key(<<"numFound">>, Resp),
+                Result = yz_solr:dist_search(Index, Params, Mapping),
+                case Result of
+                    {error, insufficient_vnodes_available} ->
+                        {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
+                    {_Headers, Body} ->
+                        R = mochijson2:decode(Body),
+                        Resp = yz_solr:get_response(R),
+                        Pairs = yz_solr:get_doc_pairs(Resp),
+                        MaxScore = yz_solr:json_get_key(<<"maxScore">>, Resp),
+                        NumFound = yz_solr:json_get_key(<<"numFound">>, Resp),
 
-                RPBResp = #rpbsearchqueryresp{
-                    docs = [encode_doc(Doc) || Doc <- Pairs],
-                    max_score = MaxScore,
-                    num_found = NumFound
-                },
-                {reply, RPBResp, State}
+                        RPBResp = #rpbsearchqueryresp{
+                            docs = [encode_doc(Doc) || Doc <- Pairs],
+                            max_score = MaxScore,
+                            num_found = NumFound
+                        },
+                        {reply, RPBResp, State}
+                end
             catch
                 throw:not_found ->
                     ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
                     {error, ErrMsg, State};
-                throw:insufficient_vnodes_available ->
-                    {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
                 throw:{Message, URL, Err} ->
                     ?INFO("~p ~p ~p~n", [Message, URL, Err]),
                     {error, Message, State};
                 _:Reason ->
-		    Trace = erlang:get_stacktrace(),
+                    Trace = erlang:get_stacktrace(),
                     ?ERROR("~p ~p~n", [Reason, Trace]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}
             end;
