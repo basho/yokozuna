@@ -18,47 +18,10 @@ Riak in order to find the "top rank" documents for a given query.
 Getting Started
 ----------
 
-Since Yokozuna is a prototype it takes more work to get running than
-vanilla Riak.  If you are comfortable building Riak from source then
-you should be able to complete these steps.
+### Installing ###
 
-### Building ###
-
-1. Clone the Yokozuna branch of Riak
-
-        git clone -b yz-merge-1.3.0 git://github.com/basho/riak.git
-        cd riak
-
-2. Compile Riak and Yokozuna.
-
-        make
-
-3. Make a stage rel or stage devrel.
-
-        make stagedevrel
-
-### Running ###
-
-Yokozuna is merely an extension to Riak.  This means that the basics
-of running and administrating Riak are no different than a vanilla
-build.  The following instructions assume a devrel.
-
-1. Enable Yokozuna. By default, Yokozuna is disabled, and you toggle this by changing the enabled flag to true.
-
-        for d in dev/dev*; do sed -e '/{yokozuna,/,/]}/{s/{enabled, false}/{enabled, true}/;}' -i.back $d/etc/app.config; done
-
-2. Start the nodes.  After this has complete `ps` should show 4
-   `beam.smp` processes and 4 `java` processes.  The Solr instances
-   should be listening on ports 10016, 10026, 10036, and 10046.
-
-        for d in dev/dev*; do $d/bin/riak start; done
-        for d in dev/dev*; do $d/bin/riak ping; done
-
-3. Form a cluster.
-
-        for d in dev/dev{2,3,4}; do $d/bin/riak-admin cluster join dev1@127.0.0.1; done
-        ./dev/dev1/bin/riak-admin cluster plan
-        ./dev/dev1/bin/riak-admin cluster commit
+See the [INSTALL][] doc for installing Riak-Yokozuna and forming a
+development cluster.
 
 ### Creating an Index ###
 
@@ -89,3 +52,5 @@ about where your shards are located.  This also means you should be
 able to use any off-the-shelf Solr client to query Yokozuna.
 
     curl 'http://localhost:10018/search/name_of_index?q=text:Ryan'
+
+[INSTALL][]: https://github.com/basho/yokozuna/blob/master/docs/INSTALL.md
