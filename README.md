@@ -53,4 +53,4 @@ able to use any off-the-shelf Solr client to query Yokozuna.
 
     curl 'http://localhost:10018/search/name_of_index?q=text:Ryan'
 
-[INSTALL][]: https://github.com/basho/yokozuna/blob/master/docs/INSTALL.md
+[INSTALL]: https://github.com/basho/yokozuna/blob/master/docs/INSTALL.md
