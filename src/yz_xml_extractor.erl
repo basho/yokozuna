@@ -57,7 +57,6 @@ extract(Value, Opts) ->
 
 extract_fields(Data, State) ->
     Options = [{event_fun, fun sax_cb/3}, {event_state, State}],
-    %% TODO: warn if there is leftover data?
     case xmerl_sax_parser:stream(Data, Options) of
         {ok, State2, _Rest} ->
             State2#state.fields;

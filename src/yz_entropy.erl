@@ -38,7 +38,7 @@ iterate_entropy_data(Index, Filter, Fun) ->
     case yz_solr:ping(Index) of
         true ->
             DateTime = calendar:now_to_universal_time(os:timestamp()),
-            Before = to_datetime(minus_period(DateTime, [{mins, 5}])),
+            Before = to_iso8601(minus_period(DateTime, [{mins, 5}])),
             Filter2 = [{before, Before},
                        {continuation, none},
                        {limit, 100}|Filter],
@@ -75,11 +75,9 @@ minus_period(DateTime, Periods) ->
 
 %% @doc Convert `erlang:now/0' or calendar datetime type to an ISO8601
 %%      datetime.
-%%
-%% TODO: rename to_iso8601
--spec to_datetime(timestamp() | datetime()) -> iso8601().
-to_datetime({_Mega, _Secs, _Micro}=Now) ->
-    to_datetime(calendar:now_to_datetime(Now));
-to_datetime({{Year, Month, Day}, {Hour, Min, Sec}}) ->
+-spec to_iso8601(timestamp() | datetime()) -> iso8601().
+to_iso8601({_Mega, _Secs, _Micro}=Now) ->
+    to_iso8601(calendar:now_to_datetime(Now));
+to_iso8601({{Year, Month, Day}, {Hour, Min, Sec}}) ->
     list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
                                  [Year,Month,Day,Hour,Min,Sec])).
