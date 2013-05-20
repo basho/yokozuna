@@ -21,7 +21,7 @@
 -module(yz_sup).
 -behaviour(supervisor).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1]).
 
 
@@ -29,15 +29,19 @@
 %%% API
 %%%===================================================================
 
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start_link(Enabled) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [Enabled]).
 
 
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
 
-init(_Args) ->
+init([false]) ->
+    %% Yokozuna is disabled, start a supervisor without any children.
+    {ok, {{one_for_one, 5, 10}, []}};
+
+init([Enabled]) ->
     SolrProc = {yz_solr_proc_sup,
                 {yz_solr_proc_sup, start_link, []},
                 permanent, infinity, supervisor, [yz_solr_proc_sup]},
@@ -53,6 +57,10 @@ init(_Args) ->
                   {yz_entropy_mgr, start_link, []},
                   permanent, 5000, worker, [yz_entropy_mgr]},
 
-    Children = [SolrProc, Events, HashtreeSup, EntropyMgr],
+    Cover = {yz_cover,
+             {yz_cover, start_link, []},
+             permanent, 5000, worker, [yz_cover]},
+
+    Children = [SolrProc, Events, HashtreeSup, EntropyMgr, Cover],
 
     {ok, {{one_for_one, 5, 10}, Children}}.

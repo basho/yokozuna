@@ -20,6 +20,13 @@
 
 -module(yz_cover).
 -compile(export_all).
+-behavior(gen_server).
+-export([code_change/3,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         init/1,
+         terminate/2]).
 -include("yokozuna.hrl").
 
 %% @doc This module contains functionality related to creating
@@ -34,35 +41,52 @@ logical_partitions(Ring, Partitions) ->
     LI = logical_index(Ring),
     ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
 
+%% @doc Get the coverage plan for `Index'.
+-spec plan(index_name()) -> {term(), term()}.
 plan(Index) ->
-    Ring = yz_misc:get_ring(transformed),
-    Q = riak_core_ring:num_partitions(Ring),
-    BProps = riak_core_bucket:get_bucket(Index, Ring),
-    Selector = all,
-    NVal = riak_core_bucket:n_val(BProps),
-    NumPrimaries = 1,
-    ReqId = erlang:phash2(erlang:now()),
-
-    Result = riak_core_coverage_plan:create_plan(Selector,
-                                                 NVal,
-                                                 NumPrimaries,
-                                                 ReqId,
-                                                 ?YZ_SVC_NAME),
-    case Result of
-        {error, Error} ->
-            throw(Error);
-        {CoverSet, _} ->
-            {_Partitions, Nodes} = lists:unzip(CoverSet),
-            UniqNodes = lists:usort(Nodes),
-            LPI = logical_index(Ring),
-            LogicalCoverSet = add_filtering(NVal, Q, LPI, CoverSet),
-            {UniqNodes, LogicalCoverSet}
+    case mochiglobal:get(list_to_atom(Index), undefined) of
+        undefined -> calc_plan(Index);
+        Plan -> Plan
     end.
 
 -spec reify_partitions(ring(), ordset(lp())) -> ordset(p()).
 reify_partitions(Ring, LPartitions) ->
     LI = logical_index(Ring),
     ordsets:from_list([partition(LI, LP) || LP <- LPartitions]).
+
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+%%%===================================================================
+%%% Callbacks
+%%%===================================================================
+
+init([]) ->
+    schedule_tick(),
+    {ok, none}.
+
+handle_cast(update_all_plans, S) ->
+    update_all_plans(),
+    {noreply, S}.
+
+handle_info(tick, S) ->
+    update_all_plans(),
+    schedule_tick(),
+    {noreply, S};
+
+handle_info(Req, S) ->
+    lager:warning("Unexpected request ~p", [Req]),
+    {noreply, S}.
+
+handle_call(Req, _, S) ->
+    lager:warning("Unexpected request ~p", [Req]),
+    {noreply, S}.
+
+code_change(_, S, _) ->
+    {ok, S}.
+
+terminate(_, _) ->
+    ok.
 
 %%%===================================================================
 %%% Private
@@ -77,6 +101,49 @@ add_filtering(N, Q, LPI, CS) ->
     CS3 = yz_misc:make_pairs(CS2),
     CS4 = make_distance_pairs(Q, CS3),
     make_filter_pairs(N, Q, CS4).
+
+%% @private
+%%
+%% @doc Calculate a plan for the `Index' and then store an entry in
+%%      the plan-cache.
+-spec cache_plan(index_name()) -> ok.
+cache_plan(Index) ->
+    case calc_plan(Index) of
+        {error, _} ->
+            mochiglobal:put(list_to_atom(Index), undefined);
+        Plan ->
+            mochiglobal:put(list_to_atom(Index), Plan)
+    end,
+    ok.
+
+%% @private
+%%
+%% @doc Calculate a plan for the `Index'.
+-spec calc_plan(index_name()) -> {term(), term()}.
+calc_plan(Index) ->
+    Ring = yz_misc:get_ring(transformed),
+    Q = riak_core_ring:num_partitions(Ring),
+    BProps = riak_core_bucket:get_bucket(Index, Ring),
+    Selector = all,
+    NVal = riak_core_bucket:n_val(BProps),
+    NumPrimaries = 1,
+    ReqId = erlang:phash2(erlang:now()),
+
+    Result = riak_core_coverage_plan:create_plan(Selector,
+                                                 NVal,
+                                                 NumPrimaries,
+                                                 ReqId,
+                                                 ?YZ_SVC_NAME),
+    case Result of
+        {error, _} = Err ->
+            Err;
+        {CoverSet, _} ->
+            {_Partitions, Nodes} = lists:unzip(CoverSet),
+            UniqNodes = lists:usort(Nodes),
+            LPI = logical_index(Ring),
+            LogicalCoverSet = add_filtering(NVal, Q, LPI, CoverSet),
+            {UniqNodes, LogicalCoverSet}
+    end.
 
 %% @doc Get the distance between the logical partition `LPB' and
 %%      `LPA'.
@@ -157,3 +224,22 @@ make_logical(LogicalIndex, Cover) ->
 partition(LogicalIndex, LP) ->
     {_, P} = lists:keyfind(LP, 1, LogicalIndex),
     P.
+
+%% @private
+%%
+%% @doc Schedule next tick to be sent to this server.
+-spec schedule_tick() -> ok.
+schedule_tick() ->
+    erlang:send_after(?YZ_COVER_TICK_INTERVAL, ?MODULE, tick),
+    ok.
+
+%% @private
+%%
+%% @doc Iterate through the list of indexes, calculate a new coverage
+%%      plan, and update the cache entry.
+-spec update_all_plans() -> ok.
+update_all_plans() ->
+    Ring = yz_misc:get_ring(transformed),
+    Indexes = [Name || {Name,_} <- yz_index:get_indexes_from_ring(Ring)],
+    lists:foreach(fun ?MODULE:cache_plan/1, Indexes),
+    ok.

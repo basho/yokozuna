@@ -1,19 +1,97 @@
 Yokozuna Release Notes
 ==========
 
-WIP
+0.6.0
 ----------
 
-### Bugs/Misc
+The sixth pre-release of Yokozuna.  Now with support for Riak clients
+which have a Search API using the Protobuff transport.  A 30-40%
+improvement in query throughput.  And much more.
 
-* [YZ-58][]: Add resilience around bad schemas.  Make index creation a
-  best effort with periodic retry.
+### Features ###
 
-* [YZ-88][], [YZ-94][]: Update to newer rebar to fix erlang_js build.
+* [95][] - Add catch-all field to default schema.  This will prevent
+  unknown fields from causing runtime errors.
 
-[YZ-58]: https://github.com/basho/yokozuna/issues/58
-[YZ-88]: https://github.com/basho/yokozuna/pull/88
-[YZ-94]: https://github.com/basho/yokozuna/pull/94
+* [104][], [114][] - Add `enabled` flag to config, to control whether
+  or not Yokozuna is started at cluster start.
+
+* [37][], [38][] - Add protocol buffer client support at parity with
+  Riak Search.  This means any Riak clients with Search-PB support can
+  now be used to query Yokozuna at parity with the Riak Search query
+  interface.
+
+### Performance ###
+
+* [103][], [109][], [115][] - Cache coverage plans in mochiglobal.  Two
+  benchmarks showed 30-40% improvement in throughput.  Slow CPU and
+  queries cached by Solr will benefit most from this patch.
+
+### Bugs/Misc ###
+
+
+* [88][], [94][] - Update to newer rebar to fix erlang_js build.
+
+* [58][], [89][], [93][] - Add resilience around bad schemas.  Make
+  index creation a best effort with periodic retry.
+
+* [86][] - Fix delete query.  Don't blow up on keys that have
+  characters considered special by Solr's default query parser.
+
+* [79][], [96][] - Don't index fallback data.  Fallback data is not
+  considered during querying, thus wasting CPU and IO on pointless
+  indexing.
+
+* [56][] - Strip down default config, rename to `solrconfig.xml`.
+
+* [64][] - More AAE ports.  Two potential Active Anti-Entropy ports
+  from KV were determined unnecessary.
+
+* [92][], [97][] - Pass empty list of JVM arguments by default in the
+  code.  The assumption is that if a user doesn't specify a
+  `solr_vm_args` then the code should default to passing nothing.
+
+* [59][] - Fix decoding of `yz-extractor` header.
+
+* [99][] - Make sure to remove index data after index delete.
+
+* [100][] - Add `yz-fprof` header to allow analyzing performance of
+  search requests.
+
+* [66][], [101][] - Use n-val for put-quorum values rather than constants.
+  This will allow Yokozuna to work for n-val < 3.
+
+* [102][] - Fix the Riak Tests, use the new `rt_config` module.
+
+* [113][] - Add Q&A document.
+
+[37]: https://github.com/basho/yokozuna/pull/37
+[38]: https://github.com/basho/yokozuna/pull/38
+[56]: https://github.com/basho/yokozuna/pull/56
+[58]: https://github.com/basho/yokozuna/pull/58
+[59]: https://github.com/basho/yokozuna/pull/59
+[64]: https://github.com/basho/yokozuna/pull/64
+[66]: https://github.com/basho/yokozuna/pull/66
+[79]: https://github.com/basho/yokozuna/pull/79
+[86]: https://github.com/basho/yokozuna/pull/86
+[88]: https://github.com/basho/yokozuna/pull/88
+[89]: https://github.com/basho/yokozuna/pull/89
+[92]: https://github.com/basho/yokozuna/pull/92
+[93]: https://github.com/basho/yokozuna/pull/93
+[94]: https://github.com/basho/yokozuna/pull/94
+[95]: https://github.com/basho/yokozuna/pull/95
+[96]: https://github.com/basho/yokozuna/pull/96
+[97]: https://github.com/basho/yokozuna/pull/97
+[99]: https://github.com/basho/yokozuna/pull/99
+[100]: https://github.com/basho/yokozuna/pull/100
+[101]: https://github.com/basho/yokozuna/pull/101
+[102]: https://github.com/basho/yokozuna/pull/102
+[103]: https://github.com/basho/yokozuna/pull/103
+[104]: https://github.com/basho/yokozuna/pull/104
+[109]: https://github.com/basho/yokozuna/pull/109
+[113]: https://github.com/basho/yokozuna/pull/113
+[114]: https://github.com/basho/yokozuna/pull/114
+[115]: https://github.com/basho/yokozuna/pull/115
 
 
 0.5.0

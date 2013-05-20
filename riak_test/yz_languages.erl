@@ -6,6 +6,7 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
+-define(CFG, [{yokozuna, [{enabled, true}]}]).
 
 confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
@@ -18,11 +19,7 @@ confirm() ->
     pass.
 
 prepare_cluster(NumNodes) ->
-    %% Note: may need to use below call b/c of diff between
-    %% deploy_nodes/1 & /2
-    %%
-    % Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Nodes = rt:deploy_nodes(NumNodes),
+    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
     Cluster = join(Nodes),
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
@@ -37,15 +34,6 @@ wait_for_joins(Cluster) ->
     lager:info("Waiting for ownership handoff to finish"),
     rt:wait_until_nodes_ready(Cluster),
     rt:wait_until_no_pending_changes(Cluster).
-
-%% @doc Confirm a custom schema may be added.
-confirm_create_schema(Cluster, Name, RawSchema) ->
-    HP = select_random(host_entries(rt:connection_info(Cluster))),
-    lager:info("confirm_create_schema ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
-    Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, _} = http(put, URL, Headers, RawSchema),
-    ?assertEqual("204", Status).
 
 select_random(List) ->
     Length = length(List),

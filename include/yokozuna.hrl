@@ -114,10 +114,12 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+-define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
 -define(YZ_DEFAULT_SOLR_PORT, "8983").
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_DEFAULT_SOLR_VM_ARGS, []).
+-define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_EVENTS_TAB, yz_events_tab).
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
@@ -133,6 +135,8 @@
         "Not enough nodes are up to service this request.").
 -define(YZ_ERR_INDEX_NOT_FOUND,
         "No index ~p found.").
+-define(YZ_ERR_QUERY_FAILURE,
+        "Query unsuccessful check the logs.").
 
 %%%===================================================================
 %%% Anti Entropy

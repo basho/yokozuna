@@ -205,13 +205,18 @@ dist_search(Core, Params, Mapping) ->
     dist_search(Core, [], Params, Mapping).
 
 dist_search(Core, Headers, Params, Mapping) ->
-    {Nodes, FilterPairs} = yz_cover:plan(Core),
-    HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
-    ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
-    ShardFrags2 = string:join(ShardFrags, ","),
-    FQ = build_fq(FilterPairs),
-    Params2 = Params ++ [{shards, ShardFrags2}, {fq, FQ}],
-    search(Core, Headers, Params2).
+    Plan = yz_cover:plan(Core),
+    case Plan of
+        {error, _} = Err ->
+            Err;
+        {Nodes, FilterPairs} ->
+            HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
+            ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
+            ShardFrags2 = string:join(ShardFrags, ","),
+            FQ = build_fq(FilterPairs),
+            Params2 = Params ++ [{shards, ShardFrags2}, {fq, FQ}],
+            search(Core, Headers, Params2)
+    end.
 
 search(Core, Headers, Params) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/select",
@@ -318,6 +323,13 @@ get_pairs(R) ->
 
 to_pair({struct, [{_,Bucket},{_,Key},{_,Base64Hash}]}) ->
     {{Bucket,Key}, base64:decode(Base64Hash)}.
+
+get_doc_pairs(Resp) ->
+    Docs = json_get_key(<<"docs">>, Resp),
+    [to_doc_pairs(DocStruct) || DocStruct <- Docs].
+
+to_doc_pairs({struct, Values}) ->
+    Values.
 
 get_path({struct, PL}, Path) ->
     get_path(PL, Path);
