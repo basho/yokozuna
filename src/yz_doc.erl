@@ -104,7 +104,7 @@ extract_fields({MD, V}) ->
                 end
             catch _:Err ->
                 Trace = erlang:get_stacktrace(),
-                ?ERROR("failed to index fields from value with reason ~s~nValue: ~sTrace: ~p~n", [Err, V, Trace]),
+                ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
                 [{?YZ_ERR_FIELD_S, 1}]
             end;
         true ->

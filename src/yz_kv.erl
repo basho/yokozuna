@@ -170,9 +170,9 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
                              P, IdxN, BKey)
     catch _:Err ->
         Trace = erlang:get_stacktrace(),
-        ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace]),
-        {error, Err}
-    end.
+        ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace])
+    end,
+    ok.
 
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.

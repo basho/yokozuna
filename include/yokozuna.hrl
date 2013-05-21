@@ -326,7 +326,7 @@
 -define(YZ_ERR_FIELD_S, "_yz_err").
 -define(YZ_ERR_FIELD_B, <<"_yz_err">>).
 -define(YZ_ERR_FIELD_XML, ?YZ_FIELD_XML(?YZ_ERR_FIELD_S)).
--define(YZ_ERR_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_err\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_ERR_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_err\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 -define(YZ_IS_YZ_FIELD_S(Name),
         Name == ?YZ_ID_FIELD_S orelse
