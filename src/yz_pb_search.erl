@@ -38,13 +38,10 @@
 
 -import(riak_pb_search_codec, [encode_search_doc/1]).
 
--record(state, {client}).
-
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().
 init() ->
-    {ok, C} = riak_search:local_client(),
-    #state{client=C}.
+    no_state.
 
 %% @doc decode/2 callback. Decodes an incoming message.
 decode(Code, Bin) ->
@@ -55,7 +52,7 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(Msg, #state{client=_Client}=State) ->
+process(Msg, State) ->
     #rpbsearchqueryreq{index=IndexBin}=Msg,
     case extract_params(Msg) of
         {ok, Params} ->
