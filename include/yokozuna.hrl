@@ -320,6 +320,14 @@
 -define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
 -define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
+
+%% Riak extraction error
+-define(YZ_ERR_FIELD, '_yz_err').
+-define(YZ_ERR_FIELD_S, "_yz_err").
+-define(YZ_ERR_FIELD_B, <<"_yz_err">>).
+-define(YZ_ERR_FIELD_XML, ?YZ_FIELD_XML(?YZ_ERR_FIELD_S)).
+-define(YZ_ERR_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_err\" and @type=\"_yz_str\" and @indexed=\"true\"]").
+
 -define(YZ_IS_YZ_FIELD_S(Name),
         Name == ?YZ_ID_FIELD_S orelse
         Name == ?YZ_ED_FIELD_S orelse
@@ -328,7 +336,8 @@
         Name == ?YZ_NODE_FIELD_S orelse
         Name == ?YZ_PN_FIELD_S orelse
         Name == ?YZ_RK_FIELD_S orelse
-        Name == ?YZ_RB_FIELD_S).
+        Name == ?YZ_RB_FIELD_S orelse
+        Name == ?YZ_ERR_FIELD_S).
 
 -define(YZ_UK_XML, {uniqueKey, [?YZ_ID_FIELD_S]}).
 
