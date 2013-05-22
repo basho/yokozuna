@@ -227,6 +227,9 @@ search(Core, Headers, Params) ->
     case ibrowse:send_req(URL, Headers, get, Body, Opts) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
         {ok, "404", _, _} -> throw(not_found);
+        {ok, CodeStr, _, Err} ->
+            {Code, _} = string:to_integer(CodeStr),
+            throw({solr_error, {Code, URL, Err}});
         Err -> throw({"Failed to search", URL, Err})
     end.
 

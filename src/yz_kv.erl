@@ -169,7 +169,8 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
         ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
                              P, IdxN, BKey)
     catch _:Err ->
-            ?ERROR("failed to index object ~p with error ~p", [BKey, Err])
+        Trace = erlang:get_stacktrace(),
+        ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace])
     end,
     ok.
 
