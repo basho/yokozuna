@@ -39,7 +39,7 @@ allowed_methods(RD, S) ->
     {Methods, RD, S}.
 
 malformed_request(RD, S) ->
-    E = list_to_atom(wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD)),
+    E = to_atom(wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD)),
     CT = wrq:get_req_header(?HEAD_CTYPE, RD),
     Content = wrq:req_body(RD),
 
@@ -60,7 +60,7 @@ malformed_request(RD, S) ->
 %% Accept the mime-type provided by user, if one is not provided use
 %% extractor specified in header.
 content_types_accepted(RD, S) ->
-    E = list_to_atom(wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD)),
+    E = to_atom(wrq:get_req_header(?YZ_HEAD_EXTRACTOR, RD)),
     CT = wrq:get_req_header(?HEAD_CTYPE, RD),
 
     case {E, CT} of
@@ -129,3 +129,9 @@ no_extractor_registered(RD, CT) ->
 add_msg(RD, Msg) ->
     RD2 = wrq:append_to_response_body(Msg, RD),
     wrq:set_resp_header(?HEAD_CTYPE, "text/plain", RD2).
+
+-spec to_atom(undefined | string()) -> atom().
+to_atom(undefined) ->
+    undefined;
+to_atom(S) ->
+    list_to_atom(S).
