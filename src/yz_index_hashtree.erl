@@ -31,7 +31,8 @@
                 lock :: undefined | reference(),
                 path,
                 build_time,
-                trees}).
+                trees,
+                closed=false}).
 -type state() :: #state{}.
 
 -compile(export_all).
@@ -126,6 +127,7 @@ destroy(Tree) ->
 %%%===================================================================
 
 init([Index, RPs]) ->
+    process_flag(trap_exit, true),
     case determine_data_root() of
         undefined ->
             case riak_kv_entropy_manager:enabled() of
@@ -228,7 +230,8 @@ handle_info({'DOWN', Ref, _, _, _}, S) ->
 handle_info(_Info, S) ->
     {noreply, S}.
 
-terminate(_Reason, _) ->
+terminate(_Reason, S) ->
+    close_trees(S),
     ok.
 
 code_change(_OldVsn, S, _Extra) ->
@@ -261,7 +264,7 @@ init_trees(RPs, S) ->
     S2 = lists:foldl(fun(Id, SAcc) ->
                                  do_new_tree(Id, SAcc)
                          end, S, RPs),
-    S2#state{built=false}.
+    S2#state{built=false, closed=false}.
 
 -spec load_built(state()) -> boolean().
 load_built(#state{trees=Trees}) ->
@@ -499,9 +502,11 @@ maybe_build(S) ->
     %% Already built or build in progress
     S.
 
-close_trees(S=#state{trees=Trees}) ->
+close_trees(S=#state{trees=Trees, closed=false}) ->
     Trees2 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees],
-    S#state{trees=Trees2}.
+    S#state{trees=Trees2, closed=true};
+close_trees(S) ->
+    S.
 
 build_or_rehash(Self, S=#state{index=Index, trees=Trees}) ->
     Type = case load_built(S) of
