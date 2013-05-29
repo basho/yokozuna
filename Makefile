@@ -17,7 +17,7 @@ clean:
 	$(REBAR) clean
 	rm -rf riak_test/ebin
 
-distclean: clean devclean relclean
+distclean: clean
 	$(REBAR) delete-deps
 
 test: all

@@ -1,65 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!--
- Licensed to the Apache Software Foundation (ASF) under one or more
- contributor license agreements.  See the NOTICE file distributed with
- this work for additional information regarding copyright ownership.
- The ASF licenses this file to You under the Apache License, Version 2.0
- (the "License"); you may not use this file except in compliance with
- the License.  You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
--->
-
-<!--
      For more details about configurations options that may appear in
      this file, see http://wiki.apache.org/solr/SolrConfigXml.
 -->
 <config>
-  <!-- In all configuration below, a prefix of "solr." for class names
-       is an alias that causes solr to search appropriate packages,
-       including org.apache.solr.(search|update|request|core|analysis)
-
-       You may also specify a fully qualified Java classname if you
-       have your own custom plugins.
-    -->
-
-  <luceneMatchVersion>LUCENE_42</luceneMatchVersion>
-
-  <!-- lib directives can be used to instruct Solr to load an Jars
-       identified and use them to resolve any "plugins" specified in
-       your solrconfig.xml or schema.xml (ie: Analyzers, Request
-       Handlers, etc...).
-
-       All directories and paths are resolved relative to the
-       instanceDir.
-
-       If a "./lib" directory exists in your instanceDir, all files
-       found in it are included as if you had used the following
-       syntax...
-
-              <lib dir="./lib" />
-    -->
-
-  <!-- When a 'regex' is specified in addition to a 'dir', only the
-       files in that directory which completely match the regex
-       (anchored on both ends) will be included.
-    -->
-
-  <lib dir="../../dist/" regex="apache-solr-cell-\d.*\.jar" />
-  <lib dir="../../contrib/extraction/lib" regex=".*\.jar" />
-
-  <lib dir="../../dist/" regex="apache-solr-clustering-\d.*\.jar" />
-  <lib dir="../../contrib/clustering/lib/" regex=".*\.jar" />
-
-  <lib dir="../../dist/" regex="apache-solr-langid-\d.*\.jar" />
-  <lib dir="../../contrib/langid/lib/" regex=".*\.jar" />
-
+  <luceneMatchVersion>LUCENE_43</luceneMatchVersion>
   <lib dir="${yz.lib.dir}" />
 
   <!-- Data Directory
@@ -70,7 +15,6 @@
        configuration.
     -->
   <dataDir>${solr.data.dir:}</dataDir>
-
 
   <!-- The DirectoryFactory to use for indexes.
 
@@ -84,7 +28,7 @@
        persistent, and doesn't work with replication.
     -->
   <directoryFactory name="DirectoryFactory"
-                    class="${solr.directoryFactory:solr.StandardDirectoryFactory}"/>
+                    class="${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
 
   <indexConfig>
     <!-- maxFieldLength was removed in 4.0. To get similar behavior, include a
@@ -1098,15 +1042,8 @@
      <queryResponseWriter name="php" class="solr.PHPResponseWriter"/>
      <queryResponseWriter name="phps" class="solr.PHPSerializedResponseWriter"/>
      <queryResponseWriter name="csv" class="solr.CSVResponseWriter"/>
+     <queryResponseWriter name="schema.xml" class="solr.SchemaXmlResponseWriter"/>
     -->
-
-  <queryResponseWriter name="json" class="solr.JSONResponseWriter">
-     <!-- For the purposes of the tutorial, JSON responses are written as
-      plain text so that they are easy to read in *any* browser.
-      If you expect a MIME type of "application/json" just remove this override.
-     -->
-    <str name="content-type">text/plain; charset=UTF-8</str>
-  </queryResponseWriter>
 
   <!-- XSLT response writer transforms the XML output by any xslt file found
        in Solr's conf/xslt directory.  Changes to xslt files are checked for

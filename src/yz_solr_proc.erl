@@ -111,11 +111,11 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
     SolrHome = "-Dsolr.solr.home=" ++ Dir,
     JettyHome = "-Djetty.home=" ++ Dir,
     Port = "-Djetty.port=" ++ SolrPort,
-    LoggingProps = filename:join([Dir, "logging.properties"]),
-    Logging = "-Djava.util.logging.config.file=" ++ LoggingProps,
+    CP = "-cp",
+    CP2 = "./" ++ Dir ++ "/start.jar:./" ++ Dir,
+    Logging = "-Dlog4j.configuration=log4j.properties",
     LibDir = "-Dyz.lib.dir=" ++ filename:join([?YZ_PRIV, "java_lib"]),
-    Jar = "-jar",
-    JarName = filename:join([Dir, "start.jar"]),
+    Class = "org.eclipse.jetty.start.Main",
     case SolrJMXPort of
         undefined ->
             JMX = [];
@@ -126,7 +126,8 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
-    Args = [JettyHome, Port, SolrHome, Logging, LibDir] ++ solr_vm_args() ++ JMX ++ [Jar, JarName],
+    Args = [JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
+        ++ solr_vm_args() ++ JMX ++ [Class],
     {os:find_executable("java"), Args}.
 
 -spec get_pid(port()) -> pos_integer().
