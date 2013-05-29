@@ -10,15 +10,19 @@ fi
 
 echo "Build the yokozuna.jar..."
 
-SOLR_JAR_DIR=solr-jars/WEB-INF/lib
+SOLR_JAR_DIR=solr-jars
 
 if [ ! -e $SOLR_JAR_DIR ]; then
     echo "Explode the WAR..."
     mkdir solr-jars
     cp solr/webapps/solr.war solr-jars
     pushd solr-jars
-    jar xf solr.war
+    jar xf solr.war WEB-INF/lib
+    mv WEB-INF/lib/* .
+    rm -rf WEB-INF solr.war
     popd
+    # copy logging jars
+    cp solr/lib/ext/* solr-jars
 fi
 
 echo "Compile..."
