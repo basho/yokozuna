@@ -121,6 +121,7 @@ tar zcvf $NAME.tgz \
     --exclude=solrj \
     --exclude=test-framework \
     --exclude=testlogging.properties \
+    --exclude=example/etc/solrtest.keystore \
     $NAME
 mv $NAME solr
 
