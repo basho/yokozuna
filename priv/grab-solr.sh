@@ -44,7 +44,7 @@ elif [ $SRC == "src-tar" ]; then
     example_dir=$src_dir/solr/example
     patch_dir=$PWD/../solr-patches
 else
-    VSN=solr-4.2.0-yz1
+    VSN=solr-4.3.0-yz
     dir=$PWD/solr
     src_dir=$PWD/$VSN
     example_dir=$src_dir/example
@@ -118,7 +118,7 @@ fi
 
 echo "Creating solr dir from Solr example..."
 cp -r $example_dir $dir
-rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt}
+rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt,logging.properties}
 cp solr.xml $dir
 cp *.properties $dir
 
