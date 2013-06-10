@@ -6,12 +6,35 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
--define(CFG, [{yokozuna, [{enabled, true}]}]).
+-define(CFG,
+        [
+         {riak_core,
+          [
+           {ring_creation_size, 8}
+          ]},
+         {yokozuna,
+          [
+           {enabled, true}
+          ]}
+        ]).
+
 
 confirm() ->
     Cluster = prepare_cluster(4),
     confirm_create_index_1(Cluster),
+    %% TODO: These sleeps were added because concurrent index creation
+    %% on disjoint nodes can cause the ring/yz_events code to lose
+    %% indexes.  Remove these sleeps and add the following code to
+    %% yz_events:sync_indexes/4.
+    %%
+    %% lager:error("SYNC INDEXES ~p ~p ~p", [Removed, Added, Same]),
+    %%
+    %% You'll notice indexes in Removed that shouldn't be.  I'm going
+    %% to deal with this later as I'm working on a different feature
+    %% at the moment.
+    timer:sleep(2000),
     confirm_create_index_2(Cluster),
+    timer:sleep(2000),
     confirm_409(Cluster),
     confirm_list(Cluster, ["test_index_1", "test_index_2", "test_index_409"]),
     confirm_delete(Cluster, "test_index_1"),
@@ -46,8 +69,7 @@ confirm_409(Cluster) ->
     URL = index_url(HP, Index),
     {ok, Status1, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status1),
-    %% Currently need to sleep to wait for Solr to create index
-    timer:sleep(5000),
+    yz_rt:wait_for_index(Cluster, Index),
     {ok, Status2, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("409", Status2).
 
@@ -57,7 +79,7 @@ confirm_list(Cluster, Indexes) ->
     URL = index_list_url(HP),
     {ok, Status, _, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("200", Status),
-    ?assert(check_list(Indexes, Body)).
+    check_list(Indexes, Body).
 
 confirm_delete(Cluster, Index) ->
     confirm_get(Cluster, Index),
@@ -119,7 +141,7 @@ check_list(Indexes, Body) ->
     Decoded = mochijson2:decode(Body),
     Names = [binary_to_list(proplists:get_value(<<"name">>, Obj))
              || {struct, Obj} <- Decoded],
-    lists:sort(Indexes) == lists:sort(Names).
+    ?assertEqual(lists:sort(Indexes), lists:sort(Names)).
 
 contains_index(_Body) ->
     undefined.

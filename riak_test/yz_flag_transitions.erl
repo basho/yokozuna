@@ -41,6 +41,8 @@ confirm() ->
 verify_flag_add(Cluster, YZBenchDir) ->
     lager:info("Verify adding flag"),
     yz_rt:load_data(Cluster, "fruit", YZBenchDir, ?NUM_KEYS),
+    %% Let 1s soft-commit catch up
+    timer:sleep(1000),
     Hosts = yz_rt:host_entries(rt:connection_info(Cluster)),
     HP = yz_rt:select_random(Hosts),
     lager:info("Verify fruit index doesn't exist"),
@@ -49,7 +51,7 @@ verify_flag_add(Cluster, YZBenchDir) ->
     ?assert(yz_rt:search_expect(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS)),
     lager:info("Create fruit index + set flag"),
     yz_rt:create_index(yz_rt:select_random(Cluster), "fruit"),
-    yz_rt:set_index_flag(yz_rt:select_random(Cluster), <<"fruit">>),
+    yz_rt:set_index(yz_rt:select_random(Cluster), <<"fruit">>),
     %% Give Solr time to create index
     timer:sleep(10000),
     %% TODO: use YZ/KV AAE stats to determine when AAE has covered ring once.
@@ -59,7 +61,7 @@ verify_flag_add(Cluster, YZBenchDir) ->
                 yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
         end,
     lager:info("Verify that AAE re-indexes objects under fruit index"),
-    yz_rt:wait_for_aae(Cluster, F).
+    ?assertEqual(ok, yz_rt:wait_for_aae(Cluster, F)).
 
 %% @doc When a flag is removed the indexes for that bucket's index
 %%      should be deleted and AAE should re-index objects under the
@@ -67,7 +69,7 @@ verify_flag_add(Cluster, YZBenchDir) ->
 verify_flag_remove(Cluster) ->
     lager:info("Verify removing flag"),
     Node = yz_rt:select_random(Cluster),
-    yz_rt:set_index_flag(Node, <<"fruit">>, false),
+    yz_rt:remove_index(Node, <<"fruit">>),
     F = fun(Cluster2) ->
                 Hosts = yz_rt:host_entries(rt:connection_info(Cluster2)),
                 HP = yz_rt:select_random(Hosts),
@@ -76,7 +78,7 @@ verify_flag_remove(Cluster) ->
                 R1 and R2
         end,
     lager:info("Verify fruit indexes are deleted + objects re-indexed under default index"),
-    yz_rt:wait_for_aae(Cluster, F).
+    ?assertEqual(ok, yz_rt:wait_for_aae(Cluster, F)).
 
 join(Nodes) ->
     [NodeA|Others] = Nodes,

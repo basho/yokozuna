@@ -3,7 +3,6 @@
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
                 run_bb/2, search_expect/5,
-                set_index_flag/2,
                 select_random/1, verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include("yokozuna.hrl").
@@ -36,13 +35,14 @@ join(Nodes) ->
 
 test_errors(Cluster) ->
     HP = hd(host_entries(rt:connection_info(Cluster))),
-    ok = expect_bad_json(HP),
-    ok = expect_bad_xml(HP),
-    ok = expect_bad_query(HP),
+    Node = hd(Cluster),
+    ok = expect_bad_json(Node, HP),
+    ok = expect_bad_xml(Node, HP),
+    ok = expect_bad_query(Node, HP),
     ok.
 
-expect_bad_json(HP) ->
-    ok = create_index(HP, "bad_json"),
+expect_bad_json(Node, HP) ->
+    ok = create_index(Node, HP, <<"bad_json">>),
     lager:info("Write bad json"),
     URL = bucket_url(HP, "bad_json", "test"),
     Opts = [],
@@ -57,8 +57,8 @@ expect_bad_json(HP) ->
     ?assert(search_expect(HP, "bad_json", ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
-expect_bad_xml(HP) ->
-    ok = create_index(HP, "bad_xml"),
+expect_bad_xml(Node, HP) ->
+    ok = create_index(Node, HP, <<"bad_xml">>),
     lager:info("Write bad xml"),
     URL = bucket_url(HP, "bad_xml", "test"),
     Opts = [],
@@ -73,8 +73,8 @@ expect_bad_xml(HP) ->
     ?assert(search_expect(HP, "bad_xml", ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
-expect_bad_query(HP) ->
-    ok = create_index(HP, "bad_query"),
+expect_bad_query(Node, HP) ->
+    ok = create_index(Node, HP, <<"bad_query">>),
     lager:info("Write bad query"),
     URL = bucket_url(HP, "bad_query", "test"),
     Opts = [],
@@ -104,10 +104,11 @@ http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
-create_index(HP, Index) ->
+create_index(Node, HP, Index) ->
     lager:info("create_index ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
+    yz_rt:set_index(Node, Index),
     timer:sleep(5000),
     ?assertEqual("204", Status).

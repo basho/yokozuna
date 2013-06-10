@@ -24,34 +24,45 @@
 %% Available operations:
 %%
 %% GET /yz/index
+%%
 %%   Get information about every index in JSON format.
 %%   Currently the same information as /yz/index/Index,
 %%   but as an array of JSON objects.
 %%
 %% GET /yz/index/Index
+%%
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
+%%
 %%   {
 %%      "name"  : IndexName,
-%%      "bucket": IndexName,
 %%      "schema": SchemaName
 %%   }
-%%   IndexName is the same value passed into the URL. Schema
-%%   is the name of the schema associate with this index. That
-%%   schema file must already be installed on the server.
+%%
+%%   `IndexName' is the same value passed into the URL.
+%%
+%%   `Schema' is the name of the schema associate with this
+%%   index. That schema file must already be installed on the server.
 %%   Defaults to "_yz_default".
 %%
 %% PUT /yz/index/Index
+%%
 %%   Creates a new index with the given name, and also creates
 %%   a post commit hook to a bucket of the same name.
+%%
 %%   A PUT request requires this header:
 %%     Content-Type: application/json
+%%
 %%   A JSON body may be sent. It currently only accepts
+%%
 %%   { "schema" : SchemaName }
-%%   If no "schema" is given, it defaults to "_yz_default".
+%%
+%%   If no schema is given, it defaults to "_yz_default".
+%%
 %%   Returns a '409 Conflict' code if the index already exists.
 %%
 %% DELETE /yz/index/Index
+%%
 %%   Deletes the index with the given index name.
 %%
 
@@ -60,8 +71,7 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(ctx, {api_version :: atom(),  % Determine which version of the API to use.
-              index_name :: string(), % name the index
+-record(ctx, {index_name :: string(), % name the index
               props :: proplist(),    % properties of the body
               method :: atom(),       % HTTP method for the request
               ring :: ring()
@@ -82,7 +92,7 @@ routes() ->
 %%%===================================================================
 
 init(_Props) ->
-    {ok, #ctx{api_version='0.1'}}.
+    {ok, #ctx{}}.
 
 %% NOTE: Need to grab the ring once at beginning of request because it
 %%       could change as this request is being serviced.
@@ -116,7 +126,7 @@ delete_resource(RD, S) ->
     IndexName = S#ctx.index_name,
     case yz_index:exists(IndexName) of
         true  ->
-            ok = yz_kv:set_index_flag(list_to_binary(IndexName), false),
+            %% TODO: check for existence of buckets using this index
             ok = yz_index:remove(IndexName),
             {true, RD, S};
         false -> {true, RD, S}
@@ -130,7 +140,7 @@ create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
-    ok = create_install_index(IndexName, SchemaName),
+    ok = maybe_create_index(IndexName, SchemaName),
     {<<>>, RD, S}.
 
 
@@ -225,12 +235,11 @@ decode_json(RDBody) ->
           end
     end.
 
--spec create_install_index(index_name(), schema_name()) -> ok.
-create_install_index(IndexName, SchemaName)->
+-spec maybe_create_index(index_name(), schema_name()) -> ok.
+maybe_create_index(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
         true  ->
             ok;
         false ->
-            ok = yz_index:create(IndexName, SchemaName),
-            ok = yz_kv:set_index_flag(list_to_binary(IndexName))
+            ok = yz_index:create(IndexName, SchemaName)
     end.

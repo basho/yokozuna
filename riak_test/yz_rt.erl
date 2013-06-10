@@ -1,5 +1,6 @@
 -module(yz_rt).
 -compile(export_all).
+-include_lib("eunit/include/eunit.hrl").
 
 -spec connection_info(list()) -> orddict:orddict().
 connection_info(Cluster) ->
@@ -96,12 +97,16 @@ select_random(List) ->
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
 
-set_index_flag(Node, Bucket) ->
-    set_index_flag(Node, Bucket, true).
+remove_index(Node, Bucket) ->
+    lager:info("Remove index from bucket ~s [~p]", [Bucket, Node]),
+    ok = rpc:call(Node, yz_kv, remove_index, [Bucket]).
 
-set_index_flag(Node, Bucket, Value) ->
-    lager:info("Set index flag on bucket ~s [~p]", [Bucket, Node]),
-    ok = rpc:call(Node, yz_kv, set_index_flag, [Bucket, Value]).
+set_index(Node, Bucket) ->
+    set_index(Node, Bucket, binary_to_list(Bucket)).
+
+set_index(Node, Bucket, Index) ->
+    lager:info("Set bucket ~s index to ~s [~p]", [Bucket, Index, Node]),
+    ok = rpc:call(Node, yz_kv, set_index, [Bucket, Index]).
 
 solr_http(ConnInfo) ->
     proplists:get_value(solr_http, ConnInfo).
@@ -123,6 +128,14 @@ wait_for_aae(Cluster, F, Tries) ->
             timer:sleep(5000),
             wait_for_aae(Cluster, F, Tries + 1)
     end.
+
+wait_for_index(Cluster, Index) ->
+    IsIndexUp =
+        fun(Node) ->
+                lager:info("Waiting for index ~s to be avaiable on node ~p", [Index, Node]),
+                rpc:call(Node, yz_solr, ping, [Index])
+        end,
+    [?assertEqual(ok, rt:wait_until(Node, IsIndexUp)) || Node <- Cluster].
 
 wait_for_joins(Cluster) ->
     lager:info("Waiting for ownership handoff to finish"),

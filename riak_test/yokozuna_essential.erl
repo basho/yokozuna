@@ -4,7 +4,7 @@
                 host_entries/1,
                 run_bb/2,
                 search_expect/5, search_expect/6,
-                set_index_flag/2,
+                set_index/2,
                 select_random/1, verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
@@ -257,13 +257,13 @@ setup_indexing(Cluster, YZBenchDir) ->
     RawSchema = read_schema(YZBenchDir),
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
-    ok = set_index_flag(Node, ?INDEX_B),
+    ok = set_index(Node, ?INDEX_B),
     ok = create_index(Node, "fruit_aae", ?FRUIT_SCHEMA_NAME),
-    ok = set_index_flag(Node, <<"fruit_aae">>),
+    ok = set_index(Node, <<"fruit_aae">>),
     ok = create_index(Node, "tagging"),
-    ok = set_index_flag(Node, <<"tagging">>),
+    ok = set_index(Node, <<"tagging">>),
     ok = create_index(Node, "siblings"),
-    ok = set_index_flag(Node, <<"siblings">>),
+    ok = set_index(Node, <<"siblings">>),
     %% Give Solr time to build index
     timer:sleep(5000).
 

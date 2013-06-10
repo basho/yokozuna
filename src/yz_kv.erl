@@ -98,10 +98,6 @@ get_obj_value(Obj) ->
 get_tree_build_time(Tree) ->
     riak_kv_index_hashtree:get_build_time(Tree).
 
--spec index_content(term()) -> boolean().
-index_content(BProps) ->
-    proplists:get_value(?YZ_INDEX_CONTENT, BProps, false).
-
 %% @doc Determine if the `Obj' is a tombstone.
 -spec is_tombstone(obj_metadata()) -> boolean().
 is_tombstone(MD) ->
@@ -126,8 +122,8 @@ index(Obj, Reason, VNodeState) ->
                     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
                     NVal = riak_core_bucket:n_val(BProps),
                     PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-                    Index = which_index(Bucket, BProps),
-                    IndexContent = index_content(BProps),
+                    Index = which_index(BProps),
+                    IndexContent = index_content(Index),
                     IdxN = {first_partition(PrimaryPL), NVal},
                     index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent);
                 false ->
@@ -174,6 +170,13 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
     end,
     ok.
 
+%% @doc Should the content be indexed?
+-spec index_content(index_name()) -> boolean().
+index_content(?YZ_DEFAULT_INDEX) ->
+    false;
+index_content(_) ->
+    true.
+
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
 update_aae_exchange_stats(Index, IndexN, Count) ->
@@ -206,20 +209,6 @@ update_hashtree(Action, Partition, IdxN, BKey) ->
             lager:debug("Failed to update hashtree: ~p ~p", [BKey, Reason])
     end.
 
-%% @doc Set the yz_index_content flag to true on the given `Bucket',
-%% ensuring the object's value will be indexes.
--spec set_index_flag(binary()) -> ok.
-set_index_flag(Bucket) when is_binary(Bucket) ->
-    set_index_flag(Bucket, true).
-
-%% @doc Set the yz_index_content flag to the boolean value
-%% on the given `Bucket'. If `false' then minimal object information
-%% is indexed (for AAE). If `true', then values in this bucket
-%% will be indexed.
--spec set_index_flag(binary(), boolean()) -> ok.
-set_index_flag(Bucket, Bool) ->
-    ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX_CONTENT, Bool}]).
-
 %% @doc Write a value
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
 put(Client, Bucket, Key, Value, ContentType) ->
@@ -228,6 +217,25 @@ put(Client, Bucket, Key, Value, ContentType) ->
     BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
     N = proplists:get_value(n_val, BucketProps),
     Client:put(O, [{pw,N},{w,N},{dw,N}]).
+
+%% @doc Remove the `Index' property from `Bucket'.  Data stored under
+%%      `Bucket' will no longer be indexed.
+-spec remove_index(bucket()) -> ok.
+remove_index(Bucket) ->
+    set_index(Bucket, ?YZ_DEFAULT_INDEX).
+
+%% @doc Set the `Index' for which data stored in `Bucket' should be
+%%      indexed under.
+-spec set_index(bucket(), index_name()) -> ok.
+set_index(Bucket, Index) ->
+    ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX, Index}]).
+
+
+%% @doc Extract the index name from `BProps' or return the default
+%%      index name if there is none.
+-spec which_index(term()) -> index_name().
+which_index(BProps) ->
+    proplists:get_value(?YZ_INDEX, BProps, ?YZ_DEFAULT_INDEX).
 
 %%%===================================================================
 %%% Private
@@ -360,14 +368,4 @@ wait_for(Check={M,F,A}, Seconds) when Seconds > 0 ->
         false ->
             timer:sleep(?ONE_SECOND),
             wait_for(Check, Seconds - 1)
-    end.
-
-%% @private
-%%
-%% @doc Determine the index to write to.
--spec which_index(binary(), term()) -> index_name().
-which_index(Bucket, BProps) ->
-    case index_content(BProps) of
-        true -> binary_to_list(Bucket);
-        false -> ?YZ_DEFAULT_INDEX
     end.

@@ -9,10 +9,10 @@ set_index_flag_test()->
   meck:expect(riak_core_bucket, set_bucket,
     fun(Bucket, Props) when Bucket =:= <<"a">> ->
       case Props of
-        [{?YZ_INDEX_CONTENT, true}] -> ok;
+        [{?YZ_INDEX, "index"}] -> ok;
         _ -> error
       end
     end),
-  ?assertEqual(yz_kv:set_index_flag(<<"a">>), ok),
+  ?assertEqual(yz_kv:set_index(<<"a">>, "index"), ok),
   ?assert(meck:validate(riak_core_bucket)),
   meck:unload(riak_core_bucket).
