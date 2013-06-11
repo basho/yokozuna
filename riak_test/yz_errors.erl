@@ -11,7 +11,18 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
--define(CFG, [{yokozuna, [{enabled, true}]}]).
+-define(CFG,
+        [{riak_core,
+          [
+           {handoff_concurrency, 16},
+           {inactivity_timeout, 1000},
+           {ring_creation_size, 16}
+          ]},
+         {yokozuna,
+          [
+	   {enabled, true}
+          ]}
+        ]).
 
 confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
@@ -34,15 +45,14 @@ join(Nodes) ->
     Nodes.
 
 test_errors(Cluster) ->
-    HP = hd(host_entries(rt:connection_info(Cluster))),
-    Node = hd(Cluster),
-    ok = expect_bad_json(Node, HP),
-    ok = expect_bad_xml(Node, HP),
-    ok = expect_bad_query(Node, HP),
+    ok = expect_bad_json(Cluster),
+    ok = expect_bad_xml(Cluster),
+    ok = expect_bad_query(Cluster),
     ok.
 
-expect_bad_json(Node, HP) ->
-    ok = create_index(Node, HP, <<"bad_json">>),
+expect_bad_json(Cluster) ->
+    HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
+    ok = create_index(Cluster, HP, <<"bad_json">>),
     lager:info("Write bad json"),
     URL = bucket_url(HP, "bad_json", "test"),
     Opts = [],
@@ -57,8 +67,9 @@ expect_bad_json(Node, HP) ->
     ?assert(search_expect(HP, "bad_json", ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
-expect_bad_xml(Node, HP) ->
-    ok = create_index(Node, HP, <<"bad_xml">>),
+expect_bad_xml(Cluster) ->
+    HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
+    ok = create_index(Cluster, HP, <<"bad_xml">>),
     lager:info("Write bad xml"),
     URL = bucket_url(HP, "bad_xml", "test"),
     Opts = [],
@@ -73,8 +84,9 @@ expect_bad_xml(Node, HP) ->
     ?assert(search_expect(HP, "bad_xml", ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
-expect_bad_query(Node, HP) ->
-    ok = create_index(Node, HP, <<"bad_query">>),
+expect_bad_query(Cluster) ->
+    HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
+    ok = create_index(Cluster, HP, <<"bad_query">>),
     lager:info("Write bad query"),
     URL = bucket_url(HP, "bad_query", "test"),
     Opts = [],
@@ -104,11 +116,12 @@ http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
-create_index(Node, HP, Index) ->
+create_index(Cluster, HP, Index) ->
+    Node = yz_rt:select_random(Cluster),
     lager:info("create_index ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
     yz_rt:set_index(Node, Index),
-    timer:sleep(5000),
+    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
     ?assertEqual("204", Status).
