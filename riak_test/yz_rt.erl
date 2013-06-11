@@ -2,6 +2,14 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 
+-type host() :: string().
+-type portnum() :: integer().
+
+%% Copied from rt.erl, would be nice if there was a rt.hrl
+-type interface() :: {http, tuple()} | {pb, tuple()}.
+-type interfaces() :: [interface()].
+-type conn_info() :: [{node(), interfaces()}].
+
 -spec connection_info(list()) -> orddict:orddict().
 connection_info(Cluster) ->
     CI = orddict:from_list(rt:connection_info(Cluster)),
@@ -28,6 +36,7 @@ get_yz_conn_info(Node) ->
     %% Currently Yokozuna hardcodes listener to all interfaces
     {"127.0.0.1", SolrPort}.
 
+-spec host_entries(conn_info()) -> [{host(), portnum()}].
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
@@ -56,6 +65,7 @@ random_keys(Num, MaxKey) ->
     lists:usort([integer_to_list(random:uniform(MaxKey))
                  || _ <- lists:seq(1, Num)]).
 
+-spec riak_http(interfaces()) -> {host(), portnum()}.
 riak_http(ConnInfo) ->
     proplists:get_value(http, ConnInfo).
 
@@ -115,20 +125,6 @@ verify_count(Expected, Resp) ->
     lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
     Expected == get_count(Resp).
 
-wait_for_aae(Cluster, F) ->
-    wait_for_aae(Cluster, F, 0).
-
-wait_for_aae(_, _, 24) ->
-    lager:error("Hit limit waiting for AAE"),
-    aae_failed;
-wait_for_aae(Cluster, F, Tries) ->
-    case F(Cluster) of
-        true -> ok;
-        _ ->
-            timer:sleep(5000),
-            wait_for_aae(Cluster, F, Tries + 1)
-    end.
-
 -spec wait_for_index(list(), string()) -> term().
 wait_for_index(Cluster, Index) ->
     IsIndexUp =
@@ -147,3 +143,12 @@ write_terms(File, Terms) ->
     {ok, IO} = file:open(File, [write]),
     [io:fwrite(IO, "~p.~n", [T]) || T <- Terms],
     file:close(IO).
+
+%% @doc Wrapper around `rt:wait_until' to verify `F' against multiple
+%%      nodes.  The function `F' is passed one of the `Nodes' as
+%%      argument and must return a `boolean()' delcaring whether the
+%%      success condition has been met or not.
+-spec wait_until([node()], fun((node()) -> boolean())) -> ok.
+wait_until(Nodes, F) ->
+    [?assertEqual(ok, rt:wait_until(Node, F)) || Node <- Nodes],
+    ok.

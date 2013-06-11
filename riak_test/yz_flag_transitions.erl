@@ -52,16 +52,15 @@ verify_flag_add(Cluster, YZBenchDir) ->
     lager:info("Create fruit index + set flag"),
     yz_rt:create_index(yz_rt:select_random(Cluster), "fruit"),
     yz_rt:set_index(yz_rt:select_random(Cluster), <<"fruit">>),
-    %% Give Solr time to create index
-    timer:sleep(10000),
+    yz_rt:wait_for_index(Cluster, "fruit"),
+
     %% TODO: use YZ/KV AAE stats to determine when AAE has covered ring once.
-    F = fun(Cluster2) ->
-                Hosts2 = yz_rt:host_entries(rt:connection_info(Cluster2)),
-                HP2 = yz_rt:select_random(Hosts2),
+    F = fun(Node) ->
+                lager:info("Verify that AAE re-indexes objects under fruit index [~p]", [Node]),
+                HP2 = hd(yz_rt:host_entries(rt:connection_info([Node]))),
                 yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
         end,
-    lager:info("Verify that AAE re-indexes objects under fruit index"),
-    ?assertEqual(ok, yz_rt:wait_for_aae(Cluster, F)).
+    yz_rt:wait_until(Cluster, F).
 
 %% @doc When a flag is removed the indexes for that bucket's index
 %%      should be deleted and AAE should re-index objects under the
@@ -70,15 +69,14 @@ verify_flag_remove(Cluster) ->
     lager:info("Verify removing flag"),
     Node = yz_rt:select_random(Cluster),
     yz_rt:remove_index(Node, <<"fruit">>),
-    F = fun(Cluster2) ->
-                Hosts = yz_rt:host_entries(rt:connection_info(Cluster2)),
-                HP = yz_rt:select_random(Hosts),
+    F = fun(Node2) ->
+                lager:info("Verify fruit indexes are deleted + objects re-indexed under default index [~p]", [Node2]),
+                HP = hd(yz_rt:host_entries(rt:connection_info([Node2]))),
                 R1 = yz_rt:search_expect(HP, "fruit", "*", "*", 0),
                 R2 = yz_rt:search_expect(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS),
                 R1 and R2
         end,
-    lager:info("Verify fruit indexes are deleted + objects re-indexed under default index"),
-    ?assertEqual(ok, yz_rt:wait_for_aae(Cluster, F)).
+    yz_rt:wait_until(Cluster, F).
 
 join(Nodes) ->
     [NodeA|Others] = Nodes,
