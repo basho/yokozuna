@@ -4,7 +4,7 @@
                 host_entries/1,
                 run_bb/2,
                 search_expect/5, search_expect/6,
-                set_index_flag/2,
+                set_index/2,
                 select_random/1, verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
@@ -108,22 +108,13 @@ verify_aae(Cluster, YZBenchDir) ->
     %% wait for soft commit
     timer:sleep(1000),
     %% ok = change_random_ids(Cluster, ChangeKeys),
-    HP = hd(host_entries(rt:connection_info(Cluster))),
-    ok = wait_for_aae(HP, "fruit_aae", ?NUM_KEYS).
 
-wait_for_aae(HP, Index, ExpectedNumFound) ->
-    wait_for_aae(HP, Index, ExpectedNumFound, 0).
-
-wait_for_aae(_, Index, _, 24) ->
-    lager:error("Hit limit waiting for AAE to repair indexes for ~p", [Index]),
-    aae_failed;
-wait_for_aae(HP, Index, ExpectedNumFound, Tries) ->
-    case search_expect(HP, "fruit_aae", "text", "apricot", ExpectedNumFound) of
-        true -> ok;
-        _ ->
-            timer:sleep(5000),
-            wait_for_aae(HP, Index, ExpectedNumFound, Tries + 1)
-    end.
+    F = fun(Node) ->
+                lager:info("Verify AAE repairs deleted Solr documents [~p]", [Node]),
+                HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
+                search_expect(HP, "fruit_aae", "text", "apricot", ?NUM_KEYS)
+        end,
+    yz_rt:wait_until(Cluster, F).
 
 delete_ids(Cluster, Index, Key) ->
     BKey = {list_to_binary(Index), list_to_binary(Key)},
@@ -257,15 +248,15 @@ setup_indexing(Cluster, YZBenchDir) ->
     RawSchema = read_schema(YZBenchDir),
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
-    ok = set_index_flag(Node, ?INDEX_B),
+    ok = set_index(Node, ?INDEX_B),
     ok = create_index(Node, "fruit_aae", ?FRUIT_SCHEMA_NAME),
-    ok = set_index_flag(Node, <<"fruit_aae">>),
+    ok = set_index(Node, <<"fruit_aae">>),
     ok = create_index(Node, "tagging"),
-    ok = set_index_flag(Node, <<"tagging">>),
+    ok = set_index(Node, <<"tagging">>),
     ok = create_index(Node, "siblings"),
-    ok = set_index_flag(Node, <<"siblings">>),
-    %% Give Solr time to build index
-    timer:sleep(5000).
+    ok = set_index(Node, <<"siblings">>),
+    [yz_rt:wait_for_index(Cluster, I)
+     || I <- ["fruit", "fruit_aae", "tagging", "siblings"]].
 
 store_schema(Node, Name, RawSchema) ->
     lager:info("Storing schema ~p [~p]", [Name, Node]),

@@ -6,13 +6,23 @@
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
--define(CFG, [{yokozuna, [{enabled, true}]}]).
+-define(CFG,
+        [
+         {riak_core,
+          [
+           {ring_creation_size, 8}
+          ]},
+         {yokozuna,
+          [
+           {enabled, true}
+          ]}
+        ]).
 
 confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Cluster = prepare_cluster(4),
+    Cluster = prepare_cluster(1),
     confirm_body_search_encoding(Cluster),
     confirm_language_field_type(Cluster),
     confirm_tag_encoding(Cluster),
@@ -59,12 +69,13 @@ http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
-create_index(HP, Index) ->
+create_index(Cluster, HP, Index) ->
     lager:info("create_index ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    timer:sleep(4000),
+    ok = yz_rt:set_index(hd(Cluster), Index),
+    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
     ?assertEqual("204", Status).
 
 search(HP, Index, Term) ->
@@ -90,7 +101,7 @@ store_and_search(Cluster, Bucket, CT, Body, Search) ->
 
 store_and_search(Cluster, Bucket, Headers, CT, Body, Search) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
-    create_index(HP, Bucket),
+    create_index(Cluster, HP, Bucket),
     URL = bucket_url(HP, Bucket, "test"),
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
@@ -103,19 +114,19 @@ store_and_search(Cluster, Bucket, Headers, CT, Body, Search) ->
     ok.
 
 confirm_body_search_encoding(Cluster) ->
-    Bucket = "test_iso_8859_8",
+    Bucket = <<"test_iso_8859_8">>,
     lager:info("confirm_iso_8859_8 ~s", [Bucket]),
     Body = "א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ",
     store_and_search(Cluster, Bucket, "text/plain", Body, "text:בָּרָא").
 
 confirm_language_field_type(Cluster) ->
-    Bucket = "test_shift_jis",
+    Bucket = <<"test_shift_jis">>,
     lager:info("confirm_shift_jis ~s", [Bucket]),
     Body = "{\"text_ja\" : \"私はハイビスカスを食べるのが 大好き\"}",
     store_and_search(Cluster, Bucket, "application/json", Body, "text_ja:大好き").
 
 confirm_tag_encoding(Cluster) ->
-    Bucket = "test_iso_8859_6",
+    Bucket = <<"test_iso_8859_6">>,
     lager:info("confirm_iso_8859_6 ~s", [Bucket]),
     Body = "أردت أن أقرأ كتابا عن تاريخ المرأة في فرنسا",
     Headers = [{"Content-Type", "text/plain"},

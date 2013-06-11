@@ -248,7 +248,7 @@
 -type index_name() :: string().
 
 -define(YZ_DEFAULT_INDEX, "_yz_default").
--define(YZ_INDEX_CONTENT, yz_index_content).
+-define(YZ_INDEX, yz_index).
 
 %%%===================================================================
 %%% Schemas

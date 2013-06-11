@@ -64,7 +64,8 @@ create_index(Cluster, Index) ->
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    timer:sleep(4000),
+    yz_rt:set_index(hd(Cluster), Index),
+    timer:sleep(5000),
     ?assertEqual("204", Status).
 
 store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
@@ -91,7 +92,7 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
     ok.
 
 confirm_basic_search(Cluster) ->
-    Bucket = "basic",
+    Bucket = <<"basic">>,
     create_index(Cluster, Bucket),
     lager:info("confirm_basic_search ~s", [Bucket]),
     Body = "herp derp",
@@ -99,7 +100,7 @@ confirm_basic_search(Cluster) ->
     store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
 
 confirm_encoded_search(Cluster) ->
-    Bucket = "encoded",
+    Bucket = <<"encoded">>,
     create_index(Cluster, Bucket),
     lager:info("confirm_encoded_search ~s", [Bucket]),
     Body = "א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ",
@@ -107,7 +108,7 @@ confirm_encoded_search(Cluster) ->
     store_and_search(Cluster, Bucket, "וְאֵת", Body, <<"text:בָּרָא">>, Params).
 
 confirm_multivalued_field(Cluster) ->
-    Bucket = "basic",
+    Bucket = <<"basic">>,
     lager:info("cofirm multiValued=true fields decode properly"),
     Body = <<"{\"name_ss\":\"turner\", \"name_ss\":\"hooch\"}">>,
     Params = [],
@@ -121,7 +122,7 @@ confirm_multivalued_field(Cluster) ->
     timer:sleep(1100),
     Search = <<"name_ss:turner">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    {ok,{search_results,[{Bucket,Fields}],Score,Found}} =
+    {ok,{search_results,[{Bucket,Fields}],_Score,_Found}} =
             riakc_pb_socket:search(Pid, Bucket, Search, Params),
     ?assert(lists:member({<<"name_ss">>,<<"turner">>}, Fields)),
     ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)).
