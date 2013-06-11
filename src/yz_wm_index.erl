@@ -126,10 +126,16 @@ delete_resource(RD, S) ->
     IndexName = S#ctx.index_name,
     case yz_index:exists(IndexName) of
         true  ->
-            %% TODO: check for existence of buckets using this index
-            ok = yz_index:remove(IndexName),
-            {true, RD, S};
-        false -> {true, RD, S}
+            case associated_buckets(IndexName, S#ctx.ring) of
+                [] ->
+                    ok = yz_index:remove(IndexName),
+                    {true, RD, S};
+                Buckets ->
+                    Msg = "Can't delete index with associate buckets ~p",
+                    text_response({halt,409}, Msg, [Buckets], RD, S)
+            end;
+        false ->
+            {true, RD, S}
     end.
 
 %% Responds to a PUT request by creating an index and setting the
@@ -223,6 +229,12 @@ is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+-spec associated_buckets(index_name(), ring()) -> [bucket()].
+associated_buckets(IndexName, Ring) ->
+    AllBucketProps = riak_core_bucket:get_buckets(Ring),
+    Indexes = lists:map(fun yz_kv:which_index/1, AllBucketProps),
+    lists:filter(fun(I) -> I == IndexName end, Indexes).
 
 %% accepts a string and attempt to parse it into json
 decode_json(RDBody) ->

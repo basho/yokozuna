@@ -40,6 +40,7 @@ confirm() ->
     confirm_delete(Cluster, "test_index_1"),
     confirm_get(Cluster, "test_index_2"),
     confirm_404(Cluster, "not_an_index"),
+    confirm_delete_409(Cluster, "delete_409"),
     pass.
 
 %% @doc Test basic creation, no body.
@@ -133,9 +134,43 @@ confirm_404(Cluster, Index) ->
     {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("404", Status).
 
+%% @doc Confirm that an index with 1 or more buckets associated with
+%%      it is not allowed to be deleted.
+confirm_delete_409(Cluster, Index) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("Verify that index ~s cannot be deleted b/c of associated buckets [~p]", [Index, HP]),
+    URL = index_url(HP, Index),
+    {ok, "204", _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    H = [{"content-type", "application/json"}],
+    B = <<"{\"props\":{\"yz_index\":\"delete_409\"}}">>,
+    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B),
+    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B),
+
+    yz_rt:wait_for_index(Cluster, Index),
+    %% TODO: sleeping for bprops
+    timer:sleep(4000),
+
+    %% Can't be deleted because of associated buckets
+    {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
+
+    B2 = <<"{\"props\":{\"yz_index\":\"_yz_default\"}}">>,
+    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B2),
+
+    %% Still can't delete because of associated bucket
+    {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
+
+    B2 = <<"{\"props\":{\"yz_index\":\"_yz_default\"}}">>,
+    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B2),
+
+    %% TODO: wait_for_index_delete?
+    {ok, "204", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY).
+
 %%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+bucket_url({Host, Port}, Bucket) ->
+    ?FMT("http://~s:~B/riak/~s", [Host, Port, Bucket]).
 
 check_list(Indexes, Body) ->
     Decoded = mochijson2:decode(Body),

@@ -129,6 +129,7 @@ wait_for_aae(Cluster, F, Tries) ->
             wait_for_aae(Cluster, F, Tries + 1)
     end.
 
+-spec wait_for_index(list(), string()) -> term().
 wait_for_index(Cluster, Index) ->
     IsIndexUp =
         fun(Node) ->

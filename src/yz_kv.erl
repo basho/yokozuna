@@ -233,9 +233,16 @@ set_index(Bucket, Index) ->
 
 %% @doc Extract the index name from `BProps' or return the default
 %%      index name if there is none.
+%%
+%% TODO: Convert `index_name()' to be binary everywhere.
 -spec which_index(term()) -> index_name().
 which_index(BProps) ->
-    proplists:get_value(?YZ_INDEX, BProps, ?YZ_DEFAULT_INDEX).
+    case proplists:get_value(?YZ_INDEX, BProps, ?YZ_DEFAULT_INDEX) of
+        B when is_binary(B) ->
+            binary_to_list(B);
+        S ->
+            S
+    end.
 
 %%%===================================================================
 %%% Private
