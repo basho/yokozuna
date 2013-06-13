@@ -71,6 +71,10 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
+-type delete_op() :: {id, binary()}
+                   | {key, binary()}
+                   | {siblings, binary()}
+                   | {'query', binary()}.
 
 %%%===================================================================
 %%% Macros
