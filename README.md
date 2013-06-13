@@ -25,16 +25,18 @@ development cluster.
 
 ### Creating an Index ###
 
-An _index_ must be created in order for Yokozuna to index data.
+An _index_ must be created for bucket data to be indexed under.  Many
+buckets may use the same index.  To create an index via the HTTP
+interface the following.
 
-Currently the index name is a 1:1 mapping with the bucket name. This
-may eventually change to a 1:M mapping from index to bucket.
+    curl -XPUT -i 'http://localhost:10018/yz/index/my_index'
 
-You can create an index via the HTTP interface.
+### Associating a Bucket with an Index ###
 
-    curl -XPUT -i -H 'content-type: application/json' http://localhost:10018/yz/index/name_of_index
+A bucket property must be added to tell Yokozuna where to store the
+indexes for a given bucket.
 
-Optionally, you may create an index from the console.
+    curl -XPUT -i -H 'content-type: application/json' 'http://localhost:10018/buckets/my_bucket/props' -d '{"props":{"yz_index":"my_index"}}'
 
 ### Index Some Data ###
 

@@ -3,7 +3,7 @@
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
                 run_bb/2, search_expect/5,
-                set_index_flag/2,
+                set_index/2,
                 select_random/1, verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
@@ -35,7 +35,7 @@ join(Nodes) ->
 
 test_siblings(Cluster) ->
     HP = hd(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(HP, "siblings"),
+    ok = create_index(Cluster, HP, <<"siblings">>),
     ok = allow_mult(Cluster, <<"siblings">>),
     ok = write_sibs(HP),
     %% Verify 10 times because of non-determinism in coverage
@@ -118,10 +118,11 @@ http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
-create_index(HP, Index) ->
+create_index(Cluster, HP, Index) ->
     lager:info("create_index ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    timer:sleep(5000),
+    ok = set_index(hd(Cluster), Index),
+    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
     ?assertEqual("204", Status).
