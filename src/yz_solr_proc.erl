@@ -29,7 +29,8 @@
          handle_call/3,
          handle_cast/2,
          handle_info/2,
-         terminate/2]).
+         terminate/2,
+         getpid/0]).
 
 -record(state, {
           dir=exit(dir_undefined),
@@ -78,6 +79,8 @@ init([Dir, SolrPort, SolrJMXPort]) ->
      },
     {ok, S}.
 
+handle_call(getpid, _, S) ->
+    {reply, get_pid(?S_PORT(S)), S};
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
     {noreply, S}.
@@ -101,6 +104,9 @@ terminate(_, S) ->
     os:cmd("kill -TERM " ++ integer_to_list(get_pid(Port))),
     port_close(Port),
     ok.
+
+getpid() ->
+    gen_server:call(?MODULE, getpid).
 
 %%%===================================================================
 %%% Private
