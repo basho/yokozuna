@@ -298,23 +298,12 @@ encode_delete({id, Id}) ->
     {struct, [{id, Id}]}.
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]};
-
-encode_doc({doc, Boost, Fields}) ->
-    {struct, [{doc, [{boost, Boost}], lists:map(fun encode_field/1, Fields)}]}.
-
-% encode_field({Name,Value}) when is_binary(Value) ->
-%     {Name, Value};
+    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]}.
 
 encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};
-
 encode_field({Name,Value}) ->
-    {Name, Value};
-
-encode_field({Name,Value,Boost}) ->
-    FieldContent = {struct, [{boost, Boost}, {value, Value}]},
-    {struct, [{Name, FieldContent}]}.
+    {Name, Value}.
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->
