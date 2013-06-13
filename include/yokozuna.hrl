@@ -19,29 +19,6 @@
 %% -------------------------------------------------------------------
 
 %%%===================================================================
-%%% Records
-%%%===================================================================
-
--record(yz_index_cmd, {
-          doc :: doc(),
-          index :: string(),
-          req_id :: non_neg_integer()
-         }).
-
--record(yz_search_cmd, {
-          qry :: term(),
-          req_id :: non_neg_integer()
-         }).
-
-%% A reference to a merkle tree.
--record(tree_ref, {
-          index :: string(),
-          name :: tree_name(),
-          pid :: pid(),
-          ref :: reference()
-         }).
-
-%%%===================================================================
 %%% Types
 %%%===================================================================
 
@@ -60,7 +37,6 @@
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
 -type tree_name() :: atom().
--type tree_ref() :: #tree_ref{}.
 
 %% Index into the ring
 -type idx() :: non_neg_integer().
