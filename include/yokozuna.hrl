@@ -296,7 +296,7 @@
 %% Riak bucket
 -define(YZ_RB_FIELD, '_yz_rb').
 -define(YZ_RB_FIELD_S, "_yz_rb").
--define(YZ_RB_FIELD_B, <<"_yz_rk">>).
+-define(YZ_RB_FIELD_B, <<"_yz_rb">>).
 -define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
 -define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
