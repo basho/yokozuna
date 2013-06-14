@@ -58,6 +58,8 @@ verify_flag_add(Cluster, YZBenchDir) ->
     F = fun(Node) ->
                 lager:info("Verify that AAE re-indexes objects under fruit index [~p]", [Node]),
                 HP2 = hd(yz_rt:host_entries(rt:connection_info([Node]))),
+                %% Also verify that the data was deleted under default index
+                yz_rt:search_expect(HP2, "_yz_default", "_yz_rb", "fruit", 0),
                 yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
         end,
     yz_rt:wait_until(Cluster, F).
