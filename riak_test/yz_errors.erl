@@ -64,6 +64,8 @@ expect_bad_json(Cluster) ->
     timer:sleep(1100),
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
+    %% Sleep for soft commit
+    timer:sleep(1100),
     ?assert(search_expect(HP, "bad_json", ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
@@ -81,6 +83,8 @@ expect_bad_xml(Cluster) ->
     timer:sleep(1100),
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
+    %% Sleep for soft commit
+    timer:sleep(1100),
     ?assert(search_expect(HP, "bad_xml", ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 

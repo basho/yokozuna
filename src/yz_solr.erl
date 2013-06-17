@@ -88,10 +88,11 @@ cores() ->
             Err
     end.
 
--spec delete(string(), binary()) -> ok.
-delete(Core, DocID) ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    JSON = encode_delete({id, DocID}),
+%% @doc Perform the delete `Ops' against the `Index'.
+-spec delete(index_name(), [delete_op()]) -> ok.
+delete(Index, Ops) ->
+    BaseURL = base_url() ++ "/" ++ Index ++ "/update",
+    JSON = mochijson2:encode({struct, [{delete, encode_delete(Op)} || Op <- Ops]}),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
@@ -99,15 +100,7 @@ delete(Core, DocID) ->
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to delete doc", DocID, Err})
-    end.
-
-delete_by_query(Core, JSON) ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    Headers = [{content_type, "application/json"}],
-    case ibrowse:send_req(BaseURL, Headers, post, JSON, []) of
-        {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to delete by query", JSON, Err})
+        Err -> throw({"Failed to delete doc", Ops, Err})
     end.
 
 %% @doc Get slice of entropy data.  Entropy data is used to build
@@ -153,8 +146,15 @@ entropy_data(Core, Filter) ->
 
 %% @doc Index the given `Docs'.
 index(Core, Docs) ->
+    index(Core, Docs, []).
+
+-spec index(index_name(), list(), [delete_op()]) -> ok.
+index(Core, Docs, DelOps) ->
     BaseURL = base_url() ++ "/" ++ Core ++ "/update",
-    JSON = prepare_json(Docs),
+    Ops = {struct,
+           [{delete, encode_delete(Op)} || Op <- DelOps] ++
+               [{add, encode_doc(D)} || D <- Docs]},
+    JSON = mochijson2:encode(Ops),
     Params = [],
     Encoded = mochiweb_util:urlencode(Params),
     URL = BaseURL ++ "?" ++ Encoded,
@@ -162,7 +162,7 @@ index(Core, Docs) ->
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Docs, Err})
+        Err -> throw({"Failed to index docs", Ops, Err})
     end.
 
 prepare_json(Docs) ->
@@ -279,37 +279,31 @@ convert_action(remove) -> "UNLOAD".
 encode_commit() ->
     <<"{}">>.
 
+%% @private
+%%
+%% @doc Encode a delete operation into a mochijson2 compatiable term.
+-spec encode_delete(delete_op()) -> term().
 encode_delete({key,Key}) ->
     Query = ?YZ_RK_FIELD_S ++ ":" ++ ibrowse_lib:url_encode(binary_to_list(Key)),
-    mochijson2:encode({struct, [{delete, ?QUERY(list_to_binary(Query))}]});
-
-encode_delete({key,Key,siblings}) ->
+    ?QUERY(list_to_binary(Query));
+encode_delete({siblings,Key}) ->
     Query = ?YZ_RK_FIELD_S ++ ":" ++ ibrowse_lib:url_encode(binary_to_list(Key)) ++ " AND " ++ ?YZ_VTAG_FIELD_S ++ ":[* TO *]",
-    mochijson2:encode({struct, [{delete, ?QUERY(list_to_binary(Query))}]});
-
-%% NOTE: Solr uses the name `id' to represent the `uniqueKey' field of
-%%       the schema.  Thus `id' must be passed, not `YZ_ID_FIELD'.
+    ?QUERY(list_to_binary(Query));
+encode_delete({'query', Query}) ->
+    ?QUERY(Query);
 encode_delete({id, Id}) ->
-    mochijson2:encode({struct, [{delete, {struct, [{id, Id}]}}]}).
+    %% NOTE: Solr uses the name `id' to represent the `uniqueKey'
+    %%       field of the schema.  Thus `id' must be passed, not
+    %%       `YZ_ID_FIELD'.
+    {struct, [{id, Id}]}.
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}] };
-
-encode_doc({doc, Boost, Fields}) ->
-	{struct, [{doc, [{boost, Boost}], lists:map(fun encode_field/1, Fields)}]}.
-
-% encode_field({Name,Value}) when is_binary(Value) ->
-%     {Name, Value};
+    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]}.
 
 encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};
-
 encode_field({Name,Value}) ->
-    {Name, Value};
-
-encode_field({Name,Value,Boost}) ->
-    FieldContent = {struct, [{boost, Boost}, {value, Value}]},
-    {struct, [{Name, FieldContent}]}.
+    {Name, Value}.
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->

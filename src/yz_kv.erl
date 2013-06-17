@@ -143,8 +143,7 @@ index(Obj, Reason, VNodeState) ->
 index(_, delete, _, P, BKey, IdxN, Index, _) ->
     {_, Key} = BKey,
     try
-        Query = yz_solr:encode_delete({key, Key}),
-        ok = yz_solr:delete_by_query(Index, Query),
+        ok = yz_solr:delete(Index, [{key, Key}]),
         ok = update_hashtree(delete, P, IdxN, BKey)
     catch _:Err ->
             ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
@@ -160,8 +159,8 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
     Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
                             IndexContent),
     try
-        ok = yz_solr:index(Index, Docs),
-        ok = cleanup(length(Docs), {Index, Obj, Key, LP}),
+        DelOp = cleanup(length(Docs), {Obj, Key, LP}),
+        ok = yz_solr:index(Index, Docs, DelOp),
         ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
                              P, IdxN, BKey)
     catch _:Err ->
@@ -269,20 +268,17 @@ check_flag(Flag) ->
     true == erlang:get(Flag).
 
 %% @private
-cleanup(1, {Index, _Obj, Key, _LP}) ->
+cleanup(1, {_Obj, Key, _LP}) ->
     %% Delete any siblings
-    JSON = yz_solr:encode_delete({key, Key, siblings}),
-    ok = yz_solr:delete_by_query(Index, JSON);
-
-cleanup(2, {Index, Obj, _Key, LP}) ->
+    [{siblings, Key}];
+cleanup(2, {Obj, _Key, LP}) ->
     %% An object has crossed the threshold from
     %% being a single value Object, to a sibling
     %% value Object, delete the non-sibling ID
     DocID = yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)),
-    ok = yz_solr:delete(Index, DocID);
-
+    [{id, DocID}];
 cleanup(_, _) ->
-    ok.
+    [].
 
 %% @private
 %%

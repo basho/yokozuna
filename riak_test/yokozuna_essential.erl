@@ -80,7 +80,7 @@ test_escaped_key(Cluster) ->
     Value = <<"Never gonna give you up">>,
     Bucket = "escaped",
     Key = edoc_lib:escape_uri("rick/astley-rolled:derp"),
-    ok = http_put({H, P}, Bucket, Key, Value),
+    ok = yz_rt:http_put({H, P}, Bucket, Key, Value),
     ok = http_get({H, P}, Bucket, Key),
     ok.
 
@@ -89,14 +89,6 @@ http_get({Host, Port}, Bucket, Key) ->
                                       [Host, integer_to_list(Port), Bucket, Key])),
     Headers = [{"accept", "text/plain"}],
     {ok, "200", _, _} = ibrowse:send_req(URL, Headers, get, [], []),
-    ok.
-
-http_put({Host, Port}, Bucket, Key, Value) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
-                                      [Host, integer_to_list(Port), Bucket, Key])),
-    Opts = [],
-    Headers = [{"content-type", "text/plain"}],
-    {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
 verify_aae(Cluster, YZBenchDir) ->

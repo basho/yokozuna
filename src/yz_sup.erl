@@ -41,7 +41,7 @@ init([false]) ->
     %% Yokozuna is disabled, start a supervisor without any children.
     {ok, {{one_for_one, 5, 10}, []}};
 
-init([Enabled]) ->
+init([_Enabled]) ->
     SolrProc = {yz_solr_proc_sup,
                 {yz_solr_proc_sup, start_link, []},
                 permanent, infinity, supervisor, [yz_solr_proc_sup]},
