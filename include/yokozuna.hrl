@@ -19,29 +19,6 @@
 %% -------------------------------------------------------------------
 
 %%%===================================================================
-%%% Records
-%%%===================================================================
-
--record(yz_index_cmd, {
-          doc :: doc(),
-          index :: string(),
-          req_id :: non_neg_integer()
-         }).
-
--record(yz_search_cmd, {
-          qry :: term(),
-          req_id :: non_neg_integer()
-         }).
-
-%% A reference to a merkle tree.
--record(tree_ref, {
-          index :: string(),
-          name :: tree_name(),
-          pid :: pid(),
-          ref :: reference()
-         }).
-
-%%%===================================================================
 %%% Types
 %%%===================================================================
 
@@ -60,7 +37,6 @@
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
 -type tree_name() :: atom().
--type tree_ref() :: #tree_ref{}.
 
 %% Index into the ring
 -type idx() :: non_neg_integer().
@@ -95,6 +71,10 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
+-type delete_op() :: {id, binary()}
+                   | {key, binary()}
+                   | {siblings, binary()}
+                   | {'query', binary()}.
 
 %%%===================================================================
 %%% Macros
@@ -316,7 +296,7 @@
 %% Riak bucket
 -define(YZ_RB_FIELD, '_yz_rb').
 -define(YZ_RB_FIELD_S, "_yz_rb").
--define(YZ_RB_FIELD_B, <<"_yz_rk">>).
+-define(YZ_RB_FIELD_B, <<"_yz_rb">>).
 -define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
 -define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
