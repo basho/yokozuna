@@ -37,15 +37,38 @@ create(Name) ->
 
 %% @doc Create the index `Name' across the entire cluster using
 %%      `SchemaName' as the schema.
-%%      Returns 'ok' if created, or 'notfound' if the
-%%      `SchemaName' is unknown
--spec create(string(), schema_name()) -> ok | notfound.
+%%
+%% `ok' - The schema was found and the create request was successfully
+%%        run on the claimant.
+%%
+%% `schema_not_found' - The `SchemaName' could not be found in Riak.
+%%
+%% `rpc_fail' - The claimant could not be contacted.
+%%
+%% NOTE: All create requests are serialized through the claimant node
+%%       to avoid races between disjoint nodes.  If the claimant is
+%%       down not indexes may be created.
+-spec create(string(), schema_name()) -> ok |
+                                         {error, schema_not_found} |
+                                         {error, rpc_fail}.
 create(Name, SchemaName) ->
     case yz_schema:exists(SchemaName) of
-        false -> notfound;
+        false -> {error, notfound};
         true  ->
-            Info = make_info(Name, SchemaName),
-            ok = add_to_ring(Name, Info)
+            Ring = yz_misc:get_ring(transformed),
+            case yz_misc:is_claimant(Ring, node()) of
+                true ->
+                    Info = make_info(Name, SchemaName),
+                    ok = add_to_ring(Name, Info);
+                false ->
+                    case rpc:call(yz_misc:get_claimant(Ring), ?MODULE, create, [Name, SchemaName]) of
+                        ok ->
+                            ok;
+                        {badrpc, Reason} ->
+                            lager:warning("Failed to contact claimant node ~p", [Reason]),
+                            {error, badrpc}
+                    end
+            end
     end.
 
 -spec exists(index_name()) -> boolean().
@@ -57,9 +80,21 @@ exists(Name) ->
 
 
 %% @doc Removed the index `Name' from the entire cluster.
--spec remove(string()) -> ok.
+-spec remove(index_name()) -> ok | {error, badrpc}.
 remove(Name) ->
-    ok = remove_from_ring(Name).
+    Ring = yz_misc:get_ring(transformed),
+    case yz_misc:is_claimant(Ring, node()) of
+        true ->
+            ok = remove_from_ring(Name);
+        false ->
+            case rpc:call(yz_misc:get_claimant(Ring), ?MODULE, remove, [Name]) of
+                ok ->
+                    ok;
+                {badrpc, Reason} ->
+                    lager:warning("Failed to contact claimant node ~p", [Reason]),
+                    {error, badrpc}
+            end
+    end.
 
 -spec get_indexes_from_ring(ring()) -> indexes().
 get_indexes_from_ring(Ring) ->

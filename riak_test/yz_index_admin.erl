@@ -22,19 +22,7 @@
 confirm() ->
     Cluster = prepare_cluster(4),
     confirm_create_index_1(Cluster),
-    %% TODO: These sleeps were added because concurrent index creation
-    %% on disjoint nodes can cause the ring/yz_events code to lose
-    %% indexes.  Remove these sleeps and add the following code to
-    %% yz_events:sync_indexes/4.
-    %%
-    %% lager:error("SYNC INDEXES ~p ~p ~p", [Removed, Added, Same]),
-    %%
-    %% You'll notice indexes in Removed that shouldn't be.  I'm going
-    %% to deal with this later as I'm working on a different feature
-    %% at the moment.
-    timer:sleep(2000),
     confirm_create_index_2(Cluster),
-    timer:sleep(2000),
     confirm_409(Cluster),
     confirm_list(Cluster, ["test_index_1", "test_index_2", "test_index_409"]),
     confirm_delete(Cluster, "test_index_1"),
@@ -50,7 +38,8 @@ confirm_create_index_1(Cluster) ->
     lager:info("confirm_create_index_1 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, Status, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
-    ?assertEqual("204", Status).
+    ?assertEqual("204", Status),
+    yz_rt:wait_for_index(Cluster, Index).
 
 %% @doc Test index creation when passing schema name.
 confirm_create_index_2(Cluster) ->
@@ -61,7 +50,8 @@ confirm_create_index_2(Cluster) ->
     Headers = [{"content-type", "application/json"}],
     Body = <<"{\"schema\":\"_yz_default\"}">>,
     {ok, Status, _, _} = http(put, URL, Headers, Body),
-    ?assertEqual("204", Status).
+    ?assertEqual("204", Status),
+    yz_rt:wait_for_index(Cluster, Index).
 
 confirm_409(Cluster) ->
     Index = "test_index_409",
@@ -147,7 +137,7 @@ confirm_delete_409(Cluster, Index) ->
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B),
 
     yz_rt:wait_for_index(Cluster, Index),
-    %% TODO: sleeping for bprops
+    %% Sleeping for bprops (TODO: convert to `wait_for_bprops')
     timer:sleep(4000),
 
     %% Can't be deleted because of associated buckets
