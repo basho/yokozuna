@@ -159,7 +159,7 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
     Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
                             IndexContent),
     try
-        DelOp = cleanup(length(Docs), {Index, Obj, Key, LP}),
+        DelOp = cleanup(length(Docs), {Obj, Key, LP}),
         ok = yz_solr:index(Index, Docs, DelOp),
         ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
                              P, IdxN, BKey)
@@ -268,10 +268,10 @@ check_flag(Flag) ->
     true == erlang:get(Flag).
 
 %% @private
-cleanup(1, {_Index, _Obj, Key, _LP}) ->
+cleanup(1, {_Obj, Key, _LP}) ->
     %% Delete any siblings
     [{siblings, Key}];
-cleanup(2, {_Index, Obj, _Key, LP}) ->
+cleanup(2, {Obj, _Key, LP}) ->
     %% An object has crossed the threshold from
     %% being a single value Object, to a sibling
     %% value Object, delete the non-sibling ID
