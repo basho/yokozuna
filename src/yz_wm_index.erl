@@ -141,13 +141,18 @@ delete_resource(RD, S) ->
 %% Responds to a PUT request by creating an index and setting the
 %% index flag for the "index" name given in the route. Returns 204 if
 %% created, or 409 if an index of that name already exists. Returns a
-%% 500 error if the schema does not exist.
+%% 400 error if the schema does not exist.
 create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
-    ok = maybe_create_index(IndexName, SchemaName),
-    {<<>>, RD, S}.
+    case maybe_create_index(IndexName, SchemaName) of
+        ok ->
+            {<<>>, RD, S};
+        {error, {rpc_fail, Claimant, _}} ->
+            Msg = "Cannot create index while claimant node ~p is down~n",
+            text_response({halt, 500}, Msg, [Claimant], RD, S)
+    end.
 
 
 %% Responds to a GET request by returning index info for
@@ -247,11 +252,13 @@ decode_json(RDBody) ->
           end
     end.
 
--spec maybe_create_index(index_name(), schema_name()) -> ok.
+-spec maybe_create_index(index_name(), schema_name()) -> ok |
+                                                         {error, schema_not_found} |
+                                                         {error, {rpc_fail, node(), term()}}.
 maybe_create_index(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
         true  ->
             ok;
         false ->
-            ok = yz_index:create(IndexName, SchemaName)
+            yz_index:create(IndexName, SchemaName)
     end.

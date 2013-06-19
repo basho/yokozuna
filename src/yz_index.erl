@@ -50,10 +50,11 @@ create(Name) ->
 %%       down not indexes may be created.
 -spec create(string(), schema_name()) -> ok |
                                          {error, schema_not_found} |
-                                         {error, rpc_fail}.
+                                         {error, {rpc_fail, node(), term()}}.
 create(Name, SchemaName) ->
     case yz_schema:exists(SchemaName) of
-        false -> {error, notfound};
+        false ->
+            {error, schema_not_found};
         true  ->
             Ring = yz_misc:get_ring(transformed),
             case yz_misc:is_claimant(Ring, node()) of
@@ -61,12 +62,12 @@ create(Name, SchemaName) ->
                     Info = make_info(Name, SchemaName),
                     ok = add_to_ring(Name, Info);
                 false ->
-                    case rpc:call(yz_misc:get_claimant(Ring), ?MODULE, create, [Name, SchemaName]) of
+                    Claimant = yz_misc:get_claimant(Ring),
+                    case rpc:call(Claimant, ?MODULE, create, [Name, SchemaName]) of
                         ok ->
                             ok;
                         {badrpc, Reason} ->
-                            lager:warning("Failed to contact claimant node ~p", [Reason]),
-                            {error, badrpc}
+                            {error, {rpc_fail, Claimant, Reason}}
                     end
             end
     end.
