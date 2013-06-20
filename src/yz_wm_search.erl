@@ -29,9 +29,15 @@
 %%%===================================================================
 
 %% @doc Return the list of routes provided by this resource.
+-spec routes() -> [tuple()].
 routes() ->
-    [{["solr", index, "select"], ?MODULE, []},
-     {["search", index], ?MODULE, []}].
+    Routes1 = [{["search", index], ?MODULE, []}],
+    case yz_misc:is_riak_search_enabled() of
+        false ->
+            [{["solr", index, "select"], ?MODULE, []}|Routes1];
+        true ->
+            Routes1
+    end.
 
 
 %%%===================================================================
