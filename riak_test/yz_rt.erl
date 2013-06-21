@@ -1,6 +1,7 @@
 -module(yz_rt).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
+-include("yokozuna.hrl").
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 
 -type host() :: string().
@@ -18,6 +19,7 @@ connection_info(Cluster) ->
                                   || Node <- Cluster]),
     orddict:merge(fun(_,V1,V2) -> V1 ++ V2 end, CI, SolrInfo).
 
+-spec create_index(node(), index_name()) -> ok.
 create_index(Node, Index) ->
     lager:info("Creating index ~s [~p]", [Index, Node]),
     ok = rpc:call(Node, yz_index, create, [Index]).
@@ -42,11 +44,15 @@ host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
 -spec http_put({string(), portnum()}, binary(), binary(), binary()) -> ok.
-http_put({Host, Port}, Bucket, Key, Value) ->
+http_put(HP, Bucket, Key, Value) ->
+    http_put(HP, Bucket, Key, "text/plain", Value).
+
+-spec http_put({string(), portnum()}, binary(), binary(), string(), binary()) -> ok.
+http_put({Host, Port}, Bucket, Key, CT, Value) ->
     URL = ?FMT("http://~s:~s/riak/~s/~s",
                [Host, integer_to_list(Port), Bucket, Key]),
     Opts = [],
-    Headers = [{"content-type", "text/plain"}],
+    Headers = [{"content-type", CT}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
