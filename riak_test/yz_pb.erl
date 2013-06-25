@@ -78,17 +78,22 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
     {Host, Port} = HP,
     %% populate a value
     {ok, "204", _, _} = ibrowse:send_req(URL, [{"Content-Type", CT}], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    lager:info("search_results"),
-    {ok,{search_results,[{Bucket,Results}],Score,Found}} =
-            riakc_pb_socket:search(Pid, Bucket, Search, Params),
-    ?assertEqual(
-        Key,
-        binary_to_list(proplists:get_value(<<"_yz_rk">>, Results))),
-    ?assertEqual(Found, 1),
-    ?assertNot(Score == 0.0),
+    F = fun(_) ->
+                lager:info("Search for ~s [~p]", [Search, HP]),
+                {ok,{search_results,R,Score,Found}} =
+                    riakc_pb_socket:search(Pid, Bucket, Search, Params),
+                case Found of
+                    1 ->
+                        [{Bucket,Results}] = R,
+                        KeyCheck = (Key == binary_to_list(proplists:get_value(<<"_yz_rk">>, Results))),
+                        ScoreCheck = (Score =/= 0.0),
+                        KeyCheck and ScoreCheck;
+                    0 ->
+                        false
+                end
+        end,
+    yz_rt:wait_until(Cluster, F),
     ok.
 
 confirm_basic_search(Cluster) ->

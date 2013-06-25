@@ -53,7 +53,18 @@ maybe_setup(true, SupPid) ->
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
-    ok = riak_api_pb_service:register(?SERVICES),
+    maybe_register_pb(),
     riak_core_node_watcher:service_up(yokozuna, SupPid),
     ok.
+
+%% @doc Conditionally register PB service IFF Riak Search is not
+%%      enabled.
+-spec maybe_register_pb() -> ok.
+maybe_register_pb() ->
+    case yz_misc:is_riak_search_enabled() of
+        false ->
+            ok = riak_api_pb_service:register(?SERVICES);
+        true ->
+            ok
+    end.
 

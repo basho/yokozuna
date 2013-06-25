@@ -38,6 +38,11 @@ get_claimant(Ring) ->
 is_claimant(Ring, Node) ->
     Node == get_claimant(Ring).
 
+%% @doc Determine if Riak Search is enabled.
+-spec is_riak_search_enabled() -> boolean().
+is_riak_search_enabled() ->
+    app_helper:get_env(?RS_SVC, enabled, false).
+
 %% @doc Add list of webmachine routes to the router.
 add_routes(Routes) ->
     [webmachine_router:add_route(R) || R <- Routes].

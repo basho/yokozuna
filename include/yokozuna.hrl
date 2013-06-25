@@ -118,6 +118,8 @@
 -define(YZ_ERR_QUERY_FAILURE,
         "Query unsuccessful check the logs.").
 
+-define(RS_SVC, riak_search).
+
 %%%===================================================================
 %%% Anti Entropy
 %%%===================================================================
