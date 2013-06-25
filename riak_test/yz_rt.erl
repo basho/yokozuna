@@ -31,7 +31,7 @@ create_index(Node, Index, SchemaName) ->
 
 get_count(Resp) ->
     Struct = mochijson2:decode(Resp),
-    yz_driver:get_path(Struct, [<<"response">>, <<"numFound">>]).
+    kvc:path([<<"response">>, <<"numFound">>], Struct).
 
 -spec get_yz_conn_info(node()) -> {string(), string()}.
 get_yz_conn_info(Node) ->

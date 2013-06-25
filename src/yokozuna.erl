@@ -81,7 +81,7 @@ partition_list(Index) ->
     Resp = yz_solr:partition_list(Index),
     Struct = mochijson2:decode(Resp),
     Path = [<<"facet_counts">>, <<"facet_fields">>, ?YZ_PN_FIELD_B],
-    Facets = yz_solr:get_path(Struct, Path),
+    Facets = kvc:path(Path, Struct),
     %% Facets is a list of field values followed by their
     %% corresponding count.  The `is_binary' filter is done to remove
     %% the counts and leave only the partitions.
