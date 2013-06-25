@@ -47,7 +47,7 @@ create(Name) ->
 %%
 %% NOTE: All create requests are serialized through the claimant node
 %%       to avoid races between disjoint nodes.  If the claimant is
-%%       down not indexes may be created.
+%%       down no indexes may be created.
 -spec create(string(), schema_name()) -> ok |
                                          {error, schema_not_found} |
                                          {error, {rpc_fail, node(), term()}}.
