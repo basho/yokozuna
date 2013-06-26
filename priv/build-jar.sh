@@ -26,9 +26,12 @@ if [ ! -e $SOLR_JAR_DIR ]; then
 fi
 
 echo "Compile..."
-javac -cp "$SOLR_JAR_DIR/*" java/com/basho/yokozuna/handler/*.java java/com/basho/yokozuna/query/*.java java/com/basho/yokozuna/monitor/*.java
+javac -cp "$SOLR_JAR_DIR/*" java/com/basho/yokozuna/handler/*.java java/com/basho/yokozuna/query/*.java java_monitor/com/basho/yokozuna/monitor/*.java
 echo "Create yokozuna.jar..."
 mkdir java_lib
 jar cvf java_lib/yokozuna.jar -C java/ .
-jar cvf solr/lib/ext/yz_monitor.jar -C java_monitor/ .
 echo "Finished building yokozuna.jar..."
+
+echo "Create yz_monitor.jar..."
+jar cvf solr/lib/ext/yz_monitor.jar -C java_monitor/ .
+echo "Finished building yz_monitor.jar..."

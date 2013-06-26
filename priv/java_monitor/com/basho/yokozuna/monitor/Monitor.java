@@ -39,11 +39,11 @@ public class Monitor {
      */
     public static void monitor(final String monitorScript, final String sleepSeconds) {
         int sleepInterval = Integer.parseInt(sleepSeconds);
-        TimerTask readyForSuicide = new MonitorTimerTask(monitorScript);
+        TimerTask readyForSuicide = new Monitor.MonitorTimerTask(monitorScript);
         Timer timer = new Timer();
 
-       // scheduling the task at fixed rate
-       timer.schedule(readyForSuicide, sleepInterval*1000);      
+        // scheduling the task at fixed rate
+        timer.schedule(readyForSuicide, 0, sleepInterval*1000);
     }
    
     /**
@@ -55,7 +55,7 @@ public class Monitor {
         monitor(args[0], args[1]);
     }
     
-    public class MonitorTimerTask extends TimerTask {
+    public static class MonitorTimerTask extends TimerTask {
         protected String _monitorScript;
         
         MonitorTimerTask(String script) {
@@ -77,6 +77,7 @@ public class Monitor {
                 }
                 // Die if our parent is no longer Erlang
                 int ppid = Integer.parseInt(line);
+                log.debug("Checking PPID of Solr: " + ppid);
                 if (ppid == 1) {
                     log.error("Shutting down Solr after Yokozuna has crashed");
                     System.exit(0);

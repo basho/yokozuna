@@ -31,12 +31,14 @@ test_solr_monitor(Cluster) ->
     Node = hd(Cluster),
     ErlPid = rpc:call(Node, os, getpid, []),
     JvmPid = get_jvm_pid(Node),
+    lager:info("kill -9 Riak: ~p", [ErlPid]),
     os:cmd("kill -9 " ++  ErlPid),
     rt:wait_until(nonode, fun(_M) -> yz_monitor_solr:is_jvm_dead_yet(JvmPid) end).
 
 %% Verify that the JVM really has died
 -spec is_jvm_dead_yet(string()) -> boolean().
 is_jvm_dead_yet(JvmPid) ->
+    lager:info("Checking to see if JVM is dead: ~p", [JvmPid]),
     Out = os:cmd("/bin/ps -ef | grep " ++ JvmPid ++ "| grep -v grep | grep -v dyld"),
     case Out of
         [] ->
