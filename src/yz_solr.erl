@@ -80,7 +80,7 @@ core(Action, Props) ->
 cores() ->
     case yz_solr:core(status, [{wt,json}]) of
         {ok, _, Body} ->
-            Status = yz_solr:get_path(mochijson2:decode(Body), [<<"status">>]),
+            {struct, Status} = kvc:path([<<"status">>], mochijson2:decode(Body)),
             Cores = ordsets:from_list([binary_to_list(Name)
                                        || {Name, _} <- Status]),
             {ok, Cores};
@@ -136,7 +136,7 @@ entropy_data(Core, Filter) ->
     case ibrowse:send_req(URL, [], get, [], Opts) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
-            More = json_get_key(<<"more">>, R),
+            More = kvc:path([<<"more">>], R),
             Continuation = get_continuation(More, R),
             Pairs = get_pairs(R),
             make_ed(More, Continuation, Pairs);
@@ -309,44 +309,25 @@ encode_field({Name,Value}) ->
 get_continuation(false, _R) ->
     none;
 get_continuation(true, R) ->
-    json_get_key(<<"continuation">>, R).
+    kvc:path([<<"continuation">>], R).
 
 get_pairs(R) ->
-    Docs = json_get_key(<<"docs">>, get_response(R)),
+    Docs = kvc:path([<<"response">>, <<"docs">>], R),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
 to_pair({struct, [{_,Bucket},{_,Key},{_,Base64Hash}]}) ->
     {{Bucket,Key}, base64:decode(Base64Hash)}.
 
 get_doc_pairs(Resp) ->
-    Docs = json_get_key(<<"docs">>, Resp),
+    Docs = kvc:path([<<"docs">>], Resp),
     [to_doc_pairs(DocStruct) || DocStruct <- Docs].
 
 to_doc_pairs({struct, Values}) ->
     Values.
 
-get_path({struct, PL}, Path) ->
-    get_path(PL, Path);
-get_path(PL, [Name]) ->
-    case proplists:get_value(Name, PL) of
-        {struct, Obj} -> Obj;
-        Val -> Val
-    end;
-get_path(PL, [Name|Path]) ->
-    get_path(proplists:get_value(Name, PL), Path).
-
+-spec get_response(term()) -> term().
 get_response(R) ->
-    json_get_key(<<"response">>, R).
-
-%% @doc Given a "struct" created by `mochijson2:decode' get the given
-%%      `Key' or throw if not found.
-json_get_key(Key, {struct, PL}) ->
-    case proplists:get_value(Key, PL) of
-        undefined -> {error, not_found, Key, PL};
-        Val -> Val
-    end;
-json_get_key(_Key, Term) ->
-    throw({error, "json_get_key: Term not a struct", Term}).
+    kvc:path([<<"response">>], R).
 
 make_ed(More, Continuation, Pairs) ->
     #entropy_data{more=More, continuation=Continuation, pairs=Pairs}.

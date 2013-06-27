@@ -92,7 +92,7 @@ search(HP, Index, Term) ->
 
 verify_count(Expected, Resp) ->
     Struct = mochijson2:decode(Resp),
-    NumFound = yz_driver:get_path(Struct, [<<"response">>, <<"numFound">>]),
+    NumFound = kvc:path([<<"response">>, <<"numFound">>], Struct),
     Expected == NumFound.
 
 store_and_search(Cluster, Bucket, CT, Body, Search) ->
