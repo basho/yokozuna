@@ -1,6 +1,107 @@
 Yokozuna Release Notes
 ==========
 
+0.7.0
+----------
+
+The seventh pre-release of Yokozuna.  Solr has been upgraded to 4.3.0.
+The same index may be used by many buckets.  Indexing errors are
+isolated from object writes.  Queries may be used as input to
+map-reduce jobs.  Improved throughput for indexing.  Proper cleanup of
+JVM processes.  Along with some other small fixes.
+
+### Features ###
+
+* [57][], [112][] - Isolate indexing failure from object writes.  On
+  indexing failure write an "error document" in Solr that prevents AAE
+  from constantly repairing but also allows user to query for keys
+  which failed to index.
+
+* [121][], [122][] - Upgrade to [Solr 4.3.0][s430].  Remove the JSON
+  query response writer so `wt=json` actually uses `application/json`
+  content-type header.
+
+* [90][] - Allow one-to-many index-to-buckets relationship.  Now the
+  same index can be used by many buckets.  A bucket can still only
+  have one index associated with it but it doesn't have to have the
+  same name and more than one bucket can use the same index.
+
+* [19][], [133][] - Add map-reduce support.  Now Yokozuna queries can
+  be used as input to a map-reduce job.
+
+### Performance ###
+
+* [48][] - Send delete and update in the same request.  In order to
+  handle siblings Yokozuna currently needs to perform both a delete
+  and update for every object.  Performing both operations with one
+  request rather than two showed a 15% write-throughput improvement in
+  a benchmark on my MacBook Pro.
+
+### Bugs/Misc ###
+
+* [91][], [111][] - Remove the auto-suffix JSON extractor.  It caused
+  duplicate code, the suffix generation was too simple, and now there
+  is a catch-all field in the default schema.
+
+* [117][] - Some code cleanup.
+
+* [119][] - Fix regression in the extractor test resource.
+
+* [118][] - Close hashtrees on application stop.  Any time a hashtree
+  server is stopped make sure to properly close the hashtree first.
+
+* [120][] - Add some scripts for calculating benchmark results.
+
+* [72][] - Work has finished on filter query compression.
+
+* [128][] - Serialize index creation through the claimant node.  This
+  prevents index creation events on disjoint nodes from racing with
+  each other.
+
+* [124][], [127][] - JVM self destruct.  There are cases where Riak
+  might go down in such a way that it doesn't have a chance to stop
+  the corresponding JVM process.  Add a periodic task, running inside
+  the JVM, that checks for this condition and exits on discovery.
+  Without this Riak could not restart because it would try to start a
+  new JVM/Solr process but the port would already be bound causing the
+  restart to fail.
+
+### Documentation ###
+
+* [116][] - Add INSTALL doc.  Covers installing from source package
+  and GitHub.
+
+### Breaking Changes ###
+
+* The one-to-many ([90][]) patch changes the way a bucket is marked for
+  indexing.  Previously, when creating an index it implicitly added a
+  flag to the bucket with the same name.  This means you could create
+  an index and mark a bucket for indexing in one step.  Now it will
+  take two.  The first step is to create the index as before.  The
+  second is to add a `yz_index` bucket property with the name of the
+  index.  See the README for an example.
+
+[19]: https://github.com/basho/yokozuna/issues/19
+[48]: https://github.com/basho/yokozuna/pull/48
+[57]: https://github.com/basho/yokozuna/pull/57
+[72]: https://github.com/basho/yokozuna/issues/72
+[90]: https://github.com/basho/yokozuna/pull/90
+[91]: https://github.com/basho/yokozuna/issues/91
+[111]: https://github.com/basho/yokozuna/pull/111
+[112]: https://github.com/basho/yokozuna/pull/112
+[116]: https://github.com/basho/yokozuna/pull/116
+[117]: https://github.com/basho/yokozuna/pull/117
+[118]: https://github.com/basho/yokozuna/pull/118
+[119]: https://github.com/basho/yokozuna/pull/119
+[120]: https://github.com/basho/yokozuna/pull/120
+[121]: https://github.com/basho/yokozuna/issues/121
+[122]: https://github.com/basho/yokozuna/pull/122
+[124]: https://github.com/basho/yokozuna/issues/124
+[127]: https://github.com/basho/yokozuna/pull/127
+[128]: https://github.com/basho/yokozuna/pull/128
+[133]: https://github.com/basho/yokozuna/pull/133
+[s430]: http://lucene.apache.org/solr/4_3_0/changes/Changes.html
+
 0.6.0
 ----------
 
