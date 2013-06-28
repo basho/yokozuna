@@ -280,7 +280,7 @@ sync_added(Bucket) ->
     case yz_solr:search(?YZ_DEFAULT_INDEX, [], Params) of
         {_, Resp} ->
             Struct = mochijson2:decode(Resp),
-            NumFound = yz_solr:get_path(Struct, [<<"response">>, <<"numFound">>]),
+            NumFound = kvc:path([<<"response">>, <<"numFound">>], Struct),
             if NumFound > 0 ->
                     lager:info("index flag enabled for bucket ~s with existing data", [Bucket]),
                     Ops = [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}],

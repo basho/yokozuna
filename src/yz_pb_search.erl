@@ -67,8 +67,8 @@ process(Msg, State) ->
                         R = mochijson2:decode(Body),
                         Resp = yz_solr:get_response(R),
                         Pairs = yz_solr:get_doc_pairs(Resp),
-                        MaxScore = yz_solr:json_get_key(<<"maxScore">>, Resp),
-                        NumFound = yz_solr:json_get_key(<<"numFound">>, Resp),
+                        MaxScore = kvc:path([<<"maxScore">>], Resp),
+                        NumFound = kvc:path([<<"numFound">>], Resp),
 
                         RPBResp = #rpbsearchqueryresp{
                             docs = [encode_doc(Doc) || Doc <- Pairs],

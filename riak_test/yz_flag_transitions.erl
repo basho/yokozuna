@@ -47,7 +47,8 @@ confirm() ->
     yz_rt:wait_for_joins(Cluster),
     verify_index_add(Cluster, YZBenchDir),
     verify_index_remove(Cluster),
-    verify_many_to_one_index_remove(Cluster).
+    verify_many_to_one_index_remove(Cluster),
+    pass.
 
 %% @doc When an index is associated the indexes for the bucket should
 %%      be removed from the default index and AAE should re-index

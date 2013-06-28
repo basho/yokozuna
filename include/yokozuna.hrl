@@ -30,6 +30,7 @@
 -type proplist() :: proplists:proplist().
 -type ring() :: riak_core_ring:riak_core_ring().
 -type timestamp() :: erlang:timestamp().
+-type pipe() :: riak_pipe:pipe().
 
 -type index_set() :: ordset(index_name()).
 -type base64() :: binary().
