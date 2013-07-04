@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(yz_counter_extractor).
+-module(yz_kv_counter_extractor).
 
 -export([extract/1, extract/2]).
 
@@ -29,22 +29,14 @@ extract(Value) ->
     extract(Value, []).
 
 extract(Value, Opts) ->
-    FieldName = field_name(Opts),
-    try
-        Count = count_from_value(Value),
-        [{FieldName, count_to_binary(Count)}]
-    catch
-        _:_ -> []
+    case riak_kv_counter:sibling_value(Value) of
+        {ok, Count} -> [{field_name(Opts), count_to_binary(Count)}];
+        _           -> []
     end.
 
 -spec field_name(proplist()) -> any().
 field_name(Opts) ->
     proplists:get_value(field_name, Opts, <<"riak_kv_counter">>).
-
--spec count_from_value(binary()) -> integer().
-count_from_value(Counter) ->
-    PNCounter = riak_pn_counter:from_binary(Counter),
-    riak_pn_counter:value(PNCounter).
     
 -spec count_to_binary(integer()) -> binary().
 count_to_binary(Count) -> 
