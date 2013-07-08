@@ -36,11 +36,15 @@ start(_StartType, _StartArgs) ->
     riak_core:wait_for_service(riak_kv),
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
-	{ok, Pid} ->
-	    maybe_setup(Enabled, Pid),
-	    {ok, Pid};
-	Error ->
-	    Error
+        {ok, Pid} ->
+            maybe_setup(Enabled, Pid),
+            {ok, Pid};
+        ignore ->
+            lager:error("Yokozuna had a problem starting. Deactivating."),
+            application:set_env(?YZ_APP_NAME, enabled, false),
+            {ok, self()};
+        Error ->
+            Error
     end.
 
 stop(_State) ->

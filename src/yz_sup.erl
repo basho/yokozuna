@@ -30,7 +30,15 @@
 %%%===================================================================
 
 start_link(Enabled) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [Enabled]).
+    process_flag(trap_exit, true),
+    Resp = supervisor:start_link({local, ?MODULE}, ?MODULE, [Enabled]),
+    receive
+        {'EXIT',_Pid,shutdown} ->
+            lager:error("Ignoring yz_sup startup", []),
+            ignore;
+        _ ->
+            Resp
+    end.
 
 
 %%%===================================================================

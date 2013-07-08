@@ -70,14 +70,18 @@ init([Dir, SolrPort, SolrJMXPort]) ->
     {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
     ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
     Port = run_cmd(Cmd, Args),
-    wait_for_solr(solr_startup_wait()),
-    S = #state{
-      dir=Dir,
-      port=Port,
-      solr_port=SolrPort,
-      solr_jmx_port=SolrJMXPort
-     },
-    {ok, S}.
+    case wait_for_solr(solr_startup_wait()) of
+        ok ->
+            S = #state{
+              dir=Dir,
+              port=Port,
+              solr_port=SolrPort,
+              solr_jmx_port=SolrJMXPort
+             },
+            {ok, S};
+        Reason ->
+            Reason
+    end.
 
 handle_call(getpid, _, S) ->
     {reply, get_pid(?S_PORT(S)), S};
@@ -164,7 +168,7 @@ solr_vm_args() ->
                        ?YZ_DEFAULT_SOLR_VM_ARGS).
 
 wait_for_solr(0) ->
-    throw({error, "Solr didn't start in alloted time"});
+    {stop, "Solr didn't start in alloted time"};
 wait_for_solr(N) ->
     case is_up() of
         true ->
