@@ -97,7 +97,7 @@ make_attr_fields(_BaseName, [], Fields) ->
 make_attr_fields(BaseName, [{_Uri, _Prefix, AttrName, Value}|Attrs], Fields) ->
     AttrNameB = list_to_binary(AttrName),
     FieldName = <<BaseName/binary,$@,AttrNameB/binary>>,
-    Field = {FieldName, Value},
+    Field = {FieldName, unicode:characters_to_binary(Value)},
     make_attr_fields(BaseName, Attrs, [Field | Fields]).
 
 make_name(Seperator, Stack) ->
