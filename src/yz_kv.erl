@@ -24,6 +24,7 @@
 -module(yz_kv).
 -compile(export_all).
 -include("yokozuna.hrl").
+-include_lib("riak_kv/include/riak_kv_vnode.hrl").
 
 -define(ONE_SECOND, 1000).
 -define(WAIT_FLAG(Index), {wait_flag, Index}).
@@ -290,7 +291,7 @@ first_partition([{Partition, _}|_]) ->
 %%
 %% @doc Get the partition from the `VNodeState'.
 get_partition(VNodeState) ->
-    riak_kv_vnode:get_state_partition(VNodeState).
+    VNodeState#riak_kv_vnode_state.idx.
 
 %% @private
 %%
