@@ -160,7 +160,7 @@ confirm_delete_409(Cluster, Index) ->
 %%%===================================================================
 
 bucket_url({Host, Port}, Bucket) ->
-    ?FMT("http://~s:~B/riak/~s", [Host, Port, Bucket]).
+    ?FMT("http://~s:~B/buckets/~s/props", [Host, Port, Bucket]).
 
 check_list(Indexes, Body) ->
     Decoded = mochijson2:decode(Body),
