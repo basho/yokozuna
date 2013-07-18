@@ -1,39 +1,11 @@
--module(yz_json_extractor_tests).
+-module(yz_xml_extractor_tests).
 -compile(export_all).
 -include_lib("yz_test.hrl").
 
-json_extract_test() ->
-    {ok, TestJSON} = file:read_file("../test/test.json"),
-    Result = yz_json_extractor:extract(TestJSON),
-    Expect =
-        [{<<"name">>,<<"ryan">>},
-         {<<"age">>,<<"29">>},
-         {<<"pets">>,<<"smokey">>},
-         {<<"pets">>,<<"bandit">>},
-         {<<"books_title">>,<<"Introduction to Information Retrieval">>},
-         {<<"books_title">>,<<"Principles of Distributed Database Systems">>},
-         {<<"books_authors">>,<<"Christopher D. Manning">>},
-         {<<"books_authors">>,<<"Prabhakar Raghavan">>},
-         {<<"books_authors">>,<<"Hinrich Schütze">>},
-         {<<"books_authors">>,<<"M. Tamer Özsu">>},
-         {<<"books_authors">>,<<"Patrick Valduriez">>},
-         {<<"alive">>,true},
-         {<<"married">>,false},
-         {<<"a_number">>,<<"1100000.0">>},
-         {<<"lucky_numbers">>,<<"13">>},
-         {<<"lucky_numbers">>,<<"17">>},
-         {<<"lucky_numbers">>,<<"21">>}],
-
-    %% Do one at a time so failure is easier to understand
-    ?assertEqual(length(Expect), length(Result)),
-    Pairs = lists:zip(lists:sort(Expect), lists:sort(Result)),
-    [?assertEqual(E,R) || {E,R} <- Pairs],
-    %% Verify conversion doesn't error
-    ?STACK_IF_FAIL(yz_solr:prepare_json([{doc, Result}])).
-
+%% Verify that the XML extractor maintains UTF-8 encoding.
 utf8_test() ->
-    {ok, JSON} = file:read_file("../test/utf8.json"),
-    Result = yz_json_extractor:extract(JSON),
+    {ok, SrcXML} = file:read_file("../test/utf8.xml"),
+    Result = yz_xml_extractor:extract(SrcXML),
     case Result of
         {error, Reason} ->
             ?debugFmt("~nextract/1 failed: ~s~n", [Reason]),
@@ -43,10 +15,12 @@ utf8_test() ->
     end,
     Expect =
         [{<<"langs_english">>, <<"The quick brown fox jumps over the lazy dog.">>},
+         {<<"langs_english@attr">>, <<"The quick">>},
          {<<"langs_jamaican">>, <<"Chruu, a kwik di kwik brong fox a jomp huova di liezi daag de, yu no siit?">>},
          {<<"langs_irish">>, <<"\"An ḃfuil do ċroí ag bualaḋ ó ḟaitíos an ġrá a ṁeall lena ṗóg éada ó ṡlí do leasa ṫú?\" \"D'ḟuascail Íosa Úrṁac na hÓiġe Beannaiṫe pór Éava agus Áḋaiṁ.\"">>},
          {<<"langs_dutch">>, <<"Pa's wĳze lynx bezag vroom het fikse aquaduct.">>},
          {<<"langs_german_1">>, <<"Falsches Üben von Xylophonmusik quält jeden größeren Zwerg.">>},
+         {<<"langs_german_1@attr">>, <<"Falsches Üben">>},
          {<<"langs_german_2">>, <<"Im finſteren Jagdſchloß am offenen Felsquellwaſſer patzte der affig-flatterhafte kauzig-höf‌liche Bäcker über ſeinem verſifften kniffligen C-Xylophon.">>},
          {<<"langs_norwegian">>, <<"Blåbærsyltetøy.">>},
          {<<"langs_danish">>, <<"Høj bly gom vandt fræk sexquiz på wc.">>},
@@ -87,7 +61,9 @@ utf8_test() ->
     天明去
     来如春梦几多时
     去似朝云无觅处
-  ">>}],
+  ">>},
+        {<<"langs_chinese@作者">>, <<"Bai Juyi">>},
+        {<<"langs_chinese@title">>, <<"The Bloom is not a Bloom">>}],
     ?assertEqual(length(Expect), length(Result)),
     Pairs = lists:zip(lists:keysort(1, Expect), lists:keysort(1, Result)),
     [?assertPairsEq(E,R) || {E,R} <- Pairs],
