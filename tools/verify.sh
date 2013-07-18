@@ -234,7 +234,7 @@ sanity_check
 YZ_SRC=git://github.com/basho/yokozuna.git
 YZ_BRANCH=master
 RIAK_SRC=git://github.com/basho/riak.git
-RIAK_BRANCH=yz-merge-1.4.0
+RIAK_BRANCH=rz-yz-merge-1.4.0
 TEST_ONLY=
 
 while [ $# -gt 0 ]
