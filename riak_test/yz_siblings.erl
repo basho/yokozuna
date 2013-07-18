@@ -80,7 +80,7 @@ verify_reconcile(HP) ->
     ok.
 
 http_put({Host, Port}, Bucket, Key, VClock, Value) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+    URL = lists:flatten(io_lib:format("http://~s:~s/buckets/~s/keys/~s",
                                       [Host, integer_to_list(Port), Bucket, Key])),
     Opts = [],
     Headers = [{"content-type", "text/plain"},
@@ -89,7 +89,7 @@ http_put({Host, Port}, Bucket, Key, VClock, Value) ->
     ok.
 
 http_get({Host, Port}, Bucket, Key) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+    URL = lists:flatten(io_lib:format("http://~s:~s/buckets/~s/keys/~s",
                                       [Host, integer_to_list(Port), Bucket, Key])),
     Opts = [],
     Headers = [{"accept", "multipart/mixed"}],
@@ -112,7 +112,7 @@ index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
 
 bucket_url({Host,Port}, Bucket, Key) ->
-    ?FMT("http://~s:~B/riak/~s/~s", [Host, Port, Bucket, Key]).
+    ?FMT("http://~s:~B/buckets/~s/keys/~s", [Host, Port, Bucket, Key]).
 
 http(Method, URL, Headers, Body) ->
     Opts = [],

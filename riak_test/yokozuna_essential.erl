@@ -85,7 +85,7 @@ test_escaped_key(Cluster) ->
     ok.
 
 http_get({Host, Port}, Bucket, Key) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/riak/~s/~s",
+    URL = lists:flatten(io_lib:format("http://~s:~s/buckets/~s/keys/~s",
                                       [Host, integer_to_list(Port), Bucket, Key])),
     Headers = [{"accept", "text/plain"}],
     {ok, "200", _, _} = ibrowse:send_req(URL, Headers, get, [], []),
@@ -148,7 +148,7 @@ test_tagging(Cluster) ->
 
 write_with_tag({Host, Port}) ->
     lager:info("Tag the object tagging/test"),
-    URL = lists:flatten(io_lib:format("http://~s:~s/riak/tagging/test",
+    URL = lists:flatten(io_lib:format("http://~s:~s/buckets/tagging/keys/test",
                                       [Host, integer_to_list(Port)])),
     Opts = [],
     Body = <<"testing tagging">>,

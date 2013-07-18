@@ -77,7 +77,7 @@ fi
 pushd riak
 
 if [ ! -d rel/riak ]; then
-    git checkout yz-merge-1.3.0
+    git checkout rz-yz-merge-1.4.0
     make
     make stage
 fi
