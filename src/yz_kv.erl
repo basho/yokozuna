@@ -110,7 +110,7 @@ get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
 index(Obj, Reason, VNodeState) ->
-    case yokozuna:noop_flag(index) orelse not ?YZ_ENABLED of
+    case yokozuna:is_enabled(index) orelse not ?YZ_ENABLED of
         true ->
             ok;
         false ->

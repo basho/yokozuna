@@ -77,6 +77,23 @@
                    | {siblings, binary()}
                    | {'query', binary()}.
 
+%% @doc The `component()' type reprsents components that may be
+%%      enabled or disabled at runtime.  Typically a component is
+%%      disabled in a live, production cluster in order to isolate
+%%      issues.
+%%
+%%  `search' - The ability to run queries.  This will only prevent
+%%    query requests that arrive via HTTP or Protocol Buffers.  The
+%%    operator will still be able to run searches via
+%%    `yokozuna:search/3' to potentially aid in diagnosis of issues.
+%%
+%%  `index' - The ability to index Riak Objects as they are written.
+%%    While disabled inconsistency will arise between KV and Yokozuna
+%%    as data is written.  Either the operator will have to take
+%%    action to manually index the missing data or wait for AAE to
+%%    take care of it.
+-type component() :: search | index.
+
 %%%===================================================================
 %%% Macros
 %%%===================================================================
@@ -100,6 +117,7 @@
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
 -define(YZ_DEFAULT_SOLR_VM_ARGS, []).
+%% TODO: See if using mochiglobal for this makes difference in performance.
 -define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_EVENTS_TAB, yz_events_tab).
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
