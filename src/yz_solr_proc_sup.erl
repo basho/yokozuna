@@ -46,4 +46,4 @@ init(_Args) ->
                 {yz_solr_proc, start_link, [Dir, SolrPort, SolrJMXPort]},
                 permanent, 5000, worker, [yz_solr_proc]},
 
-    {ok, {{one_for_one, 5, 60}, [SolrProc]}}.
+    {ok, {{one_for_one, 10, 60}, [SolrProc]}}.
