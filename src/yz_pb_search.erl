@@ -52,8 +52,7 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(Msg, State) ->
-    #rpbsearchqueryreq{index=IndexBin}=Msg,
+process(#rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
             Mapping = yz_events:get_mapping(),
