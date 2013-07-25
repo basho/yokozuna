@@ -57,6 +57,11 @@
 start_link(Dir, SolrPort, SolrJMXPort) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Dir, SolrPort, SolrJMXPort], []).
 
+%% @doc Get the operating system's PID of the Solr/JVM process.  May
+%%      return `undefined' if Solr failed to start.
+-spec getpid() -> undefined | pos_integer().
+getpid() ->
+    gen_server:call(?MODULE, getpid).
 
 %%%===================================================================
 %%% Callbacks
@@ -96,21 +101,29 @@ handle_cast(Req, S) ->
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
     ?DEBUG("~p", Data),
     {noreply, S};
-
-handle_info({exit_status, ExitStatus}, S) ->
-    exit({"solr OS process exited", ExitStatus, S}).
+handle_info({_Port, {exit_status, ExitStatus}}, S) ->
+    {stop, {"solr OS process exited", ExitStatus}, S};
+handle_info({'EXIT', _Port, Reason}, S=?S_MATCH) ->
+    case Reason of
+        normal ->
+            {stop, normal, S};
+        _ ->
+            {stop, {port_exit, Reason}, S}
+    end.
 
 code_change(_, S, _) ->
     {ok, S}.
 
 terminate(_, S) ->
     Port = ?S_PORT(S),
-    os:cmd("kill -TERM " ++ integer_to_list(get_pid(Port))),
-    port_close(Port),
-    ok.
-
-getpid() ->
-    gen_server:call(?MODULE, getpid).
+    case get_pid(Port) of
+        undefined ->
+            ok;
+        Pid ->
+            os:cmd("kill -TERM " ++ integer_to_list(Pid)),
+            port_close(Port),
+            ok
+    end.
 
 %%%===================================================================
 %%% Private
@@ -141,9 +154,16 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
         ++ solr_vm_args() ++ JMX ++ [Class],
     {os:find_executable("java"), Args}.
 
--spec get_pid(port()) -> pos_integer().
+%% @private
+%%
+%% @doc Get the operating system's PID of the Solr/JVM process.  May
+%%      return `undefined' if Solr failed to start.
+-spec get_pid(port()) -> undefined | pos_integer().
 get_pid(Port) ->
-    proplists:get_value(os_pid, erlang:port_info(Port)).
+    case erlang:port_info(Port) of
+        undefined -> undefined;
+        PI -> proplists:get_value(os_pid, PI)
+    end.
 
 %% @private
 %%
