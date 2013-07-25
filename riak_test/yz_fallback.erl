@@ -74,7 +74,7 @@ write_obj(Cluster) ->
     Node = yz_rt:select_random(Cluster),
     {Host, Port} = riak_hp(Node, Cluster),
     lager:info("write obj to node ~p", [Node]),
-    URL = ?FMT("http://~s:~s/riak/~s/~s",
+    URL = ?FMT("http://~s:~s/buckets/~s/keys/~s",
                [Host, integer_to_list(Port), ?INDEX, ?INDEX]),
     Headers = [{"content-type", "text/plain"}],
     Body = <<"yokozuna">>,

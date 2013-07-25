@@ -118,6 +118,7 @@ getpid() ->
 
 -spec build_cmd(string(), string(), string()) -> {string(), [string()]}.
 build_cmd(SolrPort, SolrJMXPort, Dir) ->
+    Headless = "-Djava.awt.headless=true",
     SolrHome = "-Dsolr.solr.home=" ++ Dir,
     JettyHome = "-Djetty.home=" ++ Dir,
     Port = "-Djetty.port=" ++ SolrPort,
@@ -136,7 +137,7 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
-    Args = [JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
+    Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
         ++ solr_vm_args() ++ JMX ++ [Class],
     {os:find_executable("java"), Args}.
 

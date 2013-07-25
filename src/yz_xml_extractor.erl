@@ -95,9 +95,9 @@ sax_cb(_Event, _Location, State) ->
 make_attr_fields(_BaseName, [], Fields) ->
     Fields;
 make_attr_fields(BaseName, [{_Uri, _Prefix, AttrName, Value}|Attrs], Fields) ->
-    AttrNameB = list_to_binary(AttrName),
+    AttrNameB = unicode:characters_to_binary(AttrName),
     FieldName = <<BaseName/binary,$@,AttrNameB/binary>>,
-    Field = {FieldName, Value},
+    Field = {FieldName, unicode:characters_to_binary(Value)},
     make_attr_fields(BaseName, Attrs, [Field | Fields]).
 
 make_name(Seperator, Stack) ->
@@ -106,12 +106,12 @@ make_name(Seperator, Stack) ->
 %% Make a name from a stack of visted tags (innermost tag at head of list)
 -spec make_name(binary(), [string()], binary()) -> binary().
 make_name(Seperator, [Inner,Outter|Rest], Name) ->
-    OutterB = list_to_binary(Outter),
-    InnerB = list_to_binary(Inner),
+    OutterB = unicode:characters_to_binary(Outter),
+    InnerB = unicode:characters_to_binary(Inner),
     Name2 = <<OutterB/binary,Seperator/binary,InnerB/binary,Name/binary>>,
     make_name(Seperator, Rest, Name2);
 make_name(Seperator, [Outter], Name) ->
-    OutterB = list_to_binary(Outter),
+    OutterB = unicode:characters_to_binary(Outter),
     case Name of
         <<>> -> OutterB;
         _ -> <<OutterB/binary,Seperator/binary,Name/binary>>

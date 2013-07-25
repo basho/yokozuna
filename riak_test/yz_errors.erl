@@ -111,7 +111,7 @@ index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
 
 bucket_url({Host,Port}, Bucket, Key) ->
-    ?FMT("http://~s:~B/riak/~s/~s", [Host, Port, Bucket, Key]).
+    ?FMT("http://~s:~B/buckets/~s/keys/~s", [Host, Port, Bucket, Key]).
 
 search_url({Host,Port}, Bucket) ->
     ?FMT("http://~s:~B/search/~s", [Host, Port, Bucket]).

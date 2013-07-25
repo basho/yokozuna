@@ -232,8 +232,7 @@ confirm_bad_ct(Cluster, Name, RawSchema) ->
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
-    ?assertEqual("415", Status),
-    ?assertEqual(<<>>, Body).
+    ?assertEqual("415", Status).
 
 %% @doc Confirm that truncated schema fails, returning 400.
 confirm_truncated(Cluster, Name, RawSchema) ->
