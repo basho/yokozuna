@@ -248,14 +248,17 @@ queue_pop(Queue, _Refill) ->
     [Item|Rest] = Queue,
     {Item,Rest}.
 
-%% @doc Set the ring metadata for the given `Name' to `Value'
--spec set_ring_meta(atom(), any()) -> ring().
-set_ring_meta(Name, Value) ->
-    Ring = get_ring(raw),
-    Ring2 = riak_core_ring:update_meta(Name, Value, Ring),
-    F = set_ring_trans(Ring2),
-    {ok, Ring3} = riak_core_ring_manager:ring_trans(F, none),
-    Ring3.
+%% @doc Set the ring metadata for the given `Name' to the value
+%% returned by applying `Fun' to the existing value and `Arg'.  The
+%% `Fun' is evaluated as `Fun(OldValue, Arg)' inside of a `ring_trans'
+%% operation. The `Fun' should return `NewValue' to be associated with
+%% `Name'. If `NewValue == OldValue', the ring modification is ignored.
+-spec set_ring_meta(atom(), any(), fun((any(), any()) -> any()), any())
+         -> {ok, ring()} | not_changed.
+set_ring_meta(Name, Default, Fun, Arg) ->
+    riak_core_ring_manager:ring_trans(
+      fun set_ring_trans/2,
+      {Name, Default, Fun, Arg}).
 
 %%%===================================================================
 %%% Private
@@ -272,5 +275,23 @@ make_pairs([A,B|T], _First, Pairs) ->
     make_pairs([B|T], _First, [{A,B}|Pairs]).
 
 %% @private
-set_ring_trans(Ring) ->
-    fun(_,_) -> {new_ring, Ring} end.
+set_ring_trans(Ring, {Name, Default, Fun, Arg}) ->
+    Old = case riak_core_ring:get_meta(Name, Ring) of
+              {ok, O} -> O;
+              undefined -> Default
+          end,
+    case Fun(Old, Arg) of
+        Old ->
+            ignore;
+        New ->
+            %% We sleep one second here because we need to be slower
+            %% than the resolution of the lastmod field of
+            %% riak_core_ring's meta_entry record; we can remove this
+            %% sleep when we move index information out of the ring
+            %%
+            %% Unfortunately, this blocks riak_core_ring_manager, but
+            %% only for ring changes, since all ring reads check an
+            %% ETS table instead of hitting the manager gen_server.
+            timer:sleep(1000),
+            {new_ring, riak_core_ring:update_meta(Name, New, Ring)}
+    end.
