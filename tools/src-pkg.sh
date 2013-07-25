@@ -31,7 +31,7 @@ RIAK_DIR=riak-yokozuna-$VSN-src
 TGZ=$RIAK_DIR.tar.gz
 
 pushd $WD
-git clone -b yz-merge-1.3.0 git://github.com/basho/riak.git $RIAK_DIR
+git clone -b rz-yz-merge-1.4.0 git://github.com/basho/riak.git $RIAK_DIR
 pushd $RIAK_DIR
 make deps
 pushd deps/yokozuna
