@@ -77,7 +77,7 @@
                    | {siblings, binary()}
                    | {'query', binary()}.
 
-%% @doc The `component()' type reprsents components that may be
+%% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is
 %%      disabled in a live, production cluster in order to isolate
 %%      issues.
