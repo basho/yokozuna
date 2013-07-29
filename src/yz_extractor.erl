@@ -122,20 +122,26 @@ register(MimeType, Def) ->
 -spec register(mime_type(), extractor_def(), register_opts()) ->
                       extractor_map() | already_registered.
 register(MimeType, Def, Opts) ->
-    Map = get_map(),
+    case yz_misc:set_ring_meta(?META_EXTRACTOR_MAP,
+                               ?DEFAULT_MAP,
+                               fun register_map/2,
+                               {MimeType, Def, Opts}) of
+        {ok, Ring} ->
+            get_map(Ring);
+        not_changed ->
+            already_registered
+    end.
+
+register_map(Map, {MimeType, Def, Opts}) ->
     CurrentDef = get_def(Map, MimeType, []),
     Overwrite = proplists:get_bool(overwrite, Opts),
     case {CurrentDef, Overwrite} of
         {none, _} ->
-            Map2 = orddict:store(MimeType, Def, Map),
-            yz_misc:set_ring_meta(?META_EXTRACTOR_MAP, Map2),
-            Map2;
+            orddict:store(MimeType, Def, Map);
         {_, true} ->
-            Map2 = orddict:store(MimeType, Def, Map),
-            yz_misc:set_ring_meta(?META_EXTRACTOR_MAP, Map2),
-            Map2;
+            orddict:store(MimeType, Def, Map);
         {_, false} ->
-            already_registered
+            ignore
     end.
 
 %% @doc Run the extractor def against the `Value' to produce a list of

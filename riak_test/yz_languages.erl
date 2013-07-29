@@ -63,7 +63,7 @@ search_url({Host,Port}, Bucket, Term) ->
     ?FMT("http://~s:~B/search/~s?wt=json&omitHeader=true&q=~s", [Host, Port, Bucket, Term]).
 
 bucket_url({Host,Port}, Bucket, Key) ->
-    ?FMT("http://~s:~B/riak/~s/~s", [Host, Port, Bucket, Key]).
+    ?FMT("http://~s:~B/buckets/~s/keys/~s", [Host, Port, Bucket, Key]).
 
 http(Method, URL, Headers, Body) ->
     Opts = [],
