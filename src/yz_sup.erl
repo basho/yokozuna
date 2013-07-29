@@ -20,7 +20,7 @@
 
 -module(yz_sup).
 -behaviour(supervisor).
-
+-include("yokozuna.hrl").
 -export([start_link/1]).
 -export([init/1]).
 
@@ -42,9 +42,14 @@ init([false]) ->
     {ok, {{one_for_one, 5, 10}, []}};
 
 init([_Enabled]) ->
-    SolrProc = {yz_solr_proc_sup,
-                {yz_solr_proc_sup, start_link, []},
-                permanent, infinity, supervisor, [yz_solr_proc_sup]},
+    Dir = ?YZ_ROOT_DIR,
+    SolrPort = yz_solr:port(),
+    SolrJMXPort = yz_solr:jmx_port(),
+
+    SolrProc = {yz_solr_proc,
+                {yz_solr_proc, start_link, [Dir, SolrPort, SolrJMXPort]},
+                permanent, 5000, worker, [yz_solr_proc]},
+
     Events = {yz_events,
               {yz_events, start_link, []},
               permanent, 5000, worker, [yz_events]},

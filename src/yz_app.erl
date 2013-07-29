@@ -36,11 +36,11 @@ start(_StartType, _StartArgs) ->
     riak_core:wait_for_service(riak_kv),
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
-	{ok, Pid} ->
-	    maybe_setup(Enabled, Pid),
-	    {ok, Pid};
-	Error ->
-	    Error
+        {ok, Pid} ->
+            maybe_setup(Enabled, Pid),
+            {ok, Pid};
+        Error ->
+            Error
     end.
 
 stop(_State) ->
