@@ -110,10 +110,8 @@ get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
 index(Obj, Reason, VNodeState) ->
-    case (not yokozuna:is_enabled(index)) orelse (not ?YZ_ENABLED) of
+    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
-            ok;
-        false ->
             Ring = yz_misc:get_ring(transformed),
             P = get_partition(VNodeState),
             case is_owner_or_future_owner(P, node(), Ring) of
@@ -128,7 +126,9 @@ index(Obj, Reason, VNodeState) ->
                     index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent);
                 false ->
                     ok
-            end
+            end;
+        false ->
+            ok
     end.
 
 %% @doc An object modified hook to create indexes as object data is
