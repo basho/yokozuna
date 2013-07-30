@@ -122,7 +122,6 @@ rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.tx
 cp solr.xml $dir
 cp jetty.xml $dir/etc
 cp *.properties $dir
-cp monitor.sh $dir
 
 
 echo "Finished creating solr dir..."
