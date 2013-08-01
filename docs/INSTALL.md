@@ -11,7 +11,7 @@ Source Package
 
 * Erlang R15B02, or higher
 
-* JRE 1.6 or later
+* Oracle Java JRE 1.6 or later, not Open JRE
 
 * GNU make
 
