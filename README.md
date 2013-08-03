@@ -1,4 +1,4 @@
-Yokozuna [![travis](https://secure.travis-ci.org/basho/yokozuna.png)](http://travis-ci.org/basho/yokozuna)
+Yokozuna
 ==========
 
 **NOTICE:** Yokozuna is in alpha stage.  It is under active
