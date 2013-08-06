@@ -2,6 +2,17 @@
 -compile(export_all).
 -include_lib("yz_test.hrl").
 
+make_name_test() ->
+    Expect = <<"one_two_three_four">>,
+    Stack = ["four", "three", "two", "one"],
+    Result = yz_xml_extractor:make_name(<<"_">>, Stack),
+    ?assertEqual(Expect, Result),
+
+    Expect2 = <<"one_two_three_four_five">>,
+    Stack2 = ["five", "four", "three", "two", "one"],
+    Result2 = yz_xml_extractor:make_name(<<"_">>, Stack2),
+    ?assertEqual(Expect2, Result2).
+
 %% Verify that the XML extractor maintains UTF-8 encoding.
 utf8_test() ->
     {ok, SrcXML} = file:read_file("../test/utf8.xml"),
