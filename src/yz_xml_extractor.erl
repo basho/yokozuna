@@ -108,7 +108,7 @@ make_name(Seperator, Stack) ->
 make_name(Seperator, [Inner,Outter|Rest], Name) ->
     OutterB = unicode:characters_to_binary(Outter),
     InnerB = unicode:characters_to_binary(Inner),
-    Name2 = <<OutterB/binary,Seperator/binary,InnerB/binary,Name/binary>>,
+    Name2 = concat(OutterB, Seperator, InnerB, Name),
     make_name(Seperator, Rest, Name2);
 make_name(Seperator, [Outter], Name) ->
     OutterB = unicode:characters_to_binary(Outter),
@@ -123,3 +123,9 @@ parsing_error({_, _, Line}, Reason) ->
     Msg = io_lib:format("failure parsing XML at line ~w with reason \"~s\"",
                         [Line, Reason]),
     {error, Msg}.
+
+-spec concat(binary(), binary(), binary(), binary()) -> binary().
+concat(Outter, Sep, Inner, <<>>) ->
+    <<Outter/binary,Sep/binary,Inner/binary>>;
+concat(Outter, Sep, Inner, Current) ->
+    <<Outter/binary,Sep/binary,Inner/binary,Sep/binary,Current/binary>>.
