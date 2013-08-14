@@ -26,12 +26,17 @@ if [ ! -e $SOLR_JAR_DIR ]; then
 fi
 
 echo "Compile..."
-javac -cp "$SOLR_JAR_DIR/*" java/com/basho/yokozuna/handler/*.java java/com/basho/yokozuna/query/*.java java_monitor/com/basho/yokozuna/monitor/*.java
+javac -cp "$SOLR_JAR_DIR/*" ../java_src/com/basho/yokozuna/handler/*.java ../java_src/com/basho/yokozuna/query/*.java ../java_src/com/basho/yokozuna/monitor/*.java
 echo "Create yokozuna.jar..."
 mkdir java_lib
-jar cvf java_lib/yokozuna.jar -C java/ .
+jar cvf java_lib/yokozuna.jar -C ../java_src/ \
+  com/basho/yokozuna/handler \
+  com/basho/yokozuna/query
 echo "Finished building yokozuna.jar..."
 
+# monitor has to be packaged separately because it relies on the
+# dynamic classpath the jetty/solr set up
 echo "Create yz_monitor.jar..."
-jar cvf solr/lib/ext/yz_monitor.jar -C java_monitor/ .
+jar cvf solr/lib/ext/yz_monitor.jar -C ../java_src/ \
+  com/basho/yokozuna/monitor
 echo "Finished building yz_monitor.jar..."
