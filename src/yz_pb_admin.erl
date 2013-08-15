@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% yz_pb_search: PB Service for Yokozuna queries
+%% PB Service for Yokozuna administrative functions, like schema or index
 %%
 %% Copyright (c) 2013 Basho Technologies, Inc.  All Rights Reserved.
 %%
@@ -52,6 +52,22 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
+process(#rpbyokozunaschemaputreq{
+            schema = #rpbyokozunaschema{
+                name = SchemaName, content = Content}}, State) ->
+    case yz_schema:store(SchemaName, Content) of
+        ok  ->
+            {reply, #rpbputresp{}, State};
+        {error, Reason} ->
+            Msg = io_lib:format("Error storing schema ~p~n", [Reason]),
+            {error, Msg, State}
+    end;
+
+process(#rpbyokozunaschemagetreq{name = SchemaName}, State) ->
+    {ok, Content} = yz_schema:get(SchemaName),
+    Schema = #rpbyokozunaschema{name = SchemaName, content = Content},
+    {reply, #rpbyokozunaschemagetresp{schema = Schema}, State};
+
 process(#rpbyokozunaindexdeletereq{name = IndexNameBin}, State) ->
     Ring = yz_misc:get_ring(transformed),
     IndexName = binary_to_list(IndexNameBin),
@@ -83,19 +99,18 @@ process(#rpbyokozunaindexputreq{
             {error, "Schema not found", State}
     end;
 
-process(#rpbyokozunaindexgetreq{name = IndexName}, State) ->
+process(#rpbyokozunaindexgetreq{name = IndexNameBin}, State) ->
     Ring = yz_misc:get_ring(transformed),
-    lager:warning("GET REQ IDX ~p~n", [IndexName]),
-    case IndexName of
+    case IndexNameBin of
         undefined ->
             Indexes = yz_index:get_indexes_from_ring(Ring),
             Details = [index_details(Ring, IndexName)
               || IndexName <- orddict:fetch_keys(Indexes)];
         _ ->
-            IndexNameList = binary_to_list(IndexName),
-            case yz_index:exists(IndexNameList) of
+            IndexName = binary_to_list(IndexNameBin),
+            case yz_index:exists(IndexName) of
                 true ->
-                    Details = [index_details(Ring, IndexNameList)];
+                    Details = [index_details(Ring, IndexName)];
                  _ ->
                     Details = []
              end
@@ -124,10 +139,9 @@ associated_buckets(IndexName, Ring) ->
 -spec maybe_create_index(index_name(), schema_name() | undefined) -> ok |
                                                          {error, schema_not_found} |
                                                          {error, {rpc_fail, node(), term()}}.
-maybe_create_index(IndexName, SchemaName=undefined)->
+maybe_create_index(IndexName, _SchemaName=undefined)->
     maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
 maybe_create_index(IndexName, SchemaName)->
-    lager:warning("MAYBE INDEX: ~p ~p~n", [IndexName, SchemaName]),
     case yz_index:exists(binary_to_list(IndexName)) of
         true  -> ok;
         false ->

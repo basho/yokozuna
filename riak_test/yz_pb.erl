@@ -16,10 +16,11 @@ confirm() ->
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = prepare_cluster(4),
-    confirm_admin_index(Cluster),
-    confirm_basic_search(Cluster),
-    confirm_encoded_search(Cluster),
-    confirm_multivalued_field(Cluster),
+    confirm_admin_schema(Cluster),
+    % confirm_admin_index(Cluster),
+    % confirm_basic_search(Cluster),
+    % confirm_encoded_search(Cluster),
+    % confirm_multivalued_field(Cluster),
     pass.
 
 
@@ -113,6 +114,29 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
             0 ->
                 false
         end
+    end,
+    yz_rt:wait_until(Cluster, F),
+    riakc_pb_socket:stop(Pid),
+    ok.
+
+confirm_admin_schema(Cluster) ->
+    Schema = <<"my_schema">>,
+    Node = select_random(Cluster),
+    [{Host, Port}] = host_entries(rt:connection_info([Node])),
+    lager:info("confirm_admin_schema ~s [~p]", [Schema, {Host, Port}]),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    F = fun(_) ->
+        %% set index in props with the same name as the bucket
+        Sch     = #rpbyokozunaschema{name = Schema},
+        PutReq  = #rpbyokozunaschemaputreq{schema = Sch},
+        PutResp = gen_server:call(Pid, {req, PutReq, infinity}, infinity),
+        %% There is currently no admin driver impl in the erlang client
+        %% so capture the process_response error and check the reply
+        {error,{unknown_response,_,PutRespMsg}} = PutResp,
+        ?assertEqual(rpbputresp, PutRespMsg),
+
+        % true
+        rpbputresp =:= PutRespMsg
     end,
     yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid),

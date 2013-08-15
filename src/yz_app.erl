@@ -27,7 +27,7 @@
 %% 27 is message type rpbsearchqueryreq
 %% 28 is message type rpbsearchqueryresp
 -define(QUERY_SERVICES, [{yz_pb_search, 27, 28}]).
--define(ADMIN_SERVICES, [{yz_pb_admin, 54, 57}]).
+-define(ADMIN_SERVICES, [{yz_pb_admin, 54, 60}]).
 
 %%%===================================================================
 %%% Callbacks
