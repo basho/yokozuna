@@ -16,79 +16,59 @@
 
 package com.basho.yokozuna.monitor;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.Timer;
-import java.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Fire off a shell script to kill Solr once spawning Erlang has died
- * 
- * @author Brett Hazen
+ * Kill Solr when stdin closes, as it will when the Erlang VM shuts
+ * down or yz_solr_proc exits.
  */
-public class Monitor {
+public class Monitor extends Thread {
     protected static Logger log = LoggerFactory.getLogger(Monitor.class);
-    
-    /**
-     * Launches monitoring bash script
-     * @param monitorScript name of script to run
-     * @param sleepSeconds interval at which to run PPID script
-     */
-    public static void monitor(final String monitorScript, final String sleepSeconds) {
-        int sleepInterval = Integer.parseInt(sleepSeconds);
-        TimerTask readyForSuicide = new Monitor.MonitorTimerTask(monitorScript);
-        Timer timer = new Timer();
 
-        // scheduling the task at fixed rate
-        timer.schedule(readyForSuicide, 0, sleepInterval*1000);
+    public Monitor() {
+        // nothing to init
     }
-   
-    /**
-     * Main for testing
-     * @param monitorScript name of script to run
-     * @param sleepSeconds interval at which to run PPID script
-     */
-    public static void main(String[] args) {
-        monitor(args[0], args[1]);
-    }
-    
-    public static class MonitorTimerTask extends TimerTask {
-        protected String _monitorScript;
-        
-        MonitorTimerTask(String script) {
-            _monitorScript = script;
-        }
-        
-        @Override
-        public void run() {
+
+    public void run() {
             try {
-                String[] cmd = {_monitorScript};
-                Process p = Runtime.getRuntime().exec(cmd);
-                BufferedReader buf = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                p.waitFor();
-                // Read single output line to determine PPID
-                String line = buf.readLine();
-                int exitValue = p.exitValue();
-                if (exitValue != 0) {
-                    log.error("Problem running Solr monitoring script");
-                }
-                // Die if our parent is no longer Erlang
-                int ppid = Integer.parseInt(line);
-                log.debug("Checking PPID of Solr: " + ppid);
-                if (ppid == 1) {
-                    log.error("Shutting down Solr after Yokozuna has crashed");
+                log.debug("Monitor attempting read on stdin");
+                if (System.in.read() < 0) {
+                    log.info("Yokozuna has exited - shutting down Solr");
                     System.exit(0);
                 }
-            } catch(IOException e) {
-                System.err.println(e.getMessage());
-                log.error(e.getMessage());
-            } catch(InterruptedException e) {
-                System.err.println(e.getMessage());
-                log.error(e.getMessage());
+                log.debug("Monitoring succeeded reading stdin");
             }
+            catch (IOException ioe) {
+                log.info("Yokozuna has exited - shutting down Solr");
+                System.exit(0);
+            }
+    }
+
+    /**
+     * Start monitoring stdin in a background thread
+     */
+    public static Monitor monitor() {
+        Monitor m = new Monitor();
+        m.start();
+        return m;
+    }
+
+    /**
+     * Main for testing
+     */
+    public static void main(String[] args) {
+        monitor();
+
+        try {
+            while(true) {
+                // hang out until thread sees stdin close
+                Thread.sleep(1000);
+            }
+        }
+        catch (InterruptedException ie) {
+            // nothing to do but shutdown
         }
     }
 }

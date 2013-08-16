@@ -129,7 +129,6 @@ rm -rf $SOLR_DIR/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,READ
 cp ../priv/solr.xml $SOLR_DIR
 cp ../priv/jetty.xml $SOLR_DIR/etc
 cp ../priv/*.properties $SOLR_DIR
-cp ../priv/monitor.sh $SOLR_DIR
 
 
 echo "Finished creating solr dir..."
