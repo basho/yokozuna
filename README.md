@@ -41,7 +41,7 @@ indexes for a given bucket.
 Indexing data is a matter of writing data to KV.  Currently Yokozuna
 knows hows to index plain text, XML, and JSON.
 
-    curl -H 'content-type: text/plain' -X PUT 'http://localhost:10018/buckets/name_of_bucket/keys/name' -d "Ryan Zezeski"
+    curl -H 'content-type: text/plain' -X PUT 'http://localhost:10018/buckets/my_bucket/keys/name' -d "Ryan Zezeski"
 
 ### Searching ###
 
@@ -51,6 +51,6 @@ API but that is hidden for you.  This means you don't have to worry
 about where your shards are located.  This also means you should be
 able to use any off-the-shelf Solr client to query Yokozuna.
 
-    curl 'http://localhost:10018/search/name_of_index?q=text:Ryan'
+    curl 'http://localhost:10018/search/my_index?q=text:Ryan'
 
 [INSTALL]: https://github.com/basho/yokozuna/blob/master/docs/INSTALL.md
