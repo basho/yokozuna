@@ -84,7 +84,8 @@ checkout_branch()
 
 check_for_solr()
 {
-    test -e $SOLR_DIR
+    # $SOLR_DIR is preloaded with xml files, so check for the generated jar
+    test -e $SOLR_DIR/start.jar
 }
 
 get_solr()
@@ -124,10 +125,9 @@ elif [ $SRC == "src-tar" ]; then
 fi
 
 echo "Creating solr dir from Solr example..."
-cp -r $example_dir $SOLR_DIR
+# -n prevents cp from overwriting our solr.xml and etc/jetty.xml
+cp -rn $example_dir/* $SOLR_DIR
 rm -rf $SOLR_DIR/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt,logging.properties}
-cp ../priv/solr.xml $SOLR_DIR
-cp ../priv/jetty.xml $SOLR_DIR/etc
 cp ../priv/*.properties $SOLR_DIR
 
 
