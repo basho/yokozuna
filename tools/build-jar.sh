@@ -32,14 +32,14 @@ echo "Create yokozuna.jar..."
 if [ ! -e "../priv/java_lib" ]; then
     mkdir ../priv/java_lib
 fi
-jar cvf ../priv/java_lib/yokozuna.jar -C ../java_src/ \
-  com/basho/yokozuna/handler \
-  com/basho/yokozuna/query
+jar cvf ../priv/java_lib/yokozuna.jar \
+  -C ../java_src/ com/basho/yokozuna/handler \
+  -C ../java_src/ com/basho/yokozuna/query
 echo "Finished building yokozuna.jar..."
 
 # monitor has to be packaged separately because it relies on the
 # dynamic classpath the jetty/solr set up
 echo "Create yz_monitor.jar..."
-jar cvf $SOLR_DIR/lib/ext/yz_monitor.jar -C ../java_src/ \
-  com/basho/yokozuna/monitor
+jar cvf $SOLR_DIR/lib/ext/yz_monitor.jar \
+  -C ../java_src/ com/basho/yokozuna/monitor
 echo "Finished building yz_monitor.jar..."
