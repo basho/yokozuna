@@ -132,13 +132,19 @@ terminate(_, S) ->
 -spec build_cmd(string(), string(), string()) -> {string(), [string()]}.
 build_cmd(SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
+    {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
     SolrHome = "-Dsolr.solr.home=" ++ Dir,
     JettyHome = "-Djetty.home=" ++ YZPrivSolr,
     Port = "-Djetty.port=" ++ SolrPort,
     CP = "-cp",
     CP2 = filename:join([YZPrivSolr, "start.jar"]),
-    Logging = "-Dlog4j.configuration=log4j.properties",
+    %% log4j.properties must be in the classpath unless a full URL
+    %% (e.g. file://) is given for it, and we'd rather not put etc or
+    %% data on the classpath, but we have to templatize the file to
+    %% get the platform log directory into it
+    Logging = "-Dlog4j.configuration=file://" ++
+        filename:join([filename:absname(Etc), "solr-log4j.properties"]),
     LibDir = "-Dyz.lib.dir=" ++ filename:join([?YZ_PRIV, "java_lib"]),
     Class = "org.eclipse.jetty.start.Main",
     case SolrJMXPort of

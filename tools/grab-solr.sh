@@ -128,7 +128,6 @@ echo "Creating solr dir from Solr example..."
 # -n prevents cp from overwriting our solr.xml and etc/jetty.xml
 cp -rn $example_dir/* $SOLR_DIR
 rm -rf $SOLR_DIR/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt,logging.properties}
-cp ../priv/*.properties $SOLR_DIR
 
 
 echo "Finished creating solr dir..."
