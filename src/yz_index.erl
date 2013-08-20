@@ -186,16 +186,22 @@ schema_name(Info) ->
 %%% Private
 %%%===================================================================
 
--spec add_index(indexes(), index_name(), index_info()) -> indexes().
-add_index(Indexes, Name, Info) ->
+-spec add_index(indexes(), {index_name(), index_info()}) -> indexes().
+add_index(Indexes, {Name, Info}) ->
     orddict:store(Name, Info, Indexes).
 
 -spec add_to_ring(index_name(), index_info()) -> ok.
 add_to_ring(Name, Info) ->
-    Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
-    Indexes2 = add_index(Indexes, Name, Info),
-    yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
-    ok.
+    %% checking return value, just to guard against surprises in
+    %% future API changes
+    case yz_misc:set_ring_meta(
+           ?YZ_META_INDEXES, [], fun add_index/2, {Name, Info}) of
+        {ok, _} ->
+            ok;
+        not_changed ->
+            %% index existed already
+            ok
+    end.
 
 -spec remove_index(indexes(), index_name()) -> indexes().
 remove_index(Indexes, Name) ->
@@ -203,10 +209,16 @@ remove_index(Indexes, Name) ->
 
 -spec remove_from_ring(index_name()) -> ok.
 remove_from_ring(Name) ->
-    Indexes = get_indexes_from_ring(yz_misc:get_ring(transformed)),
-    Indexes2 = remove_index(Indexes, Name),
-    yz_misc:set_ring_meta(?YZ_META_INDEXES, Indexes2),
-    ok.
+    %% checking return value, just to guard against surprises in
+    %% future API changes
+    case yz_misc:set_ring_meta(
+           ?YZ_META_INDEXES, [], fun remove_index/2, Name) of
+        {ok, _} ->
+            ok;
+        not_changed ->
+            %% index did not exist
+            ok
+    end.
 
 index_dir(Name) ->
     YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),

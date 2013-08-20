@@ -27,6 +27,29 @@
 %%% API
 %%%===================================================================
 
+%% @doc Disable the given `Component'.  The main reason for disabling
+%%      a component is to help in diagnosing issues in a live,
+%%      production environment.  E.g. the `search' component may be
+%%      disabled to take search load off the cluster while
+%%      investigating latency issues.
+-spec disable(component()) -> ok.
+disable(Component) ->
+    mochiglobal:put(Component, false).
+
+%% @doc Enabled the given `Component'.  This only needs to be called
+%%      if a component was previously disabled as all components are
+%%      considered enabled by default.
+-spec enable(component()) -> ok.
+enable(Component) ->
+    mochiglobal:put(Component, true).
+
+%% @doc Determine if the given `Component' is enabled or not.  If a
+%%      component is not explicitly disabled then it is considered
+%%      enabled.
+-spec is_enabled(component()) -> boolean().
+is_enabled(Component) ->
+    mochiglobal:get(Component, true).
+
 %% @doc Use the results of a search as input to a map-reduce job.
 %%
 %% `Pipe' - Reference to the Riak Pipe job responsible for running the
@@ -74,8 +97,8 @@ mapred_search(Pipe, [Index, Query, Filter], _Timeout) ->
     ok = search_fold(Index2, Query, Filter, F, ok),
     riak_pipe:eoi(Pipe).
 
-%% @doc Return the set of unique logical partitions stored on this
-%%      node for the given `Index'.
+%% @doc Return the ordered set of unique logical partitions stored on
+%%      the local node for the given `Index'.
 -spec partition_list(string()) -> ordset(lp()).
 partition_list(Index) ->
     Resp = yz_solr:partition_list(Index),
@@ -126,24 +149,6 @@ search(Index, Query, Mapping) ->
 
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
-
-%% @doc get an associated flag, true if some action
-%%      (eg indexing, searching) should be supressed
--spec noop_flag(index|search) -> boolean().
-noop_flag(index) ->
-    app_helper:get_env(?YZ_APP_NAME, index_noop, false);
-noop_flag(search) ->
-    app_helper:get_env(?YZ_APP_NAME, search_noop, false).
-
-%% @doc set an associated flag, true if some action
-%%      (eg indexing, searching) should be supressed
--spec noop_flag(index|search, boolean()) -> ok.
-noop_flag(index, Switch) ->
-    ?INFO("Indexing Objects in yokozuna has been changed to ~s", [Switch]),
-    application:set_env(?YZ_APP_NAME, index_noop, Switch);
-noop_flag(search, Switch) ->
-    ?INFO("Ability to search yokozuna has been changed to ~s", [Switch]),
-    application:set_env(?YZ_APP_NAME, search_noop, Switch).
 
 %%%===================================================================
 %%% Private

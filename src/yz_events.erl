@@ -164,11 +164,12 @@ destroy_events_table() ->
     true = ets:delete(?YZ_EVENTS_TAB),
     ok.
 
--spec flagged_buckets(ring()) -> [bucket()].
+-spec flagged_buckets(ring()) -> ordset(bucket()).
 flagged_buckets(Ring) ->
     Buckets = riak_core_bucket:get_buckets(Ring),
-    [proplists:get_value(name, BProps)
-     || BProps <- Buckets, yz_kv:index_content(yz_kv:which_index(BProps))].
+    ordsets:from_list(
+      [proplists:get_value(name, BProps)
+       || BProps <- Buckets, yz_kv:index_content(yz_kv:which_index(BProps))]).
 
 get_tick_interval() ->
     app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).

@@ -1,6 +1,65 @@
 Yokozuna Release Notes
 ==========
 
+0.8.0
+-----
+
+The eighth release of Yokozuna.  It is now considered alpha and will
+soon become part of Riak proper.  There could still be breaking
+changes leading up to the 1.0.0 release which is currently scheduled
+for early October.
+
+The main things of interest this release are the re-target to Riak
+1.4.0 and removal of a race condition around index creation.
+
+### Features ###
+
+* [139][] - Re-target Yokozuna against Riak 1.4.0.
+
+### Bugs/Misc ###
+
+* [40][], [140][] - Remove custom EC2 support.  Yokozuna will soon be
+  part of Riak proper which has it's own EC2 support.
+
+* [126][] - Yokozuna will not support a Riak Search compatible HTTP
+  interface.  If you will be migrating from Riak Search to Yokozuna
+  then you will need to either a) switch to the Protocol Buffers
+  transport or b) use a Solr client to talk to query Yokozuna.
+
+* [134][], [136][] - Improve Solr start-up process in Yokozuna.
+
+* [137][], [138][] - Improve UTF8 handling in XML extractor.  Add more
+  comprehensive tests.  Thank you to `sogabe` for the initial patch.
+
+* [147][] - Ability to enable/disable components.  Mostly a renaming
+  and documenting of existing functionality.
+
+* [148][] - Set Java AWT headless mode to prevent annoying pop-up.
+
+* [149][] - Fix call that could cause a bucket's index association to
+  be lost.
+
+* [151][] - Fix race condition in index creation.  Previously index
+  entries could be lost from the index set if created fast enough.
+
+### Documentation ###
+
+* [152][] - Suggest use of Oracle JVM, not OpenJDK.
+
+[40]: https://github.com/basho/yokozuna/issues/40
+[126]: https://github.com/basho/yokozuna/issues/126
+[134]: https://github.com/basho/yokozuna/issues/134
+[136]: https://github.com/basho/yokozuna/pull/136
+[137]: https://github.com/basho/yokozuna/pull/137
+[138]: https://github.com/basho/yokozuna/pull/138
+[139]: https://github.com/basho/yokozuna/issues/139
+[140]: https://github.com/basho/yokozuna/pull/140
+[147]: https://github.com/basho/yokozuna/pull/147
+[148]: https://github.com/basho/yokozuna/pull/148
+[149]: https://github.com/basho/yokozuna/pull/149
+[151]: https://github.com/basho/yokozuna/pull/151
+[152]: https://github.com/basho/yokozuna/pull/152
+
 0.7.0
 ----------
 

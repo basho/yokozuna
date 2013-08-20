@@ -52,7 +52,10 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(#rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
+process(Msg, State) ->
+    maybe_process(yokozuna:is_enabled(search), Msg, State).
+
+maybe_process(true, #rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
             Mapping = yz_events:get_mapping(),
@@ -90,7 +93,10 @@ process(#rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
             end;
         {error, missing_query} ->
             {error, "Missing query", State}
-    end.
+    end;
+maybe_process(false, _Msg, State) ->
+    {error, "Search component disabled", State}.
+
 
 %% @doc process_stream/3 callback. Ignored.
 process_stream(_,_,State) ->
