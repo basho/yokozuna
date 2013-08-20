@@ -7,9 +7,9 @@
 
 SRC="bin-tar"
 
-if [ $(basename $PWD) != "priv" ]
+if [ $(basename $PWD) != "tools" ]
 then
-    cd priv
+    cd tools
 fi
 
 while [ $# -gt 0 ]
@@ -30,23 +30,23 @@ do
 done
 
 echo "Create solr dir..."
-dir=$PWD/solr
+SOLR_DIR=../priv/solr
+BUILD_DIR=../build
 
 if [ $SRC == "git" ]; then
     VSN=lucene-solr
-    src_dir=$PWD/$VSN
+    src_dir=$BUILD_DIR/$VSN
     example_dir=$src_dir/solr/example
-    patch_dir=$PWD/../solr-patches
+    patch_dir=../solr-patches
     branch=branch_4x
 elif [ $SRC == "src-tar" ]; then
     VSN=solr-4.1.0-src
-    src_dir=$PWD/${VSN%-src}
+    src_dir=$BUILD_DIR/${VSN%-src}
     example_dir=$src_dir/solr/example
-    patch_dir=$PWD/../solr-patches
+    patch_dir=../solr-patches
 else
     VSN=solr-4.3.0-yz
-    dir=$PWD/solr
-    src_dir=$PWD/$VSN
+    src_dir=$BUILD_DIR/$VSN
     example_dir=$src_dir/example
 fi
 
@@ -84,7 +84,8 @@ checkout_branch()
 
 check_for_solr()
 {
-    test -e $dir
+    # $SOLR_DIR is preloaded with xml files, so check for the generated jar
+    test -e $SOLR_DIR/start.jar
 }
 
 get_solr()
@@ -104,6 +105,13 @@ then
     exit 0
 fi
 
+echo "Create build dir..."
+if [ ! -e $BUILD_DIR ]; then
+    mkdir $BUILD_DIR
+fi
+
+cd $BUILD_DIR
+
 if [ ! -e $src_dir ]
 then
     get_solr
@@ -117,12 +125,9 @@ elif [ $SRC == "src-tar" ]; then
 fi
 
 echo "Creating solr dir from Solr example..."
-cp -r $example_dir $dir
-rm -rf $dir/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt,logging.properties}
-cp solr.xml $dir
-cp jetty.xml $dir/etc
-cp *.properties $dir
-cp monitor.sh $dir
+# -n prevents cp from overwriting our solr.xml and etc/jetty.xml
+cp -rn $example_dir/* $SOLR_DIR
+rm -rf $SOLR_DIR/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt,logging.properties}
 
 
 echo "Finished creating solr dir..."
