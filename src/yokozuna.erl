@@ -139,13 +139,12 @@ search_fold(Index, Query, Filter, F, Acc) ->
               {fl, <<?YZ_RB_FIELD_S,",",?YZ_RK_FIELD_S>>},
               {omitHeader, <<"true">>},
               {wt, <<"json">>}],
-    Mapping = yz_events:get_mapping(),
-    {_, Body} = yz_solr:dist_search(Index, Params, Mapping),
+    {_, Body} = yz_solr:dist_search(Index, Params),
     E = extract_results(Body),
-    search_fold(E, Start, Params, Mapping, Index, Query, Filter, F, Acc).
+    search_fold(E, Start, Params, Index, Query, Filter, F, Acc).
 
-search(Index, Query, Mapping) ->
-    yz_solr:dist_search(Index, [{q, Query}], Mapping).
+search(Index, Query) ->
+    yz_solr:dist_search(Index, [{q, Query}]).
 
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
@@ -178,16 +177,16 @@ extract_results(Body) ->
 %%
 %% @doc This is the interal part of `search_fold' where the actual
 %%      iteration happens.
--spec search_fold(list(), non_neg_integer(), list(), list(), index_name(),
+-spec search_fold(list(), non_neg_integer(), list(), index_name(),
                   binary(), binary(), fold_fun(), Acc::term()) ->
                          Acc::term().
-search_fold([], _, _, _, _, _, _, _, Acc) ->
+search_fold([], _, _, _, _, _, _, Acc) ->
     Acc;
-search_fold(Results, Start, Params, Mapping, Index, Query, Filter, F, Acc) ->
+search_fold(Results, Start, Params, Index, Query, Filter, F, Acc) ->
     F(Results, Acc),
     Start2 = Start + 10,
     Params2 = lists:keystore(start, 1, Params, {start, Start2}),
-    {_, Body} = yz_solr:dist_search(Index, Params2, Mapping),
+    {_, Body} = yz_solr:dist_search(Index, Params2),
     E = extract_results(Body),
-    search_fold(E, Start2, Params, Mapping, Index, Query, Filter, F, Acc).
+    search_fold(E, Start2, Params, Index, Query, Filter, F, Acc).
 

@@ -59,10 +59,9 @@ maybe_process(true, Msg, State) ->
     #rpbsearchqueryreq{index=IndexBin}=Msg,
     case extract_params(Msg) of
         {ok, Params} ->
-            Mapping = yz_events:get_mapping(),
             Index = binary_to_list(IndexBin),
             try
-                Result = yz_solr:dist_search(Index, Params, Mapping),
+                Result = yz_solr:dist_search(Index, Params),
                 case Result of
                     {error, insufficient_vnodes_available} ->
                         {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
