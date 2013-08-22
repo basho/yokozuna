@@ -109,19 +109,22 @@ process_stream(_,_,State) ->
 extract_params(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};
 extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
-                                rows=Rows, start=Start,
-                                filter=Filter, fl=FieldList,
-                                df=DefaultField, op=DefaultOp}) ->
-    {ok, [{q, Query},
-          {wt, "json"},
-          {omitHeader, true},
-          {'q.op', default(DefaultOp, "AND")},
-          {sort, default(Sort, "")},
-          {fq, default(Filter, "")},
-          {fl, default(FieldList, <<"*,score">>)},
-          {df, default(DefaultField, "")},
-          {start, default(Start, 0)},
-          {rows, default(Rows, 10)}]}.
+                                  rows=Rows, start=Start,
+                                  filter=Filter, fl=FieldList,
+                                  df=DefaultField, op=DefaultOp}) ->
+    MaybeParams = [{'q.op', DefaultOp},
+                   {sort, Sort},
+                   {fq, Filter},
+                   {fl, default(FieldList, <<"*,score">>)},
+                   {df, DefaultField},
+                   {start, Start},
+                   {rows, Rows}],
+    Params1 = [P || P={_,V} <- MaybeParams, V /= undefined andalso V /= []],
+    Params2 = [{q,Query},
+               {wt,<<"json">>},
+               {omitHeader,true}
+               |Params1],
+    {ok, Params2}.
 
 default(undefined, Default) ->
     Default;
