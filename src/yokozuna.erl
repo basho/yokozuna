@@ -149,6 +149,21 @@ search(Index, Query) ->
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
 
+%% @doc Switch handling of HTTP and PB search requests to Yokozuna.
+%% This is used during migration from Riak Search.
+%%
+%% NOTE: Yokozuna is added to the route first to avoid period where no
+%% resource is registered for the search route.  Since a new route is
+%% added to head of list Yokozuna will be picked over Riak Search
+%% while both routes are in the list.
+-spec switch_to_yokozuna() -> ok.
+switch_to_yokozuna() ->
+    ok = riak_api_pb_service:swap(yz_pb_search, 27, 28),
+    ok = webmachine_router:add_route({["solr", index, "select"], yz_wm_search, []}),
+    ok = webmachine_router:remove_resource(riak_solr_indexer_wm),
+    ok = webmachine_router:remove_resource(riak_solr_searcher_wm),
+    ok.
+
 %%%===================================================================
 %%% Private
 %%%===================================================================
