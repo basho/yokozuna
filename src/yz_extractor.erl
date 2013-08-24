@@ -21,6 +21,7 @@
 -module(yz_extractor).
 -compile(export_all).
 -include("yokozuna.hrl").
+-include_lib("riak_kv/include/riak_kv_types.hrl").
 
 -type register_opts() :: [overwrite].
 -type get_def_opts() :: [check_default].
@@ -30,6 +31,7 @@
 %%       registered when there is one.
 -define(DEFAULT_MAP, [{default, yz_noop_extractor},
                       {"application/json",yz_json_extractor},
+                      {?COUNTER_TYPE,yz_kv_counter_extractor},
                       {"application/xml",yz_xml_extractor},
                       {"text/plain",yz_text_extractor},
                       {"text/xml",yz_xml_extractor}]).

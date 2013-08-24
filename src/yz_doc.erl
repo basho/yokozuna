@@ -49,8 +49,9 @@ has_siblings(O) -> riak_object:value_count(O) > 1.
 %% @doc Given an object generate the doc to be indexed by Solr.
 -spec make_docs(obj(), binary(), binary(), boolean()) -> [doc()].
 make_docs(O, FPN, Partition, IndexContent) ->
-    [make_doc(O, Content, FPN, Partition, IndexContent)
-     || Content <- riak_object:get_contents(O)].
+    O2 = riak_kv_counter:merge(O),
+    [make_doc(O2, Content, FPN, Partition, IndexContent)
+     || Content <- riak_object:get_contents(O2)].
 
 -spec make_doc(obj(), {dict(), dict()}, binary(), binary(), boolean()) -> doc().
 make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
