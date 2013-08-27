@@ -47,16 +47,16 @@ doc_id(O, Partition, Sibling) ->
 has_siblings(O) -> riak_object:value_count(O) > 1.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_docs(obj(), binary(), binary(), boolean()) -> [doc()].
-make_docs(O, FPN, Partition, IndexContent) ->
-    [make_doc(O, Content, FPN, Partition, IndexContent)
+-spec make_docs(obj(), hash(), binary(), binary(), boolean()) -> [doc()].
+make_docs(O, Hash, FPN, Partition, IndexContent) ->
+    [make_doc(O, Hash, Content, FPN, Partition, IndexContent)
      || Content <- riak_object:get_contents(O)].
 
--spec make_doc(obj(), {dict(), dict()}, binary(), binary(), boolean()) -> doc().
-make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
+-spec make_doc(obj(), hash(), {dict(), dict()}, binary(), binary(), boolean()) -> doc().
+make_doc(O, Hash, {MD, V}, FPN, Partition, IndexContent) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
-    EntropyData = gen_ed(O, Partition),
+    EntropyData = gen_ed(O, Hash, Partition),
     Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
     Fields = make_fields({DocId, Bkey, FPN,
                           Partition, Vtag, EntropyData}),
@@ -203,10 +203,9 @@ gen_ts() ->
 %% NOTE: All of this data needs to be in one field to efficiently
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.
-gen_ed(O, Partition) ->
+gen_ed(O, Hash, Partition) ->
     TS = gen_ts(),
     RiakBucket = yz_kv:get_obj_bucket(O),
     RiakKey = yz_kv:get_obj_key(O),
-    %% TODO: do this in KV vnode and pass to hook
-    Hash = base64:encode(yz_kv:hash_object(O)),
-    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.
+    Hash64 = base64:encode(Hash),
+    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash64/binary>>.
