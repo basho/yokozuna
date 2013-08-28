@@ -17,10 +17,10 @@ confirm() ->
     random:seed(now()),
     Cluster = prepare_cluster(4),
     confirm_admin_schema(Cluster),
-    % confirm_admin_index(Cluster),
-    % confirm_basic_search(Cluster),
-    % confirm_encoded_search(Cluster),
-    % confirm_multivalued_field(Cluster),
+    confirm_admin_index(Cluster),
+    confirm_basic_search(Cluster),
+    confirm_encoded_search(Cluster),
+    confirm_multivalued_field(Cluster),
     pass.
 
 
@@ -65,7 +65,7 @@ create_index(Cluster, Index, Bucket) ->
     F = fun(_) ->
             %% set index in props with the same name as the bucket
             Idx     = #rpbyokozunaindex{name = Index},
-            PutReq  = #rpbyokozunaindexputreq{index = Idx},
+            PutReq  = #rpbyokozunaindexputreq{index = Idx, schema = <<>>},
             PutResp = gen_server:call(Pid, {req, PutReq, infinity}, infinity),
             %% There is currently no admin driver impl in the erlang client
             %% so capture the process_response error and check the reply

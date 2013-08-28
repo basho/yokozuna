@@ -99,27 +99,22 @@ process(#rpbyokozunaindexputreq{
             {error, "Schema not found", State}
     end;
 
+process(rpbyokozunaindexgetreq, State) ->
+    Ring = yz_misc:get_ring(transformed),
+    Indexes = yz_index:get_indexes_from_ring(Ring),
+    Details = [index_details(Ring, IndexName)
+      || IndexName <- orddict:fetch_keys(Indexes)],
+    {reply, #rpbyokozunaindexgetresp{index=Details}, State};
+
 process(#rpbyokozunaindexgetreq{name = IndexNameBin}, State) ->
     Ring = yz_misc:get_ring(transformed),
-    case IndexNameBin of
-        undefined ->
-            Indexes = yz_index:get_indexes_from_ring(Ring),
-            Details = [index_details(Ring, IndexName)
-              || IndexName <- orddict:fetch_keys(Indexes)];
-        _ ->
-            IndexName = binary_to_list(IndexNameBin),
-            case yz_index:exists(IndexName) of
-                true ->
-                    Details = [index_details(Ring, IndexName)];
-                 _ ->
-                    Details = []
-             end
-    end,
-    case Details of
-        [] ->
-            {error, "notfound", State};
-        _ ->
-            {reply, #rpbyokozunaindexgetresp{index=Details}, State}
+    IndexName = binary_to_list(IndexNameBin),
+    case yz_index:exists(IndexName) of
+        true ->
+            Details = [index_details(Ring, IndexName)],
+            {reply, #rpbyokozunaindexgetresp{index=Details}, State};
+         _ ->
+            {error, "notfound", State}
     end.
 
 %% @doc process_stream/3 callback. Ignored.
@@ -136,10 +131,12 @@ associated_buckets(IndexName, Ring) ->
     Indexes = lists:map(fun yz_kv:which_index/1, AllBucketProps),
     lists:filter(fun(I) -> I == IndexName end, Indexes).
 
--spec maybe_create_index(index_name(), schema_name() | undefined) -> ok |
+-spec maybe_create_index(index_name(), schema_name()) -> ok |
                                                          {error, schema_not_found} |
                                                          {error, {rpc_fail, node(), term()}}.
-maybe_create_index(IndexName, _SchemaName=undefined)->
+maybe_create_index(IndexName, _SchemaName = <<>>)->
+    maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
+maybe_create_index(IndexName, _SchemaName = undefined)->
     maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
 maybe_create_index(IndexName, SchemaName)->
     case yz_index:exists(binary_to_list(IndexName)) of
