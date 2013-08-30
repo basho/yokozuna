@@ -14,7 +14,7 @@
 #
 #> Usage:
 #>
-#>  ./verify.sh [OPTIONS] <tmp dir>
+#>  ./verify.sh [OPTIONS] <previous riak dir> <scratch dir>
 #>
 #> Options:
 #>
@@ -31,9 +31,9 @@
 #>
 #> Example:
 #>
-#>  ./verify.sh /tmp/yz-verify | tee verify.out
+#>  ./verify.sh ~/riak-builds/1.4.1 /tmp/yz-verify | tee verify.out
 #>
-#>  ./verify.sh --yz-source ~/home/user/yokozuna /tmp/yz-verify | tee verify.out
+#>  ./verify.sh --yz-source ~/home/user/yokozuna ~/riak-builds/1.4.1 /tmp/yz-verify | tee verify.out
 
 # **********************************************************************
 # HELPERS
@@ -270,11 +270,13 @@ do
     shift
 done
 
-if [ $# != 1 ]; then
-    echo "ERROR: incorrect number of arguments: $#"
+if [ $# != 2 ]; then
+    echo "ERROR: incorrect number of arguments"
     usage
     exit 1
 fi
+
+PREV_DIR=$1; shift
 
 WORK_DIR=$1; shift
 mkdir $WORK_DIR
@@ -284,6 +286,8 @@ fi
 cd $WORK_DIR
 # This will make WORK_DIR absolute if it isn't already
 WORK_DIR=$(pwd)
+
+ln -s $PREV_DIR $(basename $PREV_DIR)
 
 verify_yokozuna
 compile_yz_bench
