@@ -16,8 +16,6 @@
     <!-- Monitor Solr instance and die if Erlang dies                -->
     <!-- =========================================================== -->
     <Call class="com.basho.yokozuna.monitor.Monitor" name="monitor">
-        <Arg>data/yz/monitor.sh</Arg>
-        <Arg>10</Arg>
     </Call>
 
     <!-- =========================================================== -->
