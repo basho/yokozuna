@@ -64,7 +64,7 @@ create_index(Cluster, Index, Bucket) ->
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     % F = fun(_) ->
     %% set index in props with the same name as the bucket
-    ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid, Idx)),
+    ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid, Index)),
 
     % Add the index to the bucket props
     yz_rt:set_index(Node, Index, Bucket),
@@ -113,7 +113,6 @@ confirm_admin_schema(Cluster) ->
     lager:info("confirm_admin_schema ~s [~p]", [Schema, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     ?assertEqual(ok, riakc_pb_socket:create_search_schema(Pid, Schema)),
-    yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid),
     ok.
 
@@ -126,7 +125,7 @@ confirm_admin_index(Cluster) ->
     F = fun(_) ->
         %% Remove index from bucket props and delete it
         yz_rt:set_index(Node, Index, <<>>),
-        DelResp = riakc_pb_socket:delete_search_index(Pid, Index)),
+        DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
         case DelResp of
             ok -> true;
             {error,<<"notfound">>} -> true
