@@ -80,19 +80,14 @@ create_index(Cluster, Index, Bucket) ->
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("create_index ~s for bucket ~s [~p]", [Index, Bucket, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    % F = fun(_) ->
     %% set index in props with the same name as the bucket
     ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid, Index)),
-
     % Add the index to the bucket props
     yz_rt:set_index(Node, Index, Bucket),
     yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
-
     %% Check that the index exists
     {ok, IndexData} = riakc_pb_socket:get_search_index(Pid, Index),
     ?assertEqual([{index,Index},{schema,?YZ_DEFAULT_SCHEMA_NAME}], IndexData),
-    %     end,
-    % yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid),
     ok.
 
