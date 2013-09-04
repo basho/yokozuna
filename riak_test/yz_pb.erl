@@ -11,6 +11,24 @@
 -define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 
+-define(SCHEMA_CONTENT, <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+</fields>
+<uniqueKey>_yz_id</uniqueKey>
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+</types>
+</schema>">>).
+
 confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
@@ -112,7 +130,11 @@ confirm_admin_schema(Cluster) ->
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("confirm_admin_schema ~s [~p]", [Schema, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    ?assertEqual(ok, riakc_pb_socket:create_search_schema(Pid, Schema)),
+    ?assertEqual(ok, riakc_pb_socket:create_search_schema(Pid, Schema, ?SCHEMA_CONTENT)),
+    yz_rt:wait_until(Cluster, fun(_) ->
+        {ok, [{name, Schema},{content, ?SCHEMA_CONTENT}]} ==
+            riakc_pb_socket:get_search_schema(Pid, Schema)
+    end ),
     riakc_pb_socket:stop(Pid),
     ok.
 
