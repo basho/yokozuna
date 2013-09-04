@@ -65,7 +65,7 @@ get(C, Bucket, Key) ->
             Other
     end.
 
--spec hash_object(obj()) -> binary().
+-spec hash_object(obj()) -> hash().
 hash_object(Obj) ->
     Vclock = riak_object:vclock(Obj),
     Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
@@ -156,13 +156,12 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
     ok = maybe_wait(Reason, Index),
     LFPN = yz_cover:logical_partition(LI, element(1, IdxN)),
     LP = yz_cover:logical_partition(LI, P),
-    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
-                            IndexContent),
+    Hash = hash_object(Obj),
+    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP), IndexContent),
     try
         DelOp = cleanup(length(Docs), {Obj, Key, LP}),
         ok = yz_solr:index(Index, Docs, DelOp),
-        ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
-                             P, IdxN, BKey)
+        ok = update_hashtree({insert, Hash}, P, IdxN, BKey)
     catch _:Err ->
         Trace = erlang:get_stacktrace(),
         ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace])
@@ -175,6 +174,14 @@ index_content(?YZ_DEFAULT_INDEX) ->
     false;
 index_content(_) ->
     true.
+
+%% @doc Perform a local KV get for `BKey' stored under `Index'.  This
+%% avoids spawning a coordinator and performing quorum.
+%%
+%% @see yz_exchange_fsm:read_repair_keydiff/2
+-spec local_get(p(), bkey()) -> {ok, obj()} | term().
+local_get(Index, BKey) ->
+    riak_kv_vnode:local_get(Index, BKey).
 
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
@@ -300,7 +307,7 @@ get_partition(VNodeState) ->
 %%       process.
 -spec get_tree(p()) -> tree() | not_registered.
 get_tree(Partition) ->
-    case erlang:get(tree) of
+    case erlang:get({tree,Partition}) of
         undefined ->
             lager:debug("Tree cache miss (undefined): ~p", [Partition]),
             get_and_set_tree(Partition);
@@ -319,10 +326,10 @@ get_tree(Partition) ->
 get_and_set_tree(Partition) ->
     case yz_entropy_mgr:get_tree(Partition) of
         {ok, Tree} ->
-            erlang:put(tree, Tree),
+            erlang:put({tree,Partition}, Tree),
             Tree;
         not_registered ->
-            erlang:put(tree, undefined),
+            erlang:put({tree,Partition}, undefined),
             not_registered
     end.
 

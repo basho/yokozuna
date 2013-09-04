@@ -42,7 +42,8 @@ logical_partitions(Ring, Partitions) ->
     ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
 
 %% @doc Get the coverage plan for `Index'.
--spec plan(index_name()) -> {term(), term()}.
+-spec plan(index_name()) -> {[node()], term(), [{node(),{string(),string()}}]} |
+                            {error, term()}.
 plan(Index) ->
     case mochiglobal:get(list_to_atom(Index), undefined) of
         undefined -> calc_plan(Index);
@@ -119,7 +120,8 @@ cache_plan(Index) ->
 %% @private
 %%
 %% @doc Calculate a plan for the `Index'.
--spec calc_plan(index_name()) -> {term(), term()}.
+-spec calc_plan(index_name()) -> {[node()], term(), [{node(), {string(),string()}}]} |
+                                 {error, term()}.
 calc_plan(Index) ->
     Ring = yz_misc:get_ring(transformed),
     Q = riak_core_ring:num_partitions(Ring),
@@ -142,7 +144,13 @@ calc_plan(Index) ->
             UniqNodes = lists:usort(Nodes),
             LPI = logical_index(Ring),
             LogicalCoverSet = add_filtering(NVal, Q, LPI, CoverSet),
-            {UniqNodes, LogicalCoverSet}
+            Mapping = yz_solr:build_mapping(UniqNodes),
+            case length(Mapping) == length(UniqNodes) of
+                true ->
+                    {UniqNodes, LogicalCoverSet, Mapping};
+                false ->
+                    {error, "Failed to determine Solr port for all nodes in search plan"}
+            end
     end.
 
 %% @doc Get the distance between the logical partition `LPB' and
