@@ -34,21 +34,21 @@
 %%      investigating latency issues.
 -spec disable(component()) -> ok.
 disable(Component) ->
-    mochiglobal:put(Component, false).
+    application:set_env(?YZ_APP_NAME, {component, Component}, false).
 
 %% @doc Enabled the given `Component'.  This only needs to be called
 %%      if a component was previously disabled as all components are
 %%      considered enabled by default.
 -spec enable(component()) -> ok.
 enable(Component) ->
-    mochiglobal:put(Component, true).
+    application:set_env(?YZ_APP_NAME, {component, Component}, true).
 
 %% @doc Determine if the given `Component' is enabled or not.  If a
 %%      component is not explicitly disabled then it is considered
 %%      enabled.
 -spec is_enabled(component()) -> boolean().
 is_enabled(Component) ->
-    mochiglobal:get(Component, true).
+    app_helper:get_env(?YZ_APP_NAME, {component, Component}, true).
 
 %% @doc Use the results of a search as input to a map-reduce job.
 %%
