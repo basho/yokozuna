@@ -206,8 +206,7 @@ read_repair_keydiff(_RC, {remote_missing, KeyBin}) ->
     FakeObj = fake_kv_object(Bucket, Key),
 
     lists:foreach(fun({Partition, Node}) ->
-                          FakeState = fake_kv_vnode_state(Partition),
-                          rpc:call(Node, yz_kv, index, [FakeObj, delete, FakeState])
+                          rpc:call(Node, yz_kv, index, [FakeObj, delete, Partition])
                   end, PrimaryPL),
 
     ok;
@@ -221,9 +220,8 @@ read_repair_keydiff(RC, {_Reason, KeyBin}) ->
             N = proplists:get_value(n_val,BucketProps),
             PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
             lists:foreach(fun({Partition, Node}) ->
-                                  FakeState = fake_kv_vnode_state(Partition),
                                   rpc:call(Node, yz_kv, index,
-                                           [Obj, anti_entropy, FakeState])
+                                           [Obj, anti_entropy, Partition])
                           end, PrimaryPL),
             ok;
         _Other ->
@@ -240,10 +238,6 @@ read_repair_keydiff(RC, {_Reason, KeyBin}) ->
 %% @private
 fake_kv_object(Bucket, Key) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
-
-%% @private
-fake_kv_vnode_state(Partition) ->
-    {state,Partition,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake}.
 
 %% @private
 update_request(Module, Tree, Index, IndexN) ->

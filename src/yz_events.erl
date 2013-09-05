@@ -180,8 +180,8 @@ host_port(Node) ->
         {badrpc, Reason} ->
             ?ERROR("error retrieving Solr port ~p ~p", [Node, Reason]),
             {hostname(Node), unknown};
-        Port when is_list(Port) ->
-            {hostname(Node), Port}
+        Port when is_integer(Port) ->
+            {hostname(Node), integer_to_list(Port)}
     end.
 
 -spec hostname(node()) -> string().
