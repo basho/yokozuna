@@ -34,6 +34,7 @@
 
 -type index_set() :: ordset(index_name()).
 -type base64() :: binary().
+-type hash() :: binary().
 
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
