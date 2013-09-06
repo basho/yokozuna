@@ -59,10 +59,9 @@ maybe_process(true, Msg, State) ->
     #rpbsearchqueryreq{index=IndexBin}=Msg,
     case extract_params(Msg) of
         {ok, Params} ->
-            Mapping = yz_events:get_mapping(),
             Index = binary_to_list(IndexBin),
             try
-                Result = yz_solr:dist_search(Index, Params, Mapping),
+                Result = yz_solr:dist_search(Index, Params),
                 case Result of
                     {error, insufficient_vnodes_available} ->
                         {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
@@ -110,19 +109,22 @@ process_stream(_,_,State) ->
 extract_params(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};
 extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
-                                rows=Rows, start=Start,
-                                filter=Filter, fl=FieldList,
-                                df=DefaultField, op=DefaultOp}) ->
-    {ok, [{q, Query},
-          {wt, "json"},
-          {omitHeader, true},
-          {'q.op', default(DefaultOp, "AND")},
-          {sort, default(Sort, "")},
-          {fq, default(Filter, "")},
-          {fl, default(FieldList, <<"*,score">>)},
-          {df, default(DefaultField, "")},
-          {start, default(Start, 0)},
-          {rows, default(Rows, 10)}]}.
+                                  rows=Rows, start=Start,
+                                  filter=Filter, fl=FieldList,
+                                  df=DefaultField, op=DefaultOp}) ->
+    MaybeParams = [{'q.op', DefaultOp},
+                   {sort, Sort},
+                   {fq, Filter},
+                   {fl, default(FieldList, <<"*,score">>)},
+                   {df, DefaultField},
+                   {start, Start},
+                   {rows, Rows}],
+    Params1 = [P || P={_,V} <- MaybeParams, V /= undefined andalso V /= []],
+    Params2 = [{q,Query},
+               {wt,<<"json">>},
+               {omitHeader,true}
+               |Params1],
+    {ok, Params2}.
 
 default(undefined, Default) ->
     Default;

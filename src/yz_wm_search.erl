@@ -75,11 +75,9 @@ search(Req, S) ->
     ?IF(FProf, fprof:trace(start, FProfFile)),
     Index = wrq:path_info(index, Req),
     Params = wrq:req_qs(Req),
-    Mapping = yz_events:get_mapping(),
     ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        Result = yz_solr:dist_search(Index, ReqHeaders,
-                                     Params, Mapping),
+        Result = yz_solr:dist_search(Index, ReqHeaders, Params),
         case Result of
             {error, insufficient_vnodes_available} ->
                 ER1 = wrq:set_resp_header("Content-Type", "text/plain", Req),
