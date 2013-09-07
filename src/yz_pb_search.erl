@@ -55,8 +55,7 @@ encode(Message) ->
 process(Msg, State) ->
     maybe_process(yokozuna:is_enabled(search), Msg, State).
 
-maybe_process(true, Msg, State) ->
-    #rpbsearchqueryreq{index=IndexBin}=Msg,
+maybe_process(true, #rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
             Index = binary_to_list(IndexBin),
