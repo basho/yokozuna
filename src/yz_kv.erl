@@ -109,11 +109,10 @@ is_tombstone(MD) ->
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
-index(Obj, Reason, VNodeState) ->
+index(Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
             Ring = yz_misc:get_ring(transformed),
-            P = get_partition(VNodeState),
             case is_owner_or_future_owner(P, node(), Ring) of
                 true ->
                     {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
@@ -292,12 +291,6 @@ cleanup(_, _) ->
 %% @doc Get first partition from a preflist.
 first_partition([{Partition, _}|_]) ->
     Partition.
-
-%% @private
-%%
-%% @doc Get the partition from the `VNodeState'.
-get_partition(VNodeState) ->
-    riak_kv_vnode:get_state_partition(VNodeState).
 
 %% @private
 %%

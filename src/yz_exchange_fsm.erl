@@ -199,17 +199,15 @@ repair(Partition, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
     BKey = binary_to_term(KeyBin),
     FakeObj = fake_kv_object(BKey),
-    FakeState = fake_kv_vnode_state(Partition),
-    yz_kv:index(FakeObj, delete, FakeState),
+    yz_kv:index(FakeObj, delete, Partition),
     ok;
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
-    %% match. In either cas the object must be re-indexed.
+    %% match. In either case the object must be re-indexed.
     BKey = binary_to_term(KeyBin),
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
-            FakeState = fake_kv_vnode_state(Partition),
-            yz_kv:index(Obj, anti_entropy, FakeState),
+            yz_kv:index(Obj, anti_entropy, Partition),
             ok;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
@@ -225,10 +223,6 @@ repair(Partition, {_Reason, KeyBin}) ->
 %% @private
 fake_kv_object({Bucket, Key}) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
-
-%% @private
-fake_kv_vnode_state(Partition) ->
-    {state,Partition,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake}.
 
 %% @private
 update_request(Module, Tree, Index, IndexN) ->

@@ -205,6 +205,7 @@ ping(Core) ->
         _ -> false
     end.
 
+-spec port() -> non_neg_integer().
 port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT).
 
@@ -250,7 +251,7 @@ search(Core, Headers, Params) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    "http://localhost:" ++ port() ++ "/solr".
+    "http://localhost:" ++ integer_to_list(port()) ++ "/solr".
 
 build_fq(Partitions) ->
     GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
