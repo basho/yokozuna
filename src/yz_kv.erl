@@ -194,25 +194,69 @@ update_aae_tree_stats(Index, BuildTime) ->
     riak_kv_entropy_info:tree_built(yz, Index, BuildTime),
     ok.
 
+%% @private
+%%
+%% @doc Update the hashtree for `Parition'/`IdxN'.
+%%
+%% `Action' - Either delete the `BKey' by passing `delete' or insert
+%% hash by passing `{insert, ObjHash}'.
+%%
+%% `Partition' - The partition number of the tree to update.
+%%
+%% `IdxN' - The preflist the `BKey' belongs to.
+%%
+%% `BKey' - The bucket/key encoded as binary.
 -spec update_hashtree(delete | {insert, binary()}, p(), {p(),n()},
                       {binary(), binary()}) -> ok.
 update_hashtree(Action, Partition, IdxN, BKey) ->
-    try
-        case get_tree(Partition) of
-            not_registered ->
-                ok;
-            Tree ->
-                case Action of
-                    {insert, ObjHash} ->
-                        yz_index_hashtree:insert(sync, IdxN, BKey,
-                                                 ObjHash, Tree, []);
-                    delete ->
-                        yz_index_hashtree:delete(sync, IdxN, BKey, Tree)
-                end
-        end
-    catch _:Reason ->
-            lager:debug("Failed to update hashtree: ~p ~p", [BKey, Reason])
+    case get_tree(Partition) of
+        not_registered ->
+            ok;
+        Tree ->
+            Method = get_method(),
+            case Action of
+                {insert, ObjHash} ->
+                    yz_index_hashtree:insert(Method, IdxN, BKey,
+                                             ObjHash, Tree, []),
+                    ok;
+                delete ->
+                    yz_index_hashtree:delete(Method, IdxN, BKey, Tree),
+                    ok
+            end
     end.
+
+%% @private
+%%
+%% @doc Determine the method used to make the hashtree update.  Most
+%% updates will be performed in async manner but want to occasionally
+%% use a blocking call to avoid overloading the hashtree.
+%%
+%% NOTE: This uses the process dictionary and thus is another function
+%% which relies running on a long-lived process.  In this case that
+%% process is the KV vnode.  In the future this should probably use
+%% cast only + sidejob for overload protection.
+-spec get_method() -> async | sync.
+get_method() ->
+    case get(yz_hashtree_tokens) of
+        undefined ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            async;
+        N when N > 0 ->
+            put(yz_hashtree_tokens, N - 1),
+            async;
+        _ ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            sync
+    end.
+
+%% @private
+%%
+%% @doc Return the max number of async hashtree calls that may be
+%% performed before requiring a blocking call.
+-spec max_hashtree_tokens() -> pos_integer().
+max_hashtree_tokens() ->
+    %% Use same max as riak_kv
+    app_helper:get_env(riak_kv, anti_entropy_max_async, 90).
 
 %% @doc Write a value
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
