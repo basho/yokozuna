@@ -232,9 +232,9 @@ function run_riak_test_tests()
 sanity_check
 
 YZ_SRC=git://github.com/basho/yokozuna.git
-YZ_BRANCH=master
+YZ_BRANCH=develop
 RIAK_SRC=git://github.com/basho/riak.git
-RIAK_BRANCH=rz-yz-merge-1.4.0
+RIAK_BRANCH=develop
 TEST_ONLY=
 
 while [ $# -gt 0 ]
