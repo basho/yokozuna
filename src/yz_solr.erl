@@ -268,8 +268,8 @@ host_port(Node) ->
         {badrpc, Reason} ->
             ?DEBUG("error retrieving Solr port ~p ~p", [Node, Reason]),
             {yz_misc:hostname(Node), unknown};
-        Port when is_list(Port) ->
-            {yz_misc:hostname(Node), Port}
+        Port when is_integer(Port) ->
+            {yz_misc:hostname(Node), integer_to_list(Port)}
     end.
 
 group_by_node({{Partition, Owner}, all}) ->
