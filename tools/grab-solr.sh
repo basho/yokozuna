@@ -25,7 +25,7 @@ check_for_solr()
 
 get_solr()
 {
-        wget https://s3.amazonaws.com/yzami/pkgs/$VSN.tgz
+        wget --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$VSN.tgz
         tar zxf $VSN.tgz
 }
 
