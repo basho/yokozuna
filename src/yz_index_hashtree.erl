@@ -58,7 +58,7 @@ insert(async, Id, BKey, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
 insert(sync, Id, BKey, Hash, Tree, Options) ->
-    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, 1000).
+    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity).
 
 %% @doc Delete the `BKey' from `Tree'.  The id will be determined from
 %%      `BKey'.  The result of the sync call should be ignored since
@@ -68,7 +68,7 @@ delete(async, Id, BKey, Tree) ->
     gen_server:cast(Tree, {delete, Id, BKey});
 
 delete(sync, Id, BKey, Tree) ->
-    catch gen_server:call(Tree, {delete, Id, BKey}, 1000).
+    catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
 
 -spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
