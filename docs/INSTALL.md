@@ -9,7 +9,7 @@ Source Package
 
 ### Requirements ###
 
-* Erlang R15B02, or higher
+* Erlang R15B03, or higher
 
 * Oracle Java JRE 1.6 or later, not Open JRE
 
@@ -92,7 +92,7 @@ described above.
 
 Clone the Yokozuna branch of Riak.
 
-    git clone -b rz-yz-merge-1.4.0 git://github.com/basho/riak.git
+    git clone git://github.com/basho/riak.git
     cd riak
 
 Compile.
@@ -105,4 +105,4 @@ Make `stage` or `stagedevrel`.
 
 Enable Yokozuna.
 
-	for d in dev/dev*; do sed -e '/{yokozuna,/,/]}/{s/{enabled, false}/{enabled, true}/;}' -i.back $d/etc/app.config; done
+	for d in dev/dev*; do sed -e 's/yokozuna = off/yokozuna = on/' -i.back $d/etc/riak.conf; done
