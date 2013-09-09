@@ -1,6 +1,103 @@
 Yokozuna Release Notes
 ==========
 
+0.9.0
+-----
+
+The ninth release of Yokozuna.  Now integrated with the latest
+development branch of Riak.  No special branches required.  Schema and
+index administration supported over protocol buffers transport.  A
+major performance regression is fixed as well as a deadlock in AAE.
+Work on support for migrating from Riak Search has started.  Along
+with various other bug fixes.
+
+### Features ###
+
+* [60][] - Various patches integrating Yokozuna and Riak.
+
+  * [154][], - Allow Yokozuna to report AAE status such as tree build
+    times and exchange stats. ([kv-596][], [kv-654][])
+
+  * [155][], [156][], [166][] - Integration with Riak development
+    branch. ([riak-375][])
+
+* [163][] - Add a function to perform a live switch of query handling
+  from Riak Search to Yokozuna.  This is a building block to allow
+  migration without restarting the node.
+
+* [163][] - Add a test to verify using AAE as a means to migrate from
+  Riak Search to Yokozuna.
+
+* [144][], [161][] - Add index and schema administration support to
+  the protocol buffers interface. ([pb-51][])
+
+* [riakc-112][] - Add support for index and schema administration to
+  the Riak Erlang Client.
+
+### Performance ###
+
+* [164][] - There is a major performance regression in the 0.8.0
+  release.  It affects KV writes and indexing.  Even if Yokozuna is
+  disabled.  This patch fixes the regression.
+
+### Bugs/Misc ###
+
+* [153][] - Fix field name creation in XML extractor.
+
+* [159][] - More reliable tear down of JVM process.  Move JAR files
+  into `priv` dir which makes upgrades easier.  Move
+  `log4j.properties` into `etc` dir.
+
+* [162][] - Simplify the script that downloads Solr.
+
+* [163][] - Fix AAE deadlock.
+
+* [163][] - Fix mixed cluster issues when upgrading from previous Riak
+  versions.
+
+* [163][] - Don't send empty parameters to Solr when querying Yokozuna
+  via protocol buffers.
+
+* [163][] - Simplify AAE repair function to repairing the local index
+  only, thus avoiding RPC.  Fix tree mapping to avoid indefinite index
+  repair.
+
+* [167][] - Perform AAE hashtree updates in asynchronous fashion with
+  periodic synchronous (blocking) calls.  Use an infinity timeout for
+  synchronous call to avoid crashing the KV vnode.  This should also
+  help write throughput but no benchmarks were performed.
+
+* [169][] - Add `*_coordinate` field for spatial indexing.
+
+### Documentation ###
+
+* [158][] - Fix example doc.
+
+[60]: https://github.com/basho/yokozuna/issues/60
+[144]: https://github.com/basho/yokozuna/pull/144
+[153]: https://github.com/basho/yokozuna/pull/153
+[154]: https://github.com/basho/yokozuna/issues/154
+[155]: https://github.com/basho/yokozuna/issues/155
+[156]: https://github.com/basho/yokozuna/issues/156
+[158]: https://github.com/basho/yokozuna/pull/158
+[159]: https://github.com/basho/yokozuna/pull/159
+[161]: https://github.com/basho/yokozuna/pull/161
+[162]: https://github.com/basho/yokozuna/pull/162
+[163]: https://github.com/basho/yokozuna/pull/163
+[164]: https://github.com/basho/yokozuna/pull/164
+[166]: https://github.com/basho/yokozuna/pull/166
+[167]: https://github.com/basho/yokozuna/pull/167
+[169]: https://github.com/basho/yokozuna/pull/169
+
+[kv-596]: https://github.com/basho/riak_kv/pull/596
+[kv-654]: https://github.com/basho/riak_kv/pull/654
+
+[pb-51]: https://github.com/basho/riak_pb/pull/51
+
+[riak-375]: https://github.com/basho/riak/pull/375
+
+[riakc-112]: https://github.com/basho/riak-erlang-client/pull/112
+
 0.8.0
 -----
 
