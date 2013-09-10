@@ -31,13 +31,13 @@ RIAK_DIR=riak-yokozuna-$VSN-src
 TGZ=$RIAK_DIR.tar.gz
 
 pushd $WD
-git clone -b rz-yz-merge-1.4.0 git://github.com/basho/riak.git $RIAK_DIR
+git clone git://github.com/basho/riak.git $RIAK_DIR
 pushd $RIAK_DIR
 make deps
 pushd deps/yokozuna
 git checkout v$VSN
-./priv/grab-solr.sh
-rm -rf priv/solr-4*
+./tools/grab-solr.sh
+rm -rf build/solr-4*
 popd
 popd
 
