@@ -66,7 +66,7 @@ At this point creating a cluster is the same as vanilla Riak.  See
 currently wrong about the port numbers.  If you are using a
 `stagedevrel` then use these port numbers.
 
-	Riak HTTP: 10018, 10028, 10038, 10048, 10058
+    Riak HTTP: 10018, 10028, 10038, 10048, 10058
 	Riak PB: 10017, 10027, 10037, 10047, 10057
 
 Here is an example of creating a cluster from the `stagedevrel`
