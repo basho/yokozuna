@@ -2,8 +2,7 @@
 %% @datatype enum on, off
 {mapping, "yokozuna", "yokozuna.enabled", [
   {default, off},
-  {datatype, enum},
-  {enum, [on, off]}
+  {datatype, {enum, [on, off]}}
 ]}.
 
 { translation,
