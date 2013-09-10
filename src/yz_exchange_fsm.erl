@@ -197,26 +197,49 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
 -spec repair(p(), keydiff()) -> ok.
 repair(Partition, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
+    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
+    Index = yz_kv:get_index(BKey, Ring),
+    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
     FakeObj = fake_kv_object(BKey),
-    yz_kv:index(FakeObj, delete, Partition),
+    %% Repeat sopme logic in `yz_kv:index/3' to avoid extra work.  Can
+    %% assume that Yokozuna is enabled and current node is owner.
+    case yz_kv:should_index(Index) of
+        true ->
+            yz_kv:index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index),
+            ok;
+        false ->
+            yz_kv:dont_index(FakeObj, delete, Partition, BKey, ShortPL)
+    end,
     ok;
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
+    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
-    case yz_kv:local_get(Partition, BKey) of
-        {ok, Obj} ->
-            yz_kv:index(Obj, anti_entropy, Partition),
-            ok;
-        _Other ->
-            %% In most cases Other will be `{error, notfound}' which
-            %% is fine because hashtree updates are async and the
-            %% Yokozuna tree could see the delete before the KV tree.
-            %% That would cause exchange to trigger repair but then in
-            %% the meantime the KV object has since been deleted.  In
-            %% the case of other errors just ignore them and let the
-            %% next exchange retry the repair if it is still needed.
+    Index = yz_kv:get_index(BKey, Ring),
+    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    %% Repeat some logic in `yz_kv:index/3` to avoid object get when
+    %% possible.  Can assume here that Yokozua is enabled and current
+    %% node is owner.
+    case yz_kv:should_index(Index) of
+        true ->
+            case yz_kv:local_get(Partition, BKey) of
+                {ok, Obj} ->
+                    yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
+                    ok;
+                _Other ->
+                    %% In most cases Other will be `{error, notfound}' which
+                    %% is fine because hashtree updates are async and the
+                    %% Yokozuna tree could see the delete before the KV tree.
+                    %% That would cause exchange to trigger repair but then in
+                    %% the meantime the KV object has since been deleted.  In
+                    %% the case of other errors just ignore them and let the
+                    %% next exchange retry the repair if it is still needed.
+                    ok
+            end;
+        false ->
+            yz_kv:dont_index(fake_kv_object(BKey), anti_entropy, Partition, BKey, ShortPL),
             ok
     end.
 

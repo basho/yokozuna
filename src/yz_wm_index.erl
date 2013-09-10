@@ -238,7 +238,7 @@ is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
 -spec associated_buckets(index_name(), ring()) -> [bucket()].
 associated_buckets(IndexName, Ring) ->
     AllBucketProps = riak_core_bucket:get_buckets(Ring),
-    Indexes = lists:map(fun yz_kv:which_index/1, AllBucketProps),
+    Indexes = lists:map(fun yz_kv:get_index/1, AllBucketProps),
     lists:filter(fun(I) -> I == IndexName end, Indexes).
 
 %% accepts a string and attempt to parse it into json

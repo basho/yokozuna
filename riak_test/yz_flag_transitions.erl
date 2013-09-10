@@ -1,16 +1,14 @@
 %% @doc Test the addition or removal of the index entry from a bucket
 %%      that has data.  If a bucket already has data then associating
-%%      it with an index should cause the deletion of all entries for
-%%      this bucket in the default index and re-indexing under the
-%%      newly associated index.  Conversely, if an index is
-%%      dissociated from the bucket then that bucket's data should be
-%%      deleted from the index and re-indexed under the default index.
+%%      it with an index should cause re-indexing under the newly
+%%      associated index.  Conversely, if an index is dissociated from
+%%      the bucket then that bucket's data should be deleted from the
+%%      index.
 %%
 %% NOTE: This is called "flag transition" because originally Yokozuna
 %%       had an implicit one-to-one mapping between bucket and index
 %%       name.  That is, the names were the same and a given index was
-%%       responsible for only one bucket (with the exception of the
-%%       _yz_default index).
+%%       responsible for only one bucket.
 -module(yz_flag_transitions).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
@@ -63,7 +61,6 @@ verify_index_add(Cluster, YZBenchDir) ->
     lager:info("Verify fruit index doesn't exist"),
     {ok, "404", _, _} = yz_rt:search(yokozuna, HP, "fruit", "*", "*"),
     lager:info("Verify objects are indexed under default index"),
-    ?assert(yz_rt:search_expect(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS)),
     lager:info("Create fruit index + set flag"),
     yz_rt:create_index(yz_rt:select_random(Cluster), "fruit"),
     yz_rt:set_index(yz_rt:select_random(Cluster), <<"fruit">>),
@@ -74,7 +71,6 @@ verify_index_add(Cluster, YZBenchDir) ->
                 lager:info("Verify that AAE re-indexes objects under fruit index [~p]", [Node]),
                 HP2 = hd(yz_rt:host_entries(rt:connection_info([Node]))),
                 %% Also verify that the data was deleted under default index
-                yz_rt:search_expect(HP2, "_yz_default", "_yz_rb", "fruit", 0),
                 yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
         end,
     yz_rt:wait_until(Cluster, F).
@@ -89,9 +85,7 @@ verify_index_remove(Cluster) ->
     F = fun(Node2) ->
                 lager:info("Verify fruit indexes are deleted + objects re-indexed under default index [~p]", [Node2]),
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node2]))),
-                R1 = yz_rt:search_expect(HP, "fruit", "*", "*", 0),
-                R2 = yz_rt:search_expect(HP, "_yz_default", "_yz_rb", "fruit", ?NUM_KEYS),
-                R1 and R2
+                yz_rt:search_expect(HP, "fruit", "*", "*", 0)
         end,
     yz_rt:wait_until(Cluster, F).
 
@@ -117,8 +111,7 @@ verify_many_to_one_index_remove(Cluster) ->
                 HP2 = hd(yz_rt:host_entries(rt:connection_info([Node2]))),
                 R1 = yz_rt:search_expect(HP2, "many", "_yz_rb", "b1", 0),
                 R2 = yz_rt:search_expect(HP2, "many", "_yz_rb", "b2", 1),
-                R3 = yz_rt:search_expect(HP2, "_yz_default", "_yz_rb", "b1", 1),
-                R1 and R2 and R3
+                R1 and R2
         end,
     yz_rt:wait_until(Cluster, F).
 

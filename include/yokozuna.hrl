@@ -52,6 +52,8 @@
 -type lp() :: pos_integer().
 %% Preflist, list of partition/owner pairs
 -type preflist() :: [{p(),term()}].
+%% Short representation of a preflist, partition + n_val
+-type short_preflist() :: {p(), n()}.
 %% Riak bucket
 -type bucket() :: binary().
 %% Riak key
@@ -249,7 +251,7 @@
 -type index_info() :: #index_info{}.
 -type index_name() :: string().
 
--define(YZ_DEFAULT_INDEX, "_yz_default").
+-define(YZ_INDEX_TOMBSTONE, "_dont_index_").
 -define(YZ_INDEX, yz_index).
 
 %%%===================================================================
