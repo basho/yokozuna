@@ -22,44 +22,44 @@ Source Package
 Download the source package and corresponding md5 from one of the
 following locations.
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.8.0-src.tar.gz
+* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.9.0-src.tar.gz
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.8.0-src.tar.gz.md5
+* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.9.0-src.tar.gz.md5
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.8.0-src.tar.gz
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.9.0-src.tar.gz
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.8.0-src.tar.gz.md5
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.9.0-src.tar.gz.md5
 
 E.g. download from [riakcs.net][rcs].
 
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.8.0-src.tar.gz
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.8.0-src.tar.gz.md5
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.9.0-src.tar.gz
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.9.0-src.tar.gz.md5
 
 Verify the md5 (note: `md5` might be `md5sum`).
 
-	md5 riak-yokozuna-0.8.0-src.tar.gz
-	cat riak-yokozuna-0.8.0-src.tar.gz.md5
+	md5 riak-yokozuna-0.9.0-src.tar.gz
+	cat riak-yokozuna-0.9.0-src.tar.gz.md5
 
 Unpack the archive.
 
-    tar zxvf riak-yokozuna-0.8.0-src.tar.gz
+    tar zxvf riak-yokozuna-0.9.0-src.tar.gz
 
 Compile.
 
-	cd riak-yokozuna-0.8.0-src
+	cd riak-yokozuna-0.9.0-src
 	make
 
 To deploy Riak-Yokozuna in a production configuration then you'll want
 to build a normal release.
 
 	make stage
-	sed -e '/{yokozuna,/,/]}/{s/{enabled, false}/{enabled, true}/;}' -i.back rel/riak/etc/app.config
+	sed -e 's/yokozuna = off/yokozuna = on/' -i.back rel/riak/etc/riak.conf
 
 If you want to develop against multiple nodes on one machine then you
 can build a local development cluster.
 
 	make stagedevrel
-	for d in dev/dev*; do sed -e '/{yokozuna,/,/]}/{s/{enabled, false}/{enabled, true}/;}' -i.back $d/etc/app.config; done
+    for d in dev/dev*; do sed -e 's/yokozuna = off/yokozuna = on/' -i.back $d/etc/riak.conf; done
 
 At this point creating a cluster is the same as vanilla Riak.  See
 [Basic Cluster Setup][bcs] for more details.  The Riak docs are
