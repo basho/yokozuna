@@ -48,9 +48,9 @@ confirm() ->
     verify_many_to_one_index_remove(Cluster),
     pass.
 
-%% @doc When an index is associated the indexes for the bucket should
-%%      be removed from the default index and AAE should re-index
-%%      objects under the bucket's index.
+%% @doc When an index is associated with a bucket the Yokozuna AAE
+%% trees should be cleared.  Thus on next exchange missing indexes
+%% will be discovered and repaired.
 verify_index_add(Cluster, YZBenchDir) ->
     lager:info("Verify adding index"),
     yz_rt:load_data(Cluster, "fruit", YZBenchDir, ?NUM_KEYS),
@@ -60,7 +60,6 @@ verify_index_add(Cluster, YZBenchDir) ->
     HP = yz_rt:select_random(Hosts),
     lager:info("Verify fruit index doesn't exist"),
     {ok, "404", _, _} = yz_rt:search(yokozuna, HP, "fruit", "*", "*"),
-    lager:info("Verify objects are indexed under default index"),
     lager:info("Create fruit index + set flag"),
     yz_rt:create_index(yz_rt:select_random(Cluster), "fruit"),
     yz_rt:set_index(yz_rt:select_random(Cluster), <<"fruit">>),
@@ -70,20 +69,18 @@ verify_index_add(Cluster, YZBenchDir) ->
     F = fun(Node) ->
                 lager:info("Verify that AAE re-indexes objects under fruit index [~p]", [Node]),
                 HP2 = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-                %% Also verify that the data was deleted under default index
                 yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
         end,
     yz_rt:wait_until(Cluster, F).
 
 %% @doc When an index is dissociated the indexes for that bucket's
-%%      index should be deleted and AAE should re-index objects under
-%%      the default index.
+%%      index should be deleted.
 verify_index_remove(Cluster) ->
     lager:info("Verify removing index"),
     Node = yz_rt:select_random(Cluster),
     yz_rt:remove_index(Node, <<"fruit">>),
     F = fun(Node2) ->
-                lager:info("Verify fruit indexes are deleted + objects re-indexed under default index [~p]", [Node2]),
+                lager:info("Verify fruit indexes are deleted [~p]", [Node2]),
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node2]))),
                 yz_rt:search_expect(HP, "fruit", "*", "*", 0)
         end,
