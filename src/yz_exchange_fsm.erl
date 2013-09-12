@@ -202,7 +202,7 @@ repair(Partition, {remote_missing, KeyBin}) ->
     Index = yz_kv:get_index(BKey, Ring),
     ShortPL = yz_kv:get_short_preflist(BKey, Ring),
     FakeObj = fake_kv_object(BKey),
-    %% Repeat sopme logic in `yz_kv:index/3' to avoid extra work.  Can
+    %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
     %% assume that Yokozuna is enabled and current node is owner.
     case yz_kv:should_index(Index) of
         true ->
