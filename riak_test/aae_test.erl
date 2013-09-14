@@ -13,7 +13,7 @@
           [
            %% allow AAE to build trees and exchange rapidly
            {anti_entropy_build_limit, {100, 1000}},
-           {anti_entropy_concurrency, 12}
+           {anti_entropy_concurrency, 4}
           ]},
          {yokozuna,
           [
@@ -32,6 +32,16 @@ confirm() ->
     yz_rt:load_data(Cluster, ?INDEX_S, YZBenchDir, ?NUM_KEYS),
     lager:info("Verify data was indexed"),
     verify_num_match(Cluster, ?NUM_KEYS),
+    %% Wait for a full round of exchange and then get total repair
+    %% count.  Need to do this because setting AAE so agressive means
+    %% that the Solr soft-commit could race with AAE and thus repair
+    %% may happen while loading the data.  By getting the count before
+    %% deleting keys it can be subtracted from the total count later
+    %% to verify that the exact number of repairs was made given the
+    %% number of keys deleted.
+    TS1 = erlang:now(),
+    wait_for_full_exchange_round(Cluster, TS1),
+    ClusterSumBefore = lists:sum([get_total_repair_count(Node) || Node <- Cluster]),
     Keys = yz_rt:random_keys(?NUM_KEYS),
     {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
     lager:info("Deleting ~p keys", [length(DelKeys)]),
@@ -40,29 +50,36 @@ confirm() ->
     verify_num_match(Cluster, ?NUM_KEYS - length(DelKeys)),
     lager:info("Clear trees so AAE will notice missing indexes"),
     [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster],
+    lager:info("Wait for all trees to re-build"),
+    %% Before exchange of a partition to take place the KV and
+    %% Yokozuna hashtree must be built.  Wait for all trees before
+    %% checking that Solr indexes are repaired.
+    TS2 = erlang:now(),
+    wait_for_full_exchange_round(Cluster, TS2),
     lager:info("Verify AAE repairs missing Solr documents"),
     verify_num_match(Cluster, ?NUM_KEYS),
+    %% Multiply by 3 because of N value
+    ExpectedNumRepairs = length(DelKeys) * 3,
+    lager:info("Verify repair count = ~p", [ExpectedNumRepairs]),
+    verify_repair_count(Cluster, ClusterSumBefore + ExpectedNumRepairs),
     pass.
-
-%% TODO: I spent a while trying to get this to work only to realize
-%% there is no way to get total repair count.  Since the LastCount is
-%% only the count for the last {Idx,N} the sum was always 1/3 of
-%% length(DelKeys).  Will eventually move AAE testing into it's own
-%% module and find a way to verify the repair count but for now will
-%% just leave this here as reminder.
-%%
-%% check_repair_count(Cluster, ExpectedNumRepairs) ->
-%%     lager:info("Verify the repair count is equal to ~p", [ExpectedNumRepairs]),
-%%     Infos = [rpc:call(Node, yz_kv, compute_exchange_info, []) || Node <- Cluster],
-%%     Count = lists:sum([lists:sum([LastCount || {_, _, _, {LastCount, _, _, _}} <- Info])
-%%                        || Info <- Infos]),
-%%     ?assertEqual(ExpectedNumRepairs, Count).
 
 delete_key_in_solr(Cluster, Index, Key) ->
     [begin
          lager:info("Deleting solr doc ~s/~s on node ~p", [Index, Key, Node]),
          ok = rpc:call(Node, yz_solr, delete, [Index, [{key, list_to_binary(Key)}]])
      end || Node <- Cluster].
+
+get_total_repair_count(Node) ->
+    Dump = rpc:call(Node, riak_kv_entropy_info, dump, []),
+    YZInfo = [I || {{index,{yz,_}},_}=I <- Dump],
+    Sums = [Sum || {_Key,{index_info,_,{simple_stat,_,_,_,_,Sum},_,_}} <- YZInfo],
+    lists:sum(Sums).
+
+greater_than(TimestampA) ->
+    fun(TimestampB) ->
+            TimestampB > TimestampA
+    end.
 
 read_schema(YZBenchDir) ->
     Path = filename:join([YZBenchDir, "schemas", "fruit_schema.xml"]),
@@ -85,5 +102,35 @@ verify_num_match(Cluster, Num) ->
     F = fun(Node) ->
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
                 yz_rt:search_expect(HP, ?INDEX_S, "text", "apricot", Num)
+        end,
+    yz_rt:wait_until(Cluster, F).
+
+verify_repair_count(Cluster, ExpectedNumRepairs) ->
+    ClusterSum = lists:sum([get_total_repair_count(Node) || Node <- Cluster]),
+    ?assertEqual(ExpectedNumRepairs, ClusterSum).
+
+
+%% Eneded up not needing this function but leaving here in casse
+%% useful later.
+
+%% wait_for_all_trees(Cluster) ->
+%%     F = fun(Node) ->
+%%                 lager:info("Check if all trees built for node ~p", [Node]),
+%%                 Info = rpc:call(Node, yz_kv, compute_tree_info, []),
+%%                 NotBuilt = [X || {_,undefined}=X <- Info],
+%%                 NotBuilt == []
+%%         end,
+%%     yz_rt:wait_until(Cluster, F).
+
+
+%% @doc Wait for a full exchange round since `Timestamp'.  This means
+%% that all `{Idx,N}' for all partitions must have exchanged after
+%% `Timestamp'.
+wait_for_full_exchange_round(Cluster, Timestamp) ->
+    F = fun(Node) ->
+                lager:info("Check if all partitions have had full exchange for ~p", [Node]),
+                EIs = rpc:call(Node, yz_kv, compute_exchange_info, []),
+                AllTimes = [AllTime || {_,_,AllTime,_} <- EIs],
+                lists:all(greater_than(Timestamp), AllTimes)
         end,
     yz_rt:wait_until(Cluster, F).
