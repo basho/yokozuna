@@ -78,7 +78,7 @@ load_data(Cluster, Index, YZBenchDir, NumKeys) ->
     run_bb(sync, File).
 
 random_keys(MaxKey) ->
-    random_keys(random:uniform(100), MaxKey).
+    random_keys(4 + random:uniform(100), MaxKey).
 
 random_keys(Num, MaxKey) ->
     lists:usort([integer_to_list(random:uniform(MaxKey))
