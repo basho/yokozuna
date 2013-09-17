@@ -53,7 +53,7 @@ confirm() ->
     lager:info("Clear trees so AAE will notice missing indexes"),
     [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster],
     lager:info("Wait for all trees to re-build"),
-    %% Before exchange of a partition to take place the KV and
+    %% Before exchange of a partition can take place the KV and
     %% Yokozuna hashtree must be built.  Wait for all trees before
     %% checking that Solr indexes are repaired.
     TS2 = erlang:now(),
