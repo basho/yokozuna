@@ -128,7 +128,7 @@ process_stream(_,_,State) ->
 -spec associated_buckets(index_name(), ring()) -> [bucket()].
 associated_buckets(IndexName, Ring) ->
     AllBucketProps = riak_core_bucket:get_buckets(Ring),
-    Indexes = lists:map(fun yz_kv:which_index/1, AllBucketProps),
+    Indexes = lists:map(fun yz_kv:get_index/1, AllBucketProps),
     lists:filter(fun(I) -> I == IndexName end, Indexes).
 
 -spec maybe_create_index(index_name(), schema_name()) -> ok |

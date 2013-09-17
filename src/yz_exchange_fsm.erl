@@ -161,10 +161,14 @@ key_exchange(timeout, S=#state{index=Index,
 
     AccFun = fun(KeyDiff, Acc) ->
                      lists:foldl(fun(Diff, Acc2) ->
-                                         repair(Index, Diff),
-                                         case Acc2 of
-                                             [] -> [1];
-                                             [Count] -> [Count+1]
+                                         case repair(Index, Diff) of
+                                             full_repair ->
+                                                 case Acc2 of
+                                                     [] -> [1];
+                                                     [Count] -> [Count+1]
+                                                 end;
+                                             _ ->
+                                                 Acc2
                                          end
                                  end, Acc, KeyDiff)
              end,
@@ -194,21 +198,45 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
 %% @private
--spec repair(p(), keydiff()) -> ok.
+-spec repair(p(), keydiff()) -> full_repair | tree_repair | failed_repair.
 repair(Partition, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
+    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
+    Index = yz_kv:get_index(BKey, Ring),
+    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
     FakeObj = fake_kv_object(BKey),
-    yz_kv:index(FakeObj, delete, Partition),
-    ok;
+    %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
+    %% assume that Yokozuna is enabled and current node is owner.
+    case yz_kv:should_index(Index) of
+        true ->
+            yz_kv:index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index),
+            full_repair;
+        false ->
+            yz_kv:dont_index(FakeObj, delete, Partition, BKey, ShortPL),
+            tree_repair
+    end;
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
+    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
+    Index = yz_kv:get_index(BKey, Ring),
+    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    %% Can assume here that Yokozua is enabled and current
+    %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
-            yz_kv:index(Obj, anti_entropy, Partition),
-            ok;
+            case yz_kv:should_index(Index) of
+                true ->
+                    yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
+                    full_repair;
+                false ->
+                    %% TODO: pass obj hash to repair fun to avoid
+                    %% object read just to update hash.
+                    yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                    tree_repair
+            end;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
             %% is fine because hashtree updates are async and the
@@ -217,7 +245,7 @@ repair(Partition, {_Reason, KeyBin}) ->
             %% the meantime the KV object has since been deleted.  In
             %% the case of other errors just ignore them and let the
             %% next exchange retry the repair if it is still needed.
-            ok
+            failed_repair
     end.
 
 %% @private
