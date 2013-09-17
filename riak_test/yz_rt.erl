@@ -3,6 +3,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
+-define(YZ_RT_ETS, yz_rt_ets).
+-define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 
 -type host() :: string().
 -type portnum() :: integer().
@@ -28,6 +30,43 @@ create_index(Node, Index, SchemaName) ->
     lager:info("Creating index ~s using schema ~s [~p]",
                [Index, SchemaName, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName]).
+
+maybe_create_ets() ->
+    case ets:info(?YZ_RT_ETS) of
+        undefined ->
+            ets:new(?YZ_RT_ETS, ?YZ_RT_ETS_OPTS),
+            ok;
+        _ ->
+            ets:delete(?YZ_RT_ETS),
+            ets:new(?YZ_RT_ETS, ?YZ_RT_ETS_OPTS),
+            ok
+    end.
+
+get_call_count(Cluster, MFA) when is_list(Cluster) ->
+    case ets:lookup(?YZ_RT_ETS, MFA) of
+        [{_,Count}] ->
+            Count;
+        [] ->
+            0
+    end.
+
+count_calls(Cluster, MFA={M,F,A}) when is_list(Cluster) ->
+    RiakTestNode = node(),
+    maybe_create_ets(),
+    dbg:tracer(process, {fun trace_count/2, {RiakTestNode, MFA, 0}}),
+    [{ok,Node} = dbg:n(Node) || Node <- Cluster],
+    dbg:p(all, call),
+    dbg:tpl(M, F, A, [{'_', [], [{return_trace}]}]).
+
+stop_tracing() ->
+    dbg:stop_clear().
+
+trace_count({trace, _Pid, call, {_M, _F, _A}}, Acc) ->
+    Acc;
+trace_count({trace, _Pid, return_from, {_M, _F, _}, _Result}, {RTNode, MFA, Count}) ->
+    Count2 = Count + 1,
+    rpc:call(RTNode, ets, insert, [?YZ_RT_ETS, {MFA, Count2}]),
+    {RTNode, MFA, Count2}.
 
 get_count(Resp) ->
     Struct = mochijson2:decode(Resp),

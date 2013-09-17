@@ -4,6 +4,7 @@
 -define(NUM_KEYS, 10000).
 -define(INDEX_B, <<"fruit_aae">>).
 -define(INDEX_S, "fruit_aae").
+-define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(CFG,
         [{riak_core,
           [
@@ -41,7 +42,8 @@ confirm() ->
     %% number of keys deleted.
     TS1 = erlang:now(),
     wait_for_full_exchange_round(Cluster, TS1),
-    ClusterSumBefore = lists:sum([get_total_repair_count(Node) || Node <- Cluster]),
+    RepairCountBefore = get_cluster_repair_count(Cluster),
+    yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     Keys = yz_rt:random_keys(?NUM_KEYS),
     {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
     lager:info("Deleting ~p keys", [length(DelKeys)]),
@@ -61,7 +63,17 @@ confirm() ->
     %% Multiply by 3 because of N value
     ExpectedNumRepairs = length(DelKeys) * 3,
     lager:info("Verify repair count = ~p", [ExpectedNumRepairs]),
-    verify_repair_count(Cluster, ClusterSumBefore + ExpectedNumRepairs),
+    verify_repair_count(Cluster, RepairCountBefore + ExpectedNumRepairs),
+    yz_rt:stop_tracing(),
+    Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
+    %% Add 3 repairs for the fruit schema which is written to a
+    %% non-indexed bucket and will cause 3 instances of tree_repair.
+    ?assertEqual(ExpectedNumRepairs + 3, Count),
+    %% Verify that there is no indefinite repair.  The have been
+    %% several bugs in the past where Yokozuna AAE would indefinitely
+    %% repair.
+    lager:info("Verify no indefinite repair"),
+    verify_no_repair(Cluster),
     pass.
 
 delete_key_in_solr(Cluster, Index, Key) ->
@@ -69,6 +81,9 @@ delete_key_in_solr(Cluster, Index, Key) ->
          lager:info("Deleting solr doc ~s/~s on node ~p", [Index, Key, Node]),
          ok = rpc:call(Node, yz_solr, delete, [Index, [{key, list_to_binary(Key)}]])
      end || Node <- Cluster].
+
+get_cluster_repair_count(Cluster) ->
+    lists:sum([get_total_repair_count(Node) || Node <- Cluster]).
 
 get_total_repair_count(Node) ->
     Dump = rpc:call(Node, riak_kv_entropy_info, dump, []),
@@ -98,6 +113,15 @@ store_schema(Node, Name, RawSchema) ->
     lager:info("Storing schema ~p [~p]", [Name, Node]),
     ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]).
 
+%% @doc Verify that no repair has happened since `TS'.
+verify_no_repair(Cluster) ->
+    yz_rt:count_calls(Cluster, ?REPAIR_MFA),
+    TS = erlang:now(),
+    wait_for_full_exchange_round(Cluster, TS),
+    yz_rt:stop_tracing(),
+    Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
+    ?assertEqual(0, Count).
+
 verify_num_match(Cluster, Num) ->
     F = fun(Node) ->
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
@@ -106,7 +130,7 @@ verify_num_match(Cluster, Num) ->
     yz_rt:wait_until(Cluster, F).
 
 verify_repair_count(Cluster, ExpectedNumRepairs) ->
-    ClusterSum = lists:sum([get_total_repair_count(Node) || Node <- Cluster]),
+    RepairCount = get_cluster_repair_count(Cluster),
     ?assertEqual(ExpectedNumRepairs, ClusterSum).
 
 

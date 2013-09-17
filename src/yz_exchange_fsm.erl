@@ -223,28 +223,29 @@ repair(Partition, {_Reason, KeyBin}) ->
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey, Ring),
     ShortPL = yz_kv:get_short_preflist(BKey, Ring),
-    %% Repeat some logic in `yz_kv:index/3` to avoid object get when
-    %% possible.  Can assume here that Yokozua is enabled and current
+    %% Can assume here that Yokozua is enabled and current
     %% node is owner.
-    case yz_kv:should_index(Index) of
-        true ->
-            case yz_kv:local_get(Partition, BKey) of
-                {ok, Obj} ->
+    case yz_kv:local_get(Partition, BKey) of
+        {ok, Obj} ->
+            case yz_kv:should_index(Index) of
+                true ->
                     yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
                     full_repair;
-                _Other ->
-                    %% In most cases Other will be `{error, notfound}' which
-                    %% is fine because hashtree updates are async and the
-                    %% Yokozuna tree could see the delete before the KV tree.
-                    %% That would cause exchange to trigger repair but then in
-                    %% the meantime the KV object has since been deleted.  In
-                    %% the case of other errors just ignore them and let the
-                    %% next exchange retry the repair if it is still needed.
-                    failed_repair
+                false ->
+                    %% TODO: pass obj hash to repair fun to avoid
+                    %% object read just to update hash.
+                    yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                    tree_repair
             end;
-        false ->
-            yz_kv:dont_index(fake_kv_object(BKey), anti_entropy, Partition, BKey, ShortPL),
-            tree_repair
+        _Other ->
+            %% In most cases Other will be `{error, notfound}' which
+            %% is fine because hashtree updates are async and the
+            %% Yokozuna tree could see the delete before the KV tree.
+            %% That would cause exchange to trigger repair but then in
+            %% the meantime the KV object has since been deleted.  In
+            %% the case of other errors just ignore them and let the
+            %% next exchange retry the repair if it is still needed.
+            failed_repair
     end.
 
 %% @private
