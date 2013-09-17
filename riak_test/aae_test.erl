@@ -131,7 +131,7 @@ verify_num_match(Cluster, Num) ->
 
 verify_repair_count(Cluster, ExpectedNumRepairs) ->
     RepairCount = get_cluster_repair_count(Cluster),
-    ?assertEqual(ExpectedNumRepairs, ClusterSum).
+    ?assertEqual(ExpectedNumRepairs, RepairCount).
 
 
 %% Eneded up not needing this function but leaving here in casse
