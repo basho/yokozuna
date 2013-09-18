@@ -93,7 +93,7 @@ process(#rpbyokozunaindexputreq{
         ok ->
             {reply, #rpbputresp{}, State};
         {error, {rpc_fail, Claimant, _}} ->
-            Msg = "Cannot create index while claimant node "++Claimant++" is down~n",
+            Msg = "Cannot create index while claimant node " ++ atom_to_list(Claimant) ++" is down~n",
             {error, Msg, State};
         {error, schema_not_found} ->
             {error, "Schema not found", State}
