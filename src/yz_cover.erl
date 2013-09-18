@@ -223,7 +223,7 @@ make_filter_pairs(N, Q, Cover) ->
     [make_filter_pair(N, Q, DP) || DP <- Cover].
 
 %% @doc Convert the `Cover' set to use logical partitions.
--spec make_logical(logical_idx(), cover_set()) -> logical_cover_set().
+-spec make_logical(logical_idx(), cover_set()) -> [lp_node()].
 make_logical(LogicalIndex, Cover) ->
     [{logical_partition(LogicalIndex, P), Node} || {P, Node} <- Cover].
 
