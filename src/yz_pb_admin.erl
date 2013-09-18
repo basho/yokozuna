@@ -131,9 +131,9 @@ associated_buckets(IndexName, Ring) ->
     Indexes = lists:map(fun yz_kv:get_index/1, AllBucketProps),
     lists:filter(fun(I) -> I == IndexName end, Indexes).
 
--spec maybe_create_index(index_name(), schema_name()) -> ok |
-                                                         {error, schema_not_found} |
-                                                         {error, {rpc_fail, node(), term()}}.
+-spec maybe_create_index(binary(), schema_name()) -> ok |
+                                                     {error, schema_not_found} |
+                                                     {error, {rpc_fail, node(), term()}}.
 maybe_create_index(IndexName, _SchemaName = <<>>)->
     maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
 maybe_create_index(IndexName, _SchemaName = undefined)->
