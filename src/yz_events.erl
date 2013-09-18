@@ -141,7 +141,7 @@ flagged_buckets(Ring) ->
     Buckets = riak_core_bucket:get_buckets(Ring),
     ordsets:from_list(
       [proplists:get_value(name, BProps)
-       || BProps <- Buckets, yz_kv:index_content(yz_kv:which_index(BProps))]).
+       || BProps <- Buckets, yz_kv:should_index(yz_kv:get_index(BProps))]).
 
 get_tick_interval() ->
     app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
@@ -196,33 +196,22 @@ set_tick() ->
 
 -spec sync_data(ring(), list(), list()) -> ok.
 sync_data(PrevRing, Removed, Added) ->
+    %% TODO: check for case where index isn't added or removed, but changed
     [sync_added(Bucket) || Bucket <- Added],
     [sync_removed(PrevRing, Bucket) || Bucket <- Removed],
     ok.
 
+-spec sync_added(bucket()) -> ok.
 sync_added(Bucket) ->
-    Params = [{q, <<"_yz_rb:",Bucket/binary>>},{wt,<<"json">>}],
-    case yz_solr:search(?YZ_DEFAULT_INDEX, [], Params) of
-        {_, Resp} ->
-            Struct = mochijson2:decode(Resp),
-            NumFound = kvc:path([<<"response">>, <<"numFound">>], Struct),
-            if NumFound > 0 ->
-                    lager:info("index flag enabled for bucket ~s with existing data", [Bucket]),
-                    Ops = [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}],
-                    ok = yz_solr:delete(?YZ_DEFAULT_INDEX, Ops),
-                    yz_solr:commit(?YZ_DEFAULT_INDEX),
-                    yz_entropy_mgr:clear_trees();
-               true ->
-                    ok
-            end;
-        _ ->
-            ok
-    end.
+    lager:info("indexing enabled for bucket ~s -- clearing AAE trees", [Bucket]),
+    %% TODO: add hashtree.erl function to clear hashes for Bucket
+    yz_entropy_mgr:clear_trees(),
+    ok.
 
 -spec sync_removed(ring(), bucket()) -> ok.
 sync_removed(PrevRing, Bucket) ->
-    lager:info("index flag disabled for bucket ~s", [Bucket]),
-    Index = yz_kv:which_index(riak_core_bucket:get_bucket(Bucket, PrevRing)),
+    lager:info("indexing disabled for bucket ~s", [Bucket]),
+    Index = yz_kv:get_index(riak_core_bucket:get_bucket(Bucket, PrevRing)),
     ok = yz_solr:delete(Index, [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}]),
     yz_solr:commit(Index),
     yz_entropy_mgr:clear_trees(),

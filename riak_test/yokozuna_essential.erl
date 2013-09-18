@@ -32,23 +32,10 @@
           [
            {ring_creation_size, 16}
           ]},
-         {riak_kv,
-          [
-           %% build/expire often
-           {anti_entropy_build_limit, {100, 1000}},
-           {anti_entropy_expire, 10000},
-           {anti_entropy_concurrency, 12}
-          ]},
          {yokozuna,
           [
-	   {enabled, true},
-           {entropy_tick, 1000}
-          ]},
-         {lager,
-          [{handlers,
-            [{lager_file_backend,
-              [{"./log/error.log",error,10485760,"$D0",5},
-               {"./log/console.log",info,104857600,"$D0",10}]}]}]}
+	   {enabled, true}
+          ]}
         ]).
 
 confirm() ->
@@ -71,7 +58,6 @@ confirm() ->
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
     ok = test_escaped_key(Cluster),
-    ok = verify_aae(Cluster2, YZBenchDir),
     pass.
 
 test_escaped_key(Cluster) ->
@@ -89,51 +75,6 @@ http_get({Host, Port}, Bucket, Key) ->
                                       [Host, integer_to_list(Port), Bucket, Key])),
     Headers = [{"accept", "text/plain"}],
     {ok, "200", _, _} = ibrowse:send_req(URL, Headers, get, [], []),
-    ok.
-
-verify_aae(Cluster, YZBenchDir) ->
-    lager:info("Verify AAE"),
-    load_data(Cluster, "fruit_aae", YZBenchDir),
-    Keys = random_keys(),
-    {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
-    [ok = delete_ids(Cluster, "fruit_aae", K) || K <- DelKeys],
-    %% wait for soft commit
-    timer:sleep(1000),
-    %% ok = change_random_ids(Cluster, ChangeKeys),
-
-    F = fun(Node) ->
-                lager:info("Verify AAE repairs deleted Solr documents [~p]", [Node]),
-                HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-                search_expect(HP, "fruit_aae", "text", "apricot", ?NUM_KEYS)
-        end,
-    yz_rt:wait_until(Cluster, F).
-
-delete_ids(Cluster, Index, Key) ->
-    BKey = {list_to_binary(Index), list_to_binary(Key)},
-    Node = hd(Cluster),
-    Preflist = get_preflist(Node, BKey),
-    SolrIds = solr_ids(Node, Preflist, BKey),
-    ok = solr_delete(Cluster, SolrIds).
-
-get_preflist(Node, BKey) ->
-    Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
-    DocIdx = rpc:call(Node, riak_core_util, chash_std_keyfun, [BKey]),
-    Preflist = rpc:call(Node, riak_core_ring, preflist, [DocIdx, Ring]),
-    lists:sublist(Preflist, 3).
-
-solr_ids(Node, Preflist, {B,K}) ->
-    LPL = rpc:call(Node, yz_misc, convert_preflist, [Preflist, logical]),
-    [begin
-         Suffix = "_" ++ integer_to_list(P),
-         {binary_to_list(B), binary_to_list(K) ++ Suffix}
-     end
-     || {P,_} <- LPL].
-
-solr_delete(Cluster, SolrIds) ->
-    [begin
-         lager:info("Deleting solr id ~p/~p", [B, Id]),
-         rpc:multicall(Cluster, yz_solr, delete, [B, Id])
-     end|| {B, Id} <- SolrIds],
     ok.
 
 test_tagging(Cluster) ->
@@ -189,7 +130,7 @@ delete_key(Cluster, Key) ->
     C:delete(?INDEX_B, list_to_binary(Key)).
 
 delete_some_data(Cluster, ReapSleep) ->
-    Keys = random_keys(),
+    Keys = yz_rt:random_keys(?NUM_KEYS),
     lager:info("Deleting ~p keys", [length(Keys)]),
     [delete_key(Cluster, K) || K <- Keys],
     lager:info("Sleeping ~ps to allow for reap", [ReapSleep]),
@@ -241,14 +182,12 @@ setup_indexing(Cluster, YZBenchDir) ->
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
     ok = set_index(Node, ?INDEX_B),
-    ok = create_index(Node, "fruit_aae", ?FRUIT_SCHEMA_NAME),
-    ok = set_index(Node, <<"fruit_aae">>),
     ok = create_index(Node, "tagging"),
     ok = set_index(Node, <<"tagging">>),
     ok = create_index(Node, "siblings"),
     ok = set_index(Node, <<"siblings">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- ["fruit", "fruit_aae", "tagging", "siblings"]].
+     || I <- ["fruit", "tagging", "siblings"]].
 
 store_schema(Node, Name, RawSchema) ->
     lager:info("Storing schema ~p [~p]", [Name, Node]),
@@ -278,10 +217,3 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
 
 wait_for(Ref) ->
     rt:wait_for_cmd(Ref).
-
-random_keys() ->
-    random_keys(random:uniform(100)).
-
-random_keys(Num) ->
-    lists:usort([integer_to_list(random:uniform(?NUM_KEYS))
-                 || _ <- lists:seq(1, Num)]).

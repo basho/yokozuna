@@ -31,7 +31,7 @@
 
 -type check() :: {module(), atom(), list()}.
 -type seconds() :: pos_integer().
--type write_reason() :: delete | handoff | put.
+-type write_reason() :: delete | handoff | put | anti_entropy.
 
 
 %%%===================================================================
@@ -109,26 +109,70 @@ is_tombstone(MD) ->
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
+%% @doc Extract the index name from `BProps' or return the tombstone
+%% name if there is no associated index.
+%%
+%% TODO: Convert `index_name()' to be binary everywhere.
+-spec get_index(term()) -> index_name().
+get_index(BProps) ->
+    case proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE) of
+        B when is_binary(B) ->
+            binary_to_list(B);
+        S ->
+            S
+    end.
+
+%% @doc Extract the index name.
+%% @see get_index/1
+-spec get_index(bkey(), ring()) -> index_name().
+get_index({Bucket,_} = _BKey, Ring) ->
+    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    get_index(BProps).
+
+%% @doc Determine the "short" preference list given the `BKey' and
+%% `Ring'.  A short preflist is one that defines the preflist by
+%% partition number and N value.
+-spec get_short_preflist(bkey(), ring()) -> short_preflist().
+get_short_preflist({Bucket, _} = BKey, Ring) ->
+    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+    NVal = riak_core_bucket:n_val(BProps),
+    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
+    {first_partition(PrimaryPL), NVal}.
+
 index(Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
             Ring = yz_misc:get_ring(transformed),
             case is_owner_or_future_owner(P, node(), Ring) of
                 true ->
-                    {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-                    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-                    NVal = riak_core_bucket:n_val(BProps),
-                    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-                    Index = which_index(BProps),
-                    IndexContent = index_content(Index),
-                    IdxN = {first_partition(PrimaryPL), NVal},
-                    index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent);
+                    BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+                    Index = get_index(BKey, Ring),
+                    ShortPL = get_short_preflist(BKey, Ring),
+                    case should_index(Index) of
+                        true ->
+                            index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
+                        false ->
+                            dont_index(Obj, Reason, P, ShortPL, BKey)
+                    end;
                 false ->
                     ok
             end;
         false ->
             ok
     end.
+
+%% @private
+%%
+%% @doc Update the hashtree so that AAE works but don't create any
+%% indexes.  This is called when a bucket has no indexed defined.
+-spec dont_index(obj(), write_reason(), p(), bkey(), short_preflist()) -> ok.
+dont_index(_, delete, P, BKey, ShortPL) ->
+    update_hashtree(delete, P, ShortPL, BKey),
+    ok;
+dont_index(Obj, _, P, BKey, ShortPL) ->
+    Hash = hash_object(Obj),
+    update_hashtree({insert, Hash}, P, ShortPL, BKey),
+    ok.
 
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
@@ -138,29 +182,29 @@ index(Obj, Reason, P) ->
 %%
 %% NOTE: Index is doing double duty of index and delete.
 -spec index(obj(), write_reason(), ring(), p(), bkey(),
-            {p(), n()}, index_name(), boolean()) -> ok.
-index(_, delete, _, P, BKey, IdxN, Index, _) ->
+            short_preflist(), index_name()) -> ok.
+index(_, delete, _, P, BKey, ShortPL, Index) ->
     {_, Key} = BKey,
     try
         ok = yz_solr:delete(Index, [{key, Key}]),
-        ok = update_hashtree(delete, P, IdxN, BKey)
+        ok = update_hashtree(delete, P, ShortPL, BKey)
     catch _:Err ->
             ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
     end,
     ok;
 
-index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
+index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
     LI = yz_cover:logical_index(Ring),
     {_, Key} = BKey,
     ok = maybe_wait(Reason, Index),
-    LFPN = yz_cover:logical_partition(LI, element(1, IdxN)),
+    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
     LP = yz_cover:logical_partition(LI, P),
     Hash = hash_object(Obj),
-    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP), IndexContent),
+    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
     try
         DelOp = cleanup(length(Docs), {Obj, Key, LP}),
         ok = yz_solr:index(Index, Docs, DelOp),
-        ok = update_hashtree({insert, Hash}, P, IdxN, BKey)
+        ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
     catch _:Err ->
         Trace = erlang:get_stacktrace(),
         ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace])
@@ -168,10 +212,10 @@ index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
     ok.
 
 %% @doc Should the content be indexed?
--spec index_content(index_name()) -> boolean().
-index_content(?YZ_DEFAULT_INDEX) ->
+-spec should_index(index_name()) -> boolean().
+should_index(?YZ_INDEX_TOMBSTONE) ->
     false;
-index_content(_) ->
+should_index(_) ->
     true.
 
 %% @doc Perform a local KV get for `BKey' stored under `Index'.  This
@@ -271,27 +315,13 @@ put(Client, Bucket, Key, Value, ContentType) ->
 %%      `Bucket' will no longer be indexed.
 -spec remove_index(bucket()) -> ok.
 remove_index(Bucket) ->
-    set_index(Bucket, ?YZ_DEFAULT_INDEX).
+    set_index(Bucket, ?YZ_INDEX_TOMBSTONE).
 
 %% @doc Set the `Index' for which data stored in `Bucket' should be
 %%      indexed under.
 -spec set_index(bucket(), index_name()) -> ok.
 set_index(Bucket, Index) ->
     ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX, Index}]).
-
-
-%% @doc Extract the index name from `BProps' or return the default
-%%      index name if there is none.
-%%
-%% TODO: Convert `index_name()' to be binary everywhere.
--spec which_index(term()) -> index_name().
-which_index(BProps) ->
-    case proplists:get_value(?YZ_INDEX, BProps, ?YZ_DEFAULT_INDEX) of
-        B when is_binary(B) ->
-            binary_to_list(B);
-        S ->
-            S
-    end.
 
 %%%===================================================================
 %%% Private
