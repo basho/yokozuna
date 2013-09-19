@@ -84,10 +84,11 @@ is_enabled(Component) ->
 mapred_search(Pipe, [Group, Query], _Timeout) ->
     mapred_search(Pipe, [Group, Query, <<"">>], _Timeout);
 mapred_search(Pipe, [Group, Query, Filter], _Timeout) ->
-    Index = index_for_group(Group),
+    {Index, BucketFilter} = index_for_group(Group),
+    WholeFilter = join_filters(BucketFilter, Filter),
     %% Function to convert `search_fold' results into pipe format.
-    Q = fun({Index,Key,Props}) ->
-                riak_pipe:queue_work(Pipe, {{Index, Key}, {struct, Props}})
+    Q = fun({Bucket,Key,Props}) ->
+                riak_pipe:queue_work(Pipe, {{Bucket, Key}, {struct, Props}})
         end,
     F = fun(Results, Acc) ->
                 %% TODO: is there a way to send a batch of results?
@@ -95,21 +96,32 @@ mapred_search(Pipe, [Group, Query, Filter], _Timeout) ->
                 lists:foreach(Q, Results),
                 Acc
         end,
-    ok = search_fold(Index2, Query, Filter, F, ok),
+    ok = search_fold(Index, Query, WholeFilter, F, ok),
     riak_pipe:eoi(Pipe).
 
-
 index_for_group({index, Index}) ->
-    if is_binary(Index) -> binary_to_list(Index);
-       is_list(Index)   -> Index
+    if is_binary(Index) -> {binary_to_list(Index), <<"">>};
+       is_list(Index)   -> {Index, <<"">>}
     end;
 index_for_group({struct,[{<<"index">>, Index}]}) ->
-    binary_to_list(Index);
+    {binary_to_list(Index), <<"">>};
 index_for_group(Bucket) ->
     Bucket2 = if is_list(Bucket)   -> list_to_binary(Bucket);
                  is_binary(Bucket) -> Bucket
               end,
-    yz_kv:get_index(riak_core_bucket:get_bucket(Bucket2)).
+    {yz_kv:get_index(riak_core_bucket:get_bucket(Bucket2)),
+     list_to_binary([?YZ_RB_FIELD_S, ":", Bucket])}.
+
+join_filters(<<"">>, Filter) ->
+    Filter;
+join_filters("", Filter) ->
+    Filter;
+join_filters(Filter, <<"">>) ->
+    Filter;
+join_filters(Filter, "") ->
+    Filter;
+join_filters(A, B) ->
+    list_to_binary([A, " AND ", B]).
 
 %% @doc Return the ordered set of unique logical partitions stored on
 %%      the local node for the given `Index'.
