@@ -69,7 +69,7 @@
 -type p_node() :: {p(), node()}.
 -type lp_node() :: {lp(), node()}.
 -type cover_set() :: [p_node()].
--type logical_cover_set() :: [lp_node()].
+-type logical_cover_set() :: [{lp_node(), filter()}].
 -type filter_cover_set() :: [{p_node(), filter()}].
 
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.

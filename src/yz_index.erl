@@ -165,7 +165,7 @@ name(Info) ->
 
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
--spec remove_non_owned_data(string()) -> [{ordset(p()), ordset(lp())}].
+-spec remove_non_owned_data(index_name()) -> [p()].
 remove_non_owned_data(Index) ->
     Ring = yz_misc:get_ring(raw),
     IndexPartitions = yz_cover:reify_partitions(Ring,
@@ -176,7 +176,7 @@ remove_non_owned_data(Index) ->
     Queries = [{'query', <<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>}
                || LP <- LNonOwned],
     ok = yz_solr:delete(Index, Queries),
-    lists:zip(NonOwned, LNonOwned).
+    NonOwned.
 
 -spec schema_name(index_info()) -> schema_name().
 schema_name(Info) ->
