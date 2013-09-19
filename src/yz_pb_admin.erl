@@ -68,9 +68,8 @@ process(#rpbyokozunaschemagetreq{name = SchemaName}, State) ->
     Schema = #rpbyokozunaschema{name = SchemaName, content = Content},
     {reply, #rpbyokozunaschemagetresp{schema = Schema}, State};
 
-process(#rpbyokozunaindexdeletereq{name = IndexNameBin}, State) ->
+process(#rpbyokozunaindexdeletereq{name = IndexName}, State) ->
     Ring = yz_misc:get_ring(transformed),
-    IndexName = binary_to_list(IndexNameBin),
     case yz_index:exists(IndexName) of
         true  ->
             case yz_index:associated_buckets(IndexName, Ring) of
@@ -106,9 +105,8 @@ process(rpbyokozunaindexgetreq, State) ->
       || IndexName <- orddict:fetch_keys(Indexes)],
     {reply, #rpbyokozunaindexgetresp{index=Details}, State};
 
-process(#rpbyokozunaindexgetreq{name = IndexNameBin}, State) ->
+process(#rpbyokozunaindexgetreq{name = IndexName}, State) ->
     Ring = yz_misc:get_ring(transformed),
-    IndexName = binary_to_list(IndexNameBin),
     case yz_index:exists(IndexName) of
         true ->
             Details = [index_details(Ring, IndexName)],
@@ -133,15 +131,15 @@ maybe_create_index(IndexName, _SchemaName = <<>>)->
 maybe_create_index(IndexName, _SchemaName = undefined)->
     maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
 maybe_create_index(IndexName, SchemaName)->
-    case yz_index:exists(binary_to_list(IndexName)) of
+    case yz_index:exists(IndexName) of
         true  -> ok;
         false ->
-            yz_index:create(binary_to_list(IndexName), SchemaName)
+            yz_index:create(IndexName, SchemaName)
     end.
 
 index_details(Ring, IndexName) ->
     Info = yz_index:get_info_from_ring(Ring, IndexName),
     #rpbyokozunaindex{
-        name = list_to_binary(IndexName),
+        name = IndexName,
         schema = yz_index:schema_name(Info)
     }.
