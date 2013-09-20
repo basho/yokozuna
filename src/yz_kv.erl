@@ -145,6 +145,8 @@ index(Obj, Reason, P) ->
             Ring = yz_misc:get_ring(transformed),
             case is_owner_or_future_owner(P, node(), Ring) of
                 true ->
+                    T1 = os:timestamp(),
+                    yz_stat:update(index_begin),
                     BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
                     Index = get_index(BKey, Ring),
                     ShortPL = get_short_preflist(BKey, Ring),
@@ -153,7 +155,9 @@ index(Obj, Reason, P) ->
                             index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
                         false ->
                             dont_index(Obj, Reason, P, ShortPL, BKey)
-                    end;
+                    end,
+                    TD = timer:now_diff(os:timestamp(), T1),
+                    yz_stat:update({index_end, TD});
                 false ->
                     ok
             end;

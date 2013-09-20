@@ -56,6 +56,8 @@ process(Msg, State) ->
     maybe_process(yokozuna:is_enabled(search), Msg, State).
 
 maybe_process(true, #rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
+    T1 = os:timestamp(),
+    yz_stat:update(search_begin),
     case extract_params(Msg) of
         {ok, Params} ->
             Index = binary_to_list(IndexBin),
@@ -89,8 +91,13 @@ maybe_process(true, #rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
                     Trace = erlang:get_stacktrace(),
                     ?ERROR("~p ~p~n", [Reason, Trace]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}
+            after
+                TD = timer:now_diff(os:timestamp(), T1),
+                yz_stat:update({search_end, TD})
             end;
         {error, missing_query} ->
+            TD = timer:now_diff(os:timestamp(), T1),
+            yz_stat:update({search_end, TD}),
             {error, "Missing query", State}
     end;
 maybe_process(false, _Msg, State) ->

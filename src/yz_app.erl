@@ -57,6 +57,7 @@ maybe_setup(true, SupPid) ->
     yz_misc:add_routes(Routes),
     maybe_register_pb(?QUERY_SERVICES),
     maybe_register_pb(?ADMIN_SERVICES),
+    ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]),
     riak_core_node_watcher:service_up(yokozuna, SupPid),
     ok.
 
