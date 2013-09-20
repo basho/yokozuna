@@ -1,0 +1,42 @@
+%% @doc The enabled Yokozuna set this 'on'.
+%% @datatype enum on, off
+{mapping, "yokozuna", "yokozuna.enabled", [
+  {default, off},
+  {datatype, {enum, [on, off]}}
+]}.
+
+{ translation,
+  "yokozuna.enabled",
+  fun(Conf) ->
+          Setting = cuttlefish_util:conf_get_value("yokozuna", Conf),
+          case Setting of
+              on -> true;
+              off -> false;
+              _Default -> false
+          end
+  end}.
+
+%% @doc The port number which Solr binds to.
+{mapping, "yokozuna.solr_port", "yokozuna.solr_port", [
+  {default, {{yz_solr_port}} },
+  {datatype, integer}
+]}.
+
+%% @doc The port number which Solr JMX binds to.
+{mapping, "yokozuna.solr_jmx_port", "yokozuna.solr_jmx_port", [
+  {default, {{yz_solr_jmx_port}} },
+  {datatype, integer}
+]}.
+
+%% @doc The arguments to pass to the Solr JVM.  Non-standard
+%% arguments, i.e. -XX, may not be portable across JVM
+%% implementations.  E.g. -XX:+UseCompressedStrings.
+{mapping, "yokozuna.solr_jvm_args", "yokozuna.solr_jvm_args", [
+  {default, "-Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
+]}.
+
+%% @doc The data under which to store all Yokozuna related data.
+%% Including the Solr index data.
+{mapping, "yokozuna.data_dir", "yokozuna.yz_dir", [
+  {default, "{{yz_dir}}" }
+]}.

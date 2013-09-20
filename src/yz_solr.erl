@@ -39,6 +39,16 @@
 %%% API
 %%%===================================================================
 
+%% @doc Create a mapping from the `Nodes' hostname to the port which
+%% Solr is listening on.  The resulting list could be smaller than the
+%% input in the case that the port cannot be determined for one or
+%% more nodes.
+-spec build_mapping([node()]) -> [{node(), {string(), string()}}].
+build_mapping(Nodes) ->
+    [{Node, HP} || {Node, HP={_,P}} <- [{Node, host_port(Node)}
+                                        || Node <- Nodes],
+                   P /= unknown].
+
 -spec build_partition_delete_query(ordset(lp())) -> term().
 build_partition_delete_query(LPartitions) ->
     Deletes = [{delete, ?QUERY(<<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>)}
@@ -195,21 +205,22 @@ ping(Core) ->
         _ -> false
     end.
 
+-spec port() -> non_neg_integer().
 port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_port, ?YZ_DEFAULT_SOLR_PORT).
 
 jmx_port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_jmx_port, undefined).
 
-dist_search(Core, Params, Mapping) ->
-    dist_search(Core, [], Params, Mapping).
+dist_search(Core, Params) ->
+    dist_search(Core, [], Params).
 
-dist_search(Core, Headers, Params, Mapping) ->
+dist_search(Core, Headers, Params) ->
     Plan = yz_cover:plan(Core),
     case Plan of
         {error, _} = Err ->
             Err;
-        {Nodes, FilterPairs} ->
+        {Nodes, FilterPairs, Mapping} ->
             HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
             ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
             ShardFrags2 = string:join(ShardFrags, ","),
@@ -240,12 +251,26 @@ search(Core, Headers, Params) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    "http://localhost:" ++ port() ++ "/solr".
+    "http://localhost:" ++ integer_to_list(port()) ++ "/solr".
 
 build_fq(Partitions) ->
     GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
     Fields = [group_to_str(G) || G <- GroupedByNode],
     string:join(Fields, " OR ").
+
+%% @private
+%%
+%% @doc Get hostname and Solr port for `Node'.  Return `unknown' for
+%% the port if the RPC fails.
+-spec host_port(node()) -> {string(), string() | unknown}.
+host_port(Node) ->
+    case rpc:call(Node, yz_solr, port, [], 1000) of
+        {badrpc, Reason} ->
+            ?DEBUG("error retrieving Solr port ~p ~p", [Node, Reason]),
+            {yz_misc:hostname(Node), unknown};
+        Port when is_integer(Port) ->
+            {yz_misc:hostname(Node), integer_to_list(Port)}
+    end.
 
 group_by_node({{Partition, Owner}, all}) ->
     {Owner, Partition};

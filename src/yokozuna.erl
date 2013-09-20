@@ -34,21 +34,21 @@
 %%      investigating latency issues.
 -spec disable(component()) -> ok.
 disable(Component) ->
-    mochiglobal:put(Component, false).
+    application:set_env(?YZ_APP_NAME, {component, Component}, false).
 
 %% @doc Enabled the given `Component'.  This only needs to be called
 %%      if a component was previously disabled as all components are
 %%      considered enabled by default.
 -spec enable(component()) -> ok.
 enable(Component) ->
-    mochiglobal:put(Component, true).
+    application:set_env(?YZ_APP_NAME, {component, Component}, true).
 
 %% @doc Determine if the given `Component' is enabled or not.  If a
 %%      component is not explicitly disabled then it is considered
 %%      enabled.
 -spec is_enabled(component()) -> boolean().
 is_enabled(Component) ->
-    mochiglobal:get(Component, true).
+    app_helper:get_env(?YZ_APP_NAME, {component, Component}, true).
 
 %% @doc Use the results of a search as input to a map-reduce job.
 %%
@@ -139,16 +139,30 @@ search_fold(Index, Query, Filter, F, Acc) ->
               {fl, <<?YZ_RB_FIELD_S,",",?YZ_RK_FIELD_S>>},
               {omitHeader, <<"true">>},
               {wt, <<"json">>}],
-    Mapping = yz_events:get_mapping(),
-    {_, Body} = yz_solr:dist_search(Index, Params, Mapping),
+    {_, Body} = yz_solr:dist_search(Index, Params),
     E = extract_results(Body),
-    search_fold(E, Start, Params, Mapping, Index, Query, Filter, F, Acc).
+    search_fold(E, Start, Params, Index, Query, Filter, F, Acc).
 
-search(Index, Query, Mapping) ->
-    yz_solr:dist_search(Index, [{q, Query}], Mapping).
+search(Index, Query) ->
+    yz_solr:dist_search(Index, [{q, Query}]).
 
 solr_port(Node, Ports) ->
     proplists:get_value(Node, Ports).
+
+%% @doc Switch handling of HTTP and PB search requests to Yokozuna.
+%% This is used during migration from Riak Search.
+%%
+%% NOTE: Yokozuna is added to the route first to avoid period where no
+%% resource is registered for the search route.  Since a new route is
+%% added to head of list Yokozuna will be picked over Riak Search
+%% while both routes are in the list.
+-spec switch_to_yokozuna() -> ok.
+switch_to_yokozuna() ->
+    ok = riak_api_pb_service:swap(yz_pb_search, 27, 28),
+    ok = webmachine_router:add_route({["solr", index, "select"], yz_wm_search, []}),
+    ok = webmachine_router:remove_resource(riak_solr_indexer_wm),
+    ok = webmachine_router:remove_resource(riak_solr_searcher_wm),
+    ok.
 
 %%%===================================================================
 %%% Private
@@ -178,16 +192,16 @@ extract_results(Body) ->
 %%
 %% @doc This is the interal part of `search_fold' where the actual
 %%      iteration happens.
--spec search_fold(list(), non_neg_integer(), list(), list(), index_name(),
+-spec search_fold(list(), non_neg_integer(), list(), index_name(),
                   binary(), binary(), fold_fun(), Acc::term()) ->
                          Acc::term().
-search_fold([], _, _, _, _, _, _, _, Acc) ->
+search_fold([], _, _, _, _, _, _, Acc) ->
     Acc;
-search_fold(Results, Start, Params, Mapping, Index, Query, Filter, F, Acc) ->
+search_fold(Results, Start, Params, Index, Query, Filter, F, Acc) ->
     F(Results, Acc),
     Start2 = Start + 10,
     Params2 = lists:keystore(start, 1, Params, {start, Start2}),
-    {_, Body} = yz_solr:dist_search(Index, Params2, Mapping),
+    {_, Body} = yz_solr:dist_search(Index, Params2),
     E = extract_results(Body),
-    search_fold(E, Start2, Params, Mapping, Index, Query, Filter, F, Acc).
+    search_fold(E, Start2, Params, Index, Query, Filter, F, Acc).
 

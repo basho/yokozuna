@@ -44,13 +44,6 @@
 %%% API
 %%%===================================================================
 
--spec get_mapping() -> list().
-get_mapping() ->
-    case ets:lookup(?YZ_EVENTS_TAB, mapping) of
-        [{mapping, Mapping}] -> Mapping;
-        [] -> []
-    end.
-
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -64,12 +57,9 @@ init([]) ->
     ok = set_tick(),
     {ok, #state{previous_ring=yz_misc:get_ring(raw)}}.
 
-handle_cast({ring_event, Ring}=RE, S) ->
+handle_cast({ring_event, Ring}, S) ->
     PrevRing = ?PREV_RING(S),
     S2 = S#state{previous_ring=Ring},
-    Mapping = get_mapping(),
-    Mapping2 = new_mapping(RE, Mapping),
-    ok = set_mapping(Mapping2),
 
     Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
     Current = names(yz_index:get_indexes_from_ring(Ring)),
@@ -94,10 +84,6 @@ handle_info(tick, S) ->
     %% AAE trees will be incorrect until the next ring_event or until
     %% tree rebuild
     ok = remove_non_owned_data(),
-
-    Mapping = get_mapping(),
-    Mapping2 = check_unkown(Mapping),
-    ok = set_mapping(Mapping2),
 
     %% Index creation may have failed during ring event.
     PrevRing = ?PREV_RING(S),
@@ -139,20 +125,6 @@ add_indexes(Ring, Names) ->
     [add_index(Ring, N) || N <- Names],
     ok.
 
--spec add_node(node(), list()) -> list().
-add_node(Node, Mapping) ->
-    HostPort = host_port(Node),
-    lists:keystore(Node, 1, Mapping, {Node, HostPort}).
-
--spec add_nodes([node()], list()) -> list().
-add_nodes(Nodes, Mapping) ->
-    lists:foldl(fun add_node/2, Mapping, Nodes).
-
--spec check_unkown(list()) -> list().
-check_unkown(Mapping) ->
-    Unknown = lists:filter(fun is_unknown/1, Mapping),
-    add_nodes(just_nodes(Unknown), Mapping).
-
 -spec create_events_table() -> ok.
 create_events_table() ->
     Opts = [named_table, protected, {read_concurrency, true}],
@@ -169,34 +141,14 @@ flagged_buckets(Ring) ->
     Buckets = riak_core_bucket:get_buckets(Ring),
     ordsets:from_list(
       [proplists:get_value(name, BProps)
-       || BProps <- Buckets, yz_kv:index_content(yz_kv:which_index(BProps))]).
+       || BProps <- Buckets, yz_kv:should_index(yz_kv:get_index(BProps))]).
 
 get_tick_interval() ->
     app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
 
--spec host_port(node()) -> {string(), non_neg_integer() | unknown}.
-host_port(Node) ->
-    case rpc:call(Node, yz_solr, port, [], 5000) of
-        {badrpc, Reason} ->
-            ?ERROR("error retrieving Solr port ~p ~p", [Node, Reason]),
-            {hostname(Node), unknown};
-        Port when is_list(Port) ->
-            {hostname(Node), Port}
-    end.
-
--spec hostname(node()) -> string().
-hostname(Node) ->
-    S = atom_to_list(Node),
-    [_, Host] = re:split(S, "@", [{return, list}]),
-    Host.
-
 -spec is_unknown(tuple()) -> boolean().
 is_unknown({_, {_, unknown}}) -> true;
 is_unknown({_, {_, Port}}) when is_list(Port) -> false.
-
--spec just_nodes(list()) -> [node()].
-just_nodes(Mapping) ->
-    [Node || {Node, _} <- Mapping].
 
 maybe_log({_, []}) ->
     ok;
@@ -205,22 +157,6 @@ maybe_log({Index, Removed}) ->
 
 names(Indexes) ->
     [Name || {Name,_} <- Indexes].
-
--spec new_mapping(event(), list()) -> list().
-new_mapping({ring_event, Ring}, Mapping) ->
-    Nodes = riak_core_ring:all_members(Ring),
-    {Removed, Added} = node_ops(Mapping, Nodes),
-    Mapping2 = remove_nodes(Removed, Mapping),
-    Mapping3 = add_nodes(Added, Mapping2),
-    check_unkown(Mapping3).
-
--spec node_ops(list(), list()) -> {Removed::list(), Added::list()}.
-node_ops(Mapping, Nodes) ->
-    MappingNodesSet = sets:from_list(just_nodes(Mapping)),
-    NodesSet = sets:from_list(Nodes),
-    Removed = sets:subtract(MappingNodesSet, NodesSet),
-    Added = sets:subtract(NodesSet, MappingNodesSet),
-    {sets:to_list(Removed), sets:to_list(Added)}.
 
 -spec remove_index(index_name()) -> ok.
 remove_index(Name) ->
@@ -233,14 +169,6 @@ remove_index(Name) ->
 remove_indexes(Names) ->
     [ok = remove_index(N) || N <- Names],
     ok.
-
--spec remove_node(node(), list()) -> list().
-remove_node(Node, Mapping) ->
-    proplists:delete(Node, Mapping).
-
--spec remove_nodes([node()], list()) -> list().
-remove_nodes(Nodes, Mapping) ->
-    lists:foldl(fun remove_node/2, Mapping, Nodes).
 
 %% @private
 %%
@@ -261,10 +189,6 @@ remove_non_owned_data() ->
 send_ring_event(Ring) ->
     gen_server:cast(?MODULE, {ring_event, Ring}).
 
-set_mapping(Mapping) ->
-    true = ets:insert(?YZ_EVENTS_TAB, [{mapping, Mapping}]),
-    ok.
-
 set_tick() ->
     Interval = get_tick_interval(),
     erlang:send_after(Interval, ?MODULE, tick),
@@ -272,33 +196,22 @@ set_tick() ->
 
 -spec sync_data(ring(), list(), list()) -> ok.
 sync_data(PrevRing, Removed, Added) ->
+    %% TODO: check for case where index isn't added or removed, but changed
     [sync_added(Bucket) || Bucket <- Added],
     [sync_removed(PrevRing, Bucket) || Bucket <- Removed],
     ok.
 
+-spec sync_added(bucket()) -> ok.
 sync_added(Bucket) ->
-    Params = [{q, <<"_yz_rb:",Bucket/binary>>},{wt,<<"json">>}],
-    case yz_solr:search(?YZ_DEFAULT_INDEX, [], Params) of
-        {_, Resp} ->
-            Struct = mochijson2:decode(Resp),
-            NumFound = kvc:path([<<"response">>, <<"numFound">>], Struct),
-            if NumFound > 0 ->
-                    lager:info("index flag enabled for bucket ~s with existing data", [Bucket]),
-                    Ops = [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}],
-                    ok = yz_solr:delete(?YZ_DEFAULT_INDEX, Ops),
-                    yz_solr:commit(?YZ_DEFAULT_INDEX),
-                    yz_entropy_mgr:clear_trees();
-               true ->
-                    ok
-            end;
-        _ ->
-            ok
-    end.
+    lager:info("indexing enabled for bucket ~s -- clearing AAE trees", [Bucket]),
+    %% TODO: add hashtree.erl function to clear hashes for Bucket
+    yz_entropy_mgr:clear_trees(),
+    ok.
 
 -spec sync_removed(ring(), bucket()) -> ok.
 sync_removed(PrevRing, Bucket) ->
-    lager:info("index flag disabled for bucket ~s", [Bucket]),
-    Index = yz_kv:which_index(riak_core_bucket:get_bucket(Bucket, PrevRing)),
+    lager:info("indexing disabled for bucket ~s", [Bucket]),
+    Index = yz_kv:get_index(riak_core_bucket:get_bucket(Bucket, PrevRing)),
     ok = yz_solr:delete(Index, [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}]),
     yz_solr:commit(Index),
     yz_entropy_mgr:clear_trees(),

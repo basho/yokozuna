@@ -3,6 +3,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
+-define(YZ_RT_ETS, yz_rt_ets).
+-define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 
 -type host() :: string().
 -type portnum() :: integer().
@@ -28,6 +30,43 @@ create_index(Node, Index, SchemaName) ->
     lager:info("Creating index ~s using schema ~s [~p]",
                [Index, SchemaName, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName]).
+
+maybe_create_ets() ->
+    case ets:info(?YZ_RT_ETS) of
+        undefined ->
+            ets:new(?YZ_RT_ETS, ?YZ_RT_ETS_OPTS),
+            ok;
+        _ ->
+            ets:delete(?YZ_RT_ETS),
+            ets:new(?YZ_RT_ETS, ?YZ_RT_ETS_OPTS),
+            ok
+    end.
+
+get_call_count(Cluster, MFA) when is_list(Cluster) ->
+    case ets:lookup(?YZ_RT_ETS, MFA) of
+        [{_,Count}] ->
+            Count;
+        [] ->
+            0
+    end.
+
+count_calls(Cluster, MFA={M,F,A}) when is_list(Cluster) ->
+    RiakTestNode = node(),
+    maybe_create_ets(),
+    dbg:tracer(process, {fun trace_count/2, {RiakTestNode, MFA, 0}}),
+    [{ok,Node} = dbg:n(Node) || Node <- Cluster],
+    dbg:p(all, call),
+    dbg:tpl(M, F, A, [{'_', [], [{return_trace}]}]).
+
+stop_tracing() ->
+    dbg:stop_clear().
+
+trace_count({trace, _Pid, call, {_M, _F, _A}}, Acc) ->
+    Acc;
+trace_count({trace, _Pid, return_from, {_M, _F, _}, _Result}, {RTNode, MFA, Count}) ->
+    Count2 = Count + 1,
+    rpc:call(RTNode, ets, insert, [?YZ_RT_ETS, {MFA, Count2}]),
+    {RTNode, MFA, Count2}.
 
 get_count(Resp) ->
     Struct = mochijson2:decode(Resp),
@@ -56,6 +95,8 @@ http_put({Host, Port}, Bucket, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
+load_data(Cluster, Index, YZBenchDir, NumKeys) when is_binary(Index) ->
+    load_data(Cluster, binary_to_list(Index), YZBenchDir, NumKeys);
 load_data(Cluster, Index, YZBenchDir, NumKeys) ->
     lager:info("Load data for index ~p onto cluster ~p", [Index, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
@@ -69,13 +110,14 @@ load_data(Cluster, Index, YZBenchDir, NumKeys) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
-           {operations, [{load_fruit, 1}]}],
+           {operations, [{load_fruit, 1}]},
+           {shutdown_on_error, true}],
     File = "bb-load-" ++ Index,
     write_terms(File, Cfg),
     run_bb(sync, File).
 
 random_keys(MaxKey) ->
-    random_keys(random:uniform(100), MaxKey).
+    random_keys(4 + random:uniform(100), MaxKey).
 
 random_keys(Num, MaxKey) ->
     lists:usort([integer_to_list(random:uniform(MaxKey))
@@ -84,6 +126,9 @@ random_keys(Num, MaxKey) ->
 -spec riak_http(interfaces()) -> {host(), portnum()}.
 riak_http(ConnInfo) ->
     proplists:get_value(http, ConnInfo).
+
+riak_pb(ConnInfo) ->
+    proplists:get_value(pb, ConnInfo).
 
 run_bb(Method, File) ->
     Fun = case Method of
@@ -130,6 +175,7 @@ remove_index(Node, Bucket) ->
 set_index(Node, Bucket) ->
     set_index(Node, Bucket, binary_to_list(Bucket)).
 
+%% TODO: this should use PB interface like clients
 set_index(Node, Bucket, Index) ->
     lager:info("Set bucket ~s index to ~s [~p]", [Bucket, Index, Node]),
     ok = rpc:call(Node, yz_kv, set_index, [Bucket, Index]).
@@ -149,6 +195,11 @@ wait_for_index(Cluster, Index) ->
                 rpc:call(Node, yz_solr, ping, [Index])
         end,
     [?assertEqual(ok, rt:wait_until(Node, IsIndexUp)) || Node <- Cluster].
+
+join_all(Nodes) ->
+    [NodeA|Others] = Nodes,
+    [rt:join(Node, NodeA) || Node <- Others],
+    Nodes.
 
 wait_for_joins(Cluster) ->
     lager:info("Waiting for ownership handoff to finish"),

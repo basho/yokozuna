@@ -73,13 +73,13 @@ process_post(Req, S) ->
 search(Req, S) ->
     {FProf, FProfFile} = check_for_fprof(Req),
     ?IF(FProf, fprof:trace(start, FProfFile)),
+    T1 = os:timestamp(),
     Index = wrq:path_info(index, Req),
     Params = wrq:req_qs(Req),
-    Mapping = yz_events:get_mapping(),
     ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        Result = yz_solr:dist_search(Index, ReqHeaders,
-                                     Params, Mapping),
+        yz_stat:update(search_begin),
+        Result = yz_solr:dist_search(Index, ReqHeaders, Params),
         case Result of
             {error, insufficient_vnodes_available} ->
                 ER1 = wrq:set_resp_header("Content-Type", "text/plain", Req),
@@ -103,6 +103,8 @@ search(Req, S) ->
                                         ErrReq),
             {{halt, Code}, ErrReq2, S}
     after
+        TD = timer:now_diff(os:timestamp(), T1),
+        yz_stat:update({search_end, TD}),
         ?IF(FProf, fprof_analyse(FProfFile))
     end.
 

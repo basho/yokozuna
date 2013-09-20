@@ -55,14 +55,14 @@ encode(Message) ->
 process(Msg, State) ->
     maybe_process(yokozuna:is_enabled(search), Msg, State).
 
-maybe_process(true, Msg, State) ->
-    #rpbsearchqueryreq{index=IndexBin}=Msg,
+maybe_process(true, #rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
+    T1 = os:timestamp(),
+    yz_stat:update(search_begin),
     case extract_params(Msg) of
         {ok, Params} ->
-            Mapping = yz_events:get_mapping(),
             Index = binary_to_list(IndexBin),
             try
-                Result = yz_solr:dist_search(Index, Params, Mapping),
+                Result = yz_solr:dist_search(Index, Params),
                 case Result of
                     {error, insufficient_vnodes_available} ->
                         {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
@@ -91,8 +91,13 @@ maybe_process(true, Msg, State) ->
                     Trace = erlang:get_stacktrace(),
                     ?ERROR("~p ~p~n", [Reason, Trace]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}
+            after
+                TD = timer:now_diff(os:timestamp(), T1),
+                yz_stat:update({search_end, TD})
             end;
         {error, missing_query} ->
+            TD = timer:now_diff(os:timestamp(), T1),
+            yz_stat:update({search_end, TD}),
             {error, "Missing query", State}
     end;
 maybe_process(false, _Msg, State) ->
@@ -110,19 +115,22 @@ process_stream(_,_,State) ->
 extract_params(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};
 extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
-                                rows=Rows, start=Start,
-                                filter=Filter, fl=FieldList,
-                                df=DefaultField, op=DefaultOp}) ->
-    {ok, [{q, Query},
-          {wt, "json"},
-          {omitHeader, true},
-          {'q.op', default(DefaultOp, "AND")},
-          {sort, default(Sort, "")},
-          {fq, default(Filter, "")},
-          {fl, default(FieldList, <<"*,score">>)},
-          {df, default(DefaultField, "")},
-          {start, default(Start, 0)},
-          {rows, default(Rows, 10)}]}.
+                                  rows=Rows, start=Start,
+                                  filter=Filter, fl=FieldList,
+                                  df=DefaultField, op=DefaultOp}) ->
+    MaybeParams = [{'q.op', DefaultOp},
+                   {sort, Sort},
+                   {fq, Filter},
+                   {fl, default(FieldList, <<"*,score">>)},
+                   {df, DefaultField},
+                   {start, Start},
+                   {rows, Rows}],
+    Params1 = [P || P={_,V} <- MaybeParams, V /= undefined andalso V /= []],
+    Params2 = [{q,Query},
+               {wt,<<"json">>},
+               {omitHeader,true}
+               |Params1],
+    {ok, Params2}.
 
 default(undefined, Default) ->
     Default;

@@ -58,7 +58,7 @@ insert(async, Id, BKey, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
 insert(sync, Id, BKey, Hash, Tree, Options) ->
-    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, 1000).
+    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity).
 
 %% @doc Delete the `BKey' from `Tree'.  The id will be determined from
 %%      `BKey'.  The result of the sync call should be ignored since
@@ -68,7 +68,7 @@ delete(async, Id, BKey, Tree) ->
     gen_server:cast(Tree, {delete, Id, BKey});
 
 delete(sync, Id, BKey, Tree) ->
-    catch gen_server:call(Tree, {delete, Id, BKey}, 1000).
+    catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
 
 -spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
@@ -279,7 +279,6 @@ fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
     Indexes = yz_index:get_indexes_from_ring(yz_misc:get_ring(transformed)),
-    Indexes2 = [{?YZ_DEFAULT_INDEX, ignored}|Indexes],
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -287,7 +286,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes2],
+    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes],
     ok.
 
 -spec do_new_tree({p(),n()}, state()) -> state().

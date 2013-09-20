@@ -34,6 +34,7 @@
 
 -type index_set() :: ordset(index_name()).
 -type base64() :: binary().
+-type hash() :: binary().
 
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
@@ -51,6 +52,8 @@
 -type lp() :: pos_integer().
 %% Preflist, list of partition/owner pairs
 -type preflist() :: [{p(),term()}].
+%% Short representation of a preflist, partition + n_val
+-type short_preflist() :: {p(), n()}.
 %% Riak bucket
 -type bucket() :: binary().
 %% Riak key
@@ -66,7 +69,7 @@
 -type p_node() :: {p(), node()}.
 -type lp_node() :: {lp(), node()}.
 -type cover_set() :: [p_node()].
--type logical_cover_set() :: [lp_node()].
+-type logical_cover_set() :: [{lp_node(), filter()}].
 -type filter_cover_set() :: [{p_node(), filter()}].
 
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
@@ -113,10 +116,10 @@
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
 -define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
--define(YZ_DEFAULT_SOLR_PORT, "8983").
+-define(YZ_DEFAULT_SOLR_PORT, 8983).
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
--define(YZ_DEFAULT_SOLR_VM_ARGS, []).
+-define(YZ_DEFAULT_SOLR_JVM_ARGS, "").
 %% TODO: See if using mochiglobal for this makes difference in performance.
 -define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_EVENTS_TAB, yz_events_tab).
@@ -248,8 +251,16 @@
 -type index_info() :: #index_info{}.
 -type index_name() :: string().
 
--define(YZ_DEFAULT_INDEX, "_yz_default").
+-define(YZ_INDEX_TOMBSTONE, "_dont_index_").
 -define(YZ_INDEX, yz_index).
+
+%%%===================================================================
+%%% Solr Config
+%%%===================================================================
+
+-define(YZ_SOLR_CONFIG_NAME, "solr.xml").
+-define(YZ_SOLR_CONFIG_TEMPLATE,
+        filename:join([?YZ_PRIV, "template_solr.xml"])).
 
 %%%===================================================================
 %%% Schemas

@@ -71,6 +71,7 @@ getpid() ->
 %%       desirable given that Solr must be up for Yokozuna to work
 %%       properly.
 init([Dir, SolrPort, SolrJMXPort]) ->
+    ensure_data_dir(Dir),
     process_flag(trap_exit, true),
     {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
     ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
@@ -129,14 +130,32 @@ terminate(_, S) ->
 %%% Private
 %%%===================================================================
 
--spec build_cmd(string(), string(), string()) -> {string(), [string()]}.
+%% @doc Make sure that the data directory (passed in as `Dir') exists,
+%% and that the `solr.xml' config file is in it.
+-spec ensure_data_dir(string()) -> ok.
+ensure_data_dir(Dir) ->
+    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
+    case filelib:is_file(SolrConfig) of
+        true ->
+            %% For future YZ releases, this path will probably need to
+            %% check the existing solr.xml to see if it needs updates
+            lager:debug("Existing solr config found, leaving it in place"),
+            ok;
+        false ->
+            lager:info("No solr config found, creating a new one"),
+            ok = filelib:ensure_dir(SolrConfig),
+            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
+            ok
+    end.
+
+-spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
 build_cmd(SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
     SolrHome = "-Dsolr.solr.home=" ++ Dir,
     JettyHome = "-Djetty.home=" ++ YZPrivSolr,
-    Port = "-Djetty.port=" ++ SolrPort,
+    Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
     CP = "-cp",
     CP2 = filename:join([YZPrivSolr, "start.jar"]),
     %% log4j.properties must be in the classpath unless a full URL
@@ -151,14 +170,14 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
         undefined ->
             JMX = [];
         _ ->
-            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ SolrJMXPort,
+            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ integer_to_list(SolrJMXPort),
             JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
             JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
     Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
-        ++ solr_vm_args() ++ JMX ++ [Class],
+        ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
     {os:find_executable("java"), Args}.
 
 %% @private
@@ -190,10 +209,10 @@ solr_startup_wait() ->
                        solr_startup_wait,
                        ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
 
-solr_vm_args() ->
+solr_jvm_args() ->
     app_helper:get_env(?YZ_APP_NAME,
-                       solr_vm_args,
-                       ?YZ_DEFAULT_SOLR_VM_ARGS).
+                       solr_jvm_args,
+                       ?YZ_DEFAULT_SOLR_JVM_ARGS).
 
 wait_for_solr(0) ->
     {stop, "Solr didn't start in alloted time"};
