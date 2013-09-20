@@ -71,6 +71,7 @@ getpid() ->
 %%       desirable given that Solr must be up for Yokozuna to work
 %%       properly.
 init([Dir, SolrPort, SolrJMXPort]) ->
+    ensure_data_dir(Dir),
     process_flag(trap_exit, true),
     {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
     ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
@@ -128,6 +129,24 @@ terminate(_, S) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @doc Make sure that the data directory (passed in as `Dir') exists,
+%% and that the `solr.xml' config file is in it.
+-spec ensure_data_dir(string()) -> ok.
+ensure_data_dir(Dir) ->
+    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
+    case filelib:is_file(SolrConfig) of
+        true ->
+            %% For future YZ releases, this path will probably need to
+            %% check the existing solr.xml to see if it needs updates
+            lager:debug("Existing solr config found, leaving it in place"),
+            ok;
+        false ->
+            lager:info("No solr config found, creating a new one"),
+            ok = filelib:ensure_dir(SolrConfig),
+            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
+            ok
+    end.
 
 -spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
 build_cmd(SolrPort, SolrJMXPort, Dir) ->
