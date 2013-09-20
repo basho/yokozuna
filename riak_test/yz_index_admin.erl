@@ -140,6 +140,13 @@ confirm_delete_409(Cluster, Index) ->
     %% Sleeping for bprops (TODO: convert to `wait_for_bprops')
     timer:sleep(4000),
 
+    %% Verify associated_buckets is correct
+    Node = select_random(Cluster),
+    lager:info("Verify associated buckets for index ~s [~p]", [Node]),
+    Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
+    Assoc = rpc:call(Node, yz_index, associated_buckets, [Index, Ring]),
+    ?assertEqual([<<"b1">>, <<"b2">>], Assoc),
+
     %% Can't be deleted because of associated buckets
     {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 

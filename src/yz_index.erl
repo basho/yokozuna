@@ -31,6 +31,13 @@
 %%% API
 %%%===================================================================
 
+%% @doc Get the list of buckets associated with `Index'.
+-spec associated_buckets(index_name(), ring()) -> [bucket()].
+associated_buckets(Index, Ring) ->
+    AllBucketProps = riak_core_bucket:get_buckets(Ring),
+    Assoc = lists:filter(fun(BProps) ->  yz_kv:get_index(BProps) == Index end, AllBucketProps),
+    lists:map(fun riak_core_bucket:name/1, Assoc).
+
 -spec create(string()) -> ok.
 create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).

@@ -73,7 +73,7 @@ process(#rpbyokozunaindexdeletereq{name = IndexNameBin}, State) ->
     IndexName = binary_to_list(IndexNameBin),
     case yz_index:exists(IndexName) of
         true  ->
-            case associated_buckets(IndexName, Ring) of
+            case yz_index:associated_buckets(IndexName, Ring) of
                 [] ->
                     ok = yz_index:remove(IndexName),
                     {reply, rpbdelresp, State};
@@ -124,12 +124,6 @@ process_stream(_,_,State) ->
 %% ---------------------------------
 %% Internal functions
 %% ---------------------------------
-
--spec associated_buckets(index_name(), ring()) -> [bucket()].
-associated_buckets(IndexName, Ring) ->
-    AllBucketProps = riak_core_bucket:get_buckets(Ring),
-    Indexes = lists:map(fun yz_kv:get_index/1, AllBucketProps),
-    lists:filter(fun(I) -> I == IndexName end, Indexes).
 
 -spec maybe_create_index(binary(), schema_name()) -> ok |
                                                      {error, schema_not_found} |
