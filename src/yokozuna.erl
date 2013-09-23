@@ -99,18 +99,17 @@ mapred_search(Pipe, [Group, Query, Filter], _Timeout) ->
     ok = search_fold(Index, Query, WholeFilter, F, ok),
     riak_pipe:eoi(Pipe).
 
-index_for_group({index, Index}) ->
-    if is_binary(Index) -> {binary_to_list(Index), <<"">>};
-       is_list(Index)   -> {Index, <<"">>}
-    end;
-index_for_group({struct,[{<<"index">>, Index}]}) ->
-    {binary_to_list(Index), <<"">>};
-index_for_group(Bucket) ->
-    Bucket2 = if is_list(Bucket)   -> list_to_binary(Bucket);
-                 is_binary(Bucket) -> Bucket
-              end,
-    {yz_kv:get_index(riak_core_bucket:get_bucket(Bucket2)),
-     list_to_binary([?YZ_RB_FIELD_S, ":", Bucket])}.
+index_for_group(Group) ->
+    case kvc:path(<<"index">>, Group) of
+        [] when is_binary(Group) ->
+            %% no index, Group must have been a bucket name
+            {yz_kv:get_index(riak_core_bucket:get_bucket(Group)),
+             list_to_binary([?YZ_RB_FIELD_S, ":", Group])};
+        Index when is_binary(Index) ->
+            {binary_to_list(Index), <<"">>};
+        Index when is_list(Index) ->
+            {Index, <<"">>}
+    end.
 
 join_filters(<<"">>, Filter) ->
     Filter;
