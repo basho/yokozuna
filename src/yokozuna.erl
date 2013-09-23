@@ -84,8 +84,7 @@ is_enabled(Component) ->
 mapred_search(Pipe, [Group, Query], _Timeout) ->
     mapred_search(Pipe, [Group, Query, <<"">>], _Timeout);
 mapred_search(Pipe, [Group, Query, Filter], _Timeout) ->
-    {Index, BucketFilter} = index_for_group(Group),
-    WholeFilter = join_filters(BucketFilter, Filter),
+    Index = index_for_group(Group),
     %% Function to convert `search_fold' results into pipe format.
     Q = fun({Bucket,Key,Props}) ->
                 riak_pipe:queue_work(Pipe, {{Bucket, Key}, {struct, Props}})
@@ -96,19 +95,18 @@ mapred_search(Pipe, [Group, Query, Filter], _Timeout) ->
                 lists:foreach(Q, Results),
                 Acc
         end,
-    ok = search_fold(Index, Query, WholeFilter, F, ok),
+    ok = search_fold(Index, Query, Filter, F, ok),
     riak_pipe:eoi(Pipe).
 
 index_for_group(Group) ->
     case kvc:path(<<"index">>, Group) of
         [] when is_binary(Group) ->
             %% no index, Group must have been a bucket name
-            {yz_kv:get_index(riak_core_bucket:get_bucket(Group)),
-             list_to_binary([?YZ_RB_FIELD_S, ":", Group])};
+            yz_kv:get_index(riak_core_bucket:get_bucket(Group));
         Index when is_binary(Index) ->
-            {binary_to_list(Index), <<"">>};
+            binary_to_list(Index);
         Index when is_list(Index) ->
-            {Index, <<"">>}
+            Index
     end.
 
 join_filters(<<"">>, Filter) ->
