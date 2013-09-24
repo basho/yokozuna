@@ -79,7 +79,7 @@ code.  Please file an issue if you notice modules missing.
   </tr>
 
   <tr>
-    <td>yz_kv<td>
+    <td>yz_kv</td>
     <td>Interface to Riak KV.  By funneling all calls to KV code through one module it's easier to refactor as KV changes.</td>
   </tr>
 
