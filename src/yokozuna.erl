@@ -109,17 +109,6 @@ index_for_group(Group) ->
             Index
     end.
 
-join_filters(<<"">>, Filter) ->
-    Filter;
-join_filters("", Filter) ->
-    Filter;
-join_filters(Filter, <<"">>) ->
-    Filter;
-join_filters(Filter, "") ->
-    Filter;
-join_filters(A, B) ->
-    list_to_binary([A, " AND ", B]).
-
 %% @doc Return the ordered set of unique logical partitions stored on
 %%      the local node for the given `Index'.
 -spec partition_list(string()) -> ordset(lp()).
