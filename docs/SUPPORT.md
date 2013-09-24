@@ -105,7 +105,7 @@ code.  Please file an issue if you notice modules missing.
 
   <tr>
     <td>yz_schema</td>
-    <td>Schema administration such as fetching and uploading.  Also performs verification for existence of special fields.  These fields are required for Yokozuna to function properly.  They all start with `_yz`.  See the [default schema][ds].</td>
+    <td>Schema administration such as fetching and uploading.  Also performs verification for existence of special fields.  These fields are required for Yokozuna to function properly.  They all start with `_yz`.  See the <a href="https://github.com/basho/yokozuna/blob/develop/priv/default_schema.xml">default schema</a>.</td>
   </tr>
 
   <tr>
