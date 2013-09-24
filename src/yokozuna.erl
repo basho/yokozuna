@@ -55,7 +55,11 @@ is_enabled(Component) ->
 %% `Pipe' - Reference to the Riak Pipe job responsible for running the
 %%   map/reduce job.
 %%
-%% `Index' - The name of the index to run the search against.
+%% `Group' - The name of the bucket or index to run the search
+%%   against. The name of a bucket should be given as a string (list
+%%   or binary). The name of an index should be given as one of two
+%%   tuples: `{index, Index}' or `{struct,[{<<"index">>, Index}]}'
+%%   (erlang-y or mochijson2-ish).
 %%
 %% `Query' - The query to run.
 %%
@@ -77,13 +81,10 @@ is_enabled(Component) ->
 %%   timeout value should be revisited in the future and see if it
 %%   can't be removed from the API completely.
 -spec mapred_search(pipe(), [term()], pos_integer()) -> ok.
-mapred_search(Pipe, [Index, Query], _Timeout) ->
-    mapred_search(Pipe, [Index, Query, <<"">>], _Timeout);
-mapred_search(Pipe, [Index, Query, Filter], _Timeout) ->
-    Index2 = case is_binary(Index) of
-                 false -> Index;
-                 true -> binary_to_list(Index)
-             end,
+mapred_search(Pipe, [Group, Query], _Timeout) ->
+    mapred_search(Pipe, [Group, Query, <<"">>], _Timeout);
+mapred_search(Pipe, [Group, Query, Filter], _Timeout) ->
+    Index = index_for_group(Group),
     %% Function to convert `search_fold' results into pipe format.
     Q = fun({Bucket,Key,Props}) ->
                 riak_pipe:queue_work(Pipe, {{Bucket, Key}, {struct, Props}})
@@ -94,8 +95,19 @@ mapred_search(Pipe, [Index, Query, Filter], _Timeout) ->
                 lists:foreach(Q, Results),
                 Acc
         end,
-    ok = search_fold(Index2, Query, Filter, F, ok),
+    ok = search_fold(Index, Query, Filter, F, ok),
     riak_pipe:eoi(Pipe).
+
+index_for_group(Group) ->
+    case kvc:path(<<"index">>, Group) of
+        [] when is_binary(Group) ->
+            %% no index, Group must have been a bucket name
+            yz_kv:get_index(riak_core_bucket:get_bucket(Group));
+        Index when is_binary(Index) ->
+            binary_to_list(Index);
+        Index when is_list(Index) ->
+            Index
+    end.
 
 %% @doc Return the ordered set of unique logical partitions stored on
 %%      the local node for the given `Index'.
