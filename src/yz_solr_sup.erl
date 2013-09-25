@@ -18,21 +18,18 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc Top-level supervisor for yokozuna.
+%% @doc Supervisor for the solr process manager. We want to have a
+%% very different restart policy for the JVM manager than for our
+%% other long-lived workers, so it is given its own supervisor.
 %%
-%% Starts no children if yokozuna is not enabled (`start_link(false)').
-%%
-%% Starts two sub-supervisors if yokozuna is enabled: one supervisor
-%% for the JVM solr manager, and another supervisor for the rest of
-%% the long-lived yokozuna processes. This top-level supervisor's
-%% restart strategy is thus to allow zero restarts of its
-%% sub-supervisors. If those sub-supervisors exit, something is really
-%% wrong, and yokozuna should shut down.
+%% The strategy allows for no more than one restart in 3x the time
+%% that has been set for solr startup. This is to prevent Yokozuna
+%% from hanging around useless when Solr is failing to start.
 
--module(yz_sup).
+-module(yz_solr_sup).
 -behaviour(supervisor).
 -include("yokozuna.hrl").
--export([start_link/1]).
+-export([start_link/0]).
 -export([init/1]).
 
 
@@ -40,31 +37,27 @@
 %%% API
 %%%===================================================================
 
-start_link(Enabled) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [Enabled]).
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
 
-init([false]) ->
-    %% Yokozuna is disabled, start a supervisor without any children.
-    {ok, {{one_for_one, 5, 10}, []}};
+init([]) ->
+    Dir = ?YZ_ROOT_DIR,
+    SolrPort = yz_solr:port(),
+    SolrJMXPort = yz_solr:jmx_port(),
 
-init([_Enabled]) ->
-    SolrSup = {yz_solr_sup,
-               {yz_solr_sup, start_link, []},
-               permanent, 5000, supervisor, [yz_solr_sup]},
+    SolrProc = {yz_solr_proc,
+                {yz_solr_proc, start_link, [Dir, SolrPort, SolrJMXPort]},
+                permanent, 5000, worker, [yz_solr_proc]},
 
-    GeneralSup = {yz_general_sup,
-                  {yz_general_sup, start_link, []},
-                  permanent, 5000, supervisor, [yz_general_sup]},
+    Children = [SolrProc],
 
-    Children = [SolrSup, GeneralSup],
-
-    %% if these sub-supervisors ever exit, there's something really
-    %% wrong; don't try to restart them
-    MaxR = 0,
-    MaxT = 1,
+    %% if yz_solr_proc restarts more than once in 3x its startup wait
+    %% time, it's probably not going to succeed on the third try
+    MaxR = 1,
+    MaxT = 3*yz_solr_proc:solr_startup_wait(),
     {ok, {{one_for_one, MaxR, MaxT}, Children}}.
