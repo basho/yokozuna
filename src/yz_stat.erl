@@ -27,6 +27,7 @@
          terminate/2, code_change/3]).
 
 -include("yokozuna.hrl").
+%% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
 -define(NOTIFY(Name, Type, Arg),
         folsom_metrics:notify_existing_metric({?YZ_APP_NAME, Name}, Arg, Type)).
@@ -57,17 +58,27 @@ get_stats() ->
 produce_stats() ->
     {?YZ_APP_NAME, [{Name, get_metric_value({?YZ_APP_NAME, Name}, Type)} || {Name, Type} <- stats()]}.
 
+%% @doc Send stat updates for an index failure.
+-spec index_fail() -> ok.
 index_fail() ->
-    do_update(index_fail).
+    update(index_fail).
 
+%% @doc Send stat updates for an index completion.  `ElapsedTime'
+%% should be microseconds.
+-spec index_end(integer()) -> ok.
 index_end(ElapsedTime) ->
-    do_update({index_end, ElapsedTime}).
+    update({index_end, ElapsedTime}).
 
+%% @doc Send stat updates for a search failure.
+-spec search_fail() -> ok.
 search_fail() ->
-    do_update(search_fail).
+    update(search_fail).
 
+%% @doc Send stat updates for search completion.  `ElapsedTime' should
+%% be microseconds.
+-spec search_end(integer()) -> ok.
 search_end(ElapsedTime) ->
-    do_update({search_end, ElapsedTime}).
+    update({search_end, ElapsedTime}).
 
 %% -------------------------------------------------------------------
 %% Callbacks
@@ -111,18 +122,18 @@ delete_metrics() ->
 
 %% @private
 %%
-%% @doc Update specific metrics in folsom based on the `Stat' term
+%% @doc Notify specific metrics in folsom based on the `StatUpdate' term
 %% passed in.
--spec do_update(Stat::term()) -> ok.
-do_update({index_end, Time}) ->
+-spec notify(StatUpdate::term()) -> ok.
+notify({index_end, Time}) ->
     ?NOTIFY(index_latency, histogram, Time),
     ?NOTIFY(index_throughput, spiral, 1);
-do_update(index_fail) ->
+notify(index_fail) ->
     ?NOTIFY(index_fail, spiral, 1);
-do_update({search_end, Time}) ->
+notify({search_end, Time}) ->
     ?NOTIFY(search_latency, histogram, Time),
     ?NOTIFY(search_throughput, spiral, 1);
-do_update(search_fail) ->
+notify(search_fail) ->
     ?NOTIFY(search_fail, spiral, 1).
 
 %% @private
@@ -155,3 +166,15 @@ stats() ->
      {search_latency, histogram},
      {search_throughput, spiral}
     ].
+
+%% @private
+%%
+%% @doc Determine the correct channel through which to send the
+%% `StatUpdate'.
+-spec update(term()) -> ok.
+update(StatUpdate) ->
+    case erlang:module_loaded(yz_stat_sj) of
+        true -> yz_stat_worker:update(StatUpdate);
+        false -> notify(StatUpdate)
+    end,
+    ok.
