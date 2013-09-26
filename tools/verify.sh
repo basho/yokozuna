@@ -169,9 +169,9 @@ function build_riak_yokozuna()
     fi
 
     if [ ! -e dev/dev1 ]; then
-        info "build devrel"
-        if ! make devrel; then
-            error "failed to make devrel"
+        info "build stagedevrel"
+        if ! make stagedevrel; then
+            error "failed to make stagedevrel"
         fi
     fi
 

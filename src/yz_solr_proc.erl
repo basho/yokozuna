@@ -143,7 +143,7 @@ terminate(_, S) ->
             ok;
         Pid ->
             os:cmd("kill -TERM " ++ integer_to_list(Pid)),
-            port_close(Port),
+            catch port_close(Port),
             ok
     end.
 
@@ -170,6 +170,11 @@ ensure_data_dir(Dir) ->
     end.
 
 -spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
+build_cmd(_SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
+    %% this will start an executable to keep yz_solr_proc's port
+    %% happy, but will never respond to pings, so we can test the
+    %% timeout capability
+    {os:find_executable("grep"), ["foo"]};
 build_cmd(SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),

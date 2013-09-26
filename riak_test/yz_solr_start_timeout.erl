@@ -11,15 +11,12 @@
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 
 confirm() ->
-    %% start a node, so we can ask it to cripple itself
-    [Node|_] = rt:deploy_nodes(1, [{yokozuna,[{enabled, true}]}]),
+    %% this root_dir is a well-known name that causes yz_solr_proc to
+    %% start something that will trigger yz_solr_proc's timeout
+    Crippled = {root_dir, "data/::yz_solr_start_timeout::"},
+    [Node|_] = rt:deploy_nodes(1, [{yokozuna, [{enabled, true},Crippled]}]),
 
-    prepare_jetty_for_failure(Node),
-    
-    rt:stop_and_wait(Node),
-
-    %% node should start up successfully, but is missing pieces of
-    %% solr, so...
+    %% node should start up successfully, but solr never will, so...
     rt:start_and_wait(Node),
 
     %% ... it should die in a bit
@@ -34,21 +31,6 @@ confirm() ->
     Logs = rt:get_node_logs(),
     ?assert(find_startup_wait_log(Logs)),
     pass.
-
-%% Remove the solr webapp. Jetty will start, so yz_solr_proc will have
-%% a live port to hold onto, but Solr will not start, so the ping will
-%% never return successfully.
-prepare_jetty_for_failure(Node) ->
-    rt:load_modules_on_nodes([?MODULE], [Node]),
-    lager:info("Deleting solr.war"),
-    ?assertEqual(ok, rpc:call(Node, ?MODULE, remove_solr_webapp, [])).
-
-%% This is the part of prepare_jetty_for_failure that is run on the
-%% node via RPC
-remove_solr_webapp() ->
-    Priv = code:priv_dir(yokozuna),
-    SolrWar = filename:join([Priv,"solr","webapps","solr.war"]),
-    file:delete(SolrWar).
 
 %% Find "solr didn't start in alloted time" in console.log
 find_startup_wait_log([]) ->
