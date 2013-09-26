@@ -3,8 +3,7 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 1000).
--define(INDEX, "fallback").
--define(INDEX_B, <<"fallback">>).
+-define(INDEX, <<"fallback">>).
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(CFG,
         [{riak_core,
@@ -26,26 +25,26 @@ confirm() ->
     write_obj(Cluster2),
     check_fallbacks(Cluster2),
     HP = riak_hp(yz_rt:select_random(Cluster2), Cluster2),
-    ?assert(yz_rt:search_expect(yokozuna, HP, "fallback", "*", "*", 1)),
+    ?assert(yz_rt:search_expect(yokozuna, HP, ?INDEX, "*", "*", 1)),
     pass.
 
 check_fallbacks(Cluster) ->
     Node = yz_rt:select_random(Cluster),
-    KVPreflist = kv_preflist(Node, ?INDEX_B, ?INDEX_B),
+    KVPreflist = kv_preflist(Node, ?INDEX, ?INDEX),
     FallbackPreflist = filter_fallbacks(KVPreflist),
     LogicalFallbackPL = make_logical(Node, FallbackPreflist),
     [begin
          {H, P} = solr_hp(FNode, Cluster),
-         ?assert(yz_rt:search_expect(solr, {H, P}, "fallback", "_yz_pn", integer_to_list(LPN), 0))
+         ?assert(yz_rt:search_expect(solr, {H, P}, ?INDEX, "_yz_pn", integer_to_list(LPN), 0))
      end
      || {LPN, FNode} <- LogicalFallbackPL].
 
 create_index(Cluster, Index) ->
     Node = yz_rt:select_random(Cluster),
     yz_rt:create_index(Node, Index),
-    ok = yz_rt:set_index(Node, list_to_binary(Index)),
+    ok = yz_rt:set_index(Node, Index),
     timer:sleep(5000).
-    
+
 make_logical(Node, Preflist) ->
     rpc:call(Node, yz_misc, convert_preflist, [Preflist, logical]).
 

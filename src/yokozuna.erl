@@ -76,14 +76,10 @@ is_enabled(Component) ->
 %%   for now and assume an upstream process is dealing with it.  This
 %%   timeout value should be revisited in the future and see if it
 %%   can't be removed from the API completely.
--spec mapred_search(pipe(), [term()], pos_integer()) -> ok.
+-spec mapred_search(pipe(), [binary()], pos_integer()) -> ok.
 mapred_search(Pipe, [Index, Query], _Timeout) ->
     mapred_search(Pipe, [Index, Query, <<"">>], _Timeout);
 mapred_search(Pipe, [Index, Query, Filter], _Timeout) ->
-    Index2 = case is_binary(Index) of
-                 false -> Index;
-                 true -> binary_to_list(Index)
-             end,
     %% Function to convert `search_fold' results into pipe format.
     Q = fun({Bucket,Key,Props}) ->
                 riak_pipe:queue_work(Pipe, {{Bucket, Key}, {struct, Props}})
@@ -94,14 +90,14 @@ mapred_search(Pipe, [Index, Query, Filter], _Timeout) ->
                 lists:foreach(Q, Results),
                 Acc
         end,
-    ok = search_fold(Index2, Query, Filter, F, ok),
+    ok = search_fold(Index, Query, Filter, F, ok),
     riak_pipe:eoi(Pipe).
 
 %% @doc Return the ordered set of unique logical partitions stored on
 %%      the local node for the given `Index'.
--spec partition_list(string()) -> ordset(lp()).
+-spec partition_list(index_name()) -> ordset(lp()).
 partition_list(Index) ->
-    Resp = yz_solr:partition_list(Index),
+    {ok, Resp} = yz_solr:partition_list(Index),
     Struct = mochijson2:decode(Resp),
     Path = [<<"facet_counts">>, <<"facet_fields">>, ?YZ_PN_FIELD_B],
     Facets = kvc:path(Path, Struct),
@@ -204,4 +200,3 @@ search_fold(Results, Start, Params, Index, Query, Filter, F, Acc) ->
     {_, Body} = yz_solr:dist_search(Index, Params2),
     E = extract_results(Body),
     search_fold(E, Start2, Params, Index, Query, Filter, F, Acc).
-
