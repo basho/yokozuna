@@ -90,22 +90,25 @@ confirm_stats(Cluster) ->
 
     yz_rt:wait_until(Cluster, fun check_stat_values/1).
 
+-define(STAT_NAME(Path), yz_stat:stat_name(Path)).
+
 check_stat_values(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
+    lager:info("STATS: ~p", [Stats]),
 
-    ILatency = proplists:get_value(index_latency, Stats),
+    ILatency = proplists:get_value(?STAT_NAME([index, latency]), Stats),
     ILatencyMin = proplists:get_value(min, ILatency),
     ILatencyMax = proplists:get_value(max, ILatency),
 
-    IThroughput = proplists:get_value(index_throughput, Stats),
+    IThroughput = proplists:get_value(?STAT_NAME([index, throughput]), Stats),
     IThruCount = proplists:get_value(count, IThroughput),
     IThruOne = proplists:get_value(one, IThroughput),
 
-    SThroughput = proplists:get_value(search_throughput, Stats),
+    SThroughput = proplists:get_value(?STAT_NAME([search, throughput]), Stats),
     SThruCount = proplists:get_value(count, SThroughput),
     SThruOne = proplists:get_value(one, SThroughput),
 
-    IFail = proplists:get_value(index_fail, Stats),
+    IFail = proplists:get_value(?STAT_NAME([index, fail]), Stats),
     IFailCount = proplists:get_value(count, IFail),
     IFailOne = proplists:get_value(one, IFail),
 

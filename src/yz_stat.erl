@@ -29,8 +29,8 @@
 -include("yokozuna.hrl").
 %% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
--define(NOTIFY(Name, Type, Arg),
-        folsom_metrics:notify_existing_metric({?YZ_APP_NAME, Name}, Arg, Type)).
+-define(NOTIFY(A, B, Type, Arg),
+        folsom_metrics:notify_existing_metric({?YZ_APP_NAME, A, B}, Arg, Type)).
 
 %% -------------------------------------------------------------------
 %% API
@@ -42,8 +42,11 @@ start_link() ->
 %% @doc Register Yokozuna stats.
 -spec register_stats() -> ok.
 register_stats() ->
-    delete_metrics(),
-    [register_stat(Stat, Type) || {Stat, Type} <- stats()],
+    [begin
+         Name = stat_name(Path),
+         (catch folsom_metrics:delete_metric(Name)),
+         register_stat(Name, Type)
+     end || {Path, Type} <- stats()],
     riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}),
     ok.
 
@@ -55,8 +58,10 @@ get_stats() ->
         Error -> Error
     end.
 
+%% TODO: export stats() type from riak_core_stat_q.
+-spec produce_stats() -> {atom(), list()}.
 produce_stats() ->
-    {?YZ_APP_NAME, [{Name, get_metric_value({?YZ_APP_NAME, Name}, Type)} || {Name, Type} <- stats()]}.
+    {?YZ_APP_NAME, riak_core_stat_q:get_stats([yokozuna])}.
 
 %% @doc Send stat updates for an index failure.
 -spec index_fail() -> ok.
@@ -112,35 +117,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% @private
 %%
-%% @doc Delete any metrics currently registered under the Yokozuna
-%% application.
--spec delete_metrics() -> ok.
-delete_metrics() ->
-    [(catch folsom_metrics:delete_metric(Stat))
-     || {?YZ_APP_NAME, Stat} <- folsom_metrics:get_metrics()],
-    ok.
-
-%% @private
-%%
 %% @doc Notify specific metrics in folsom based on the `StatUpdate' term
 %% passed in.
 -spec notify(StatUpdate::term()) -> ok.
 notify({index_end, Time}) ->
-    ?NOTIFY(index_latency, histogram, Time),
-    ?NOTIFY(index_throughput, spiral, 1);
+    ?NOTIFY(index, latency, histogram, Time),
+    ?NOTIFY(index, throughput, spiral, 1);
 notify(index_fail) ->
-    ?NOTIFY(index_fail, spiral, 1);
+    ?NOTIFY(index, fail, spiral, 1);
 notify({search_end, Time}) ->
-    ?NOTIFY(search_latency, histogram, Time),
-    ?NOTIFY(search_throughput, spiral, 1);
+    ?NOTIFY(search, latency, histogram, Time),
+    ?NOTIFY(search, throughput, spiral, 1);
 notify(search_fail) ->
-    ?NOTIFY(search_fail, spiral, 1).
-
-%% @private
-get_metric_value(Name, histogram) ->
-    folsom_metrics:get_histogram_statistics(Name);
-get_metric_value(Name, _Type) ->
-    folsom_metrics:get_metric_value(Name).
+    ?NOTIFY(search, fail, spiral, 1).
 
 %% @private
 get_sample_type(Name) ->
@@ -148,24 +137,32 @@ get_sample_type(Name) ->
     app_helper:get_env(?YZ_APP_NAME, Name, SampleType0).
 
 %% @private
+-spec register_stat(riak_core_stat_q:stat_name(), atom()) -> ok |
+                                                             {error, Subject :: term(), Reason :: term()}.
 register_stat(Name, histogram) ->
     {SampleType, SampleArgs} = get_sample_type(Name),
-    folsom_metrics:new_histogram({?YZ_APP_NAME, Name}, SampleType, SampleArgs);
+    folsom_metrics:new_histogram(Name, SampleType, SampleArgs);
 register_stat(Name, spiral) ->
-    folsom_metrics:new_spiral({?YZ_APP_NAME, Name});
+    folsom_metrics:new_spiral(Name);
 register_stat(Name, counter) ->
-    folsom_metrics:new_counter({?YZ_APP_NAME, Name}).
+    folsom_metrics:new_counter(Name).
 
 %% @private
+-spec stats() -> [{riak_core_stat_q:path(), atom()}].
 stats() ->
     [
-     {index_fail, spiral},
-     {index_latency, histogram},
-     {index_throughput, spiral},
-     {search_fail, spiral},
-     {search_latency, histogram},
-     {search_throughput, spiral}
+     {[index, fail], spiral},
+     {[index, latency], histogram},
+     {[index, throughput], spiral},
+     {[search, fail], spiral},
+     {[search, latency], histogram},
+     {[search, throughput], spiral}
     ].
+
+%% @private
+-spec stat_name(riak_core_stat_q:path()) -> riak_core_stat_q:stat_name().
+stat_name(Name) ->
+    list_to_tuple([?YZ_APP_NAME|Name]).
 
 %% @private
 %%
