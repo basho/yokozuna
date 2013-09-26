@@ -109,6 +109,7 @@ handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
         true ->
             %% solr finished its startup, be merry
             ?INFO("solr is up", []),
+            riak_core_node_watcher:service_up(yokozuna, self()),
             {noreply, S};
         false when WaitTimeSecs > 0 ->
             %% solr hasn't finished yet, keep waiting
