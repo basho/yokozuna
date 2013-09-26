@@ -159,7 +159,7 @@ index(Obj, Reason, P) ->
                         end,
                         yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
                     catch _:Err ->
-                            yz_stat:index_failed(),
+                            yz_stat:index_fail(),
                             Trace = erlang:get_stacktrace(),
                             case Reason of
                                 delete ->
