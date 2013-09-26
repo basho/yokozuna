@@ -41,15 +41,7 @@ confirm() ->
 prepare_jetty_for_failure(Node) ->
     rt:load_modules_on_nodes([?MODULE], [Node]),
     lager:info("Deleting solr.war"),
-    case rpc:call(Node, ?MODULE, remove_solr_webapp, []) of
-        ok ->
-            ok;
-        {error, enoent} ->
-            lager:warn("solr.war is already missing - are you using --yz-source?"),
-            ok;
-        DeleteResult ->
-            ?assertEqual(ok, DeleteResult)
-    end.
+    ?assertEqual(ok, rpc:call(Node, ?MODULE, remove_solr_webapp, [])).
 
 %% This is the part of prepare_jetty_for_failure that is run on the
 %% node via RPC
