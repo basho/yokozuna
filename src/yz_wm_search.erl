@@ -73,7 +73,7 @@ process_post(Req, S) ->
 search(Req, S) ->
     {FProf, FProfFile} = check_for_fprof(Req),
     ?IF(FProf, fprof:trace(start, FProfFile)),
-    Index = wrq:path_info(index, Req),
+    Index = list_to_binary(wrq:path_info(index, Req)),
     Params = wrq:req_qs(Req),
     ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try

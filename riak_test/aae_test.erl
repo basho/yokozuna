@@ -2,8 +2,7 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 10000).
--define(INDEX_B, <<"fruit_aae">>).
--define(INDEX_S, "fruit_aae").
+-define(INDEX, <<"fruit_aae">>).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(CFG,
         [{riak_core,
@@ -30,7 +29,7 @@ confirm() ->
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     setup_index(Cluster, YZBenchDir),
-    yz_rt:load_data(Cluster, ?INDEX_S, YZBenchDir, ?NUM_KEYS),
+    yz_rt:load_data(Cluster, ?INDEX, YZBenchDir, ?NUM_KEYS),
     lager:info("Verify data was indexed"),
     verify_num_match(Cluster, ?NUM_KEYS),
     %% Wait for a full round of exchange and then get total repair
@@ -47,7 +46,7 @@ confirm() ->
     Keys = yz_rt:random_keys(?NUM_KEYS),
     {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
     lager:info("Deleting ~p keys", [length(DelKeys)]),
-    [delete_key_in_solr(Cluster, ?INDEX_S, K) || K <- DelKeys],
+    [delete_key_in_solr(Cluster, ?INDEX, K) || K <- DelKeys],
     lager:info("Verify Solr indexes missing"),
     verify_num_match(Cluster, ?NUM_KEYS - length(DelKeys)),
     lager:info("Clear trees so AAE will notice missing indexes"),
@@ -104,10 +103,10 @@ read_schema(YZBenchDir) ->
 setup_index(Cluster, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
-    ok = store_schema(Node, ?INDEX_B, RawSchema),
-    ok = yz_rt:create_index(Node, ?INDEX_S, ?INDEX_B),
-    ok = yz_rt:set_index(Node, ?INDEX_B),
-    yz_rt:wait_for_index(Cluster, ?INDEX_S).
+    ok = store_schema(Node, ?INDEX, RawSchema),
+    ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
+    ok = yz_rt:set_index(Node, ?INDEX),
+    yz_rt:wait_for_index(Cluster, ?INDEX).
 
 store_schema(Node, Name, RawSchema) ->
     lager:info("Storing schema ~p [~p]", [Name, Node]),
@@ -125,7 +124,7 @@ verify_no_repair(Cluster) ->
 verify_num_match(Cluster, Num) ->
     F = fun(Node) ->
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-                yz_rt:search_expect(HP, ?INDEX_S, "text", "apricot", Num)
+                yz_rt:search_expect(HP, ?INDEX, "text", "apricot", Num)
         end,
     yz_rt:wait_until(Cluster, F).
 

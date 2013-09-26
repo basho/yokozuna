@@ -51,10 +51,11 @@ test_errors(Cluster) ->
     ok.
 
 expect_bad_json(Cluster) ->
+    Index = <<"bad_json">>,
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"bad_json">>),
+    ok = create_index(Cluster, HP, Index),
     lager:info("Write bad json"),
-    URL = bucket_url(HP, "bad_json", "test"),
+    URL = bucket_url(HP, Index, "test"),
     Opts = [],
     CT = "application/json",
     Headers = [{"content-type", CT}],
@@ -66,14 +67,15 @@ expect_bad_json(Cluster) ->
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% Sleep for soft commit
     timer:sleep(1100),
-    ?assert(search_expect(HP, "bad_json", ?YZ_ERR_FIELD_S, "1", 1)),
+    ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
 expect_bad_xml(Cluster) ->
+    Index = <<"bad_xml">>,
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"bad_xml">>),
+    ok = create_index(Cluster, HP, Index),
     lager:info("Write bad xml"),
-    URL = bucket_url(HP, "bad_xml", "test"),
+    URL = bucket_url(HP, Index, "test"),
     Opts = [],
     CT = "application/xml",
     Headers = [{"content-type", CT}],
@@ -85,14 +87,15 @@ expect_bad_xml(Cluster) ->
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% Sleep for soft commit
     timer:sleep(1100),
-    ?assert(search_expect(HP, "bad_xml", ?YZ_ERR_FIELD_S, "1", 1)),
+    ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
 expect_bad_query(Cluster) ->
+    Index = <<"bad_query">>,
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"bad_query">>),
+    ok = create_index(Cluster, HP, Index),
     lager:info("Write bad query"),
-    URL = bucket_url(HP, "bad_query", "test"),
+    URL = bucket_url(HP, Index, "test"),
     Opts = [],
     CT = "text/plain",
     Headers = [{"content-type", CT}],
@@ -103,7 +106,7 @@ expect_bad_query(Cluster) ->
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% send a bad query
-    SearchURL = search_url(HP, "bad_query") ++ "?q=*:*&sort=sco+desc",
+    SearchURL = search_url(HP, Index) ++ "?q=*:*&sort=sco+desc",
     {ok, "400", _, _} = ibrowse:send_req(SearchURL, [], get, []),
     ok.
 
@@ -127,5 +130,5 @@ create_index(Cluster, HP, Index) ->
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
     yz_rt:set_index(Node, Index),
-    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
+    yz_rt:wait_for_index(Cluster, Index),
     ?assertEqual("204", Status).

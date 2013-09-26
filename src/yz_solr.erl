@@ -31,6 +31,7 @@
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {struct, [{'query', Str}]}).
+-define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 
 %% @doc This module provides the interface for making calls to Solr.
 %%      All interaction with Solr should go through this API.
@@ -55,12 +56,12 @@ build_partition_delete_query(LPartitions) ->
                || LP <- LPartitions],
     mochijson2:encode({struct, Deletes}).
 
+-spec commit(index_name()) -> ok.
 commit(Core) ->
-    BaseURL = base_url() ++ "/" ++ Core ++  "/update",
     JSON = encode_commit(),
     Params = [{commit, true}],
     Encoded = mochiweb_util:urlencode(Params),
-    URL = BaseURL ++ "?" ++ Encoded,
+    URL = ?FMT("~s/~s/update?~s", [base_url(), Core, Encoded]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
@@ -99,18 +100,15 @@ cores() ->
     end.
 
 %% @doc Perform the delete `Ops' against the `Index'.
--spec delete(index_name(), [delete_op()]) -> ok.
+-spec delete(index_name(), [delete_op()]) -> ok | {error, term()}.
 delete(Index, Ops) ->
-    BaseURL = base_url() ++ "/" ++ Index ++ "/update",
     JSON = mochijson2:encode({struct, [{delete, encode_delete(Op)} || Op <- Ops]}),
-    Params = [],
-    Encoded = mochiweb_util:urlencode(Params),
-    URL = BaseURL ++ "?" ++ Encoded,
+    URL = ?FMT("~s/~s/update", [base_url(), Index]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to delete doc", Ops, Err})
+        Err -> {error, Err}
     end.
 
 %% @doc Get slice of entropy data.  Entropy data is used to build
@@ -135,14 +133,14 @@ delete(Index, Ops) ->
 %%
 %%  `ED' - An entropy data record containing list of entries and
 %%         continuation value.
--spec entropy_data(string(), ed_filter()) ->
+-spec entropy_data(index_name(), ed_filter()) ->
                           ED::entropy_data() | {error, term()}.
 entropy_data(Core, Filter) ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/entropy_data",
     Params = [{wt, json}|Filter] -- [{continuation, none}],
     Params2 = proplists:substitute_aliases(?FIELD_ALIASES, Params),
     Opts = [{response_format, binary}],
-    URL = BaseURL ++ "?" ++ mochiweb_util:urlencode(Params2),
+    URL = ?FMT("~s/~s/entropy_data?~s",
+               [base_url(), Core, mochiweb_util:urlencode(Params2)]),
     case ibrowse:send_req(URL, [], get, [], Opts) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
@@ -160,14 +158,11 @@ index(Core, Docs) ->
 
 -spec index(index_name(), list(), [delete_op()]) -> ok.
 index(Core, Docs, DelOps) ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/update",
     Ops = {struct,
            [{delete, encode_delete(Op)} || Op <- DelOps] ++
                [{add, encode_doc(D)} || D <- Docs]},
     JSON = mochijson2:encode(Ops),
-    Params = [],
-    Encoded = mochiweb_util:urlencode(Params),
-    URL = BaseURL ++ "?" ++ Encoded,
+    URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
@@ -180,26 +175,25 @@ prepare_json(Docs) ->
     mochijson2:encode(Content).
 
 %% @doc Return the set of unique partitions stored on this node.
--spec partition_list(string()) -> binary().
+-spec partition_list(index_name()) -> {ok, Resp::binary()} | {error, term()}.
 partition_list(Core) ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/select",
     Params = [{q, "*:*"},
               {facet, "on"},
               {"facet.mincount", "1"},
               {"facet.field", ?YZ_PN_FIELD_S},
               {wt, "json"}],
     Encoded = mochiweb_util:urlencode(Params),
-    URL = BaseURL ++ "?" ++ Encoded,
+    URL = ?FMT("~s/~s/select?~s", [base_url(), Core, Encoded]),
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, [], get, [], Opts) of
-        {ok, "200", _, Resp} -> Resp;
-        Err -> throw({"Failed to get partition list", URL, Err})
+        {ok, "200", _, Resp} -> {ok, Resp};
+        Err -> {error, Err}
     end.
 
 %% @doc Return boolean based on ping response from Solr.
--spec ping(string()) -> boolean().
+-spec ping(index_name()) -> boolean().
 ping(Core) ->
-    URL = base_url() ++ "/" ++ Core ++ "/admin/ping",
+    URL = ?FMT("~s/~s/admin/ping", [base_url(), Core]),
     case ibrowse:send_req(URL, [], get) of
         {ok, "200", _, _} -> true;
         _ -> false
@@ -230,9 +224,8 @@ dist_search(Core, Headers, Params) ->
     end.
 
 search(Core, Headers, Params) ->
-    BaseURL = base_url() ++ "/" ++ Core ++ "/select",
     Encoded = mochiweb_util:urlencode(Params),
-    URL = BaseURL ++ "?" ++ Encoded,
+    URL = ?FMT("~s/~s/select?~s", [base_url(), Core, Encoded]),
     Body = [],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, get, Body, Opts) of
@@ -357,5 +350,6 @@ get_response(R) ->
 make_ed(More, Continuation, Pairs) ->
     #entropy_data{more=More, continuation=Continuation, pairs=Pairs}.
 
+-spec shard_frag(index_name(), {string(), string()}) -> string().
 shard_frag(Core, {Host, Port}) ->
-    Host ++ ":" ++ Port ++ "/solr/" ++ Core.
+    ?FMT("~s:~s/solr/~s", [Host, Port, Core]).

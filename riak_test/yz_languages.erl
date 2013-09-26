@@ -75,7 +75,7 @@ create_index(Cluster, HP, Index) ->
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
     ok = yz_rt:set_index(hd(Cluster), Index),
-    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
+    yz_rt:wait_for_index(Cluster, Index),
     ?assertEqual("204", Status).
 
 search(HP, Index, Term) ->

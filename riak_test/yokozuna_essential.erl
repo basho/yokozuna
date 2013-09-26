@@ -23,8 +23,7 @@
 %%       cluster and you will see zero repairs occur.
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
--define(INDEX_S, "fruit").
--define(INDEX_B, <<"fruit">>).
+-define(INDEX, <<"fruit">>).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
 -define(CFG,
@@ -46,7 +45,7 @@ confirm() ->
     Cluster = join_three(Nodes),
     wait_for_joins(Cluster),
     setup_indexing(Cluster, YZBenchDir),
-    load_data(Cluster, "fruit", YZBenchDir),
+    load_data(Cluster, ?INDEX, YZBenchDir),
     %% wait for soft-commit
     timer:sleep(1000),
     Ref = async_query(Cluster, YZBenchDir),
@@ -83,8 +82,8 @@ test_tagging(Cluster) ->
     ok = write_with_tag(HP),
     %% TODO: the test fails if this sleep isn't here
     timer:sleep(5000),
-    true = search_expect(HP, "tagging", "user_s", "rzezeski", 1),
-    true = search_expect(HP, "tagging", "desc_t", "description", 1),
+    true = search_expect(HP, <<"tagging">>, "user_s", "rzezeski", 1),
+    true = search_expect(HP, <<"tagging">>, "desc_t", "description", 1),
     ok.
 
 write_with_tag({Host, Port}) ->
@@ -113,10 +112,10 @@ async_query(Cluster, YZBenchDir) ->
            {operations, [{Apple,1}]},
            {http_conns, Hosts},
            {pb_conns, []},
-           {search_path, "/search/" ++ ?INDEX_S},
+           {search_path, "/search/" ++ binary_to_list(?INDEX)},
            {shutdown_on_error, true}],
 
-    File = "bb-query-fruit-" ++ ?INDEX_S,
+    File = "bb-query-fruit-" ++ binary_to_list(?INDEX),
     write_terms(File, Cfg),
     run_bb(async, File).
 
@@ -127,7 +126,7 @@ delete_key(Cluster, Key) ->
     Node = select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
-    C:delete(?INDEX_B, list_to_binary(Key)).
+    C:delete(?INDEX, list_to_binary(Key)).
 
 delete_some_data(Cluster, ReapSleep) ->
     Keys = yz_rt:random_keys(?NUM_KEYS),
@@ -156,12 +155,12 @@ load_data(Cluster, Index, YZBenchDir) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/" ++ Index},
+           {index_path, "/riak/" ++ binary_to_list(Index)},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]}],
-    File = "bb-load-" ++ Index,
+    File = "bb-load-" ++ binary_to_list(Index),
     write_terms(File, Cfg),
     run_bb(sync, File).
 
@@ -180,14 +179,14 @@ setup_indexing(Cluster, YZBenchDir) ->
     Node = select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
     ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
-    ok = create_index(Node, ?INDEX_S, ?FRUIT_SCHEMA_NAME),
-    ok = set_index(Node, ?INDEX_B),
-    ok = create_index(Node, "tagging"),
+    ok = create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME),
+    ok = set_index(Node, ?INDEX),
+    ok = create_index(Node, <<"tagging">>),
     ok = set_index(Node, <<"tagging">>),
-    ok = create_index(Node, "siblings"),
+    ok = create_index(Node, <<"siblings">>),
     ok = set_index(Node, <<"siblings">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- ["fruit", "tagging", "siblings"]].
+     || I <- [<<"fruit">>, <<"tagging">>, <<"siblings">>]].
 
 store_schema(Node, Name, RawSchema) ->
     lager:info("Storing schema ~p [~p]", [Name, Node]),
@@ -208,10 +207,10 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
            {operations, [{Apple,1}]},
            {http_conns, Hosts},
            {pb_conns, []},
-           {search_path, "/search/" ++ ?INDEX_S},
+           {search_path, "/search/" ++ binary_to_list(?INDEX)},
            {shutdown_on_error, true}],
 
-    File = "bb-verify-deletes-" ++ ?INDEX_S,
+    File = "bb-verify-deletes-" ++ binary_to_list(?INDEX),
     write_terms(File, Cfg),
     check_status(run_bb(sync, File)).
 

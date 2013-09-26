@@ -35,7 +35,7 @@ join(Nodes) ->
 
 test_siblings(Cluster) ->
     HP = hd(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"siblings">>),
+    create_index(Cluster, HP, <<"siblings">>),
     ok = allow_mult(Cluster, <<"siblings">>),
     ok = write_sibs(HP),
     %% Verify 10 times because of non-determinism in coverage
@@ -61,9 +61,9 @@ write_sibs({Host, Port}) ->
 
 verify_sibs(HP) ->
     lager:info("Verify siblings are indexed"),
-    true = yz_rt:search_expect(HP, "siblings", "_yz_rk", "test", 4),
+    true = yz_rt:search_expect(HP, <<"siblings">>, "_yz_rk", "test", 4),
     Values = ["alpha", "beta", "charlie", "delta"],
-    [true = yz_rt:search_expect(HP, "siblings", "text", S, 1) || S <- Values],
+    [true = yz_rt:search_expect(HP, <<"siblings">>, "text", S, 1) || S <- Values],
     ok.
 
 reconcile_sibs(HP) ->
@@ -76,7 +76,7 @@ reconcile_sibs(HP) ->
 
 verify_reconcile(HP) ->
     lager:info("Verify sibling indexes were deleted after reconcile"),
-    true = yz_rt:search_expect(HP, "siblings", "_yz_rk", "test", 1),
+    true = yz_rt:search_expect(HP, <<"siblings">>, "_yz_rk", "test", 1),
     ok.
 
 http_put({Host, Port}, Bucket, Key, VClock, Value) ->
@@ -122,7 +122,6 @@ create_index(Cluster, HP, Index) ->
     lager:info("create_index ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
-    {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
+    {ok, "204", _, _} = http(put, URL, Headers, ?NO_BODY),
     ok = set_index(hd(Cluster), Index),
-    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
-    ?assertEqual("204", Status).
+    yz_rt:wait_for_index(Cluster, Index).
