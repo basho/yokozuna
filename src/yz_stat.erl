@@ -48,34 +48,30 @@ register_stats() ->
 -spec get_stats() -> proplists:proplist() | {error, term()}.
 get_stats() ->
     case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
-        {ok, Stats, _TS} ->
-            Stats;
+        {ok, Stats, _TS} -> Stats;
         Error -> Error
     end.
 
 produce_stats() ->
     {?YZ_APP_NAME, [{Name, get_metric_value({?YZ_APP_NAME, Name}, Type)} || {Name, Type} <- stats()]}.
 
-update(Arg) ->
-    gen_server:cast(?SERVER, {update, Arg}).
-
 index_begin() ->
-    gen_server:cast(?SERVER, {update, index_begin}).
+    do_update(index_begin).
 
 index_fail() ->
-    gen_server:cast(?SERVER, {update, index_fail}).
+    do_update(index_fail).
 
 index_end(ElapsedTime) ->
-    gen_server:cast(?SERVER, {update, {index_end, ElapsedTime}}).
+    do_update({index_end, ElapsedTime}).
 
 search_begin() ->
-    gen_server:cast(?SERVER, {update, search_begin}).
+    do_update(search_begin).
 
 search_fail() ->
-    gen_server:cast(?SERVER, {update, search_fail}).
+    do_update(search_fail).
 
 search_end(ElapsedTime) ->
-    gen_server:cast(?SERVER, {update, {search_end, ElapsedTime}}).
+    do_update({search_end, ElapsedTime}).
 
 %% -------------------------------------------------------------------
 %% Callbacks
@@ -86,15 +82,15 @@ init([]) ->
     {ok, ok}.
 
 handle_call(_Req, _From, State) ->
+    ?WARN("Unexpected request received ~p", [_Req]),
     {reply, ok, State}.
 
-handle_cast({update, Arg}, State) ->
-    do_update(Arg),
-    {noreply, State};
 handle_cast(_Req, State) ->
+    ?WARN("Unexpected request received ~p", [_Req]),
     {noreply, State}.
 
 handle_info(_Info, State) ->
+    ?WARN("Unexpected request received ~p", [_Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
