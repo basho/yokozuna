@@ -152,12 +152,14 @@ index(Obj, Reason, P) ->
                         ShortPL = get_short_preflist(BKey, Ring),
                         case should_index(Index) of
                             true ->
-                                yz_stat:update(index_begin),
+                                yz_stat:index_begin(),
                                 index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
                             false ->
                                 dont_index(Obj, Reason, P, ShortPL, BKey)
-                        end
+                        end,
+                        yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
                     catch _:Err ->
+                            yz_stat:index_failed(),
                             Trace = erlang:get_stacktrace(),
                             case Reason of
                                 delete ->
@@ -167,8 +169,7 @@ index(Obj, Reason, P) ->
                                     ?ERROR("failed to index object ~p with error ~p because ~p",
                                            [BKey, Err, Trace])
                             end
-                    end,
-                    yz_stat:update({index_end, ?YZ_TIME_ELAPSED(T1)});
+                    end;
                 false ->
                     ok
             end;
