@@ -49,15 +49,10 @@ populate_data_and_wait(Pid, Cluster, IndexBucket, Count) ->
     Values = populate_data(Pid, IndexBucket, Count, []),
     Search = <<"text:*">>,
     F = fun(_) ->
-        {ok,{search_results,R,Score,Found}} =
-            riakc_pb_socket:search(Pid, IndexBucket, Search, []),
-        case Found of
-            Count ->
-                Score =/= 0.0;
-            0 ->
-                false
-        end
-    end,
+                {ok,{search_results,R,Score,Found}} =
+                    riakc_pb_socket:search(Pid, IndexBucket, Search, []),
+                (Count == Found) and (Score =/= 0.0)
+        end,
     yz_rt:wait_until(Cluster, F),
     Values.
 
@@ -86,7 +81,7 @@ confirm_stats(Cluster) ->
 
     Node = select_random(Cluster),
     Stats = rpc:call(Node, yz_stat, get_stats, []),
-    
+
     ILatency = proplists:get_value(index_latency, Stats, []),
     ?assert(proplists:get_value(min, ILatency, 0) > 0),
     ?assert(proplists:get_value(max, ILatency, 0) > 0),
