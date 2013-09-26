@@ -140,6 +140,10 @@
 -define(YZ_ERR_QUERY_FAILURE,
         "Query unsuccessful check the logs.").
 
+%% Given the `StartTime' calculate the amount of time elapsed in
+%% microseconds.
+-define(YZ_TIME_ELAPSED(StartTime), timer:now_diff(os:timestamp(), StartTime)).
+
 -define(RS_SVC, riak_search).
 
 %%%===================================================================
