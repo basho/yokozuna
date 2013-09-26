@@ -36,13 +36,16 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% @doc Register Yokozuna stats.
+-spec register_stats() -> ok.
 register_stats() ->
-    [(catch folsom_metrics:delete_metric({?YZ_APP_NAME, Name})) || {Name, _Type} <- stats()],
+    delete_metrics(),
     [register_stat(Stat, Type) || {Stat, Type} <- stats()],
-    riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}).
+    riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}),
+    ok.
 
 %% @doc Return current aggregation of all stats.
--spec get_stats() -> proplists:proplist().
+-spec get_stats() -> proplists:proplist() | {error, term()}.
 get_stats() ->
     case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
         {ok, Stats, _TS} ->
@@ -74,7 +77,9 @@ search_fail() ->
 search_end(ElapsedTime) ->
     gen_server:cast(?SERVER, {update, {search_end, ElapsedTime}}).
 
-%% gen_server
+%% -------------------------------------------------------------------
+%% Callbacks
+%% -------------------------------------------------------------------
 
 init([]) ->
     register_stats(),
@@ -120,6 +125,17 @@ do_update(search_fail) ->
 %% -------------------------------------------------------------------
 %% Private
 %% -------------------------------------------------------------------
+
+%% @private
+%%
+%% @doc Delete any metrics currently registered under the Yokozuna
+%% application.
+-spec delete_metrics() -> ok.
+delete_metrics() ->
+    [(catch folsom_metrics:delete_metric(Stat))
+     || {?YZ_APP_NAME, Stat} <- folsom_metrics:get_metrics()],
+    ok.
+
 get_metric_value(Name, histogram) ->
     folsom_metrics:get_histogram_statistics(Name);
 get_metric_value(Name, _Type) ->
