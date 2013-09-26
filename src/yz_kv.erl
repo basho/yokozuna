@@ -152,7 +152,6 @@ index(Obj, Reason, P) ->
                         ShortPL = get_short_preflist(BKey, Ring),
                         case should_index(Index) of
                             true ->
-                                yz_stat:index_begin(),
                                 index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
                             false ->
                                 dont_index(Obj, Reason, P, ShortPL, BKey)

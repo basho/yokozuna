@@ -59,7 +59,6 @@ maybe_process(true, #rpbsearchqueryreq{index=IndexBin}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
             T1 = os:timestamp(),
-            yz_stat:search_begin(),
             Index = binary_to_list(IndexBin),
             try
                 Result = yz_solr:dist_search(Index, Params),

@@ -28,6 +28,8 @@
 
 -include("yokozuna.hrl").
 -define(SERVER, ?MODULE).
+-define(NOTIFY(Name, Type, Arg),
+        folsom_metrics:notify_existing_metric({?YZ_APP_NAME, Name}, Arg, Type)).
 
 %% -------------------------------------------------------------------
 %% API
@@ -55,17 +57,11 @@ get_stats() ->
 produce_stats() ->
     {?YZ_APP_NAME, [{Name, get_metric_value({?YZ_APP_NAME, Name}, Type)} || {Name, Type} <- stats()]}.
 
-index_begin() ->
-    do_update(index_begin).
-
 index_fail() ->
     do_update(index_fail).
 
 index_end(ElapsedTime) ->
     do_update({index_end, ElapsedTime}).
-
-search_begin() ->
-    do_update(search_begin).
 
 search_fail() ->
     do_update(search_fail).
@@ -118,22 +114,16 @@ delete_metrics() ->
 %% @doc Update specific metrics in folsom based on the `Stat' term
 %% passed in.
 -spec do_update(Stat::term()) -> ok.
-do_update(index_begin) ->
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, index_pending}, {inc, 1}, counter);
 do_update({index_end, Time}) ->
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, index_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, index_throughput}, 1, spiral),
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, index_pending}, {dec, 1}, counter);
+    ?NOTIFY(index_latency, histogram, Time),
+    ?NOTIFY(index_throughput, spiral, 1);
 do_update(index_fail) ->
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, index_pending}, {dec, 1}, counter);
-do_update(search_begin) ->
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, search_pending}, {inc, 1}, counter);
+    ?NOTIFY(index_fail, spiral, 1);
 do_update({search_end, Time}) ->
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, search_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, search_throughput}, 1, spiral),
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, search_pending}, {dec, 1}, counter);
+    ?NOTIFY(search_latency, histogram, Time),
+    ?NOTIFY(search_throughput, spiral, 1);
 do_update(search_fail) ->
-    folsom_metrics:notify_existing_metric({?YZ_APP_NAME, search_pending}, {dec, 1}, counter).
+    ?NOTIFY(search_fail, spiral, 1).
 
 %% @private
 get_metric_value(Name, histogram) ->
@@ -158,10 +148,10 @@ register_stat(Name, counter) ->
 %% @private
 stats() ->
     [
+     {index_fail, spiral},
      {index_latency, histogram},
-     {index_pending, counter},
      {index_throughput, spiral},
-     {search_pending, counter},
+     {search_fail, spiral},
      {search_latency, histogram},
      {search_throughput, spiral}
     ].

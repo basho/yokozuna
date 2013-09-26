@@ -49,7 +49,7 @@ populate_data_and_wait(Pid, Cluster, IndexBucket, Count) ->
     Values = populate_data(Pid, IndexBucket, Count, []),
     Search = <<"text:*">>,
     F = fun(_) ->
-                {ok,{search_results,R,Score,Found}} =
+                {ok,{search_results,_R,Score,Found}} =
                     riakc_pb_socket:search(Pid, IndexBucket, Search, []),
                 (Count == Found) and (Score =/= 0.0)
         end,
@@ -69,6 +69,14 @@ gen_random_name(Length) ->
         end, [], lists:seq(1, Length)),
     list_to_binary(Value).
 
+write_bad_json(_, _, 0) ->
+    ok;
+write_bad_json(Pid, IB, Num) ->
+    Key = list_to_binary("bad_json_" ++ integer_to_list(Num)),
+    Value = <<"{\"bad\": \"unclosed\"">>,
+    PO = riakc_obj:new(IB, Key, Value, "application/json"),
+    {ok, _Obj} = riakc_pb_socket:put(Pid, PO, [return_head]).
+
 confirm_stats(Cluster) ->
     {Host, Port} = select_random(host_entries(rt:connection_info(Cluster))),
     IndexBucket = gen_random_name(16),
@@ -77,21 +85,44 @@ confirm_stats(Cluster) ->
     create_indexed_bucket(Pid, Cluster, IndexBucket),
     Values = populate_data_and_wait(Pid, Cluster, IndexBucket, 10),
     search_values(Pid, IndexBucket, Values),
+    write_bad_json(Pid, IndexBucket, 10),
     riakc_pb_socket:stop(Pid),
 
-    Node = select_random(Cluster),
+    yz_rt:wait_until(Cluster, fun check_stat_values/1).
+
+check_stat_values(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
 
-    ILatency = proplists:get_value(index_latency, Stats, []),
-    ?assert(proplists:get_value(min, ILatency, 0) > 0),
-    ?assert(proplists:get_value(max, ILatency, 0) > 0),
-    ?assert(proplists:get_value(standard_deviation, ILatency, 0) > 0),
+    ILatency = proplists:get_value(index_latency, Stats),
+    ILatencyMin = proplists:get_value(min, ILatency),
+    ILatencyMax = proplists:get_value(max, ILatency),
 
-    IThroughput = proplists:get_value(index_throughput, Stats, []),
-    ?assert(proplists:get_value(count, IThroughput, 0) > 0),
-    ?assert(proplists:get_value(one, IThroughput, 0) > 0),
+    IThroughput = proplists:get_value(index_throughput, Stats),
+    IThruCount = proplists:get_value(count, IThroughput),
+    IThruOne = proplists:get_value(one, IThroughput),
 
-    SThroughput = proplists:get_value(search_throughput, Stats, []),
-    ?assert(proplists:get_value(count, SThroughput, 0) > 0),
-    ?assert(proplists:get_value(one, SThroughput, 0) > 0),
-    ok.
+    SThroughput = proplists:get_value(search_throughput, Stats),
+    SThruCount = proplists:get_value(count, SThroughput),
+    SThruOne = proplists:get_value(one, SThroughput),
+
+    IFail = proplists:get_value(index_fail, Stats),
+    IFailCount = proplists:get_value(count, IFail),
+    IFailOne = proplists:get_value(one, IFail),
+
+    Pairs = [{index_latency_min, ILatencyMin, '>', 0},
+             {index_latency_max, ILatencyMax, '>', 0},
+             {index_throughput_count, IThruCount, '>', 0},
+             {index_throughput_one, IThruOne, '>', 0},
+             {search_throughput_count, SThruCount, '>', 0},
+             {search_throughput_cone, SThruOne, '>', 0},
+             {index_fail_count, IFailCount, '>', 0},
+             {index_fail_one, IFailOne, '>', 0}],
+    lager:info("Stats: ~p", [Pairs]),
+    StillWaiting = [S || S={_, Value, Cmp, Arg} <- Pairs, not (erlang:Cmp(Value, Arg))],
+    case StillWaiting of
+        [] ->
+            true;
+        _ ->
+            lager:info("Waiting for stats: ~p", [StillWaiting]),
+            false
+    end.

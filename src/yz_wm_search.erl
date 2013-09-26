@@ -78,7 +78,6 @@ search(Req, S) ->
     Params = wrq:req_qs(Req),
     ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        yz_stat:search_begin(),
         Result = yz_solr:dist_search(Index, ReqHeaders, Params),
         case Result of
             {error, insufficient_vnodes_available} ->
