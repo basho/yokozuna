@@ -99,8 +99,25 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% @doc Update the given `Stat'.
--spec do_update(term()) -> ok.
+%% -------------------------------------------------------------------
+%% Private
+%% -------------------------------------------------------------------
+
+%% @private
+%%
+%% @doc Delete any metrics currently registered under the Yokozuna
+%% application.
+-spec delete_metrics() -> ok.
+delete_metrics() ->
+    [(catch folsom_metrics:delete_metric(Stat))
+     || {?YZ_APP_NAME, Stat} <- folsom_metrics:get_metrics()],
+    ok.
+
+%% @private
+%%
+%% @doc Update specific metrics in folsom based on the `Stat' term
+%% passed in.
+-spec do_update(Stat::term()) -> ok.
 do_update(index_begin) ->
     folsom_metrics:notify_existing_metric({?YZ_APP_NAME, index_pending}, {inc, 1}, counter);
 do_update({index_end, Time}) ->
@@ -118,36 +135,18 @@ do_update({search_end, Time}) ->
 do_update(search_fail) ->
     folsom_metrics:notify_existing_metric({?YZ_APP_NAME, search_pending}, {dec, 1}, counter).
 
-%% -------------------------------------------------------------------
-%% Private
-%% -------------------------------------------------------------------
-
 %% @private
-%%
-%% @doc Delete any metrics currently registered under the Yokozuna
-%% application.
--spec delete_metrics() -> ok.
-delete_metrics() ->
-    [(catch folsom_metrics:delete_metric(Stat))
-     || {?YZ_APP_NAME, Stat} <- folsom_metrics:get_metrics()],
-    ok.
-
 get_metric_value(Name, histogram) ->
     folsom_metrics:get_histogram_statistics(Name);
 get_metric_value(Name, _Type) ->
     folsom_metrics:get_metric_value(Name).
 
-stats() ->
-    [
-     % {index_entries, histogram},
-     {index_latency, histogram},
-     {index_pending, counter},
-     {index_throughput, spiral},
-     {search_pending, counter},
-     {search_latency, histogram},
-     {search_throughput, spiral}
-    ].
+%% @private
+get_sample_type(Name) ->
+    SampleType0 = app_helper:get_env(riak_kv, stat_sample_type, {slide_uniform, {60, 1028}}),
+    app_helper:get_env(?YZ_APP_NAME, Name, SampleType0).
 
+%% @private
 register_stat(Name, histogram) ->
     {SampleType, SampleArgs} = get_sample_type(Name),
     folsom_metrics:new_histogram({?YZ_APP_NAME, Name}, SampleType, SampleArgs);
@@ -156,7 +155,13 @@ register_stat(Name, spiral) ->
 register_stat(Name, counter) ->
     folsom_metrics:new_counter({?YZ_APP_NAME, Name}).
 
-%% Should this be custom, or just use riak_kv
-get_sample_type(Name) ->
-    SampleType0 = app_helper:get_env(?YZ_APP_NAME, stat_sample_type, {slide_uniform, {60, 1028}}),
-    app_helper:get_env(?YZ_APP_NAME, Name, SampleType0).
+%% @private
+stats() ->
+    [
+     {index_latency, histogram},
+     {index_pending, counter},
+     {index_throughput, spiral},
+     {search_pending, counter},
+     {search_latency, histogram},
+     {search_throughput, spiral}
+    ].
