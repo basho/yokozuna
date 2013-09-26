@@ -78,19 +78,22 @@ search(Req, S) ->
     Params = wrq:req_qs(Req),
     ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        yz_stat:update(search_begin),
+        yz_stat:search_begin(),
         Result = yz_solr:dist_search(Index, ReqHeaders, Params),
         case Result of
             {error, insufficient_vnodes_available} ->
+                yz_stat:search_fail(),
                 ER1 = wrq:set_resp_header("Content-Type", "text/plain", Req),
                 ER2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n", ER1),
                 {{halt, 503}, ER2, S};
             {RespHeaders, Body} ->
+                yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
                 Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
                 {Body, Req2, S}
         end
     catch
         throw:not_found ->
+            yz_stat:search_fail(),
             ErrReq = wrq:append_to_response_body(
                 io_lib:format(?YZ_ERR_INDEX_NOT_FOUND ++ "\n", [Index]),
                 Req),
@@ -98,13 +101,12 @@ search(Req, S) ->
                                         ErrReq),
             {{halt, 404}, ErrReq2, S};
         throw:{solr_error, {Code, _URL, Err}} ->
+            yz_stat:search_fail(),
             ErrReq = wrq:append_to_response_body(Err, Req),
             ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
                                         ErrReq),
             {{halt, Code}, ErrReq2, S}
     after
-        TD = timer:now_diff(os:timestamp(), T1),
-        yz_stat:update({search_end, TD}),
         ?IF(FProf, fprof_analyse(FProfFile))
     end.
 
