@@ -17,13 +17,9 @@
 %% under the License.
 %%
 %% -------------------------------------------------------------------
-
 -module(yz_entropy).
 -compile(export_all).
 -include("yokozuna.hrl").
-
--define(HOUR_SEC, 60 * 60).
--define(DAY_SEC, ?HOUR_SEC * 24).
 
 %% @doc This module contains functionality related to entropy.
 
@@ -37,10 +33,7 @@
 iterate_entropy_data(Index, Filter, Fun) ->
     case yz_solr:ping(Index) of
         true ->
-            DateTime = calendar:now_to_universal_time(os:timestamp()),
-            Before = to_iso8601(minus_period(DateTime, [{mins, 5}])),
-            Filter2 = [{before, Before},
-                       {continuation, none},
+            Filter2 = [{continuation, none},
                        {limit, 100}|Filter],
             ED = yz_solr:entropy_data(Index, Filter2),
             iterate_entropy_data(Index, Filter2, Fun, ED);
@@ -58,26 +51,3 @@ iterate_entropy_data(Index, Filter, Fun, #entropy_data{more=true,
 iterate_entropy_data(_, _, Fun, #entropy_data{more=false,
                                               pairs=Pairs}) ->
     lists:foreach(Fun, Pairs).
-
-%% @doc Minus Period from DateTime.
-%%
-%% @spec minus_period(DateTime, Period::Period) -> DateTime
-%%   DateTime = {{Year, Month, Day}, {Hour, Min, Sec}}
-%%   Period = {period, {days, integer()}, {hours, integer()}}
-%%
-minus_period(DateTime, Periods) ->
-    Days = proplists:get_value(days, Periods, 0),
-    Hours = proplists:get_value(hours, Periods, 0),
-    Minutes = proplists:get_value(minutes, Periods, 0),
-    PeriodSecs = (Days * ?DAY_SEC) + (Hours * ?HOUR_SEC) + (Minutes * 60),
-    DateTimeSecs = calendar:datetime_to_gregorian_seconds(DateTime),
-    calendar:gregorian_seconds_to_datetime(DateTimeSecs - PeriodSecs).
-
-%% @doc Convert `erlang:now/0' or calendar datetime type to an ISO8601
-%%      datetime.
--spec to_iso8601(timestamp() | datetime()) -> iso8601().
-to_iso8601({_Mega, _Secs, _Micro}=Now) ->
-    to_iso8601(calendar:now_to_datetime(Now));
-to_iso8601({{Year, Month, Day}, {Hour, Min, Sec}}) ->
-    list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
-                                 [Year,Month,Day,Hour,Min,Sec])).
