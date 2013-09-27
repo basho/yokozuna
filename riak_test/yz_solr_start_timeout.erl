@@ -1,9 +1,5 @@
 %% @doc Ensure that if Solr doesn't start before the startup wait,
 %% yokozuna tears down the Riak node.
-%%
-%% Note: if this test is successful, the node will be left in a state
-%% that will never run solr successfully (because the WAR file will be
-%% missing).
 -module(yz_solr_start_timeout).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
