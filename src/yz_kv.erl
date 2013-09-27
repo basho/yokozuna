@@ -111,16 +111,9 @@ get_md_entry(MD, Key) ->
 
 %% @doc Extract the index name from `BProps' or return the tombstone
 %% name if there is no associated index.
-%%
-%% TODO: Convert `index_name()' to be binary everywhere.
 -spec get_index(term()) -> index_name().
 get_index(BProps) ->
-    case proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE) of
-        B when is_binary(B) ->
-            binary_to_list(B);
-        S ->
-            S
-    end.
+    proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
 
 %% @doc Extract the index name.
 %% @see get_index/1

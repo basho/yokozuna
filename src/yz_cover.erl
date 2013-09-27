@@ -45,7 +45,7 @@ logical_partitions(Ring, Partitions) ->
 -spec plan(index_name()) -> {[node()], term(), [{node(),{string(),string()}}]} |
                             {error, term()}.
 plan(Index) ->
-    case mochiglobal:get(list_to_atom(Index), undefined) of
+    case mochiglobal:get(?BIN_TO_ATOM(Index), undefined) of
         undefined -> calc_plan(Index);
         Plan -> Plan
     end.
@@ -111,9 +111,9 @@ add_filtering(N, Q, LPI, CS) ->
 cache_plan(Index) ->
     case calc_plan(Index) of
         {error, _} ->
-            mochiglobal:put(list_to_atom(Index), undefined);
+            mochiglobal:put(?BIN_TO_ATOM(Index), undefined);
         Plan ->
-            mochiglobal:put(list_to_atom(Index), Plan)
+            mochiglobal:put(?BIN_TO_ATOM(Index), Plan)
     end,
     ok.
 

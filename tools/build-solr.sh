@@ -68,6 +68,11 @@ WORK_DIR=$1; shift
 NAME=$1; shift
 URL=$1; shift
 
+if [ ! -x "`which ant`"]; then
+  echo "Couldn't find ant, which is needed to compile Solr."
+  exit 1
+fi
+
 mkdir $WORK_DIR
 if test ! -e $WORK_DIR; then
     error "failed to created work dir: $WORK_DIR"

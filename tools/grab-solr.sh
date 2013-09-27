@@ -4,6 +4,7 @@
 #
 # Usage:
 #     ./grab-solr.sh
+#     specify SOLR_PKG_DIR to skip the solr download and use a local copy
 set -e
 
 if [ $(basename $PWD) != "tools" ]
@@ -25,7 +26,13 @@ check_for_solr()
 
 get_solr()
 {
-        wget --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$VSN.tgz
+        if [[ -z ${SOLR_PKG_DIR+x} ]]
+        then
+          wget --no-check-certificate --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$VSN.tgz
+        else
+          echo "Using local copy of $VSN.tgz"
+          cp $SOLR_PKG_DIR/$VSN.tgz ./
+        fi
         tar zxf $VSN.tgz
 }
 

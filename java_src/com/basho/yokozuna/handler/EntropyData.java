@@ -69,11 +69,6 @@ public class EntropyData
         BytesRef cont = contParam != null ?
             decodeCont(contParam) : DEFAULT_CONT;
 
-        // TODO: Make before required in handler config
-        String before = req.getParams().get("before");
-        if (before == null) {
-            throw new Exception("Parameter 'before' is required");
-        }
         int n = req.getParams().getInt("n", DEFAULT_N);
 
         String partition = req.getParams().get("partition");
@@ -124,7 +119,6 @@ public class EntropyData
 
             String text = null;
             String[] vals = null;
-            String ts = null;
             String docPartition = null;
             String riakBucket = null;
             String riakKey = null;
@@ -140,19 +134,11 @@ public class EntropyData
                     text = tmp.utf8ToString();
                     log.debug("text: " + text);
                     vals = text.split(" ");
-                    ts = vals[0];
 
-                    // TODO: what if null?
-                    if (! (ts.compareTo(before) < 0)) {
-                        rsp.add("more", false);
-                        docs.setNumFound(count);
-                        return;
-                    }
-
-                    docPartition = vals[1];
-                    riakBucket = vals[2];
-                    riakKey = vals[3];
-                    hash = vals[4];
+                    docPartition = vals[0];
+                    riakBucket = vals[1];
+                    riakKey = vals[2];
+                    hash = vals[3];
                     if (partition.equals(docPartition)) {
                         SolrDocument tmpDoc = new SolrDocument();
                         tmpDoc.addField("riak_bucket", riakBucket);

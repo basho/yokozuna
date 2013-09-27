@@ -33,11 +33,11 @@
 
 -spec confirm() -> pass.
 confirm() ->
-    Index = "mr_index",
+    Index = <<"mr_index">>,
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     yz_rt:create_index(yz_rt:select_random(Cluster), Index),
-    yz_rt:set_index(yz_rt:select_random(Cluster), list_to_binary(Index)),
+    yz_rt:set_index(yz_rt:select_random(Cluster), Index),
     yz_rt:wait_for_index(Cluster, Index),
     write_100_objs(Cluster, Index),
     verify_100_objs_mr(Cluster, Index),
@@ -53,7 +53,7 @@ verify_100_objs_mr(Cluster, Index) ->
                            {name, <<"Riak.reduceSum">>}]}],
     MR = [{inputs, [{module, <<"yokozuna">>},
                     {function, <<"mapred_search">>},
-                    {arg, [list_to_binary(Index), <<"name_s:yokozuna">>]}]},
+                    {arg, [Index, <<"name_s:yokozuna">>]}]},
           {'query', [MakeTick, ReduceSum]}],
     F = fun(Node) ->
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
@@ -76,7 +76,7 @@ write_obj(Cluster, Index) ->
             HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(Cluster))),
             CT = "application/json",
             lager:info("Writing object with bkey ~p [~p]", [{Index,Key}, HP]),
-            yz_rt:http_put(HP, list_to_binary(Index), Key, CT, Body)
+            yz_rt:http_put(HP, Index, Key, CT, Body)
     end.
 
 -spec http_mr({host(), portnum()}, term()) -> binary().

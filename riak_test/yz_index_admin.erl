@@ -24,16 +24,16 @@ confirm() ->
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
-    confirm_list(Cluster, ["test_index_1", "test_index_2", "test_index_409"]),
-    confirm_delete(Cluster, "test_index_1"),
-    confirm_get(Cluster, "test_index_2"),
-    confirm_404(Cluster, "not_an_index"),
-    confirm_delete_409(Cluster, "delete_409"),
+    confirm_list(Cluster, [<<"test_index_1">>, <<"test_index_2">>, <<"test_index_409">>]),
+    confirm_delete(Cluster, <<"test_index_1">>),
+    confirm_get(Cluster, <<"test_index_2">>),
+    confirm_404(Cluster, <<"not_an_index">>),
+    confirm_delete_409(Cluster, <<"delete_409">>),
     pass.
 
 %% @doc Test basic creation, no body.
 confirm_create_index_1(Cluster) ->
-    Index = "test_index_1",
+    Index = <<"test_index_1">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_1 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
@@ -43,7 +43,7 @@ confirm_create_index_1(Cluster) ->
 
 %% @doc Test index creation when passing schema name.
 confirm_create_index_2(Cluster) ->
-    Index = "test_index_2",
+    Index = <<"test_index_2">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_2 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
@@ -54,7 +54,7 @@ confirm_create_index_2(Cluster) ->
     yz_rt:wait_for_index(Cluster, Index).
 
 confirm_409(Cluster) ->
-    Index = "test_index_409",
+    Index = <<"test_index_409">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_409 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
@@ -68,8 +68,7 @@ confirm_list(Cluster, Indexes) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_list ~p [~p]", [Indexes, HP]),
     URL = index_list_url(HP),
-    {ok, Status, _, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
-    ?assertEqual("200", Status),
+    {ok, "200", _, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
     check_list(Indexes, Body).
 
 confirm_delete(Cluster, Index) ->
@@ -90,7 +89,7 @@ confirm_delete(Cluster, Index) ->
     [ ?assertEqual(ok, rt:wait_until(Node, Is404)) || Node <- Cluster],
 
     %% Verify the index dir was removed from disk as well
-    [ ?assertEqual(ok, rt:wait_until(Node, is_deleted("data/yz/" ++ Index)))
+    [ ?assertEqual(ok, rt:wait_until(Node, is_deleted("data/yz/" ++ binary_to_list(Index))))
       || Node <- Cluster].
 
 is_status(ExpectedStatus, Method, URLSuffix, Headers, Body) ->
@@ -171,8 +170,7 @@ bucket_url({Host, Port}, Bucket) ->
 
 check_list(Indexes, Body) ->
     Decoded = mochijson2:decode(Body),
-    Names = [binary_to_list(proplists:get_value(<<"name">>, Obj))
-             || {struct, Obj} <- Decoded],
+    Names = [proplists:get_value(<<"name">>, Obj) || {struct, Obj} <- Decoded],
     ?assertEqual(lists:sort(Indexes), lists:sort(Names)).
 
 contains_index(_Body) ->

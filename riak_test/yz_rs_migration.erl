@@ -203,7 +203,7 @@ create_index([Node1|_]=Cluster, riak_search) ->
         end,
     yz_rt:wait_until(Cluster, F);
 create_index(Cluster, yokozuna) ->
-    Idx = binary_to_list(?FRUIT_BUCKET),
+    Idx = ?FRUIT_BUCKET,
     yz_rt:create_index(hd(Cluster), Idx),
     yz_rt:wait_for_index(Cluster, Idx).
 

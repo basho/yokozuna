@@ -95,8 +95,6 @@ http_put({Host, Port}, Bucket, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
-load_data(Cluster, Index, YZBenchDir, NumKeys) when is_binary(Index) ->
-    load_data(Cluster, binary_to_list(Index), YZBenchDir, NumKeys);
 load_data(Cluster, Index, YZBenchDir, NumKeys) ->
     lager:info("Load data for index ~p onto cluster ~p", [Index, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
@@ -106,13 +104,13 @@ load_data(Cluster, Index, YZBenchDir, NumKeys) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/" ++ Index},
+           {index_path, "/riak/" ++ binary_to_list(Index)},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]},
            {shutdown_on_error, true}],
-    File = "bb-load-" ++ Index,
+    File = "bb-load-" ++ binary_to_list(Index),
     write_terms(File, Cfg),
     run_bb(sync, File).
 
@@ -157,8 +155,7 @@ search(Type, {Host, Port}, Index, Name, Term) ->
                  yokozuna ->
                      "http://~s:~s/search/~s?q=~s:~s&wt=json"
              end,
-    URL = lists:flatten(io_lib:format(FmtStr,
-                                      [Host, Port, Index, Name, Term])),
+    URL = ?FMT(FmtStr, [Host, Port, Index, Name, Term]),
     lager:info("Run search ~s", [URL]),
     Opts = [{response_format, binary}],
     ibrowse:send_req(URL, [], get, [], Opts).
@@ -173,7 +170,7 @@ remove_index(Node, Bucket) ->
     ok = rpc:call(Node, yz_kv, remove_index, [Bucket]).
 
 set_index(Node, Bucket) ->
-    set_index(Node, Bucket, binary_to_list(Bucket)).
+    set_index(Node, Bucket, Bucket).
 
 %% TODO: this should use PB interface like clients
 set_index(Node, Bucket, Index) ->
@@ -187,7 +184,7 @@ verify_count(Expected, Resp) ->
     lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
     Expected == get_count(Resp).
 
--spec wait_for_index(list(), string()) -> term().
+-spec wait_for_index(list(), index_name()) -> term().
 wait_for_index(Cluster, Index) ->
     IsIndexUp =
         fun(Node) ->

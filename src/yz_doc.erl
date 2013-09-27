@@ -192,18 +192,11 @@ split_tag_names(TagNames) ->
 doc_ts(MD) ->
     dict:fetch(<<"X-Riak-Last-Modified">>, MD).
 
-gen_ts() ->
-    {{Year, Month, Day},
-     {Hour, Min, Sec}} = calendar:now_to_universal_time(erlang:now()),
-    list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
-                                 [Year,Month,Day,Hour,Min,Sec])).
-
 %% NOTE: All of this data needs to be in one field to efficiently
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.
 gen_ed(O, Hash, Partition) ->
-    TS = gen_ts(),
     RiakBucket = yz_kv:get_obj_bucket(O),
     RiakKey = yz_kv:get_obj_key(O),
     Hash64 = base64:encode(Hash),
-    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash64/binary>>.
+    <<Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash64/binary>>.

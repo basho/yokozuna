@@ -53,23 +53,23 @@ confirm() ->
 %% will be discovered and repaired.
 verify_index_add(Cluster, YZBenchDir) ->
     lager:info("Verify adding index"),
-    yz_rt:load_data(Cluster, "fruit", YZBenchDir, ?NUM_KEYS),
+    yz_rt:load_data(Cluster, <<"fruit">>, YZBenchDir, ?NUM_KEYS),
     %% Let 1s soft-commit catch up
     timer:sleep(1000),
     Hosts = yz_rt:host_entries(rt:connection_info(Cluster)),
     HP = yz_rt:select_random(Hosts),
     lager:info("Verify fruit index doesn't exist"),
-    {ok, "404", _, _} = yz_rt:search(yokozuna, HP, "fruit", "*", "*"),
+    {ok, "404", _, _} = yz_rt:search(yokozuna, HP, <<"fruit">>, "*", "*"),
     lager:info("Create fruit index + set flag"),
-    yz_rt:create_index(yz_rt:select_random(Cluster), "fruit"),
+    yz_rt:create_index(yz_rt:select_random(Cluster), <<"fruit">>),
     yz_rt:set_index(yz_rt:select_random(Cluster), <<"fruit">>),
-    yz_rt:wait_for_index(Cluster, "fruit"),
+    yz_rt:wait_for_index(Cluster, <<"fruit">>),
 
     %% TODO: use YZ/KV AAE stats to determine when AAE has covered ring once.
     F = fun(Node) ->
                 lager:info("Verify that AAE re-indexes objects under fruit index [~p]", [Node]),
                 HP2 = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-                yz_rt:search_expect(HP2, "fruit", "*", "*", ?NUM_KEYS)
+                yz_rt:search_expect(HP2, <<"fruit">>, "*", "*", ?NUM_KEYS)
         end,
     yz_rt:wait_until(Cluster, F).
 
@@ -82,32 +82,33 @@ verify_index_remove(Cluster) ->
     F = fun(Node2) ->
                 lager:info("Verify fruit indexes are deleted [~p]", [Node2]),
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node2]))),
-                yz_rt:search_expect(HP, "fruit", "*", "*", 0)
+                yz_rt:search_expect(HP, <<"fruit">>, "*", "*", 0)
         end,
     yz_rt:wait_until(Cluster, F).
 
 %% @doc Verify that removing the index entry for a bucket deletes only
 %%      that bucket's data in the associated index.
 verify_many_to_one_index_remove(Cluster) ->
+    Index = <<"many">>,
     lager:info("Verify removing index on a many-to-one index"),
     Node = yz_rt:select_random(Cluster),
     HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-    yz_rt:create_index(Node, "many"),
-    yz_rt:set_index(Node, <<"b1">>, "many"),
-    yz_rt:set_index(Node, <<"b2">>, "many"),
-    yz_rt:wait_for_index(Cluster, "many"),
+    yz_rt:create_index(Node, Index),
+    yz_rt:set_index(Node, <<"b1">>, Index),
+    yz_rt:set_index(Node, <<"b2">>, Index),
+    yz_rt:wait_for_index(Cluster, Index),
     yz_rt:http_put(HP, <<"b1">>, <<"key">>, <<"somedata">>),
     yz_rt:http_put(HP, <<"b2">>, <<"key">>, <<"somedata">>),
     %% Wait for soft-commit
     timer:sleep(1100),
-    ?assert(yz_rt:search_expect(HP, "many", "_yz_rb", "b1", 1)),
-    ?assert(yz_rt:search_expect(HP, "many", "_yz_rb", "b2", 1)),
+    ?assert(yz_rt:search_expect(HP, Index, "_yz_rb", "b1", 1)),
+    ?assert(yz_rt:search_expect(HP, Index, "_yz_rb", "b2", 1)),
     yz_rt:remove_index(Node, <<"b1">>),
     F = fun(Node2) ->
-                lager:info("Verify only 'b1' data is removed from 'many' index [~p]", [Node2]),
+                lager:info("Verify only 'b1' data is removed from ~s index [~p]", [Index, Node2]),
                 HP2 = hd(yz_rt:host_entries(rt:connection_info([Node2]))),
-                R1 = yz_rt:search_expect(HP2, "many", "_yz_rb", "b1", 0),
-                R2 = yz_rt:search_expect(HP2, "many", "_yz_rb", "b2", 1),
+                R1 = yz_rt:search_expect(HP2, Index, "_yz_rb", "b1", 0),
+                R2 = yz_rt:search_expect(HP2, Index, "_yz_rb", "b2", 1),
                 R1 and R2
         end,
     yz_rt:wait_until(Cluster, F).
