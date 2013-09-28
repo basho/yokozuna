@@ -14,6 +14,8 @@
 -type interfaces() :: [interface()].
 -type conn_info() :: [{node(), interfaces()}].
 
+-type cluster() :: [node()].
+
 -spec connection_info(list()) -> orddict:orddict().
 connection_info(Cluster) ->
     CI = orddict:from_list(rt:connection_info(Cluster)),
@@ -95,8 +97,21 @@ http_put({Host, Port}, Bucket, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
-load_data(Cluster, Index, YZBenchDir, NumKeys) ->
-    lager:info("Load data for index ~p onto cluster ~p", [Index, Cluster]),
+%% @doc Run basho bench job to load fruit data on `Cluster'.
+%%
+%% `Cluster' - List of nodes to send requests to.
+%%
+%% `Bucket' - The bucket name to write data to.
+%%
+%% `YZBenchDir' - The file path to Yokozuna's `misc/bench' dir.
+%%
+%% `NumKeys' - The total number of keys to write.  The maximum values
+%% is 10 million.
+-spec load_data(cluster(), bucket(), string(), integer()) ->
+                       timeout |
+                       {Status :: integer(), Output :: binary()}.
+load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
+    lager:info("Load data into bucket ~p onto cluster ~p", [Bucket, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
     KeyGen = {function, yz_driver, fruit_key_val_gen, [NumKeys]},
     Cfg = [{mode,max},
@@ -104,13 +119,13 @@ load_data(Cluster, Index, YZBenchDir, NumKeys) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/" ++ binary_to_list(Index)},
+           {index_path, "/riak/" ++ binary_to_list(Bucket)},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]},
            {shutdown_on_error, true}],
-    File = "bb-load-" ++ binary_to_list(Index),
+    File = "bb-load-" ++ binary_to_list(Bucket),
     write_terms(File, Cfg),
     run_bb(sync, File).
 
