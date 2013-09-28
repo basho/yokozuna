@@ -45,7 +45,7 @@ confirm() ->
     Cluster = join_three(Nodes),
     wait_for_joins(Cluster),
     setup_indexing(Cluster, YZBenchDir),
-    load_data(Cluster, ?INDEX, YZBenchDir),
+    {0, _} = yz_rt:load_data(Cluster, ?INDEX, YZBenchDir, ?NUM_KEYS),
     %% wait for soft-commit
     timer:sleep(1000),
     Ref = async_query(Cluster, YZBenchDir),
@@ -145,24 +145,6 @@ join_rest([NodeA|_]=Cluster, Nodes) ->
     ToJoin = Nodes -- Cluster,
     [begin rt:join(Node, NodeA) end || Node <- ToJoin],
     Nodes.
-
-load_data(Cluster, Index, YZBenchDir) ->
-    lager:info("Load data for index ~p onto cluster ~p", [Index, Cluster]),
-    Hosts = host_entries(rt:connection_info(Cluster)),
-    KeyGen = {function, yz_driver, fruit_key_val_gen, [?NUM_KEYS]},
-    Cfg = [{mode,max},
-           {duration,5},
-           {concurrent, 3},
-           {code_paths, [YZBenchDir]},
-           {driver, yz_driver},
-           {index_path, "/riak/" ++ binary_to_list(Index)},
-           {http_conns, Hosts},
-           {pb_conns, []},
-           {key_generator, KeyGen},
-           {operations, [{load_fruit, 1}]}],
-    File = "bb-load-" ++ binary_to_list(Index),
-    write_terms(File, Cfg),
-    run_bb(sync, File).
 
 read_schema(YZBenchDir) ->
     Path = filename:join([YZBenchDir, "schemas", "fruit_schema.xml"]),
