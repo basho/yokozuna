@@ -40,9 +40,8 @@ confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Nodes = rt:deploy_nodes(4, ?CFG),
-    Cluster = join(Nodes),
-    yz_rt:wait_for_joins(Cluster),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     verify_index_add(Cluster, YZBenchDir),
     verify_index_remove(Cluster),
     verify_many_to_one_index_remove(Cluster),
@@ -112,8 +111,3 @@ verify_many_to_one_index_remove(Cluster) ->
                 R1 and R2
         end,
     yz_rt:wait_until(Cluster, F).
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.

@@ -20,7 +20,8 @@
 
 
 confirm() ->
-    Cluster = prepare_cluster(4),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
@@ -196,24 +197,7 @@ index_url({Host,Port}, Index) ->
 url({Host,Port}, Suffix) ->
     ?FMT("http://~s:~B/~s", [Host, Port, Suffix]).
 
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
-
-prepare_cluster(NumNodes) ->
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
-
 select_random(List) ->
     Length = length(List),
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
-
-wait_for_joins(Cluster) ->
-    lager:info("Waiting for ownership handoff to finish"),
-    rt:wait_until_nodes_ready(Cluster),
-    rt:wait_until_no_pending_changes(Cluster).
