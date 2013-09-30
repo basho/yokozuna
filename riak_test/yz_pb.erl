@@ -108,16 +108,13 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
     ok.
 
 confirm_admin_schema(Cluster) ->
-    Schema = <<"my_schema">>,
+    Name = <<"my_schema">>,
     Node = select_random(Cluster),
-    [{Host, Port}] = host_entries(rt:connection_info([Node])),
-    lager:info("confirm_admin_schema ~s [~p]", [Schema, {Host, Port}]),
-    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    ?assertEqual(ok, riakc_pb_socket:create_search_schema(Pid, Schema, ?SCHEMA_CONTENT)),
-    yz_rt:wait_until(Cluster, fun(_) ->
-        {ok, [{name, Schema},{content, ?SCHEMA_CONTENT}]} ==
-            riakc_pb_socket:get_search_schema(Pid, Schema)
-    end ),
+    {Host, Port} = yz_rt:riak_pb(hd(rt:connection_info([Node]))),
+    lager:info("confirm_admin_schema ~s [~p]", [Name, {Host, Port}]),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, Port),
+    yz_rt:store_schema(Pid, Name, ?SCHEMA_CONTENT),
+    yz_rt:wait_for_schema(Cluster, Name, ?SCHEMA_CONTENT),
     riakc_pb_socket:stop(Pid),
     ok.
 

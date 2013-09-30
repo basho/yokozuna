@@ -5,7 +5,7 @@
                 run_bb/2,
                 search_expect/5, search_expect/6,
                 set_index/2,
-                select_random/1, verify_count/2,
+                verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
 
@@ -43,8 +43,10 @@ confirm() ->
     random:seed(now()),
     Nodes = rt:deploy_nodes(4, ?CFG),
     Cluster = join_three(Nodes),
+    PBConns = yz_rt:open_pb_conns(Cluster),
     wait_for_joins(Cluster),
-    setup_indexing(Cluster, YZBenchDir),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
+    setup_indexing(Cluster, PBConns, YZBenchDir),
     {0, _} = yz_rt:load_data(Cluster, ?INDEX, YZBenchDir, ?NUM_KEYS),
     %% wait for soft-commit
     timer:sleep(1000),
@@ -52,11 +54,13 @@ confirm() ->
     %% Verify data exists before running join
     timer:sleep(10000),
     Cluster2 = join_rest(Cluster, Nodes),
+    rt:wait_for_cluster_service(Cluster2, yokozuna),
     check_status(wait_for(Ref)),
     ok = test_tagging(Cluster),
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
     ok = test_escaped_key(Cluster),
+    yz_rt:close_pb_conns(PBConns),
     pass.
 
 test_escaped_key(Cluster) ->
@@ -123,7 +127,7 @@ check_status({Status,_}) ->
     ?assertEqual(?SUCCESS, Status).
 
 delete_key(Cluster, Key) ->
-    Node = select_random(Cluster),
+    Node = yz_rt:select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
     C:delete(?INDEX, list_to_binary(Key)).
@@ -157,10 +161,12 @@ reap_sleep() ->
     %%       calculated.
     10.
 
-setup_indexing(Cluster, YZBenchDir) ->
-    Node = select_random(Cluster),
+setup_indexing(Cluster, PBConns, YZBenchDir) ->
+    Node = yz_rt:select_random(Cluster),
+    PBConn = yz_rt:select_random(PBConns),
     RawSchema = read_schema(YZBenchDir),
-    ok = store_schema(Node, ?FRUIT_SCHEMA_NAME, RawSchema),
+    yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
+    yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME),
     ok = set_index(Node, ?INDEX),
     ok = create_index(Node, <<"tagging">>),
@@ -169,10 +175,6 @@ setup_indexing(Cluster, YZBenchDir) ->
     ok = set_index(Node, <<"siblings">>),
     [yz_rt:wait_for_index(Cluster, I)
      || I <- [<<"fruit">>, <<"tagging">>, <<"siblings">>]].
-
-store_schema(Node, Name, RawSchema) ->
-    lager:info("Storing schema ~p [~p]", [Name, Node]),
-    ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]).
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),
