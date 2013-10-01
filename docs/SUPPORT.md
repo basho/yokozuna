@@ -56,9 +56,10 @@ this structure is called a _document_.  This task of creating a Solr
 document from a Riak object is the job of the _extractor_.  To perform
 this task two things must be considered.
 
-TODO: This isn't quite right, the fields created by the extractor are
-only a subset of the fields created.  The actually document creation
-is driven by `yz_doc`.
+NOTE: This isn't quite right, the fields created by the extractor are
+only a subset of the fields created.  Special fields needed for
+Yokozuna to properly query data and tagging fields are also created.
+This call happens inside `yz_doc:make_doc`.
 
 1. Does an extractor exist to map the content-type of the object to a
    Solr document?
@@ -95,14 +96,61 @@ extractor.  Assuming the extractor correctly parses the value if will
 return a list of fields, which are name-value pairs.
 
 The text extractor is the simplest one.  By default it will use the
-object's value verbatim and give it the field name `text`.  E.g. an
-object with the value "How much wood could a woodchuck chuck if a
-woodchuck could chuck wood?" would result in the following fields list.
+object's value verbatim and associate if with the field name `text`.
+E.g. an object with the value "How much wood could a woodchuck chuck
+if a woodchuck could chuck wood?" would result in the following fields
+list.
 
 ```erlang
 [{text, <<"How much wood could a woodchuck chuck if a woodchuck could chuck wood?">>}]
 ```
-TODO: JSON & XML
+
+An object with the content type `application/json` is a little
+trickier.  JSON can be nested arbitrarily.  That is, the key of a
+top-level object can have an object as a value, and this object can
+have another object nested inside, an so on.  Yokozuna's JSON
+extractor must have some method of converting this arbitrary nesting
+into a flat list.  It does this by concatenating nested object fields
+with a separator.  The default separator is `_`.  An example should
+make this more clear.
+
+Below is JSON that represents a person, what city they are from and
+what cities they have traveled to.
+
+```javascript
+{"name":"ryan",
+ "info":{"city":"Baltimore",
+         "visited":["Boston", "New York", "San Francisco"]}}
+```
+
+Below is the field list that would be created by the JSON extract.
+
+```erlang
+[{<<"info_visited">>,<<"San Francisco">>},
+ {<<"info_visited">>,<<"New York">>},
+ {<<"info_visited">>,<<"Boston">>},
+ {<<"info_city">>,<<"Baltimore">>},
+ {<<"name">>,<<"ryan">>}]
+```
+
+Some key points to notice.
+
+* Nested objects have their field names concatenated to form a field
+  name.  The default field separator is `_`.  This can be modified.
+
+* Any array causes field names to repeat.  This will require that your
+  schema defines this field as multi-valued.
+
+The XML extractor works in very similar fashion to the JSON extractor
+except it also has element attributes to worry about.  To see the
+document created for an object, without actually writing the object,
+you can use the extract HTTP endpoint.  This will do a dry-run
+extraction and return the document structure as `application/json`.
+
+```
+curl -XPUT -H 'content-type: application/json' \
+  'http://localhost:8098/extract' --data-binary @object.json
+```
 
 ### Events ###
 
