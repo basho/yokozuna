@@ -28,7 +28,9 @@ confirm() ->
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
-    setup_index(Cluster, YZBenchDir),
+    PBConns = yz_rt:open_pb_conns(Cluster),
+    PBConn = yz_rt:select_random(PBConns),
+    setup_index(Cluster, PBConn, YZBenchDir),
     yz_rt:load_data(Cluster, ?INDEX, YZBenchDir, ?NUM_KEYS),
     lager:info("Verify data was indexed"),
     verify_num_match(Cluster, ?NUM_KEYS),
@@ -73,6 +75,7 @@ confirm() ->
     %% repair.
     lager:info("Verify no indefinite repair"),
     verify_no_repair(Cluster),
+    yz_rt:close_pb_conns(PBConns),
     pass.
 
 delete_key_in_solr(Cluster, Index, Key) ->
@@ -100,17 +103,13 @@ read_schema(YZBenchDir) ->
     {ok, RawSchema} = file:read_file(Path),
     RawSchema.
 
-setup_index(Cluster, YZBenchDir) ->
+setup_index(Cluster, PBConn, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
-    ok = store_schema(Node, ?INDEX, RawSchema),
+    yz_rt:store_schema(PBConn, ?INDEX, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
     ok = yz_rt:set_index(Node, ?INDEX),
     yz_rt:wait_for_index(Cluster, ?INDEX).
-
-store_schema(Node, Name, RawSchema) ->
-    lager:info("Storing schema ~p [~p]", [Name, Node]),
-    ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]).
 
 %% @doc Verify that no repair has happened since `TS'.
 verify_no_repair(Cluster) ->

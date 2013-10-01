@@ -1,29 +1,17 @@
 %% @doc Ensure that JVM killing works.
 -module(yz_monitor_solr).
 -compile(export_all).
--import(yz_rt, [host_entries/1,
-                wait_for_joins/1]).
+-import(yz_rt, [host_entries/1]).
 -include_lib("eunit/include/eunit.hrl").
 
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 
 confirm() ->
     random:seed(now()),
-    Cluster = prepare_cluster(1),
+    Cluster = rt:build_cluster(1, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     ok = test_solr_monitor(Cluster),
     pass.
-
-prepare_cluster(NumNodes) ->
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
 
 %% Kill the spawning Erlang process and verify the JVM is killed, too
 -spec test_solr_monitor([node()]) -> ok | fail.

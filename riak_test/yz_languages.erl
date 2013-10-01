@@ -22,28 +22,12 @@ confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Cluster = prepare_cluster(1),
+    Cluster = rt:build_cluster(1, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_body_search_encoding(Cluster),
     confirm_language_field_type(Cluster),
     confirm_tag_encoding(Cluster),
     pass.
-
-prepare_cluster(NumNodes) ->
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
-
-wait_for_joins(Cluster) ->
-    lager:info("Waiting for ownership handoff to finish"),
-    rt:wait_until_nodes_ready(Cluster),
-    rt:wait_until_no_pending_changes(Cluster).
 
 select_random(List) ->
     Length = length(List),
