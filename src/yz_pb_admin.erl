@@ -64,9 +64,13 @@ process(#rpbyokozunaschemaputreq{
     end;
 
 process(#rpbyokozunaschemagetreq{name = SchemaName}, State) ->
-    {ok, Content} = yz_schema:get(SchemaName),
-    Schema = #rpbyokozunaschema{name = SchemaName, content = Content},
-    {reply, #rpbyokozunaschemagetresp{schema = Schema}, State};
+    case yz_schema:get(SchemaName) of
+        {ok, Content} ->
+            Schema = #rpbyokozunaschema{name = SchemaName, content = Content},
+            {reply, #rpbyokozunaschemagetresp{schema = Schema}, State};
+        {error, _Name, notfound} ->
+            {error, "notfound", State}
+    end;
 
 process(#rpbyokozunaindexdeletereq{name = IndexName}, State) ->
     Ring = yz_misc:get_ring(transformed),

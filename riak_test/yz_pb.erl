@@ -130,6 +130,8 @@ confirm_admin_schema(Cluster) ->
         {ok, [{name, Schema},{content, ?SCHEMA_CONTENT}]} ==
             riakc_pb_socket:get_search_schema(Pid, Schema)
     end ),
+    MissingMessage = riakc_pb_socket:get_search_schema(Pid,<<"not_here">>),
+    ?assertEqual({error,<<"notfound">>}, MissingMessage),
     riakc_pb_socket:stop(Pid),
     ok.
 
