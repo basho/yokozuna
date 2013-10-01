@@ -138,14 +138,29 @@ index(Obj, Reason, P) ->
             Ring = yz_misc:get_ring(transformed),
             case is_owner_or_future_owner(P, node(), Ring) of
                 true ->
+                    T1 = os:timestamp(),
                     BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-                    Index = get_index(BKey, Ring),
-                    ShortPL = get_short_preflist(BKey, Ring),
-                    case should_index(Index) of
-                        true ->
-                            index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
-                        false ->
-                            dont_index(Obj, Reason, P, ShortPL, BKey)
+                    try
+                        Index = get_index(BKey, Ring),
+                        ShortPL = get_short_preflist(BKey, Ring),
+                        case should_index(Index) of
+                            true ->
+                                index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
+                            false ->
+                                dont_index(Obj, Reason, P, ShortPL, BKey)
+                        end,
+                        yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
+                    catch _:Err ->
+                            yz_stat:index_fail(),
+                            Trace = erlang:get_stacktrace(),
+                            case Reason of
+                                delete ->
+                                    ?ERROR("failed to delete docid ~p with error ~p because ~p",
+                                           [BKey, Err, Trace]);
+                                _ ->
+                                    ?ERROR("failed to index object ~p with error ~p because ~p",
+                                           [BKey, Err, Trace])
+                            end
                     end;
                 false ->
                     ok
@@ -178,12 +193,8 @@ dont_index(Obj, _, P, BKey, ShortPL) ->
             short_preflist(), index_name()) -> ok.
 index(_, delete, _, P, BKey, ShortPL, Index) ->
     {_, Key} = BKey,
-    try
-        ok = yz_solr:delete(Index, [{key, Key}]),
-        ok = update_hashtree(delete, P, ShortPL, BKey)
-    catch _:Err ->
-            ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
-    end,
+    ok = yz_solr:delete(Index, [{key, Key}]),
+    ok = update_hashtree(delete, P, ShortPL, BKey),
     ok;
 
 index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
@@ -194,14 +205,9 @@ index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
     LP = yz_cover:logical_partition(LI, P),
     Hash = hash_object(Obj),
     Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-    try
-        DelOp = cleanup(length(Docs), {Obj, Key, LP}),
-        ok = yz_solr:index(Index, Docs, DelOp),
-        ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
-    catch _:Err ->
-        Trace = erlang:get_stacktrace(),
-        ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace])
-    end,
+    DelOp = cleanup(length(Docs), {Obj, Key, LP}),
+    ok = yz_solr:index(Index, Docs, DelOp),
+    ok = update_hashtree({insert, Hash}, P, ShortPL, BKey),
     ok.
 
 %% @doc Should the content be indexed?

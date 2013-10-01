@@ -57,6 +57,7 @@ maybe_setup(true) ->
     yz_misc:add_routes(Routes),
     maybe_register_pb(?QUERY_SERVICES),
     maybe_register_pb(?ADMIN_SERVICES),
+    setup_stats(),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -70,3 +71,14 @@ maybe_register_pb(Services) ->
             ok
     end.
 
+%% @private
+%%
+%% @doc Determine if direct stats are being used or not.  If not setup
+%% a new sidejob stat resource.  Finally, register Yokozuna stats.
+-spec setup_stats() -> ok.
+setup_stats() ->
+    case app_helper:get_env(riak_kv, direct_stats, false) of
+        true -> ok;
+        false -> sidejob:new_resource(yz_stat_sj, yz_stat_worker, 10000)
+    end,
+    ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]).
