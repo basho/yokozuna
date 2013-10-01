@@ -59,7 +59,7 @@ init([_Enabled]) ->
 
     GeneralSup = {yz_general_sup,
                   {yz_general_sup, start_link, []},
-                  permanent, 5000, supervisor, [yz_general_sup]},
+                  permanent, infinity, supervisor, [yz_general_sup]},
 
     Children = [SolrSup, GeneralSup],
 
