@@ -67,27 +67,32 @@ getpid() ->
 %%% Callbacks
 %%%===================================================================
 
-%% NOTE: Doing the work here will slow down startup but I think that's
-%%       desirable given that Solr must be up for Yokozuna to work
-%%       properly.
+%% NOTE: JVM startup is broken into two pieces:
+%%       1. ensuring the data dir exists, and spawning the JVM process
+%%       2. checking whether solr finished initialization
+%%
+%%       The first bit is done here, because if it take more than the
+%%       five second supervisor limit, something is *really* wrong.
+%%
+%%       The second bit is done once per second until solr is found to
+%%       be up, or until the startup timeout expires. The idea behind
+%%       the once-per second check is to get something in the log soon
+%%       after Solr is confirmed up, instead of waiting until the
+%%       timeout expires.
 init([Dir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
     process_flag(trap_exit, true),
     {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
     ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
     Port = run_cmd(Cmd, Args),
-    case wait_for_solr(solr_startup_wait()) of
-        ok ->
-            S = #state{
-              dir=Dir,
-              port=Port,
-              solr_port=SolrPort,
-              solr_jmx_port=SolrJMXPort
-             },
-            {ok, S};
-        Reason ->
-            Reason
-    end.
+    schedule_solr_check(solr_startup_wait()),
+    S = #state{
+      dir=Dir,
+      port=Port,
+      solr_port=SolrPort,
+      solr_jmx_port=SolrJMXPort
+     },
+    {ok, S}.
 
 handle_call(getpid, _, S) ->
     {reply, get_pid(?S_PORT(S)), S};
@@ -99,6 +104,22 @@ handle_cast(Req, S) ->
     ?WARN("unexpected request ~p", [Req]),
     {noreply, S}.
 
+handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
+    case is_up() of
+        true ->
+            %% solr finished its startup, be merry
+            ?INFO("solr is up", []),
+            riak_core_node_watcher:service_up(yokozuna, self()),
+            {noreply, S};
+        false when WaitTimeSecs > 0 ->
+            %% solr hasn't finished yet, keep waiting
+            schedule_solr_check(WaitTimeSecs),
+            {noreply, S};
+        false ->
+            %% solr did not finish startup quickly enough, or has just
+            %% crashed and the exit message is on its way, shutdown
+            {stop, "solr didn't start in alloted time", S}
+    end;
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
     ?DEBUG("~p", Data),
     {noreply, S};
@@ -122,7 +143,7 @@ terminate(_, S) ->
             ok;
         Pid ->
             os:cmd("kill -TERM " ++ integer_to_list(Pid)),
-            port_close(Port),
+            catch port_close(Port),
             ok
     end.
 
@@ -149,6 +170,11 @@ ensure_data_dir(Dir) ->
     end.
 
 -spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
+build_cmd(_SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
+    %% this will start an executable to keep yz_solr_proc's port
+    %% happy, but will never respond to pings, so we can test the
+    %% timeout capability
+    {os:find_executable("grep"), ["foo"]};
 build_cmd(SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
@@ -193,6 +219,13 @@ get_pid(Port) ->
 
 %% @private
 %%
+%% @doc send a message to this server to remind it to check if solr
+%% finished starting
+schedule_solr_check(WaitTimeSecs) ->
+    erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
+
+%% @private
+%%
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().
 is_up() ->
@@ -213,14 +246,3 @@ solr_jvm_args() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_jvm_args,
                        ?YZ_DEFAULT_SOLR_JVM_ARGS).
-
-wait_for_solr(0) ->
-    {stop, "Solr didn't start in alloted time"};
-wait_for_solr(N) ->
-    case is_up() of
-        true ->
-            ok;
-        false ->
-            timer:sleep(1000),
-            wait_for_solr(N-1)
-    end.

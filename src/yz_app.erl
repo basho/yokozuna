@@ -38,7 +38,7 @@ start(_StartType, _StartArgs) ->
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
         {ok, Pid} ->
-            maybe_setup(Enabled, Pid),
+            maybe_setup(Enabled),
             {ok, Pid};
         Error ->
             Error
@@ -49,16 +49,15 @@ stop(_State) ->
     ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
     ok.
 
-maybe_setup(false, _) ->
+maybe_setup(false) ->
     ok;
-maybe_setup(true, SupPid) ->
+maybe_setup(true) ->
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(?QUERY_SERVICES),
     maybe_register_pb(?ADMIN_SERVICES),
     setup_stats(),
-    riak_core_node_watcher:service_up(yokozuna, SupPid),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not

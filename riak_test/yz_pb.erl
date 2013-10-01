@@ -33,26 +33,14 @@ confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Cluster = prepare_cluster(4),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_admin_schema(Cluster),
     confirm_admin_index(Cluster),
     confirm_basic_search(Cluster),
     confirm_encoded_search(Cluster),
     confirm_multivalued_field(Cluster),
     pass.
-
-
-prepare_cluster(NumNodes) ->
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    yz_rt:wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
 
 select_random(List) ->
     Length = length(List),
@@ -120,16 +108,15 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
     ok.
 
 confirm_admin_schema(Cluster) ->
-    Schema = <<"my_schema">>,
+    Name = <<"my_schema">>,
     Node = select_random(Cluster),
-    [{Host, Port}] = host_entries(rt:connection_info([Node])),
-    lager:info("confirm_admin_schema ~s [~p]", [Schema, {Host, Port}]),
-    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    ?assertEqual(ok, riakc_pb_socket:create_search_schema(Pid, Schema, ?SCHEMA_CONTENT)),
-    yz_rt:wait_until(Cluster, fun(_) ->
-        {ok, [{name, Schema},{content, ?SCHEMA_CONTENT}]} ==
-            riakc_pb_socket:get_search_schema(Pid, Schema)
-    end ),
+    {Host, Port} = yz_rt:riak_pb(hd(rt:connection_info([Node]))),
+    lager:info("confirm_admin_schema ~s [~p]", [Name, {Host, Port}]),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, Port),
+    yz_rt:store_schema(Pid, Name, ?SCHEMA_CONTENT),
+    yz_rt:wait_for_schema(Cluster, Name, ?SCHEMA_CONTENT),
+    MissingMessage = riakc_pb_socket:get_search_schema(Pid,<<"not_here">>),
+    ?assertEqual({error,<<"notfound">>}, MissingMessage),
     riakc_pb_socket:stop(Pid),
     ok.
 

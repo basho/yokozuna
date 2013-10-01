@@ -2,12 +2,12 @@ REBAR = $(shell pwd)/rebar
 
 .PHONY: deps rel stagedevrel test
 
-all: deps compile
+all: deps compile-riak-test
 
 compile:
 	$(REBAR) compile
 
-compile-riak-test: all
+compile-riak-test: compile
 	$(REBAR) skip_deps=true riak_test_compile
 
 deps:
@@ -36,7 +36,7 @@ check_plt: deps compile
 
 build_plt: deps compile
 	dialyzer --build_plt --output_plt $(COMBO_PLT) --apps $(APPS) \
-		deps/*/ebin
+		deps/*/ebin riak_test/ebin
 
 dialyzer: deps compile
 	@echo
@@ -46,6 +46,13 @@ dialyzer: deps compile
 	@sleep 1
 	dialyzer -Wno_return --plt $(COMBO_PLT) ebin
 
+dialyzer_rt: deps compile-riak-test
+	@echo
+	@echo Use "'make check_plt'" to check PLT prior to using this target.
+	@echo Use "'make build_plt'" to build PLT prior to using this target.
+	@echo
+	@sleep 1
+	dialyzer -Wno_return --plt $(COMBO_PLT) riak_test/ebin
 
 cleanplt:
 	@echo
