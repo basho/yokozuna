@@ -44,7 +44,7 @@ dialyzer: deps compile
 	@echo Use "'make build_plt'" to build PLT prior to using this target.
 	@echo
 	@sleep 1
-	dialyzer -Wno_return --plt $(COMBO_PLT) riak_test/ebin
+	dialyzer -Wno_return --plt $(COMBO_PLT) ebin
 
 dialyzer_rt: deps compile-riak-test
 	@echo
