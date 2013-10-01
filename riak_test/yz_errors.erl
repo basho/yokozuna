@@ -4,7 +4,7 @@
 -import(yz_rt, [host_entries/1,
                 run_bb/2, search_expect/5,
                 select_random/1, verify_count/2,
-                wait_for_joins/1, write_terms/2]).
+                write_terms/2]).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -28,21 +28,10 @@ confirm() ->
     YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Cluster = prepare_cluster(4),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     ok = test_errors(Cluster),
     pass.
-
-prepare_cluster(NumNodes) ->
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
 
 test_errors(Cluster) ->
     ok = expect_bad_json(Cluster),

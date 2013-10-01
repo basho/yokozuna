@@ -185,7 +185,8 @@
 
 
 confirm() ->
-    Cluster = prepare_cluster(4),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_create_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_get_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_not_found(Cluster, <<"not_a_schema">>),
@@ -231,7 +232,7 @@ confirm_bad_ct(Cluster, Name, RawSchema) ->
     lager:info("confirm_bad_ct ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/json"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, _Body} = http(put, URL, Headers, RawSchema),
     ?assertEqual("415", Status).
 
 %% @doc Confirm that truncated schema fails, returning 400.
@@ -350,19 +351,3 @@ index_url({Host,Port}, Name) ->
 
 schema_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/yz/schema/~s", [Host, Port, Name]).
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
-
-prepare_cluster(NumNodes) ->
-    %% Note: may need to use below call b/c of diff between
-    %% deploy_nodes/1 & /2
-    %%
-    %% Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    yz_rt:wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.

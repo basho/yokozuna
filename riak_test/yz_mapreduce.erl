@@ -36,6 +36,7 @@ confirm() ->
     Index = <<"mr_index">>,
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     yz_rt:create_index(yz_rt:select_random(Cluster), Index),
     yz_rt:set_index(yz_rt:select_random(Cluster), Index),
     yz_rt:wait_for_index(Cluster, Index),

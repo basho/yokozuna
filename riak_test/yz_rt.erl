@@ -14,6 +14,16 @@
 -type interfaces() :: [interface()].
 -type conn_info() :: [{node(), interfaces()}].
 
+-type cluster() :: [node()].
+
+%% @doc Given a list of protobuff connections, close each one.
+%%
+%% @see open_pb_conns/1
+-spec close_pb_conns([pid()]) -> ok.
+close_pb_conns(PBConns) ->
+    [riakc_pb_socket:stop(C) || C <- PBConns],
+    ok.
+
 -spec connection_info(list()) -> orddict:orddict().
 connection_info(Cluster) ->
     CI = orddict:from_list(rt:connection_info(Cluster)),
@@ -95,8 +105,21 @@ http_put({Host, Port}, Bucket, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
-load_data(Cluster, Index, YZBenchDir, NumKeys) ->
-    lager:info("Load data for index ~p onto cluster ~p", [Index, Cluster]),
+%% @doc Run basho bench job to load fruit data on `Cluster'.
+%%
+%% `Cluster' - List of nodes to send requests to.
+%%
+%% `Bucket' - The bucket name to write data to.
+%%
+%% `YZBenchDir' - The file path to Yokozuna's `misc/bench' dir.
+%%
+%% `NumKeys' - The total number of keys to write.  The maximum values
+%% is 10 million.
+-spec load_data(cluster(), bucket(), string(), integer()) ->
+                       timeout |
+                       {Status :: integer(), Output :: binary()}.
+load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
+    lager:info("Load data into bucket ~p onto cluster ~p", [Bucket, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
     KeyGen = {function, yz_driver, fruit_key_val_gen, [NumKeys]},
     Cfg = [{mode,max},
@@ -104,15 +127,27 @@ load_data(Cluster, Index, YZBenchDir, NumKeys) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/" ++ binary_to_list(Index)},
+           {index_path, "/riak/" ++ binary_to_list(Bucket)},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]},
            {shutdown_on_error, true}],
-    File = "bb-load-" ++ binary_to_list(Index),
+    File = "bb-load-" ++ binary_to_list(Bucket),
     write_terms(File, Cfg),
     run_bb(sync, File).
+
+%% @doc Open a protobuff connection to each node and return the list
+%% of connections.
+%%
+%% @see close_pb_conns/1
+-spec open_pb_conns(cluster()) -> [PBConn :: pid()].
+open_pb_conns(Cluster) ->
+    [begin
+         {Host, Port} = riak_pb(CI),
+         {ok, PBConn} = riakc_pb_socket:start_link(Host, Port),
+         PBConn
+     end || {_Node, CI} <- rt:connection_info(Cluster)].
 
 random_keys(MaxKey) ->
     random_keys(4 + random:uniform(100), MaxKey).
@@ -121,10 +156,15 @@ random_keys(Num, MaxKey) ->
     lists:usort([integer_to_list(random:uniform(MaxKey))
                  || _ <- lists:seq(1, Num)]).
 
--spec riak_http(interfaces()) -> {host(), portnum()}.
+-spec riak_http({node(), interfaces()} | interfaces()) -> {host(), portnum()}.
+riak_http({_Node, ConnInfo}) ->
+    riak_http(ConnInfo);
 riak_http(ConnInfo) ->
     proplists:get_value(http, ConnInfo).
 
+-spec riak_pb({node(), interfaces()} | interfaces()) -> {host(), portnum()}.
+riak_pb({_Node, ConnInfo}) ->
+    riak_pb(ConnInfo);
 riak_pb(ConnInfo) ->
     proplists:get_value(pb, ConnInfo).
 
@@ -179,6 +219,45 @@ set_index(Node, Bucket, Index) ->
 
 solr_http(ConnInfo) ->
     proplists:get_value(solr_http, ConnInfo).
+
+%% @doc Store the schema under `Name' using the protobuff `PB'
+%% connection.
+-spec store_schema(pid(), schema_name(), raw_schema()) -> ok.
+store_schema(PBConn, Name, Raw) ->
+    lager:info("Storing schema ~s", [Name]),
+    ?assertEqual(ok, riakc_pb_socket:create_search_schema(PBConn, Name, Raw)),
+    ok.
+
+%% @see wait_for_schema/3
+wait_for_schema(Cluster, Name) ->
+    wait_for_schema(Cluster, Name, ignore).
+
+%% @doc Wait for the schema `Name' to be read by all nodes in
+%% `Cluster' before returning.  If `Content' is binary data when
+%% verify the schema bytes exactly match `Content'.
+-spec wait_for_schema(cluster(), schema_name(), ignore | raw_schema()) -> ok.
+wait_for_schema(Cluster, Name, Content) ->
+    F = fun(Node) ->
+                lager:info("Attempt to read schema ~s from node ~p", [Name, Node]),
+                {Host, Port} = riak_pb(hd(rt:connection_info([Node]))),
+                {ok, PBConn} = riakc_pb_socket:start_link(Host, Port),
+                R = riakc_pb_socket:get_search_schema(PBConn, Name),
+                riakc_pb_socket:stop(PBConn),
+                case R of
+                    {ok, PL} ->
+                        case Content of
+                            ignore ->
+                                Name == proplists:get_value(name, PL);
+                            _ ->
+                                (Name == proplists:get_value(name, PL)) and
+                                    (Content == proplists:get_value(content, PL))
+                        end;
+                    _ ->
+                        false
+                end
+        end,
+    wait_until(Cluster,  F),
+    ok.
 
 verify_count(Expected, Resp) ->
     lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
