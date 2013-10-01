@@ -58,10 +58,12 @@ process(Msg, State) ->
 maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
+            T1 = os:timestamp(),
             try
                 Result = yz_solr:dist_search(Index, Params),
                 case Result of
                     {error, insufficient_vnodes_available} ->
+                        yz_stat:search_fail(),
                         {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
                     {_Headers, Body} ->
                         R = mochijson2:decode(Body),
@@ -75,16 +77,20 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
                             max_score = MaxScore,
                             num_found = NumFound
                         },
+                        yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
                         {reply, RPBResp, State}
                 end
             catch
                 throw:not_found ->
+                    yz_stat:search_fail(),
                     ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
                     {error, ErrMsg, State};
                 throw:{Message, URL, Err} ->
+                    yz_stat:search_fail(),
                     ?INFO("~p ~p ~p~n", [Message, URL, Err]),
                     {error, Message, State};
                 _:Reason ->
+                    yz_stat:search_fail(),
                     Trace = erlang:get_stacktrace(),
                     ?ERROR("~p ~p~n", [Reason, Trace]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}

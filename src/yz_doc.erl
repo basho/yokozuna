@@ -93,15 +93,17 @@ extract_fields({MD, V}) ->
             try
                 case yz_extractor:run(V, ExtractorDef) of
                     {error, Reason} ->
+                        yz_stat:index_fail(),
                         ?ERROR("failed to index fields from value with reason ~s~nValue: ~s", [Reason, V]),
                         [{?YZ_ERR_FIELD_S, 1}];
                     Fields ->
                         Fields
                 end
             catch _:Err ->
-                Trace = erlang:get_stacktrace(),
-                ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
-                [{?YZ_ERR_FIELD_S, 1}]
+                    yz_stat:index_fail(),
+                    Trace = erlang:get_stacktrace(),
+                    ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
+                    [{?YZ_ERR_FIELD_S, 1}]
             end;
         true ->
             []

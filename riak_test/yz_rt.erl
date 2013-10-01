@@ -272,6 +272,11 @@ wait_for_index(Cluster, Index) ->
         end,
     [?assertEqual(ok, rt:wait_until(Node, IsIndexUp)) || Node <- Cluster].
 
+join_all(Nodes) ->
+    [NodeA|Others] = Nodes,
+    [rt:join(Node, NodeA) || Node <- Others],
+    Nodes.
+
 wait_for_joins(Cluster) ->
     lager:info("Waiting for ownership handoff to finish"),
     rt:wait_until_nodes_ready(Cluster),
