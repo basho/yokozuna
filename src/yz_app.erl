@@ -83,5 +83,3 @@ setup_stats() ->
         false -> sidejob:new_resource(yz_stat_sj, yz_stat_worker, 10000)
     end,
     ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]).
-                                       % {permissions, [search, create_index]}
-        % ]).
