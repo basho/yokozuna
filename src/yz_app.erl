@@ -58,6 +58,7 @@ maybe_setup(true) ->
     maybe_register_pb(?QUERY_SERVICES),
     maybe_register_pb(?ADMIN_SERVICES),
     setup_stats(),
+    ok = riak_core:register(yokozuna, [{permissions, [search,index,schema]}]),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -82,3 +83,5 @@ setup_stats() ->
         false -> sidejob:new_resource(yz_stat_sj, yz_stat_worker, 10000)
     end,
     ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]).
+                                       % {permissions, [search, create_index]}
+        % ]).
