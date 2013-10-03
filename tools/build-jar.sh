@@ -3,9 +3,11 @@
 # Temporary script to build JAR file containing customer Solr request
 # handlers.
 
-if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
-  echo "Couldn't find javac and/or jar, which is needed to compile Yokozuna."
-  exit 1
+if [ -z "$SKIP_JAVA" ]; then
+    if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
+        echo "Couldn't find javac and/or jar, which is needed to compile Yokozuna."
+        exit 1
+    fi
 fi
 
 if [ $(basename $PWD) != "tools" ]
