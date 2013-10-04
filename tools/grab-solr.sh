@@ -15,7 +15,7 @@ fi
 
 SOLR_DIR=../priv/solr
 BUILD_DIR=../build
-VSN=solr-4.3.0-yz
+VSN=solr-4.4.0-yz
 FILENAME=$VSN.tgz
 TMP_DIR=/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
@@ -38,8 +38,12 @@ get_solr()
             else
                 echo "Pulling Solr from S3"
                 wget --no-check-certificate --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$FILENAME
-                mkdir $TMP_DIR
-                cp $FILENAME $TMP_DIR
+                if [ -d $TMP_DIR ]; then
+                    cp $FILENAME $TMP_DIR
+                else
+                    mkdir $TMP_DIR
+                    cp $FILENAME $TMP_DIR
+                fi
             fi
         else
             # This is now obsolete thanks to implicit caching above
