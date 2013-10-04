@@ -75,15 +75,15 @@ echo "Creating Solr dir $SOLR_DIR"
 # which shouldn't be overwritten).  For whatever reason, cp -n causes
 # non-zero exit code when files that would have been overwritten are
 # detected.
-cp -vr $EXAMPLE_DIR/contexts $SOLR_DIR
-cp -vr $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
-cp -vr $EXAMPLE_DIR/etc/logging.properties $SOLR_DIR/etc
-cp -vr $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
-cp -vr $EXAMPLE_DIR/lib $SOLR_DIR
+cp -r $EXAMPLE_DIR/contexts $SOLR_DIR
+cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/etc/logging.properties $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/lib $SOLR_DIR
 # TODO: does resources need to be copied?
-cp -vr $EXAMPLE_DIR/resources $SOLR_DIR
-cp -vr $EXAMPLE_DIR/solr-webapp $SOLR_DIR
-cp -vr $EXAMPLE_DIR/start.jar $SOLR_DIR
-cp -vr $EXAMPLE_DIR/webapps $SOLR_DIR
+cp -r $EXAMPLE_DIR/resources $SOLR_DIR
+cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
+cp -r $EXAMPLE_DIR/start.jar $SOLR_DIR
+cp -r $EXAMPLE_DIR/webapps $SOLR_DIR
 
 echo "Solr dir created successfully"
