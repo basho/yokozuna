@@ -4,7 +4,7 @@
      this file, see http://wiki.apache.org/solr/SolrConfigXml.
 -->
 <config>
-  <luceneMatchVersion>LUCENE_43</luceneMatchVersion>
+  <luceneMatchVersion>4.4</luceneMatchVersion>
   <lib dir="${yz.lib.dir}" />
 
   <!-- Data Directory
@@ -478,6 +478,13 @@
          multipartUploadLimitInKB - specifies the max size of
          Multipart File Uploads that Solr will allow in a Request.
 
+         addHttpRequestToContext - if set to true, it will instruct
+         the requestParsers to include the original HttpServletRequest
+         object in the context map of the SolrQueryRequest under the
+         key "httpRequest". It will not be used by any of the existing
+         Solr components, but may be useful when developing custom
+         plugins.
+
          *** WARNING ***
          The settings below authorize Solr to fetch remote files, You
          should make sure your system has some authentication before
@@ -486,7 +493,8 @@
       -->
     <requestParsers enableRemoteStreaming="false"
                     multipartUploadLimitInKB="2048000"
-                    formdataUploadLimitInKB="102400"/>
+                    formdataUploadLimitInKB="102400"
+                    addHttpRequestToContext="false"/>
 
     <!-- HTTP Caching
 
