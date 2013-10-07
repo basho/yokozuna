@@ -243,8 +243,27 @@ default, expiration occurs after a week.
 For an in-depth look at Riak's AAE process watch Joseph Blomstedt's
 [screencast][aae-sc].
 
+Analysis & Analyzers
+--------------------
 
-TODO: Analyzing, Events?, Tags, Coverage
+Analysis is the process of breaking apart (analyzing) text into a
+stream of tokens.  Solr allows many different methods of analysis.
+This is important because different field values may represent
+different types of data.  For data like unique identifiers, dates, and
+categories you want to index the value verbatim.  It shouldn't be
+analyzed at all.  For text like product summaries or a blog post
+you want to split the value into individual words so that they may be
+queried individually.  You may also want to remove common words,
+lowercase words, or performing stemming.  This is the process of
+_analysis_.
+
+Solr provides many different field types which analyze data in
+different ways.  Custom analyzer chains may be built by stringing
+together XML in the schema file.  This allows custom analysis for each
+field.  For more information on analysis see the
+[Solr 4.4 reference guide][solr440-ref].
+
+TODO: Events?, Tags, Coverage
 
 [aae-sc]: http://coffee.jtuple.com/video/AAE.html
 
