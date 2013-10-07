@@ -278,8 +278,34 @@ the Riak Object metadata.  It is useful in two scenarios.
 
 See [TAGGING][] for more information.
 
+Coverage
+--------
 
-TODO: Events?, Coverage
+Yokozuna uses _doc-based partitioning_.  This means that all index
+entries for a given Riak Object are co-located on the same physical
+machine.  To query the entire index all partitions must be contacted.
+Riak has partitions and replicas.  Adjacent partitions keep replicas
+of the same object.  Replication allows the entire index to be
+considered by only contacting a subset of the partitions.  The process
+of finding a covering set of partitions is known as _coverage_.
+
+Every single query sent to Yokozuna must contact a covering set of
+partitions.  This means a coverage plan must be calculated for every
+query.  However, Yokozuna is different from Riak KV.  The semantic of
+_partition_ is done logically rather than physically.  This means
+coverage plans only need to fine a covering set of nodes and then pass
+a filter query (`fq`) to filter out overlapping replicas.
+
+Calculating a coverage plan is handled by Riak Core.  It can be a very
+expensive operation as much computation is done symbolically and it
+amounts to a knapsack problem.  The larger the ring the more
+expensive.  Yokozuna takes advantage of the fact that it has no
+physical partitions.  It computes a coverage plan asynchronously every
+few seconds, caching the plan for query use.  In the case of node
+failure or ownership change this could mean a delay between cluster
+state and the cached plan.  This is a good trade-off given the
+performance benefits.  Furthermore, even without caching there is a
+race it just has a smaller window.
 
 [aae-sc]: http://coffee.jtuple.com/video/AAE.html
 
