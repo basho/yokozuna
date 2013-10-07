@@ -201,7 +201,52 @@ use of dynamic fields.  It is intended for development purposes and
 testing.  In production a schema should be tailored to the data being
 indexed.
 
-TODO: AAE, Analyzing, Events?, Tags, Coverage
+AAE
+----------
+
+Active Anti-Entropy (AAE) is the process of discovering and correcting
+entropy (divergence) between the data stored in Riak's key-value
+backend and the indexes stored in Solr.  The impetus for AAE is that
+failures come in all types.  Disk failure, dropped messages, network
+partitions, timeouts, overflowing queues, segment faults, power
+outages, etc.  Failures range from obvious to invisible.  Prevention
+of failures is fraught with failures as well.  How do you prevent your
+prevention system from failing?  You don't.  Code for detection, not
+prevention.  That is the purpose of AAE.
+
+Constantly reading and re-indexing every object in Riak could be quite
+expensive.  To minimize the overall cost of detection AAE make use of
+hashtrees.  Every partition has a pair of hashtrees; one for KV and
+another for Yokozuna.  As data is written the hashtrees are updated in
+real-time.
+
+Each tree stores the hash of the object.  Periodically a partition is
+selected and the pair of hashtrees is _exchanged_.  First the root
+hashes are compared.  If equal then there is no more work to do.  You
+could have millions of keys in one partition and verifying they
+**ALL** agree takes the same time as comparing two hashes.  If they
+don't match then the root's children are checked and this process
+continues until the individual discrepancies are found.  If either
+side is missing a key or the hashes for a key do not match then
+_repair_ is invoked on that key.  Repair converges the KV data and its
+indexes, removing the entropy.
+
+As I said, failure is immanent and absolute prevention impossible.  So
+what if the hashtrees themselves contain entropy?  E.g. what if the
+root hashes agree but a divergence exists in the actual data?  Simple,
+you assume you can never fully trust the hashtrees so periodically
+you _expire_ them.  When expired a tree is completely destroyed and
+the re-built from scratch.  This requires folding all data for a
+partition.  It can be expensive and take some time.  This is why, by
+default, expiration occurs after a week.
+
+For an in-depth look at Riak's AAE process watch Joseph Blomstedt's
+[screencast][aae-sc].
+
+
+TODO: Analyzing, Events?, Tags, Coverage
+
+[aae-sc]: http://coffee.jtuple.com/video/AAE.html
 
 [ds]: https://github.com/basho/yokozuna/blob/v0.9.0/priv/default_schema.xml
 
