@@ -153,13 +153,15 @@ curl -XPUT -H 'content-type: application/json' \
 Schemas
 ----------
 
-Every index has one and only one associated schema.  The schema
-describes each field that may be stored in an index.  Most
-importantly, it describes the name of the field and how it should be
-analyzed and indexed.  Currently Yokozuna makes no attempts to hide
-any details of the Solr schema.  That is, a user creates a schema for
-Yokozuna just as she would for Solr.  It contains a set of fields, a
-set of field types, and a unique key.
+Every index must have a schema.  The schema is a collection of field
+names and types.  For each document stored, every field must have a
+matching name in the schema.  This name is used to determine the type.
+The type information determines how a field's value will be indexed.
+
+Currently, Yokozuna makes no attempts to hide any details of the Solr
+schema.  A user creates a schema for Yokozuna just as she would for
+Solr.  Here is the general structure of a schema.
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -177,4 +179,30 @@ set of field types, and a unique key.
 </schema>
 ```
 
+The `<fields>` element is where the field name, type, and overriding
+options are declared.  Here is an example of a field for indexing dates.
+
+```xml
+<field name="created" type="date" indexed="true" stored="true"/>
+```
+
+The corresponding date type is declared under `<types>` like so.
+
+```xml
+<fieldType name="date" class="solr.TrieDateField" precisionStep="0" positionIncrementGap="0"/>
+```
+
+For a complete reference of the Solr schema, its included types, and
+analyzers refer to the [Solr 4.4 reference guide][solr440-ref].
+
+Yokozuna comes bundled with a [default schema][ds] called
+`_yz_default`.  This is an extremely general schema which makes heavy
+use of dynamic fields.  It is intended for development purposes and
+testing.  In production a schema should be tailored to the data being
+indexed.
+
 TODO: AAE, Analyzing, Events?, Tags, Coverage
+
+[ds]: https://github.com/basho/yokozuna/blob/v0.9.0/priv/default_schema.xml
+
+[solr440-ref]: http://archive.apache.org/dist/lucene/solr/ref-guide/apache-solr-ref-guide-4.4.pdf
