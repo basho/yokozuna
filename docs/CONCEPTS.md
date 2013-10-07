@@ -263,10 +263,28 @@ together XML in the schema file.  This allows custom analysis for each
 field.  For more information on analysis see the
 [Solr 4.4 reference guide][solr440-ref].
 
-TODO: Events?, Tags, Coverage
+Tagging
+-------
+
+Tagging is the process of adding field-value pairs to be indexed via
+the Riak Object metadata.  It is useful in two scenarios.
+
+1. The object being stored is opaque but your application has metadata
+   about it that should be indexed.  E.g. storing an image with
+   location or category metadata.
+
+2. The object being stored is not opaque but additional indexes must
+   be added without modifying the object's value.
+
+See [TAGGING][] for more information.
+
+
+TODO: Events?, Coverage
 
 [aae-sc]: http://coffee.jtuple.com/video/AAE.html
 
 [ds]: https://github.com/basho/yokozuna/blob/v0.9.0/priv/default_schema.xml
 
 [solr440-ref]: http://archive.apache.org/dist/lucene/solr/ref-guide/apache-solr-ref-guide-4.4.pdf
+
+[TAGGING]: https://github.com/basho/yokozuna/blob/develop/docs/TAGGING.md
