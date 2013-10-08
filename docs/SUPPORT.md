@@ -85,19 +85,21 @@ pagination in Solr.
 
 https://issues.apache.org/jira/browse/SOLR-1726
 
+Statistics
+----------
 
-Architecture
-------------
+Yokozuna has some basic statistics that may be used to quickly assess
+overall index and query health.
 
-This section gives an overview of Yokozuna's architecture.
+|Name                    |Summary                                        |
+|------------------------|-----------------------------------------------|
+| index/fail             | The number of index failures in last 60 seconds and total since Riak started. |
+| index/latency          | Index latency -- from extraction of bucket-key to return from Solr. |
+| index/throughput       | The number of successful index operations in last 60 seconds and total since Riak started. |
+| search/fail            | The number of search failures in last 60s and total since Riak started. |
+| search/latency         | Search latency.  For protobuff this includes everything after parameter extraction from the request.  For HTTP it starts once the request has been deemed valid. |
+| search/throughput      | The number of successful search operations in last 60 seconds and total since Riak started. |
 
-
-Yokozuna is an Erlang application
----------------------------------
-
-Yokozuna is an Erlang OTP "application".  In the same way that Riak
-Core, Riak KV, and Webmachine are applications.  A collection of
-processes cooperate to perform tasks such as 
 
 Module Index
 ------------
