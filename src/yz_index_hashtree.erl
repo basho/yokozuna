@@ -74,15 +74,10 @@ delete(sync, Id, BKey, Tree) ->
 update(Id, Tree) ->
     gen_server:call(Tree, {update_tree, Id}, infinity).
 
--spec compare({p(),n()}, hashtree:remote_fun(), tree()) ->
-                     [hashtree:keydiff()].
-compare(Id, Remote, Tree) ->
-    compare(Id, Remote, undefined, Tree).
-
 -spec compare({p(),n()}, hashtree:remote_fun(),
-              undefined | hashtree:acc_fun(T), tree()) -> T.
-compare(Id, Remote, AccFun, Tree) ->
-    gen_server:call(Tree, {compare, Id, Remote, AccFun}, infinity).
+              undefined | hashtree:acc_fun(T), term(), tree()) -> T.
+compare(Id, Remote, AccFun, Acc, Tree) ->
+    gen_server:call(Tree, {compare, Id, Remote, AccFun, Acc}, infinity).
 
 get_index(Tree) ->
     gen_server:call(Tree, get_index, infinity).
@@ -179,8 +174,8 @@ handle_call({update_tree, Id}, From, S) ->
                end,
                S);
 
-handle_call({compare, Id, Remote, AccFun}, From, S) ->
-    do_compare(Id, Remote, AccFun, From, S),
+handle_call({compare, Id, Remote, AccFun, Acc}, From, S) ->
+    do_compare(Id, Remote, AccFun, Acc, From, S),
     {noreply, S};
 
 handle_call(destroy, _From, S) ->
@@ -432,8 +427,7 @@ tree_id({Index, N}) ->
 tree_id(_) ->
     erlang:error(badarg).
 
-%% TODO: handle non-existent tree
-do_compare(Id, Remote, AccFun, From, S) ->
+do_compare(Id, Remote, AccFun, Acc, From, S) ->
     case orddict:find(Id, S#state.trees) of
         error ->
             %% This case shouldn't happen, but might as well safely handle it.
@@ -443,12 +437,7 @@ do_compare(Id, Remote, AccFun, From, S) ->
         {ok, Tree} ->
             spawn_link(
               fun() ->
-                      Result = case AccFun of
-                                   undefined ->
-                                       hashtree:compare(Tree, Remote);
-                                   _ ->
-                                       hashtree:compare(Tree, Remote, AccFun)
-                               end,
+                      Result = hashtree:compare(Tree, Remote, AccFun, Acc),
                       gen_server:reply(From, Result)
               end)
     end,
