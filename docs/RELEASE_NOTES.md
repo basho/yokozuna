@@ -78,6 +78,8 @@ stop the local Riak node.
 
 * [172][] - Small fixes based on Dialyzer errors.
 
+* [200][], [201][] - Update to new hashtree API.
+
 [107]: https://github.com/basho/yokozuna/issues/107
 [108]: https://github.com/basho/yokozuna/issues/108
 [129]: https://github.com/basho/yokozuna/issues/129
@@ -100,6 +102,8 @@ stop the local Riak node.
 [196]: https://github.com/basho/yokozuna/pull/196
 [197]: https://github.com/basho/yokozuna/pull/197
 [198]: https://github.com/basho/yokozuna/pull/198
+[200]: https://github.com/basho/yokozuna/issues/200
+[201]: https://github.com/basho/yokozuna/pull/201
 
 0.9.0
 -----
