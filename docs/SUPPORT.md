@@ -6,6 +6,86 @@ environment.  It attempts to go over various facets of Yokozuna which
 might be of interest to someone diagnosing problems.  It should also
 be useful to developers.
 
+Limitations
+----------
+
+Various limitations of Yokozuna and Solr to be aware of.
+
+### Ring Size ###
+
+Yokozuna currently has issues with larger rings.  All benchmarks and
+testing to this day has been done on a ring size of 64 or less.  Ring
+sizes of 128 or 256 **MAY** work but at some point queries will just
+flat out fail.
+
+This is due to filtering that Yokozuna needs to perform to avoid
+overlapping replicas.  It passes a filter query to Solr via a query
+string in the URL of the HTTP request.  The more partitions the longer
+the URL becomes and eventually it becomes too long and the Jetty
+container rejects the request.  Yokozuna uses logical partition
+numbers which helps but there is a limit.
+
+A simple solution is to sent the query to Solr via HTTP POST.  This
+moves the `fq` param into the request body, bypassing the URL length
+limit.
+
+An even better solution would be to remove the filter query
+altogether.  This is much harder to accomplish as it requires creating
+disjoint Solr cores.  E.g. for every index you could create a core per
+partition like `<index_name>_<partition num>` but this would greatly
+increase the number of Solr cores and would require querying `1/N *
+RING_SIZE` shards.
+
+### Cluster Size ###
+
+Yokozuna uses _doc-based partitioning_.  To query a complete index it
+requires a coverage query.  The larger the cluster the more nodes that
+must be considered.  This makes Yokozuna suspect for "larger" clusters
+for some definition of larger.  There are two main questions.
+
+1. What does the function of cluster size to latency look like?
+
+2. What is the typical cluster size where Yokozuna query latency just
+becomes untenable?
+
+The answers to both these questions is going to depend on the amount
+of data and the type of query.  But, given the same query and same
+amount of data you can compare performance of various cluster sizes.
+
+To this day, the largest cluster Yokozuna has been tested against was
+8 nodes.  There is little to no idea what the latency function looks
+like as size increases.  The max cluster size is also unknown.
+
+There is some low-hanging fruit in this area.  Yokozuna makes use of
+Riak Core's coverage planner.  This planner is currently hard-coded to
+optimize for the lest amount of partitions/vnodes.  The thinking is
+that less vnodes means faster 2i & list-keys operations (I'm not
+convinced).  Yokozuna has no physical partitions or vnodes.  This
+behavior actively works against it.  Optimizing for the least amount
+of nodes would reduce latency.  This doesn't solve the real problem
+that doc-based is harder to scale but it gives more headroom and
+raises the maximum cluster size limit.
+
+### Deep Pagination of Large Result Sets ###
+
+Solr currently has issue paginating deep into a large result set.  Use
+cases like paging through 1 million results may have latency and
+memory issues.  The deeper you page into the result set the more
+expensive the query becomes.
+
+If deep pagination must absolutely be done then page size should be
+experimented with.  For page size `S` Solr will request `S` results
+from each node.  If 8 nodes are queried with page size of 1000 then
+8000 results will returned to the coordinator in the first stage of the
+distributed query.  Experimenting with page sizes between 10-10,000 is
+recommended.
+
+The following issue is tracking proposals for improving deep
+pagination in Solr.
+
+https://issues.apache.org/jira/browse/SOLR-1726
+
+
 Architecture
 ------------
 
