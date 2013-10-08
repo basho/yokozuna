@@ -159,25 +159,20 @@ key_exchange(timeout, S=#state{index=Index,
                      exchange_segment_kv(KVTree, IndexN, Segment)
              end,
 
-    AccFun = fun(KeyDiff, Acc) ->
-                     lists:foldl(fun(Diff, Acc2) ->
+    AccFun = fun(KeyDiff, Count) ->
+                     lists:foldl(fun(Diff, InnerCount) ->
                                          case repair(Index, Diff) of
-                                             full_repair ->
-                                                 case Acc2 of
-                                                     [] -> [1];
-                                                     [Count] -> [Count+1]
-                                                 end;
-                                             _ ->
-                                                 Acc2
+                                             full_repair -> InnerCount + 1;
+                                             _ -> InnerCount
                                          end
-                                 end, Acc, KeyDiff)
+                                 end, Count, KeyDiff)
              end,
 
-    case yz_index_hashtree:compare(IndexN, Remote, AccFun, YZTree) of
-        [] ->
+    case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
+        0 ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0),
             ok;
-        [Count] ->
+        Count ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
             lager:info("Repaired ~b keys during active anti-entropy exchange "
                        "of partition ~p for preflist ~p",
