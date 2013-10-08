@@ -173,7 +173,8 @@ run_bb(Method, File) ->
               sync -> cmd;
               async -> spawn_cmd
           end,
-    rt:Fun("$YZ_BENCH_DIR/deps/basho_bench/basho_bench " ++ File).
+    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR", rt_config:get(rt_bench_path)),,
+    rt:Fun(YZBenchDir ++ "/deps/basho_bench/basho_bench " ++ File).
 
 search_expect(HP, Index, Name, Term, Expect) ->
     search_expect(yokozuna, HP, Index, Name, Term, Expect).
