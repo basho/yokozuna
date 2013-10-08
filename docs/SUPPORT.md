@@ -101,6 +101,65 @@ overall index and query health.
 | search/throughput      | The number of successful search operations in last 60 seconds and total since Riak started. |
 
 
+Index Failures
+--------------
+
+Yokozuna indexes Riak KV data.  Users don't directly interact with
+Yokozuna.  Write requests are sent to Riak.  Yokozuna uses a low-level
+vnode hook called anytime KV changes the bytes on disk.  This hook is
+passed the Riak Object sent to the vnode.  Furthermore, the entire
+Yokozuna indexing process **RUNS** on the KV vnode.  It is vital that
+Yokozuna's index hook crash only when absolutely necessary.  The KV
+vnodes keep a lot of state and they are expensive to restart.
+
+Yokozuna's index function isn't fired until the object has been
+written by the KV backend successfully.  This poses a problem.  Riak
+treats data as an opaque blob.  Yokozuna uses the content-type to
+determine how to extract field-value pairs.  A user could pass
+malformed JSON.  KV will write it with no questions asked.  Yokozuna,
+however, will crash while trying to parse.  Yokozuna wraps the entire
+index operation in a try/catch to avoid crashing the KV vnode.
+
+There are several courses of action that could be taken after failing
+to index.
+
+1. Try to roll-back the KV write.  This requires transactions in Riak.
+   Maybe one day.  For now, PUNT!
+
+2. Return a special value and trickle up an error to the user.  But in
+   this case only "half" of the operation failed (remember the KV data
+   was written fine).  How does the error differentiate half vs full
+   failure?  How do application programmers deal with half errors?  PUNT!
+
+3. Log an error and write a special "error document" to Solr.
+   Periodically query every index for these error documents and try to
+   re-index them while watching the logs.  If the object's value is bad
+   then fix it.
+
+In reality, the error document is only written if the value could not
+be extracted from.  Other failure scenarios such as Solr temporarily
+being down simply result in a log entry.  Failures like this are the
+domain of AAE to correct.  The reason AAE cannot be relied upon when
+dealing with something like malformed JSON is because it will
+constantly try to repair, failing every time.  Writing a special
+error document a) prevents AAE from constant repair and b) allows
+discovery of bad KV values via a query.
+
+Some people may argue that the second solution should be used instead.
+That the client should get some sort of failure if either the KV write
+or index operation failed.  I would agree assuming the index operation
+is local to the KV write, which it is, for now.  But in the future
+there is a good chance that the index operation will **NOT** be local
+to the KV write and thus you'd have to make blocking calls across node
+boundaries.  Considering how sensitive the KV vnodes are to blocking
+calls and latency this is probably a bad idea at this point in time.
+Ideally I'd like to see some sort of transaction between the KV write
+and index write but that is not on the table for 2.0.
+
+TODO: cover query to discover error documents
+
+TODO: cover process of dealing with error docs
+
 Module Index
 ------------
 
