@@ -325,6 +325,7 @@
 %% ID
 -define(YZ_ID_FIELD, '_yz_id').
 -define(YZ_ID_FIELD_S, "_yz_id").
+-define(YZ_ID_FIELD_B, <<"_yz_id">>).
 -define(YZ_ID_FIELD_XML, ?YZ_FIELD_XML(?YZ_ID_FIELD_S, "true")).
 -define(YZ_ID_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_id\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\" and @required=\"true\"]").
 

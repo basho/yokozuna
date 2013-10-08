@@ -182,6 +182,18 @@ is_up() ->
         _ -> false
     end.
 
+-spec mbeans_and_stats(index_name()) -> {ok, JSON :: binary()} |
+                                        {error, Reason :: term()}.
+mbeans_and_stats(Index) ->
+    Params = [{stats, <<"true">>},
+              {wt, <<"json">>}],
+    URL = ?FMT("~s/~s/admin/mbeans?~s", [base_url(), Index, mochiweb_util:urlencode(Params)]),
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _, Body} -> {ok, Body};
+        Err -> {error, Err}
+    end.
+
 prepare_json(Docs) ->
     Content = {struct, [{add, encode_doc(D)} || D <- Docs]},
     mochijson2:encode(Content).
