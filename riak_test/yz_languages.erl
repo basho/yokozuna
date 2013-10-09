@@ -19,7 +19,7 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR", rt_config:get(rt_bench_path)),
+    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = rt:build_cluster(1, ?CFG),

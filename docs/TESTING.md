@@ -52,6 +52,7 @@ Open `~/.riak_test.config` and add the following to the end.
     {yokozuna, [
                 {rt_project, "yokozuna"},
                 {rt_deps, ["<path-to-testing-dir>/riak_yz/deps"]},
+                {yz_dir, ["<path-to-testing-dir>/riak_yz"]},
                 {rtdev_path, [{root, "/tmp/rt"},
                               {current, "/tmp/rt/riak_yz"}]}
                ]}.
