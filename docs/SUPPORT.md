@@ -160,6 +160,56 @@ TODO: cover query to discover error documents
 
 TODO: cover process of dealing with error docs
 
+Diagnostic Checklist
+--------------------
+
+This section presents a series of steps to perform when there is
+concern that there is a problem with Yokozuna.  These should be the
+first steps when trying to diagnose issues with Yokozuna.  They are
+meant to gather high-level information that might help focus the the
+problem space.
+
+### Run The Diagnostic Tool ###
+
+TODO: The diagnostic sub-system of Yokozuna is very much a
+work-in-progress.  The idea behind the diagnostic tool is to gather
+high-level information quickly so that a basic context can be
+established.  There will be 4 main parts.
+
+1. Collection of various data for every node in cluster.
+   E.g. indexes in ring, indexes on disk for each node, number of docs
+   in each index, number of error documents, latency, etc.
+
+2. A help command to describe **EVERY SINGLE** datum so that a) docs
+   live with code and b) person doing diagnostic isn't flying blind.
+
+3. Convenient methods for user to access and pretty-print data.
+
+4. A verify/check command that looks for common warning signs in the
+   data.  For example if the ring has 4 indexes but there are only 3
+   indexes on disk for node A.  Perhaps this overlaps with riaknostic?
+   This tool should be work with riaknostic.
+
+### Check the Logs ###
+
+The logs should be checked for any errors.  Many times errors in logs
+don't point to anything obvious because the errors are working in
+tandem, but sometimes you get lucky and a single log entry makes the
+entire problem obvious.
+
+Yokozuna configures Solr to write the the log file `solr.log`
+alongside the other Riak logs.  The logging level is set to warning so
+any errors in Solr should be logged here.  The format is your typical
+log4j format and should look fairly similar to the Riak logs.  The
+major difference is that you still see Java stack traces.
+
+Keep in mind that an empty `solr.log` does not necessarily indicate a
+healthy Yokozuna.  Yokozuna is an Erlang application and thus any
+errors it logs will show up in the Riak logs such as `console.log`,
+`error.log` or `crash.log`.  Remember, if you suspect an error in
+Yokozuna code, check the Riak logs.  If you suspect an error in Solr,
+check the Solr log.  If you don't now who is to blame, check all logs.
+
 Module Index
 ------------
 
