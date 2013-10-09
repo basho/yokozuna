@@ -66,11 +66,17 @@ the user will notice and take corrective action.
 
 Conversely, the JVM process monitors the Riak process.  If for any
 reason Riak goes down hard, e.g. a seg-fault, then the JVM process
-will also exit.
+will also exit.  This double monitoring along with the crash semantics
+means that no process is may exist without the other.  They are either
+both up or both down.
 
-This double monitoring along with the crash semantics means that no
-process is may exist without the other.  They are either both up or
-both down.
+All other communication between Yokozuna and Solr is performed via
+HTTP.  E.g. querying, indexing, and administration commands are all
+sent to Solr via HTTP.  There is no `gen_server` involved in this
+communication and thus no serialization point to bottleneck.  The
+ibrowse Erlang HTTP client is used which keeps a pool of persistent
+connections open.  The Jetty container hosting Solr does the same
+thing.  Thus HTTP connections are reused.
 
 Indexes
 ----------
