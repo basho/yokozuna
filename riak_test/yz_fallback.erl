@@ -17,8 +17,6 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
     Cluster = rt:build_cluster(2, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     create_index(Cluster, ?INDEX),
