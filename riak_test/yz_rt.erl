@@ -173,8 +173,8 @@ run_bb(Method, File) ->
               sync -> cmd;
               async -> spawn_cmd
           end,
-    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    Path = lists:flatten(YZBenchDir ++ "/deps/basho_bench/basho_bench " ++ File),
+    BB = filename:join([rt_config:get(basho_bench), "basho_bench"]),
+    Path = lists:flatten([BB, " ", File]),
     rt:Fun(Path).
 
 search_expect(HP, Index, Name, Term, Expect) ->

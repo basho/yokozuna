@@ -25,7 +25,6 @@
 
 confirm() ->
     YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     PBConns = yz_rt:open_pb_conns(Cluster),
