@@ -217,7 +217,6 @@ function run_riak_test_tests()
     fi
 
     info "run yokozuna riak_test tests"
-    export YZ_BENCH_DIR=$(pwd)/misc/bench
     if ! $WORK_DIR/riak_test/riak_test -c yz_verify -d riak_test/ebin; then
         error "yokozuna riak_test tests failed"
     fi
