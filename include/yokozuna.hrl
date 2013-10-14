@@ -308,7 +308,7 @@
 -define(YZ_VTAG_FIELD_S, "_yz_vtag").
 -define(YZ_VTAG_FIELD_B, <<"_yz_vtag">>).
 -define(YZ_VTAG_FIELD_XML, ?YZ_FIELD_XML(?YZ_VTAG_FIELD_S)).
--define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Node
 -define(YZ_NODE_FIELD, '_yz_node').
