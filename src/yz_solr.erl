@@ -92,8 +92,7 @@ cores() ->
     case yz_solr:core(status, [{wt,json}]) of
         {ok, _, Body} ->
             {struct, Status} = kvc:path([<<"status">>], mochijson2:decode(Body)),
-            Cores = ordsets:from_list([binary_to_list(Name)
-                                       || {Name, _} <- Status]),
+            Cores = ordsets:from_list([Name || {Name, _} <- Status]),
             {ok, Cores};
         {error,_} = Err ->
             Err
