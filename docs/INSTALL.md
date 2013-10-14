@@ -92,7 +92,7 @@ described above.
 
 Clone the Yokozuna branch of Riak.
 
-    git clone git://github.com/basho/riak.git
+    git clone git://github.com/basho/yokozuna.git
     cd riak
 
 Compile.
