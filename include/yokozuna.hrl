@@ -294,34 +294,34 @@
 -define(YZ_ED_FIELD, '_yz_ed').
 -define(YZ_ED_FIELD_S, "_yz_ed").
 -define(YZ_ED_FIELD_XML, ?YZ_FIELD_XML(?YZ_ED_FIELD_S)).
--define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% First Partition Number
 -define(YZ_FPN_FIELD, '_yz_fpn').
 -define(YZ_FPN_FIELD_S, "_yz_fpn").
 -define(YZ_FPN_FIELD_B, <<"_yz_fpn">>).
 -define(YZ_FPN_FIELD_XML, ?YZ_FIELD_XML(?YZ_FPN_FIELD_S)).
--define(YZ_FPN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_fpn\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_FPN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_fpn\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Sibling VTags
 -define(YZ_VTAG_FIELD, '_yz_vtag').
 -define(YZ_VTAG_FIELD_S, "_yz_vtag").
 -define(YZ_VTAG_FIELD_B, <<"_yz_vtag">>).
 -define(YZ_VTAG_FIELD_XML, ?YZ_FIELD_XML(?YZ_VTAG_FIELD_S)).
--define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Node
 -define(YZ_NODE_FIELD, '_yz_node').
 -define(YZ_NODE_FIELD_S, "_yz_node").
 -define(YZ_NODE_FIELD_XML, ?YZ_FIELD_XML(?YZ_NODE_FIELD_S)).
--define(YZ_NODE_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_node\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_NODE_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_node\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Partition Number
 -define(YZ_PN_FIELD, '_yz_pn').
 -define(YZ_PN_FIELD_S, "_yz_pn").
 -define(YZ_PN_FIELD_B, <<"_yz_pn">>).
 -define(YZ_PN_FIELD_XML, ?YZ_FIELD_XML(?YZ_PN_FIELD_S)).
--define(YZ_PN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_pn\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_PN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_pn\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Riak key
 -define(YZ_RK_FIELD, '_yz_rk').
