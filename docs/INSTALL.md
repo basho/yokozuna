@@ -90,7 +90,7 @@ Unless you plan to submit a patch to Yokozuna or require the
 latest-n-greatest it is recommended to use the source package as
 described above.
 
-Clone the Yokozuna branch of Riak.
+Clone Riak.
 
     git clone git://github.com/basho/riak.git
     cd riak
