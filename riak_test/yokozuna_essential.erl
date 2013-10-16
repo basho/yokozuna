@@ -4,7 +4,6 @@
                 host_entries/1,
                 run_bb/2,
                 search_expect/5, search_expect/6,
-                set_index/2,
                 verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
@@ -23,6 +22,7 @@
 %%       cluster and you will see zero repairs occur.
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
+-define(BUCKET, {<<"fruit">>,<<"b1">>}).
 -define(INDEX, <<"fruit">>).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
@@ -47,7 +47,7 @@ confirm() ->
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     setup_indexing(Cluster, PBConns, YZBenchDir),
-    {0, _} = yz_rt:load_data(Cluster, ?INDEX, YZBenchDir, ?NUM_KEYS),
+    {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
     %% wait for soft-commit
     timer:sleep(1000),
     Ref = async_query(Cluster, YZBenchDir),
@@ -63,19 +63,21 @@ confirm() ->
     yz_rt:close_pb_conns(PBConns),
     pass.
 
+%% @doc Verify that the delete call made my `yz_kv:cleanup' can deal
+%% with a key which contains characters like '/', ':' and '-'.
 test_escaped_key(Cluster) ->
     lager:info("Test key escape"),
     {H, P} = hd(host_entries(rt:connection_info(Cluster))),
     Value = <<"Never gonna give you up">>,
-    Bucket = "escaped",
+    Bucket = {<<"escaped">>,<<"b1">>},
     Key = edoc_lib:escape_uri("rick/astley-rolled:derp"),
     ok = yz_rt:http_put({H, P}, Bucket, Key, Value),
     ok = http_get({H, P}, Bucket, Key),
     ok.
 
-http_get({Host, Port}, Bucket, Key) ->
-    URL = lists:flatten(io_lib:format("http://~s:~s/buckets/~s/keys/~s",
-                                      [Host, integer_to_list(Port), Bucket, Key])),
+http_get({Host, Port}, {BType, BName}, Key) ->
+    URL = lists:flatten(io_lib:format("http://~s:~s/types/~s/buckets/~s/keys/~s",
+                                      [Host, integer_to_list(Port), BType, BName, Key])),
     Headers = [{"accept", "text/plain"}],
     {ok, "200", _, _} = ibrowse:send_req(URL, Headers, get, [], []),
     ok.
@@ -92,7 +94,7 @@ test_tagging(Cluster) ->
 
 write_with_tag({Host, Port}) ->
     lager:info("Tag the object tagging/test"),
-    URL = lists:flatten(io_lib:format("http://~s:~s/buckets/tagging/keys/test",
+    URL = lists:flatten(io_lib:format("http://~s:~s/types/tagging/buckets/b1/keys/test",
                                       [Host, integer_to_list(Port)])),
     Opts = [],
     Body = <<"testing tagging">>,
@@ -116,10 +118,9 @@ async_query(Cluster, YZBenchDir) ->
            {operations, [{Apple,1}]},
            {http_conns, Hosts},
            {pb_conns, []},
-           {search_path, "/search/" ++ binary_to_list(?INDEX)},
+           {bucket, ?BUCKET},
            {shutdown_on_error, true}],
-
-    File = "bb-query-fruit-" ++ binary_to_list(?INDEX),
+    File = "bb-query-fruit",
     write_terms(File, Cfg),
     run_bb(async, File).
 
@@ -130,7 +131,7 @@ delete_key(Cluster, Key) ->
     Node = yz_rt:select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
-    C:delete(?INDEX, list_to_binary(Key)).
+    C:delete(?BUCKET, list_to_binary(Key)).
 
 delete_some_data(Cluster, ReapSleep) ->
     Keys = yz_rt:random_keys(?NUM_KEYS),
@@ -168,13 +169,15 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME),
-    ok = set_index(Node, ?INDEX),
+    ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
     ok = create_index(Node, <<"tagging">>),
-    ok = set_index(Node, <<"tagging">>),
+    ok = yz_rt:set_bucket_type_index(Node, <<"tagging">>),
     ok = create_index(Node, <<"siblings">>),
-    ok = set_index(Node, <<"siblings">>),
+    ok = yz_rt:set_bucket_type_index(Node, <<"siblings">>),
+    ok = create_index(Node, <<"escaped">>),
+    ok = yz_rt:set_bucket_type_index(Node, <<"escaped">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- [<<"fruit">>, <<"tagging">>, <<"siblings">>]].
+     || I <- [<<"fruit">>, <<"tagging">>, <<"siblings">>, <<"escaped">>]].
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),
@@ -191,10 +194,9 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
            {operations, [{Apple,1}]},
            {http_conns, Hosts},
            {pb_conns, []},
-           {search_path, "/search/" ++ binary_to_list(?INDEX)},
+           {bucket, ?BUCKET},
            {shutdown_on_error, true}],
-
-    File = "bb-verify-deletes-" ++ binary_to_list(?INDEX),
+    File = "bb-verify-deletes",
     write_terms(File, Cfg),
     check_status(run_bb(sync, File)).
 

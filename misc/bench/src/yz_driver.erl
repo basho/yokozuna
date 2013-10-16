@@ -28,6 +28,26 @@
 %% API
 %% ====================================================================
 
+-type bucket() :: bucket() | {bucket(), bucket()}.
+
+-spec bucket_path(bucket()) -> binary().
+bucket_path({Type, Name}) ->
+    <<"/types/",Type/binary,"/buckets/",Name/binary,"/keys">>;
+bucket_path(Name) ->
+    <<"/buckets/",Name/binary,"/keys">>.
+
+-spec search_path(bucket()) -> binary().
+search_path({BucketType, _}) ->
+    <<"/solr/",BucketType/binary,"/select">>;
+search_path(BucketName) ->
+    <<"/solr/",BucketName/binary,"/select">>.
+
+-spec bucket_type(bucket()) -> binary().
+bucket_type({Type, _}) ->
+    Type;
+bucket_type(Name) ->
+    Name.
+
 start_apps(Apps) ->
     [application:start(App) || App <- Apps].
 
@@ -43,19 +63,20 @@ new(_Id) ->
         false ->
             ok
     end,
-    Index = basho_bench_config:get(index, "test"),
+    Bucket = basho_bench_config:get(bucket, {<<"test">>, <<"test">>}),
+    Index = basho_bench_config:get(index, bucket_type(Bucket)),
     HTTP = basho_bench_config:get(http_conns, [{"127.0.0.1", 8098}]),
     PB = basho_bench_config:get(pb_conns, [{"127.0.0.1", 8087}]),
-    IPath = basho_bench_config:get(index_path, "/riak/test"),
-    SPath = basho_bench_config:get(search_path, "/search/test"),
-    IURLs = array:from_list(lists:map(make_url(IPath), HTTP)),
+    BPath = basho_bench_config:get(bucket_path, bucket_path(Bucket)),
+    SPath = basho_bench_config:get(search_path, search_path(Index)),
+    IURLs = array:from_list(lists:map(make_url(BPath), HTTP)),
     SURLs = array:from_list(lists:map(make_url(SPath), HTTP)),
     Conns = array:from_list(lists:map(make_conn(Secure, User, Password, Cert), PB)),
     N = length(HTTP),
     M = length(PB),
 
     {ok, #state{pb_conns={Conns, {0,M}},
-                index=list_to_binary(Index),
+                index=Index,
                 iurls={IURLs, {0,N}},
                 surls={SURLs, {0,N}}}}.
 

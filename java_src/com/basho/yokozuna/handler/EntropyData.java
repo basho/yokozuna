@@ -120,7 +120,9 @@ public class EntropyData
             String text = null;
             String[] vals = null;
             String docPartition = null;
-            String riakBucket = null;
+            String vsn = null;
+            String riakBType = null;
+            String riakBName = null;
             String riakKey = null;
             String hash = null;
             int count = 0;
@@ -135,13 +137,18 @@ public class EntropyData
                     log.debug("text: " + text);
                     vals = text.split(" ");
 
-                    docPartition = vals[0];
-                    riakBucket = vals[1];
-                    riakKey = vals[2];
-                    hash = vals[3];
+                    vsn = vals[0];
+                    docPartition = vals[1];
+                    riakBType = vals[2];
+                    riakBName = vals[3];
+                    riakKey = vals[4];
+                    hash = vals[5];
+
                     if (partition.equals(docPartition)) {
                         SolrDocument tmpDoc = new SolrDocument();
-                        tmpDoc.addField("riak_bucket", riakBucket);
+                        tmpDoc.addField("vsn", vsn);
+                        tmpDoc.addField("riak_bucket_type", riakBType);
+                        tmpDoc.addField("riak_bucket_name", riakBName);
                         tmpDoc.addField("riak_key", riakKey);
                         tmpDoc.addField("base64_hash", hash);
                         docs.add(tmpDoc);

@@ -2,6 +2,7 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 10000).
+-define(BUCKET, {<<"fruit_aae">>, <<"fruit">>}).
 -define(INDEX, <<"fruit_aae">>).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(CFG,
@@ -30,7 +31,7 @@ confirm() ->
     PBConns = yz_rt:open_pb_conns(Cluster),
     PBConn = yz_rt:select_random(PBConns),
     setup_index(Cluster, PBConn, YZBenchDir),
-    yz_rt:load_data(Cluster, ?INDEX, YZBenchDir, ?NUM_KEYS),
+    {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
     lager:info("Verify data was indexed"),
     verify_num_match(Cluster, ?NUM_KEYS),
     %% Wait for a full round of exchange and then get total repair
@@ -107,7 +108,7 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?INDEX, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
-    ok = yz_rt:set_index(Node, ?INDEX),
+    ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
     yz_rt:wait_for_index(Cluster, ?INDEX).
 
 %% @doc Verify that no repair has happened since `TS'.

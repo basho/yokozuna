@@ -35,6 +35,28 @@
 
 
 %%%===================================================================
+%%% TODO: move to riak_core
+%%%===================================================================
+
+bucket_name({_,Name}) ->
+    Name;
+bucket_name(Name) ->
+    Name.
+
+bucket_type({Type,_}) ->
+    Type;
+bucket_type(_) ->
+    <<"default">>.
+
+is_default_type({<<"default">>,_}) ->
+    true;
+is_default_type({_,_}) ->
+    false;
+is_default_type(_) ->
+    true.
+
+
+%%%===================================================================
 %%% API
 %%%===================================================================
 
@@ -109,18 +131,22 @@ is_tombstone(MD) ->
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
-%% @doc Extract the index name from `BProps' or return the tombstone
-%% name if there is no associated index.
--spec get_index(term()) -> index_name().
-get_index(BProps) ->
-    proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
-
-%% @doc Extract the index name.
-%% @see get_index/1
+%% @doc Extract the index name from the `Bucket'. Return the tombstone
+%% value if there is none.
 -spec get_index(bkey(), ring()) -> index_name().
-get_index({Bucket,_} = _BKey, Ring) ->
+get_index({Bucket, _}, Ring) ->
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    get_index(BProps).
+    case is_default_type(Bucket) of
+        false ->
+            proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE);
+        true ->
+            case proplists:get_value(search, BProps, false) of
+                false ->
+                    ?YZ_INDEX_TOMBSTONE;
+                true ->
+                    bucket_name(Bucket)
+            end
+    end.
 
 %% @doc Determine the "short" preference list given the `BKey' and
 %% `Ring'.  A short preflist is one that defines the preflist by
@@ -131,6 +157,34 @@ get_short_preflist({Bucket, _} = BKey, Ring) ->
     NVal = riak_core_bucket:n_val(BProps),
     PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
     {first_partition(PrimaryPL), NVal}.
+
+%% @doc Called by KV vnode to determine if handoff should start or
+%% not.  Yokozuna needs to make sure that the bucket types have been
+%% transfered first.  Otherwise the bucket-to-index associations may
+%% be missing causing missing index entries.
+%%
+%% TODO: Currently this call will block vnode and also vnode mgr.  If
+%% I want to get really fancy the first time this function is called I
+%% could return false but then send off async job to wait for bucket
+%% types to transfer.  Once types have transfered some global flag
+%% which is cheap to check would be set and this call would simply
+%% check that.
+-spec should_handoff({p(), node()}) -> boolean().
+should_handoff({_Reason, {_Partition, TargetNode}}) ->
+    BucketTypesPrefix = {core, bucket_types},
+    Server = {riak_core_metadata_hashtree, TargetNode},
+    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
+    %% TODO Even though next call is local should also add 1s timeout
+    %% since this call blocks vnode.  Or see above.
+    LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
+    case LocalHash == RemoteHash of
+        true ->
+            true;
+        false ->
+            ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
+                  [node(), TargetNode]),
+            false
+    end.
 
 index(Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
@@ -309,18 +363,6 @@ put(Client, Bucket, Key, Value, ContentType) ->
     BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
     N = proplists:get_value(n_val, BucketProps),
     Client:put(O, [{pw,N},{w,N},{dw,N}]).
-
-%% @doc Remove the `Index' property from `Bucket'.  Data stored under
-%%      `Bucket' will no longer be indexed.
--spec remove_index(bucket()) -> ok.
-remove_index(Bucket) ->
-    set_index(Bucket, ?YZ_INDEX_TOMBSTONE).
-
-%% @doc Set the `Index' for which data stored in `Bucket' should be
-%%      indexed under.
--spec set_index(bucket(), index_name()) -> ok.
-set_index(Bucket, Index) ->
-    ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX, Index}]).
 
 %%%===================================================================
 %%% Private

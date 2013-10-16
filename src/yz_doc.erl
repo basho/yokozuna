@@ -71,7 +71,8 @@ make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
      {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
      {?YZ_PN_FIELD, Partition},
      {?YZ_RK_FIELD, Key},
-     {?YZ_RB_FIELD, Bucket}];
+     {?YZ_RT_FIELD, yz_kv:bucket_type(Bucket)},
+     {?YZ_RB_FIELD, yz_kv:bucket_name(Bucket)}];
 
 make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
     make_fields({DocId, BKey, FPN, Partition, none, EntropyData}) ++
@@ -197,10 +198,14 @@ doc_ts(MD) ->
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.
 gen_ed(O, Hash, Partition) ->
+    %% Store `Vsn' to allow future changes to this format.
+    Vsn = <<"1">>,
     RiakBucket = yz_kv:get_obj_bucket(O),
+    RiakBType = yz_kv:bucket_type(RiakBucket),
+    RiakBName = yz_kv:bucket_name(RiakBucket),
     RiakKey = yz_kv:get_obj_key(O),
     Hash64 = base64:encode(Hash),
-    <<Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash64/binary>>.
+    <<Vsn/binary," ",Partition/binary," ",RiakBType/binary," ",RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
 
 %% Meta keys and values can be strings or binaries
 format_meta(key, Value) when is_binary(Value) ->

@@ -34,9 +34,14 @@
 %% @doc Get the list of buckets associated with `Index'.
 -spec associated_buckets(index_name(), ring()) -> [bucket()].
 associated_buckets(Index, Ring) ->
-    AllBucketProps = riak_core_bucket:get_buckets(Ring),
-    Assoc = lists:filter(fun(BProps) ->  yz_kv:get_index(BProps) == Index end, AllBucketProps),
-    lists:map(fun riak_core_bucket:name/1, Assoc).
+    AllProps = riak_core_bucket:get_buckets(Ring),
+    Assoc = [riak_core_bucket:name(BProps)
+             || BProps <- AllProps,
+                proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE) == Index],
+    case is_default_type_indexed(Index, Ring) of
+        true -> [Index|Assoc];
+        false -> Assoc
+    end.
 
 -spec create(index_name()) -> ok.
 create(Name) ->
@@ -230,6 +235,19 @@ remove_from_ring(Name) ->
 index_dir(Name) ->
     YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
     filename:absname(filename:join([YZDir, Name])).
+
+%% @private
+%%
+%% @doc Determine if the bucket named `Index' under the default
+%% bucket-type has `search' property set to `true'. If so41 this is a
+%% legacy Riak Search bucket/index which is associated with a Yokozuna
+%% index of the same name.
+-spec is_default_type_indexed(index_name(), ring()) -> boolean().
+is_default_type_indexed(Index, Ring) ->
+    Props = riak_core_bucket:get_bucket(Index, Ring),
+    %% Check against `true' atom in case the value is <<"true">> or
+    %% "true" which, hopefully, it should not be.
+    true == proplists:get_value(search, Props, false).
 
 make_info(IndexName, SchemaName) ->
     #index_info{name=IndexName,

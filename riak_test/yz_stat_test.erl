@@ -28,39 +28,36 @@ prepare_cluster(NumNodes) ->
     rt:wait_for_cluster_service(Cluster, yokozuna),
     Cluster.
 
-create_indexed_bucket(Pid, Cluster, IndexBucket) ->
-    create_indexed_bucket(Pid, Cluster, IndexBucket, IndexBucket).
-
-create_indexed_bucket(Pid, Cluster, Index, Bucket) ->
+create_indexed_bucket(Pid, Cluster, Index) ->
     ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid, Index)),
-    ?assertEqual(ok, riakc_pb_socket:set_bucket(Pid, Bucket, [{yz_index, Index}])),
-    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
+    yz_rt:set_bucket_type_index(hd(Cluster), Index),
+    yz_rt:wait_for_index(Cluster, Index),
     ok.
 
 %% populate random plain text values
 populate_data(_, _, 0, Acc) -> Acc;
-populate_data(Pid, IB, Count, Acc)-> 
+populate_data(Pid, Bucket, Count, Acc)->
     KV = gen_random_name(16),
-    PO = riakc_obj:new(IB, KV, KV, "text/plain"),
+    PO = riakc_obj:new(Bucket, KV, KV, "text/plain"),
     {ok, _Obj} = riakc_pb_socket:put(Pid, PO, [return_head]),
-    populate_data(Pid, IB, Count - 1, [KV|Acc]).
+    populate_data(Pid, Bucket, Count - 1, [KV|Acc]).
 
-populate_data_and_wait(Pid, Cluster, IndexBucket, Count) ->
-    Values = populate_data(Pid, IndexBucket, Count, []),
+populate_data_and_wait(Pid, Cluster, Bucket, Index, Count) ->
+    Values = populate_data(Pid, Bucket, Count, []),
     Search = <<"text:*">>,
     F = fun(_) ->
                 {ok,{search_results,_R,Score,Found}} =
-                    riakc_pb_socket:search(Pid, IndexBucket, Search, []),
+                    riakc_pb_socket:search(Pid, Index, Search, []),
                 (Count == Found) and (Score =/= 0.0)
         end,
     yz_rt:wait_until(Cluster, F),
     Values.
 
 %% search for a list of values assumign plain text
-search_values(_Pid, _IndexBucket, []) -> ok;
-search_values(Pid, IndexBucket, [Value|Rest]) ->
-    riakc_pb_socket:search(Pid, IndexBucket, <<"text:", Value/binary>>, []),
-    search_values(Pid, IndexBucket, Rest).
+search_values(_Pid, _Index, []) -> ok;
+search_values(Pid, Index, [Value|Rest]) ->
+    riakc_pb_socket:search(Pid, Index, <<"text:", Value/binary>>, []),
+    search_values(Pid, Index, Rest).
 
 gen_random_name(Length) ->
     Chars = "abcdefghijklmnopqrstuvwxyz1234567890",
@@ -71,21 +68,22 @@ gen_random_name(Length) ->
 
 write_bad_json(_, _, 0) ->
     ok;
-write_bad_json(Pid, IB, Num) ->
+write_bad_json(Pid, Bucket, Num) ->
     Key = list_to_binary("bad_json_" ++ integer_to_list(Num)),
     Value = <<"{\"bad\": \"unclosed\"">>,
-    PO = riakc_obj:new(IB, Key, Value, "application/json"),
+    PO = riakc_obj:new(Bucket, Key, Value, "application/json"),
     {ok, _Obj} = riakc_pb_socket:put(Pid, PO, [return_head]).
 
 confirm_stats(Cluster) ->
     {Host, Port} = select_random(host_entries(rt:connection_info(Cluster))),
-    IndexBucket = gen_random_name(16),
+    Index = gen_random_name(16),
+    Bucket = {Index, <<"b1">>},
 
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    create_indexed_bucket(Pid, Cluster, IndexBucket),
-    Values = populate_data_and_wait(Pid, Cluster, IndexBucket, 10),
-    search_values(Pid, IndexBucket, Values),
-    write_bad_json(Pid, IndexBucket, 10),
+    create_indexed_bucket(Pid, Cluster, Index),
+    Values = populate_data_and_wait(Pid, Cluster, Bucket, Index, 10),
+    search_values(Pid, Index, Values),
+    write_bad_json(Pid, Bucket, 10),
     riakc_pb_socket:stop(Pid),
 
     yz_rt:wait_until(Cluster, fun check_stat_values/1).

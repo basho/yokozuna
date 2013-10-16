@@ -92,14 +92,14 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http_put({string(), portnum()}, binary(), binary(), binary()) -> ok.
+-spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
--spec http_put({string(), portnum()}, binary(), binary(), string(), binary()) -> ok.
-http_put({Host, Port}, Bucket, Key, CT, Value) ->
-    URL = ?FMT("http://~s:~s/riak/~s/~s",
-               [Host, integer_to_list(Port), Bucket, Key]),
+-spec http_put({string(), portnum()}, bucket(), binary(), string(), binary()) -> ok.
+http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
+    URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
+               [Host, integer_to_list(Port), BType, BName, Key]),
     Opts = [],
     Headers = [{"content-type", CT}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
@@ -127,13 +127,13 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/" ++ binary_to_list(Bucket)},
+           {bucket, Bucket},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]},
            {shutdown_on_error, true}],
-    File = "bb-load-" ++ binary_to_list(Bucket),
+    File = "load-data",
     write_terms(File, Cfg),
     run_bb(sync, File).
 
@@ -207,17 +207,18 @@ select_random(List) ->
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
 
-remove_index(Node, Bucket) ->
-    lager:info("Remove index from bucket ~s [~p]", [Bucket, Node]),
-    ok = rpc:call(Node, yz_kv, remove_index, [Bucket]).
+-spec remove_index(node(), bucket()) -> ok.
+remove_index(Node, BucketType) ->
+    lager:info("Remove index from bucket type ~s [~p]", [BucketType, Node]),
+    ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}]]).
 
-set_index(Node, Bucket) ->
-    set_index(Node, Bucket, Bucket).
+set_bucket_type_index(Node, BucketType) ->
+    set_bucket_type_index(Node, BucketType, BucketType).
 
-%% TODO: this should use PB interface like clients
-set_index(Node, Bucket, Index) ->
-    lager:info("Set bucket ~s index to ~s [~p]", [Bucket, Index, Node]),
-    ok = rpc:call(Node, yz_kv, set_index, [Bucket, Index]).
+set_bucket_type_index(Node, BucketType, Index) ->
+    lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
+    rt:create_and_activate_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]),
+    rt:wait_until_bucket_type_status(BucketType, active, Node).
 
 solr_http(ConnInfo) ->
     proplists:get_value(solr_http, ConnInfo).
@@ -228,6 +229,19 @@ solr_http(ConnInfo) ->
 store_schema(PBConn, Name, Raw) ->
     lager:info("Storing schema ~s", [Name]),
     ?assertEqual(ok, riakc_pb_socket:create_search_schema(PBConn, Name, Raw)),
+    ok.
+
+wait_for_bucket_type(Cluster, BucketType) ->
+    F = fun(Node) ->
+                {Host, Port} = riak_pb(hd(rt:connection_info([Node]))),
+                {ok, PBConn} = riakc_pb_socket:start_link(Host, Port),
+                R = riakc_pb_socket:get_bucket_type(PBConn, BucketType),
+                case R of
+                    {ok,_} -> true;
+                    _ -> false
+                end
+        end,
+    wait_until(Cluster, F),
     ok.
 
 %% @see wait_for_schema/3

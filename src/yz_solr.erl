@@ -332,8 +332,8 @@ get_pairs(R) ->
     Docs = kvc:path([<<"response">>, <<"docs">>], R),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
-to_pair({struct, [{_,Bucket},{_,Key},{_,Base64Hash}]}) ->
-    {{Bucket,Key}, base64:decode(Base64Hash)}.
+to_pair({struct, [{_,_Vsn},{_,BType},{_,BName},{_,Key},{_,Base64Hash}]}) ->
+    {{{BType, BName},Key}, base64:decode(Base64Hash)}.
 
 get_doc_pairs(Resp) ->
     Docs = kvc:path([<<"docs">>], Resp),

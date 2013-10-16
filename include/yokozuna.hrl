@@ -55,7 +55,7 @@
 %% Short representation of a preflist, partition + n_val
 -type short_preflist() :: {p(), n()}.
 %% Riak bucket
--type bucket() :: binary().
+-type bucket() :: Name :: binary() | {Type :: binary(), Name :: binary()}.
 %% Riak key
 -type key() :: binary().
 %% Bucket/Key pair
@@ -340,6 +340,13 @@
 -define(YZ_RK_FIELD_B, <<"_yz_rk">>).
 -define(YZ_RK_FIELD_XML, ?YZ_FIELD_XML(?YZ_RK_FIELD_S)).
 -define(YZ_RK_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rk\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+
+%% Riak bucket type
+-define(YZ_RT_FIELD, '_yz_rt').
+-define(YZ_RT_FIELD_S, "_yz_rt").
+-define(YZ_RT_FIELD_B, <<"_yz_rt">>).
+-define(YZ_RT_FIELD_XML, ?YZ_FIELD_XML(?YZ_RT_FIELD_S)).
+-define(YZ_RT_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rt\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
 %% Riak bucket
 -define(YZ_RB_FIELD, '_yz_rb').

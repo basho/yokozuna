@@ -125,6 +125,7 @@ verify_fields({ok, Schema}) ->
               ?YZ_NODE_FIELD_XPATH,
               ?YZ_PN_FIELD_XPATH,
               ?YZ_RK_FIELD_XPATH,
+              ?YZ_RT_FIELD_XPATH,
               ?YZ_RB_FIELD_XPATH],
     Checks = [verify_field(F, Schema) || F <- Fields],
     IsError = fun(X) -> X /= ok end,
