@@ -49,9 +49,9 @@ decode(Code, Bin) ->
     Msg = riak_pb_codec:decode(Code, Bin),
     case Msg of
         #rpbyokozunaschemaputreq{} ->
-            {ok, Msg, {"yokozuna.schema", <<"default">>}};
+            {ok, Msg, {"yokozuna.schema", ?YZ_SECURITY_THING_ONE}};
         #rpbyokozunaschemagetreq{name=SchemaName} ->
-            {ok, Msg, {"yokozuna.schema", {<<"default">>, SchemaName}}};
+            {ok, Msg, {"yokozuna.schema", {?YZ_SECURITY_THING_ONE, SchemaName}}};
         _ ->
             {ok, Msg}
     end.

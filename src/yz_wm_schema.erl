@@ -116,9 +116,9 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
         false ->
             TypeBucket = case Ctx#ctx.method of
                 'GET' ->
-                    {<<"default">>, Ctx#ctx.schema_name};
+                    {?YZ_SECURITY_THING_ONE, Ctx#ctx.schema_name};
                 'PUT' ->
-                    <<"default">>
+                    ?YZ_SECURITY_THING_ONE
             end,
             Res = riak_core_security:check_permission({"yokozuna.schema",
                                                        TypeBucket},
