@@ -57,6 +57,7 @@ maybe_setup(true) ->
     maybe_register_pb(?QUERY_SERVICES),
     maybe_register_pb(?ADMIN_SERVICES),
     setup_stats(),
+    ok = yz_schema:setup_schema_bucket(),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
