@@ -4,28 +4,28 @@ Resources
 Yokozuna Talks
 --------------
 
-Yokozuna, Scaling Solr with Riak - Berlin Buzzwords 2013 - [video][bbuzz2013v] | [slides][bbuzz2013s]
+* Yokozuna, Scaling Solr with Riak - Berlin Buzzwords 2013 - [video][bbuzz2013v] | [slides][bbuzz2013s]
 
-Yokozuna: Distributed Search You Don't Think About - RICON|East 2013 - [video][re2013v] | [slides][re2013s]
+* Yokozuna: Distributed Search You Don't Think About - RICON|East 2013 - [video][re2013v] | [slides][re2013s]
 
-Introducing Yokozuna - Riak + Solr - RICON|West 2012 - [video][rw2012v] | [slides][rw2012s]
+* Introducing Yokozuna - Riak + Solr - RICON|West 2012 - [video][rw2012v] | [slides][rw2012s]
 
 Solr Links
 ----------
 
-[Solr Homepage][solr-home]
+* [Solr Homepage][solr-home]
 
-[Solr 4.4 Reference Guide][solr-ref] - This is both a good reference and a place for beginners to start.  The fundamental aspects of Solr are covered here.
+* [Solr 4.4 Reference Guide][solr-ref] - This is both a good reference and a place for beginners to start.  The fundamental aspects of Solr are covered here.
 
 
 Books
 -----
 
-[Introduction to Information Retrieval][intro-to-ir] - 2008
+* [Introduction to Information Retrieval][intro-to-ir] - 2008
 
-[Lucene In Action][lia] - 2010
+* [Lucene In Action][lia] - 2010
 
-[Solr In Action][sia] - 2013
+* [Solr In Action][sia] - 2013
 
 
 [bbuzz2013v]: http://www.youtube.com/watch?v=ETJqu5SmwOc&list=PLq-odUc2x7i8Qg4j2fix-QN6bjup-QYJW&index=12&noredirect=1
