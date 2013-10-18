@@ -1,6 +1,110 @@
 Yokozuna Release Notes
 ==========
 
+0.10.0
+------
+
+This release brings a few features such as an upgrade in Solr version
+along with some basic indexing and query stats.  The default index has
+been removed returning write performance closer to baseline for
+non-indexed buckets.  Disk usage was decreased by removing the default
+index and the unused timestamp from the entropy data.  Among the list
+of other fixes a notable one is the improvement of Solr start-up and
+crash semantics.  If Solr crashes too frequently then Yokozuna will
+stop the local Riak node.
+
+### Features ###
+
+* [150][], [197][] - Upgrade to Solr 4.4.0.
+
+* [179][] - Add support for stats.  Add basic index and query stats.
+
+* [107][] - Verify support for Riak Ruby client over protocol
+  buffers.
+
+* [108][] - Verify support for Riak Python client over protocol
+  buffers.
+
+### Performance ###
+
+* [190][] - Remove the entropy data timestamp.  It hasn't been used
+  for over a year.  The throughput and latency improvements were small
+  but it save 7.4% in index size for one benchmark.
+
+* [171][] - Remove the default index.  Since the 0.1.0 release of
+  Yokozuna a "default index" was needed to avoid constant repair by
+  AAE.  It came at a cost of performance degredation of all writes,
+  more disk space, and more CPU/memory usage.  Simply enabling
+  Yokozuna, write performance would drop to 57% of baseline.  With the
+  default index removed that figure rises to 93% of baseline.
+  Furthermore, less disk space will be used.
+
+### Bugs/Misc ###
+
+* [188][] - More robust Solr start-up and crash semantics.  If the Solr
+  JVM instance cannot stay up then bring down the Riak node with it.
+  This fail-fast behavior is preferred to silently ignoring the issue.
+  It brings the problem to the attention of the user more quickly,
+  forcing the problem to be addressed.
+
+* [192][], [194][] - Handle not-found case when fetching a schema via
+  protobuffs.
+
+* [175][] - Fix the `associated_buckets` function.
+
+* [165][], [173][] - Create data directory and `solr.xml` at run-time,
+  not build-time.  This makes it easier to wipe data by removing
+  physical files.
+
+* [129][] - Fix persistence of schema attribute in `solr.xml`.
+
+* [198][] - Fix Solaris build.
+
+* [196][] - Allowing javac to be skipped during Yokozuna build.  This
+  is for developers of Riak who don't have a JDK and don't want to
+  test Yokozuna.
+
+* [195][] - Cache the Solr package for future builds.  For those
+  developing against Riak/Yokozuna this saves network bandwidth and
+  time.
+
+* [193][] - Various cleanup of integration tests.
+
+* [184][] - Refactor the `index_name()` type to be `binary()`.
+
+* [182][] - Check for presence of certain tools at build time.
+
+* [180][] - Disable certificate check when pulling Solr package.
+
+* [172][] - Small fixes based on Dialyzer errors.
+
+* [200][], [201][] - Update to new hashtree API.
+
+[107]: https://github.com/basho/yokozuna/issues/107
+[108]: https://github.com/basho/yokozuna/issues/108
+[129]: https://github.com/basho/yokozuna/issues/129
+[150]: https://github.com/basho/yokozuna/issues/150
+[165]: https://github.com/basho/yokozuna/issues/165
+[171]: https://github.com/basho/yokozuna/pull/171
+[172]: https://github.com/basho/yokozuna/pull/172
+[173]: https://github.com/basho/yokozuna/pull/173
+[175]: https://github.com/basho/yokozuna/pull/175
+[179]: https://github.com/basho/yokozuna/pull/179
+[180]: https://github.com/basho/yokozuna/pull/180
+[182]: https://github.com/basho/yokozuna/pull/182
+[184]: https://github.com/basho/yokozuna/pull/184
+[188]: https://github.com/basho/yokozuna/pull/188
+[190]: https://github.com/basho/yokozuna/pull/190
+[192]: https://github.com/basho/yokozuna/issues/192
+[193]: https://github.com/basho/yokozuna/pull/193
+[194]: https://github.com/basho/yokozuna/pull/194
+[195]: https://github.com/basho/yokozuna/pull/195
+[196]: https://github.com/basho/yokozuna/pull/196
+[197]: https://github.com/basho/yokozuna/pull/197
+[198]: https://github.com/basho/yokozuna/pull/198
+[200]: https://github.com/basho/yokozuna/issues/200
+[201]: https://github.com/basho/yokozuna/pull/201
+
 0.9.0
 -----
 

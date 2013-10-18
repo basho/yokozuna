@@ -30,8 +30,6 @@
 </schema>">>).
 
 confirm() ->
-    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),

@@ -58,8 +58,7 @@
 %% TODO: migration by re-index command
 confirm() ->
     lager:info("ticktime: ~p", [net_kernel:get_net_ticktime()]),
-    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
+    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
     Cluster = rt:build_cluster(lists:duplicate(3, {previous, ?CFG})),
 
     create_index(Cluster, riak_search),

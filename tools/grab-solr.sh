@@ -15,7 +15,7 @@ fi
 
 SOLR_DIR=../priv/solr
 BUILD_DIR=../build
-VSN=solr-4.3.0-yz
+VSN=solr-4.4.0-yz
 FILENAME=$VSN.tgz
 TMP_DIR=/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
@@ -38,8 +38,12 @@ get_solr()
             else
                 echo "Pulling Solr from S3"
                 wget --no-check-certificate --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$FILENAME
-                mkdir $TMP_DIR
-                cp $FILENAME $TMP_DIR
+                if [ -d $TMP_DIR ]; then
+                    cp $FILENAME $TMP_DIR
+                else
+                    mkdir $TMP_DIR
+                    cp $FILENAME $TMP_DIR
+                fi
             fi
         else
             # This is now obsolete thanks to implicit caching above
@@ -75,15 +79,15 @@ echo "Creating Solr dir $SOLR_DIR"
 # which shouldn't be overwritten).  For whatever reason, cp -n causes
 # non-zero exit code when files that would have been overwritten are
 # detected.
-cp -vr $EXAMPLE_DIR/contexts $SOLR_DIR
-cp -vr $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
-cp -vr $EXAMPLE_DIR/etc/logging.properties $SOLR_DIR/etc
-cp -vr $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
-cp -vr $EXAMPLE_DIR/lib $SOLR_DIR
+cp -r $EXAMPLE_DIR/contexts $SOLR_DIR
+cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/etc/logging.properties $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/lib $SOLR_DIR
 # TODO: does resources need to be copied?
-cp -vr $EXAMPLE_DIR/resources $SOLR_DIR
-cp -vr $EXAMPLE_DIR/solr-webapp $SOLR_DIR
-cp -vr $EXAMPLE_DIR/start.jar $SOLR_DIR
-cp -vr $EXAMPLE_DIR/webapps $SOLR_DIR
+cp -r $EXAMPLE_DIR/resources $SOLR_DIR
+cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
+cp -r $EXAMPLE_DIR/start.jar $SOLR_DIR
+cp -r $EXAMPLE_DIR/webapps $SOLR_DIR
 
 echo "Solr dir created successfully"
