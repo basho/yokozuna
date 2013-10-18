@@ -148,16 +148,8 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
         true ->
             {true, RD, Ctx};
         false ->
-            TypeBucket = case Ctx#ctx.index_name of
-                {'GET', undefined} ->
-                    ?YZ_SECURITY_THING_ONE;
-                {'PUT', undefined} ->
-                    ?YZ_SECURITY_THING_ONE;
-                {_, Index} ->
-                    {?YZ_SECURITY_THING_ONE, Index}
-            end,
             Res = riak_core_security:check_permission({"yokozuna.index",
-                                                       TypeBucket},
+                                                       ?YZ_SECURITY_THING_ONE},
                                                       Security),
             case Res of
                 {false, Error, _} ->

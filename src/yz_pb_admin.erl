@@ -50,8 +50,16 @@ decode(Code, Bin) ->
     case Msg of
         #rpbyokozunaschemaputreq{} ->
             {ok, Msg, {"yokozuna.schema", ?YZ_SECURITY_THING_ONE}};
-        #rpbyokozunaschemagetreq{name=SchemaName} ->
-            {ok, Msg, {"yokozuna.schema", {?YZ_SECURITY_THING_ONE, SchemaName}}};
+        #rpbyokozunaschemagetreq{} ->
+            {ok, Msg, {"yokozuna.schema", {?YZ_SECURITY_THING_ONE}}};
+        #rpbyokozunaindexputreq{} ->
+            {ok, Msg, {"yokozuna.index", {?YZ_SECURITY_THING_ONE}}};
+        rpbyokozunaindexgetreq ->
+            {ok, Msg, {"yokozuna.index", {?YZ_SECURITY_THING_ONE}}};
+        #rpbyokozunaindexgetreq{} ->
+            {ok, Msg, {"yokozuna.index", {?YZ_SECURITY_THING_ONE}}};
+        #rpbyokozunaindexdeletereq{} ->
+            {ok, Msg, {"yokozuna.index", ?YZ_SECURITY_THING_ONE}};
         _ ->
             {ok, Msg}
     end.
