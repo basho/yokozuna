@@ -85,7 +85,6 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
         true ->
             {true, RD, Ctx};
         false ->
-            %% TODO: move this to be an index 
             Index = list_to_binary(wrq:path_info(index, RD)),
             Res = riak_core_security:check_permission({"yokozuna.search",
                                                        {?YZ_SECURITY_THING_ONE,

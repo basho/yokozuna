@@ -61,6 +61,8 @@
 -define(SCHEMA, "myschema").
 -define(SCHEMA_B, <<"myschema">>).
 -define(BUCKET, "mybucket").
+-define(HUSER, "h_user").
+-define(HINDEX, "h_myindex").
 -define(ADD_USER(N,D), rpc:call(N, riak_core_console, add_user, D)).
 -define(ADD_SOURCE(N,D), rpc:call(N, riak_core_console, add_source, D)).
 -define(GRANT(N,D), rpc:call(N, riak_core_console, grant, D)).
@@ -77,10 +79,12 @@ confirm() ->
     Node = hd(Cluster),
     enable_https(Node),
     wait_for_cluster_service(Cluster, yokozuna),
-    create_user(Node),
-    confirm_create_index_pb(Node),
+    create_user(Node, ?USER),
+    confirm_index_pb(Node),
     confirm_search_pb(Node),
     confirm_schema_permission_pb(Node),
+    create_user(Node, ?HUSER),
+    confirm_index_https(Node),
     pass.
 
 %% this is a similar duplicate riak_test fix as rt:priv_dir
@@ -102,7 +106,7 @@ get_secure_pid(Host, Port) ->
                                        {cacertfile, Cacertfile}]),
     Pid.
 
-create_user(Node) ->
+create_user(Node, User) ->
     {Host, Port} = proplists:get_value(pb, connection_info(Node)),
 
     {ok, PB0} =  riakc_pb_socket:start(Host, Port, []),
@@ -110,17 +114,17 @@ create_user(Node) ->
                  riakc_pb_socket:ping(PB0)),
 
     lager:info("Adding a user"),
-    ok = ?ADD_USER(Node, [[?USER, "password="++?PASSWORD]]),
+    ok = ?ADD_USER(Node, [[User, "password="++?PASSWORD]]),
 
     lager:info("Setting password mode on user"),
-    ok = ?ADD_SOURCE(Node, [[?USER, Host++"/32", ?PASSWORD]]),
+    ok = ?ADD_SOURCE(Node, [[User, Host++"/32", ?PASSWORD]]),
 
     Pid = get_secure_pid(Host, Port),
     ?assertEqual(pong, riakc_pb_socket:ping(Pid)),
     riakc_pb_socket:stop(Pid),
     ok.
 
-confirm_create_index_pb(Node) ->
+confirm_index_pb(Node) ->
     {Host, Port} = proplists:get_value(pb, connection_info(Node)),
 
     Pid0 = get_secure_pid(Host, Port),
@@ -212,4 +216,38 @@ confirm_search_pb(Node) ->
         riakc_pb_socket:search(Pid1, ?INDEX2_B, <<"*:*">>)),
 
     riakc_pb_socket:stop(Pid1),
+    ok.
+
+
+get_auth_header(User, Password) ->
+    Token = base64:encode_to_string(User ++ ":" ++ Password),
+    [{"Authorization", "Basic " ++ Token}].
+
+get_ssl_options(Options) ->
+    [{is_ssl, true}, {ssl_options, Options}].
+
+confirm_index_https(Node) ->
+    {Host, Port} = proplists:get_value(https, connection_info(Node)),
+
+    lager:info("verifying the peer certificate should work if the cert is valid"),
+    Cacertfile = filename:join([rt_priv_dir(), ?ROOT_CERT]),
+    Opts = [{is_ssl, true}, {ssl_options, [
+             {cacertfile, Cacertfile},
+             {verify, verify_peer},
+             {reuse_sessions, false}
+            ]}],
+
+    Headers = [{"accept", "multipart/mixed, */*;q=0.9"}] ++
+              [{"content-type", "application/json"}]
+               ++ get_auth_header(?HUSER, ?PASSWORD),
+    Body = <<"{\"schema\":\"_yz_default\"}">>,
+    URL = lists:flatten(io_lib:format("https://~s:~s/yz/index/~s",
+                                      [Host, integer_to_list(Port), ?HINDEX])),
+    {ok, "403", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
+
+    lager:info("Grant index permission to user"),
+    ok = ?GRANT(Node, [["yokozuna.index","ON","index","TO",?HUSER]]),
+
+    %% this should work now that this user has permission
+    {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
     ok.
