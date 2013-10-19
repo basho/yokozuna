@@ -74,25 +74,31 @@ run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
     end;
 
 run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=undefined}) ->
+    %% NOTE: This clause only runs once and then caches the state. All
+    %% subsequent calls use the cached state. Performing expensive
+    %% operations in this function is okay.
+    %%
     %% Make a list of shuffled fruits to use for qurying
-    Fruits = lists:append([string:tokens(X, " ")
-                           || {C,X} <- ?FRUITS, C =< MaxCardinality]),
-    Fruits2 = lists:keysort(1, [{random:uniform(1000), X} || X <- Fruits]),
-    Fruits3 = [X || {_,X} <- Fruits2],
-    lager:debug("Fruits: ~p", [Fruits3]),
+    %% {Fruits, Cards} = filter_by_cardinality(?FRUITS, MaxCardinality),
+    Fruits = tokenize(filter_by_cardinality(?FRUITS, MaxCardinality)),
+    ShuffledFruits0 = shuffle(Fruits),
+    Len = length(ShuffledFruits0),
     %% Double it to fake wrap-around (for Offset + NumTerms > length(Fruits))
-    Fruits4 = Fruits3 ++ Fruits3,
-    S2 = S#state{fruits={length(Fruits3), Fruits4}},
+    ShuffledFruits = ShuffledFruits0 ++ ShuffledFruits0,
+    {ShuffledCards, ShuffledTokens} = lists:unzip(ShuffledFruits),
+    S2 = S#state{fruits={Len, ShuffledTokens, ShuffledCards}},
     run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
 
-run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits}}) ->
+run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
     %% Select a random number of terms, NumTerms, from the shuffled
     %% Fruits list.
     NumTerms = random:uniform(MaxTerms),
     Offset = random:uniform(Len),
     TermList = lists:sublist(Fruits, Offset, NumTerms),
+    CardList = lists:sublist(Cards, Offset, NumTerms),
+    ExpectedNumFound = lists:min(CardList),
     Query = string:join(TermList, " AND "),
-    run({search, Query, FL}, K, V, S);
+    run({search, Query, FL, ExpectedNumFound}, K, V, S);
 
 run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
@@ -117,7 +123,7 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
 
 run(search_pb, _, QueryGen, S=#state{index=Index, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
-    Query = QueryGen(),
+    Query = QueryGen(search),
     S2 = S#state{pb_conns=wrap(Conns)},
     case search_pb(Conn, Index, Query) of
         ok -> {ok, S2};
@@ -224,6 +230,19 @@ check_numfound(Qry, Body, Expected, S) ->
 combine(Fruits, N) ->
     string:join([Str || {Count, Str} <- Fruits, Count >= N], " ").
 
+%% @private
+%%
+%% @doc Filter a set of pairs by it's cardnality.
+%%
+%% L = [{1, "apple pear"}, {10, "orange kiwi"}, {100, "banana peach"}].
+%% filter_by_cardinality(L, 10).
+%%
+%% => [{1, "apple pear"}, {10, "orange kiwi"}]
+-spec filter_by_cardinality([{integer(), list()}], integer()) ->
+                                   [{integer(), list()}].
+filter_by_cardinality(Pairs, MaxCardinality) ->
+    [P || {C,_}=P <- Pairs, C =< MaxCardinality].
+
 first_large_enough(K, [{Count, Str}|Fruits]) ->
     if Count >= K -> Str;
        true -> first_large_enough(K, Fruits)
@@ -243,13 +262,6 @@ get_path(PL, [Name]) ->
 get_path(PL, [Name|Path]) ->
     get_path(proplists:get_value(Name, PL), Path).
 
-make_url(Path) ->
-    fun({IP, Port}) -> ?FMT("http://~s:~w~s", [IP, Port, Path]) end.
-
-make_conn({IP, Port}) ->
-    {ok, Conn} = riakc_pb_socket:start_link(IP, Port),
-    Conn.
-
 http_get(URL) ->
     case ibrowse:send_req(URL, [], get, [], [{response_format,binary}]) of
         {ok, "200", _, Body} -> {ok, Body};
@@ -265,6 +277,39 @@ http_put(URL, CT, Body) ->
         {ok, Status, _, Resp} -> {error, {bad_status, Status, URL, Resp}};
         {error, Reason} -> {error, Reason}
     end.
+
+make_url(Path) ->
+    fun({IP, Port}) -> ?FMT("http://~s:~w~s", [IP, Port, Path]) end.
+
+make_conn({IP, Port}) ->
+    {ok, Conn} = riakc_pb_socket:start_link(IP, Port),
+    Conn.
+
+%% @private
+%%
+%% @doc Suffle the list.
+-spec shuffle(list()) -> list().
+shuffle(L) ->
+    L0 = lists:keysort(1, [{random:uniform(1000), X} || X <- L]),
+    [X || {_,X} <- L0].
+
+%% @private
+%%
+%% @doc Tokenize the string value for each pair. Each resulting token
+%% is paired with its cardinality.
+%%
+%% L = [{1, "apple pear"}, {10, "orange kiwi"}].
+%%
+%% [{1, "apple"}, {1, "pear"}, {10, "orange"}, {10, "kiwi"}].
+-spec tokenize([{integer(), Tokens :: string()}]) ->
+                      [{integer(), Token :: string()}].
+tokenize(Pairs) ->
+    L = [begin
+             Tokens = string:tokens(Str, " "),
+             Cards = lists:duplicate(length(Tokens), C),
+             lists:zip(Cards, Tokens)
+         end || {C, Str} <- Pairs],
+    lists:append(L).
 
 wrap({URLs, {I,N}}) when I == N - 1 -> {URLs, {0,N}};
 wrap({URLs, {I,N}}) -> {URLs, {I+1,N}}.
