@@ -22,6 +22,8 @@
          {10, "nunga nance mulberry langsat karonda kumquat"},
          {1, "korlan jocote genip elderberry citron jujube"}]).
 
+-define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
+
 %% ====================================================================
 %% API
 %% ====================================================================
@@ -77,16 +79,7 @@ run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=u
     %% NOTE: This clause only runs once and then caches the state. All
     %% subsequent calls use the cached state. Performing expensive
     %% operations in this function is okay.
-    %%
-    %% Make a list of shuffled fruits to use for qurying
-    %% {Fruits, Cards} = filter_by_cardinality(?FRUITS, MaxCardinality),
-    Fruits = tokenize(filter_by_cardinality(?FRUITS, MaxCardinality)),
-    ShuffledFruits0 = shuffle(Fruits),
-    Len = length(ShuffledFruits0),
-    %% Double it to fake wrap-around (for Offset + NumTerms > length(Fruits))
-    ShuffledFruits = ShuffledFruits0 ++ ShuffledFruits0,
-    {ShuffledCards, ShuffledTokens} = lists:unzip(ShuffledFruits),
-    S2 = S#state{fruits={Len, ShuffledTokens, ShuffledCards}},
+    S2 = S#state{fruits=gen_fruits(MaxCardinality)},
     run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
 
 run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
@@ -121,12 +114,53 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
+run(load_fruit_pb, KeyValGen, _, S=#state{index=Index, pb_conns=Conns}) ->
+    Conn = get_conn(Conns),
+    {Key, Val} = KeyValGen(),
+    Obj = riakc_obj:new(Index, ?INT_TO_BIN(Key), list_to_binary(Val), "text/plain"),
+    S2 = S#state{pb_conns=wrap(Conns)},
+    case riakc_pb_socket:put(Conn, Obj) of
+        ok -> {ok, S2};
+        Err -> {error, Err, S2}
+    end;
+
+run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=undefined}) ->
+    S2 = S#state{fruits=gen_fruits(MaxCardinality)},
+    run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S2);
+
+run({random_fruit_search_pb, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
+    NumTerms = random:uniform(MaxTerms),
+    Offset = random:uniform(Len),
+    TermList = lists:sublist(Fruits, Offset, NumTerms),
+    CardList = lists:sublist(Cards, Offset, NumTerms),
+    ExpectedNumFound = lists:min(CardList),
+    Query = list_to_binary(string:join(TermList, " AND ")),
+    run({search_pb, Query, FL, ExpectedNumFound}, K, V, S);
+
+run({search_pb, Query, FL, Expected}, _, _, S=#state{index=Index, pb_conns=Conns}) ->
+    Conn = get_conn(Conns),
+    S2 = S#state{pb_conns=wrap(Conns)},
+    case {Expected, search_pb(Conn, Index, Query, [{fl,FL}])} of
+        {?DONT_VERIFY, {ok, _, _, _}} ->
+            {ok, S2};
+        {_, {ok, _, _, NumFound}} ->
+            case NumFound =:= Expected of
+                true ->
+                    {ok, S2};
+                false ->
+                    ?ERROR("Query ~p expected ~p got ~p", [Query, Expected, NumFound]),
+                    {error, {num_found, Expected, NumFound}, S2}
+            end;
+        {_, {error, Reason}} ->
+            {error, Reason, S2}
+    end;
+
 run(search_pb, _, QueryGen, S=#state{index=Index, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
-    Query = QueryGen(search),
+    Query = QueryGen(),
     S2 = S#state{pb_conns=wrap(Conns)},
     case search_pb(Conn, Index, Query) of
-        ok -> {ok, S2};
+        {ok, _, _, _} -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
     end;
 
@@ -135,10 +169,17 @@ run(show, KeyGen, _ValGen, S) ->
     ?INFO("~p: ~p~n", [K, V]),
     {ok, S}.
 
+-spec search_pb(pid(), binary(), binary()) ->
+                       {ok, [{binary(),binary()}], number(), integer()} | term().
 search_pb(Conn, Index, Query) ->
-    case riakc_pb_socket:search(Conn, Index, Query) of
-        {ok, _Result} -> ok;
-        Other -> Other
+    search_pb(Conn, Index, Query, []).
+
+search_pb(Conn, Index, Query, Opts) ->
+    case riakc_pb_socket:search(Conn, Index, Query, Opts) of
+        {ok, {search_results,Fields,MaxScore,NumFound}} ->
+            {ok, Fields,MaxScore,NumFound};
+        Other ->
+            Other
     end.
 
 %% ====================================================================
@@ -251,6 +292,17 @@ first_large_enough(K, [{Count, Str}|Fruits]) ->
 get_base({URLs, {I,_}}) -> array:get(I, URLs).
 
 get_conn({Conns, {I,_}}) -> array:get(I, Conns).
+
+-spec gen_fruits(integer()) -> {integer(), [string()], [integer()]}.
+gen_fruits(MaxCardinality) ->
+    %% Make a list of shuffled fruits to use for qurying
+    Fruits = tokenize(filter_by_cardinality(?FRUITS, MaxCardinality)),
+    ShuffledFruits0 = shuffle(Fruits),
+    Len = length(ShuffledFruits0),
+    %% Double it to fake wrap-around (for Offset + NumTerms > length(Fruits))
+    ShuffledFruits = ShuffledFruits0 ++ ShuffledFruits0,
+    {ShuffledCards, ShuffledTokens} = lists:unzip(ShuffledFruits),
+    {Len, ShuffledTokens, ShuffledCards}.
 
 get_path({struct, PL}, Path) ->
     get_path(PL, Path);
