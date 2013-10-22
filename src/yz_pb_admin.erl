@@ -51,13 +51,13 @@ decode(Code, Bin) ->
         #rpbyokozunaschemaputreq{} ->
             {ok, Msg, {"yokozuna.schema", ?YZ_SECURITY_THING_ONE}};
         #rpbyokozunaschemagetreq{} ->
-            {ok, Msg, {"yokozuna.schema", {?YZ_SECURITY_THING_ONE}}};
+            {ok, Msg, {"yokozuna.schema", ?YZ_SECURITY_THING_ONE}};
         #rpbyokozunaindexputreq{} ->
-            {ok, Msg, {"yokozuna.index", {?YZ_SECURITY_THING_ONE}}};
+            {ok, Msg, {"yokozuna.index", ?YZ_SECURITY_THING_ONE}};
         rpbyokozunaindexgetreq ->
-            {ok, Msg, {"yokozuna.index", {?YZ_SECURITY_THING_ONE}}};
+            {ok, Msg, {"yokozuna.index", ?YZ_SECURITY_THING_ONE}};
         #rpbyokozunaindexgetreq{} ->
-            {ok, Msg, {"yokozuna.index", {?YZ_SECURITY_THING_ONE}}};
+            {ok, Msg, {"yokozuna.index", ?YZ_SECURITY_THING_ONE}};
         #rpbyokozunaindexdeletereq{} ->
             {ok, Msg, {"yokozuna.index", ?YZ_SECURITY_THING_ONE}};
         _ ->
