@@ -35,13 +35,21 @@ add_to_doc({doc, Fields}, Field) ->
 
 -spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    <<(yz_kv:get_obj_key(O))/binary,"_",Partition/binary>>.
+    Bucket = yz_kv:get_obj_bucket(O),
+    BType = yz_kv:bucket_type(Bucket),
+    BName = yz_kv:bucket_name(Bucket),
+    Key = yz_kv:get_obj_key(O),
+    <<BType/binary,"_",BName/binary,"_",Key/binary,"_",Partition/binary>>.
 
 doc_id(O, Partition, none) ->
     doc_id(O, Partition);
 
 doc_id(O, Partition, Sibling) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary,"_",Sibling/binary>>.
+    Bucket = yz_kv:get_obj_bucket(O),
+    BType = yz_kv:bucket_type(Bucket),
+    BName = yz_kv:bucket_name(Bucket),
+    Key = yz_kv:get_obj_key(O),
+    <<BType/binary,"_",BName/binary,"_",Key/binary,"_",Partition/binary,"_",Sibling/binary>>.
 
 % @doc `true' if this Object has multiple contents
 has_siblings(O) -> riak_object:value_count(O) > 1.

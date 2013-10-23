@@ -99,7 +99,7 @@ hash_object(Obj) ->
 get_obj_ct(MD) ->
     dict:fetch(<<"content-type">>, MD).
 
--spec get_obj_bucket(obj()) -> binary().
+-spec get_obj_bucket(obj()) -> bucket().
 get_obj_bucket(Obj) ->
     riak_object:bucket(Obj).
 
