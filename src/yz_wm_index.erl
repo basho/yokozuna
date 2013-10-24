@@ -47,8 +47,7 @@
 %%
 %% PUT /yz/index/Index
 %%
-%%   Creates a new index with the given name, and also creates
-%%   a post commit hook to a bucket of the same name.
+%%   Creates a new index with the given name.
 %%
 %%   A PUT request requires this header:
 %%     Content-Type: application/json
@@ -177,7 +176,6 @@ index_body(Ring, IndexName) ->
     SchemaName = yz_index:schema_name(Info),
     {struct, [
         {"name", IndexName},
-        {"bucket", IndexName},
         {"schema", SchemaName}
     ]}.
 
