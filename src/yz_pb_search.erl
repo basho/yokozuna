@@ -140,17 +140,33 @@ default([H|T], _) ->
 default(Value, _) ->
     Value.
 
+%% @private
+%%
+%% NOTE: Bypass `riak_pb_search_codec' to avoid 2-pass on `Doc'.
+-spec encode_doc([{field_name(), term()}]) -> #rpbsearchdoc{}.
 encode_doc(Doc) ->
-    EncodedDoc = lists:foldl(fun ?MODULE:encode_field/2, [], Doc),
-    riak_pb_search_codec:encode_search_doc(EncodedDoc).
+    Fields = lists:foldl(fun ?MODULE:encode_field/2, [], Doc),
+    #rpbsearchdoc{fields = Fields}.
 
-encode_field({Prop, Val}, EncodedDoc) when is_list(Val) ->
+%% @private
+-spec encode_field({field_name(), term()}, [{field_name(), term()}]) ->
+                        [{field_name(), term()}].
+encode_field({Field, Val}, EncodedDoc) when is_list(Val) ->
     %% if `Val' is list then dealing with multi-valued field
-    MultiVals = [{Prop, to_binary(V)} || V <- Val],
+    MultiVals = [riak_pb_codec:encode_pair({Field, encode_val(V)}) || V <- Val],
     MultiVals ++ EncodedDoc;
-encode_field({Prop, V}, EncodedDoc) ->
-    [{Prop, to_binary(V)}|EncodedDoc].
+encode_field({Field, Val}, EncodedDoc) ->
+    [riak_pb_codec:encode_pair({Field, encode_val(Val)})|EncodedDoc].
 
-to_binary(B) when is_binary(B) -> B;
-to_binary(I) when is_integer(I) -> list_to_binary(integer_to_list(I));
-to_binary(F) when is_float(F) -> list_to_binary(float_to_list(F)).
+%% @private
+%%
+%% NOTE: Need to do this here because `riak_pb_codec' doesn't convert
+%% numbers.
+-spec encode_val(number() | atom() | binary()) -> atom() | binary().
+encode_val(Val) when is_integer(Val) ->
+    integer_to_binary(Val);
+encode_val(Val) when is_float(Val) ->
+    float_to_binary(Val);
+encode_val(Val) ->
+    Val.
+

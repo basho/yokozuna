@@ -17,7 +17,7 @@ SOLR_DIR=../priv/solr
 BUILD_DIR=../build
 VSN=solr-4.4.0-yz
 FILENAME=$VSN.tgz
-TMP_DIR=/tmp/yokozuna
+TMP_DIR=/var/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
 SRC_DIR=$BUILD_DIR/$VSN
 EXAMPLE_DIR=$SRC_DIR/example
@@ -32,7 +32,7 @@ get_solr()
 {
         if [[ -z ${SOLR_PKG_DIR+x} ]]
         then
-            if [ -e /tmp/yokozuna/$VSN.tgz ]; then
+            if [ -e $TMP_FILE ]; then
                 echo "Using cached copy of Solr $TMP_FILE"
                 ln -s $TMP_FILE $FILENAME
             else
