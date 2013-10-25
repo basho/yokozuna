@@ -133,10 +133,11 @@ get_user_meta(MD) ->
         none ->
             dict:new();
         MetaMeta ->
+
             %% NOTE: Need to call `to_lower' because
             %%       `erlang:decode_packet' which is used by mochiweb
             %%       will modify the case of certain header names
-            MM2 = [{list_to_binary(string:to_lower(K)), list_to_binary(V)}
+            MM2 = [{format_meta(key, K), format_meta(value, V)}
                    || {K,V} <- MetaMeta],
             dict:from_list(MM2)
     end.
@@ -200,3 +201,13 @@ gen_ed(O, Hash, Partition) ->
     RiakKey = yz_kv:get_obj_key(O),
     Hash64 = base64:encode(Hash),
     <<Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash64/binary>>.
+
+%% Meta keys and values can be strings or binaries
+format_meta(key, Value) when is_binary(Value) ->
+    format_meta(key, binary_to_list(Value));
+format_meta(key, Value) ->
+    list_to_binary(string:to_lower(Value));
+format_meta(value, Value) when is_binary(Value) ->
+    Value;
+format_meta(value, Value) ->
+    list_to_binary(Value).
