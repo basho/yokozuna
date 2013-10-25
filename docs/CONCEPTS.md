@@ -220,7 +220,7 @@ extraction and return the document structure as `application/json`.
 
 ```
 curl -XPUT -H 'content-type: application/json' \
-  'http://localhost:8098/extract' --data-binary @object.json
+  'http://localhost:8098/yz/extract' --data-binary @object.json
 ```
 
 Schemas
