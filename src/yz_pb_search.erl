@@ -164,9 +164,11 @@ encode_field({Field, Val}, EncodedDoc) ->
 %% numbers.
 -spec encode_val(number() | atom() | binary()) -> atom() | binary().
 encode_val(Val) when is_integer(Val) ->
-    integer_to_binary(Val);
+    %% TODO Use 16B `integer_to_binary' BIF once we ditch 15B support
+    ?INT_TO_BIN(Val);
 encode_val(Val) when is_float(Val) ->
-    float_to_binary(Val);
+    %% TODO Use 16B `float_to_binary' BIF once we ditch 15B support
+    ?FLOAT_TO_BIN(Val);
 encode_val(Val) ->
     Val.
 

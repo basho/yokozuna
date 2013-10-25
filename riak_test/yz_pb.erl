@@ -195,6 +195,6 @@ confirm_stored_fields(Cluster) ->
         riakc_pb_socket:search(Pid, Bucket, Search, Params),
     ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
     ?assertEqual(3.14,
-                 binary_to_float(proplists:get_value(<<"float_tf">>, Fields))),
+                 ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
     ?assertEqual(Bucket, proplists:get_value(<<"_yz_rb">>, Fields)),
     riakc_pb_socket:stop(Pid).
