@@ -28,8 +28,21 @@
 %% API
 %% ====================================================================
 
+start_apps(Apps) ->
+    [application:start(App) || App <- Apps].
+
 new(_Id) ->
-    ibrowse:start(),
+    start_apps([crypto, asn1, public_key, ssl, ibrowse]),
+    Secure = basho_bench_config:get(secure, false),
+    User = basho_bench_config:get(user, "user"),
+    Password = basho_bench_config:get(password, "password"),
+    Cert = basho_bench_config:get(cert, "rootcert.pem"),
+    case Secure of
+        true ->
+            ?INFO("Security enabled: ~s ~s ~s", [User, Password, Cert]);
+        false ->
+            ok
+    end,
     Index = basho_bench_config:get(index, "test"),
     HTTP = basho_bench_config:get(http_conns, [{"127.0.0.1", 8098}]),
     PB = basho_bench_config:get(pb_conns, [{"127.0.0.1", 8087}]),
@@ -37,7 +50,7 @@ new(_Id) ->
     SPath = basho_bench_config:get(search_path, "/search/test"),
     IURLs = array:from_list(lists:map(make_url(IPath), HTTP)),
     SURLs = array:from_list(lists:map(make_url(SPath), HTTP)),
-    Conns = array:from_list(lists:map(fun make_conn/1, PB)),
+    Conns = array:from_list(lists:map(make_conn(Secure, User, Password, Cert), PB)),
     N = length(HTTP),
     M = length(PB),
 
@@ -333,9 +346,24 @@ http_put(URL, CT, Body) ->
 make_url(Path) ->
     fun({IP, Port}) -> ?FMT("http://~s:~w~s", [IP, Port, Path]) end.
 
-make_conn({IP, Port}) ->
-    {ok, Conn} = riakc_pb_socket:start_link(IP, Port),
-    Conn.
+make_conn(Secure, User, Password, Cert) ->
+    fun({IP, Port}) ->
+            case Secure of
+                true ->
+                    Opts = [{credentials, User, Password},
+                            {cacertfile, Cert}],
+                    case riakc_pb_socket:start_link(IP, Port, Opts) of
+                        {ok, Conn} ->
+                            Conn;
+                        Err ->
+                            ?ERROR("Failed to make connection: ~p", [Err]),
+                            Err
+                    end;
+                false ->
+                    {ok, Conn} = riakc_pb_socket:start_link(IP, Port),
+                    Conn
+            end
+    end.
 
 %% @private
 %%
