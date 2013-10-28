@@ -49,7 +49,7 @@ decode(Code, Bin) ->
     Msg = riak_pb_codec:decode(Code, Bin),
     case Msg of
         #rpbsearchqueryreq{index=Index} ->
-            {ok, Msg, {"yokozuna.search", {?YZ_SECURITY_THING_ONE, Index}}};
+            {ok, Msg, {"yokozuna.search", {?YZ_SECURITY_THING1_INDEX, Index}}};
         _ ->
             {ok, Msg}
     end.

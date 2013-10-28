@@ -148,8 +148,8 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
         true ->
             {true, RD, Ctx};
         false ->
-            Res = riak_core_security:check_permission({"yokozuna.index",
-                                                       ?YZ_SECURITY_THING_ONE},
+            Res = riak_core_security:check_permission({"yokozuna.admin",
+                                                       ?YZ_SECURITY_THING1_INDEX},
                                                       Security),
             case Res of
                 {false, Error, _} ->

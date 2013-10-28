@@ -139,7 +139,7 @@ confirm_index_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.index","ON","index","TO",?USER]]),
+    ok = ?GRANT(Node, [["yokozuna.admin","ON","index","TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create an index"),
@@ -185,7 +185,7 @@ confirm_schema_permission_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant schema permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.schema","ON","index","TO",?USER]]),
+    ok = ?GRANT(Node, [["yokozuna.admin","ON","schema","TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create schema"),
@@ -231,12 +231,12 @@ confirm_index_https(Node) ->
 
     lager:info("verifying the peer certificate should work if the cert is valid"),
     Cacertfile = filename:join([rt_priv_dir(), ?ROOT_CERT]),
+    lager:info("Cacertfile: ~p", [Cacertfile]),
     Opts = [{is_ssl, true}, {ssl_options, [
              {cacertfile, Cacertfile},
              {verify, verify_peer},
              {reuse_sessions, false}
             ]}],
-
     Headers = [{"accept", "multipart/mixed, */*;q=0.9"}] ++
               [{"content-type", "application/json"}]
                ++ get_auth_header(?HUSER, ?PASSWORD),
@@ -246,7 +246,7 @@ confirm_index_https(Node) ->
     {ok, "403", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.index","ON","index","TO",?HUSER]]),
+    ok = ?GRANT(Node, [["yokozuna.admin","ON","index","TO",?HUSER]]),
 
     %% this should work now that this user has permission
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),

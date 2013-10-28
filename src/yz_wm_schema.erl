@@ -114,8 +114,8 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
         true ->
             {true, RD, Ctx};
         false ->
-            Res = riak_core_security:check_permission({"yokozuna.schema",
-                                                       ?YZ_SECURITY_THING_ONE},
+            Res = riak_core_security:check_permission({"yokozuna.admin",
+                                                       ?YZ_SECURITY_THING1_SCHEMA},
                                                       Security),
             case Res of
                 {false, Error, _} ->
