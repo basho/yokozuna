@@ -71,6 +71,12 @@ exists(SchemaName) ->
 %%% Private
 %%%===================================================================
 
+%% @doc Set ?YZ_SCHEMA_BUCKET with the property {allow_mult, false}
+%%      We never want schema value siblings.
+-spec setup_schema_bucket() -> ok.
+setup_schema_bucket() ->
+    ok = riak_core_bucket:set_bucket(?YZ_SCHEMA_BUCKET, [{allow_mult, false}]).
+
 %% @private
 %%
 %% @doc Parse the schema and verify it contains necessary elements.

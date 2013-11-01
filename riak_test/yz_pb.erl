@@ -10,6 +10,7 @@
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
+-define(CT_JSON, {"Content-Type", "application/json"}).
 
 -define(SCHEMA_CONTENT, <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
@@ -38,6 +39,7 @@ confirm() ->
     confirm_basic_search(Cluster),
     confirm_encoded_search(Cluster),
     confirm_multivalued_field(Cluster),
+    confirm_stored_fields(Cluster),
     pass.
 
 select_random(List) ->
@@ -164,7 +166,7 @@ confirm_multivalued_field(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     %% populate a value
-    {ok, "204", _, _} = ibrowse:send_req(URL, [{"Content-Type", "application/json"}], put, Body),
+    {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
     %% Sleep for soft commit
     timer:sleep(1100),
     Search = <<"name_ss:turner">>,
@@ -172,4 +174,27 @@ confirm_multivalued_field(Cluster) ->
     {ok,{search_results,[{Bucket,Fields}],_Score,_Found}} =
             riakc_pb_socket:search(Pid, Bucket, Search, Params),
     ?assert(lists:member({<<"name_ss">>,<<"turner">>}, Fields)),
-    ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)).
+    ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)),
+    riakc_pb_socket:stop(Pid).
+
+confirm_stored_fields(Cluster) ->
+    Bucket = <<"stored_fields">>,
+    lager:info("Confrim stored fields"),
+    create_index(Cluster, Bucket, Bucket),
+    Body = <<"{\"bool_b\":true, \"float_tf\":3.14}">>,
+    Params = [],
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = bucket_url(HP, Bucket, "stored"),
+    lager:info("Storing to bucket ~s", [URL]),
+    {Host, Port} = HP,
+    {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
+    timer:sleep(1100),
+    Search = <<"float_tf:3.14">>,
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    {ok,{search_results,[{Bucket,Fields}],_Score,_Found}} =
+        riakc_pb_socket:search(Pid, Bucket, Search, Params),
+    ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
+    ?assertEqual(3.14,
+                 ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
+    ?assertEqual(Bucket, proplists:get_value(<<"_yz_rb">>, Fields)),
+    riakc_pb_socket:stop(Pid).

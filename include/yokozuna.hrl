@@ -108,8 +108,10 @@
 -define(ATOM_TO_BIN(A), list_to_binary(atom_to_list(A))).
 -define(BIN_TO_ATOM(B), list_to_atom(binary_to_list(B))).
 -define(BIN_TO_INT(B), list_to_integer(binary_to_list(B))).
+-define(BIN_TO_FLOAT(B), list_to_float(binary_to_list(B))).
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 -define(INT_TO_STR(I), integer_to_list(I)).
+-define(FLOAT_TO_BIN(F), list_to_binary(float_to_list(F))).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 -define(HEAD_CTYPE, "content-type").
 -define(YZ_HEAD_EXTRACTOR, "yz-extractor").
