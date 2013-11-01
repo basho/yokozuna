@@ -58,50 +58,50 @@ process running Riak.
 
 Yokozuna has a `gen_server` process which monitors the JVM OS process.
 The code for this server is in `yz_solr_proc`.  When the JVM process
-crashes this server crashes, causing it's supervisor to restart it.
-If there is more than 1 restart in 45 seconds then the entire Riak
-node will be shutdown.  If Yokozuna is enabled and Solr cannot
+crashes this server crashes, causing its supervisor to restart it.
+If there is more than 1 restart in 45 seconds, the entire Riak
+node will be shut down -- if Yokozuna is enabled and Solr cannot
 function for some reason then the Riak node needs to go down so that
 the user will notice and take corrective action.
 
 Conversely, the JVM process monitors the Riak process.  If for any
-reason Riak goes down hard, e.g. a segfault, then the JVM process
+reason Riak goes down hard (e.g. a segfault) the JVM process
 will also exit.  This double monitoring along with the crash semantics
-means that no process is may exist without the other.  They are either
+means that neither process may exist without the other.  They are either
 both up or both down.
 
 All other communication between Yokozuna and Solr is performed via
-HTTP.  E.g. querying, indexing, and administration commands are all
-sent to Solr via HTTP.  There is no `gen_server` involved in this
-communication and thus no serialization point to bottleneck.  The
-ibrowse Erlang HTTP client is used which keeps a pool of persistent
-connections open.  The Jetty container hosting Solr does the same
-thing.  Thus HTTP connections are reused.
+HTTP, including querying, indexing, and administration commands.
+The ibrowse Erlang HTTP client is used to manage these communications
+as both it and the Jetty container hosting Solr pool HTTP connections,
+allowing for reuse. Moreover, since there is no `gen_server` involved
+in this communication, there's no serialization point to bottleneck.
 
 Indexes
 ----------
 
-An index is both a physical entity and logical namespace.  It acts as
-a logical container to store index entries for objects.  Each index is
-comprised of its own set of files on disk.  In contrast to Riak KV,
-where a _bucket_ is logical only.
+An index, stored as a set of files on disk, is a logical namespace
+that contains index entries for objects. Each such index maintains
+its own set of files on disk -- a critical difference from Riak KV in
+which a bucket is a purely logical entity, and not physically disjoint
+at all.
 
-Each index may have 0, 1 or more buckets associated with it.  Unlike
-Riak Search, creating an index does not implicitly associate a bucket
-with it.  This must be done as a second step.  Thus, all indexes start
-with 0 associated buckets.
+Indices may be associated with zero or more buckets. At creation time,
+however, each index has no associated buckets -- unlike Riak Search
+yokozuna indices do not implicitly create bucket associations, meaning
+that this must be done as a separate configuration step.
 
-To associate a bucket with an index the bucket property `yz_index` must
-be set.  It's value should be the name of the index you wish to
-associate.  In order to disassociate a bucket you use the sentinel
+To associate a bucket with an index the bucket property `yz_index`
+must be set to the name of the index you wish to associate.
+Conversely, in order to disassociate a bucket you use the sentinel
 value `_dont_index_`.
 
 Many buckets can be associated with the same index.  This is useful
 for logically partitioning data into different KV buckets which are of
-the same type of data.  E.g. if a user wanted to store event objects
+the same type of data, for example if a user wanted to store event objects
 but logically partition them in KV by using a date as the bucket name.
 
-A bucket CANNOT be associated with many indexes.  I.e. the `yz_index`
+A bucket CANNOT be associated with many indexes -- the `yz_index`
 property must be a single name, not a list.
 
 See the [ADMIN][] page for details on creating an index.
@@ -111,17 +111,17 @@ See the [ADMIN][] page for details on creating an index.
 Extractors
 ----------
 
-There is a tension between Riak KV and Solr when it comes to data.
-Riak KV treats object values as opaque.  There is an associated
-content-type which is simply treated as metadata to be returned to the
-user.  Otherwise the user wouldn't know what type of data it is!
-Solr, on the other hand, wants semi-structure data.  More specifically
-it wants a flat collection of field-value pairs.  "Flat" means that a
-field's value cannot be a nested structure of field-value pairs.  The
+There is a tension between Riak KV and Solr when it comes to data --
+Riak KV treats object values as opaque.  While KV does maintain an associated
+content-type, it simply treated as metadata to be returned to the
+user to provide context for interpreting the returned object; otherwise the user wouldn't know what type of data it is!
+Solr, on the other hand, wants semi-structured data; specifically
+a flat collection of field-value pairs.  "Flat" here means that a
+field's value cannot be a nested structure of field-value pairs, they
 values are treated as-is (non-composite is another way to say it).
 
 Because of this mismatch between KV and Solr, Yokozuna must act as a
-mediator between the two.  It must have a way to inspect a KV object
+mediator between the two: it must have a way to inspect a KV object
 and create a structure which Solr can ingest for indexing.  In Solr
 this structure is called a _document_.  This task of creating a Solr
 document from a Riak object is the job of the _extractor_.  To perform
@@ -141,7 +141,7 @@ This call happens inside `yz_doc:make_doc`.
 
 The first question is answered by the _extractor mapping_.  By default
 Yokozuna ships with extractors for several common data types.  Below
-is a table of this default mapping.
+is a table of this default mapping:
 
 |Content Type          |Erlang Module          |
 |----------------------|-----------------------|
@@ -153,7 +153,7 @@ is a table of this default mapping.
 
 The answer to the second question is a function of the implementation
 of the extractor module.  Every extractor must conform to the
-following Erlang specification.
+following Erlang specification:
 
 ```erlang
 -spec(ObjectValue::binary(), Options::proplist()) -> fields() | {error, term()}.
@@ -163,7 +163,7 @@ following Erlang specification.
 ```
 
 The value of the object is passed along with options specific to each
-extractor.  Assuming the extractor correctly parses the value if will
+extractor.  Assuming the extractor correctly parses the value it will
 return a list of fields, which are name-value pairs.
 
 The text extractor is the simplest one.  By default it will use the
@@ -226,13 +226,13 @@ curl -XPUT -H 'content-type: application/json' \
 Schemas
 ----------
 
-Every index must have a schema.  The schema is a collection of field
+Every index must have a schema, which is a collection of field
 names and types.  For each document stored, every field must have a
-matching name in the schema.  This name is used to determine the type.
-The type information determines how a field's value will be indexed.
+matching name in the schema, used to determine the field's type, which
+in turn determines how a field's value will be indexed.
 
 Currently, Yokozuna makes no attempts to hide any details of the Solr
-schema.  A user creates a schema for Yokozuna just as she would for
+schema: a user creates a schema for Yokozuna just as she would for
 Solr.  Here is the general structure of a schema.
 
 
@@ -265,13 +265,13 @@ The corresponding date type is declared under `<types>` like so.
 <fieldType name="date" class="solr.TrieDateField" precisionStep="0" positionIncrementGap="0"/>
 ```
 
-For a complete reference of the Solr schema, its included types, and
-analyzers refer to the [Solr 4.4 reference guide][solr440-ref].
+For a complete reference of the Solr schemata, as well as their included types and
+analyzers, refer to the [Solr 4.4 reference guide][solr440-ref].
 
 Yokozuna comes bundled with a [default schema][ds] called
 `_yz_default`.  This is an extremely general schema which makes heavy
-use of dynamic fields.  It is intended for development purposes and
-testing.  In production a schema should be tailored to the data being
+use of dynamic fields -- it is intended for development and
+testing.  In production, a schema should be tailored to the data being
 indexed.
 
 AAE
@@ -280,11 +280,11 @@ AAE
 Active Anti-Entropy (AAE) is the process of discovering and correcting
 entropy (divergence) between the data stored in Riak's key-value
 backend and the indexes stored in Solr.  The impetus for AAE is that
-failures come in all types.  Disk failure, dropped messages, network
+failures come in all shapes and sizes -- disk failure, dropped messages, network
 partitions, timeouts, overflowing queues, segment faults, power
-outages, etc.  Failures range from obvious to invisible.  Prevention
-of failures is fraught with failures as well.  How do you prevent your
-prevention system from failing?  You don't.  Code for detection, not
+outages, etc.  Failures range from obvious to invisible, and failure prevention
+is fraught with failure points as well: how do you prevent your
+prevention system from failing?  You don't -- code for detection, not
 prevention.  That is the purpose of AAE.
 
 Constantly reading and re-indexing every object in Riak could be quite
@@ -304,14 +304,14 @@ side is missing a key or the hashes for a key do not match then
 _repair_ is invoked on that key.  Repair converges the KV data and its
 indexes, removing the entropy.
 
-As I said, failure is immanent and absolute prevention impossible.  So
-what if the hashtrees themselves contain entropy?  E.g. what if the
+Since failure is inevitable, and absolute prevention impossible, eventually
+the hashtrees themselves will contain some entropy. For example, what if the
 root hashes agree but a divergence exists in the actual data?  Simple,
 you assume you can never fully trust the hashtrees so periodically
-you _expire_ them.  When expired a tree is completely destroyed and
+you _expire_ them.  When expired, a tree is completely destroyed and
 the re-built from scratch.  This requires folding all data for a
-partition.  It can be expensive and take some time.  This is why, by
-default, expiration occurs after a week.
+partition, which can be expensive and take some time.  For this reason, by
+default, expiration occurs after one week.
 
 For an in-depth look at Riak's AAE process watch Joseph Blomstedt's
 [screencast][aae-sc].
@@ -320,19 +320,19 @@ Analysis & Analyzers
 --------------------
 
 Analysis is the process of breaking apart (analyzing) text into a
-stream of tokens.  Solr allows many different methods of analysis.
-This is important because different field values may represent
+stream of tokens.  Solr allows many different methods of analysis,
+a fact made important because different field values may represent
 different types of data.  For data like unique identifiers, dates, and
-categories you want to index the value verbatim.  It shouldn't be
-analyzed at all.  For text like product summaries or a blog post
+categories you want to index the value verbatim -- it shouldn't be
+analyzed at all.  For text like product summaries, or a blog post,
 you want to split the value into individual words so that they may be
 queried individually.  You may also want to remove common words,
-lowercase words, or performing stemming.  This is the process of
+lowercase words, or perform stemming.  This is the process of
 _analysis_.
 
 Solr provides many different field types which analyze data in
-different ways.  Custom analyzer chains may be built by stringing
-together XML in the schema file.  This allows custom analysis for each
+different ways, and custom analyzer chains may be built by stringing
+together XML in the schema file, allowing custom analysis for each
 field.  For more information on analysis see the
 [Solr 4.4 reference guide][solr440-ref].
 
@@ -340,14 +340,14 @@ Tagging
 -------
 
 Tagging is the process of adding field-value pairs to be indexed via
-the Riak Object metadata.  It is useful in two scenarios.
+Riak Object metadata.  It is useful in two scenarios.
 
 1. The object being stored is opaque but your application has metadata
-   about it that should be indexed.  E.g. storing an image with
+   about it that should be indexed, for example storing an image with
    location or category metadata.
 
-2. The object being stored is not opaque but additional indexes must
-   be added without modifying the object's value.
+2. The object being stored is not opaque, but additional indexes must
+   be added _without_ modifying the object's value.
 
 See [TAGGING][] for more information.
 
@@ -356,29 +356,30 @@ Coverage
 
 Yokozuna uses _doc-based partitioning_.  This means that all index
 entries for a given Riak Object are co-located on the same physical
-machine.  To query the entire index all partitions must be contacted.
-Riak has partitions and replicas.  Adjacent partitions keep replicas
-of the same object.  Replication allows the entire index to be
-considered by only contacting a subset of the partitions.  The process
-of finding a covering set of partitions is known as _coverage_.
+machine.  This means that to query the entire index all partitions must be contacted.
+This process is made less costly, however, by considering parition replicas
+stored by Riak in the course of normal operations -- adjacent partitions keep replicas
+of the same object.  This replication allows the entire index to be
+considered by only contacting a subset of the partitions in a process
+known as _coverage_.
 
 Every single query sent to Yokozuna must contact a covering set of
-partitions.  This means a coverage plan must be calculated for every
-query.  However, Yokozuna is different from Riak KV.  The semantic of
-_partition_ is done logically rather than physically.  This means
-coverage plans only need to fine a covering set of nodes and then pass
+partitions, meaning a coverage plan must be calculated for every
+query.  However, because Yokozuna is different from Riak KV in that the semantic of
+_partition_ is done logically rather than physically,
+coverage plans only need to find a covering set of nodes and pass
 a filter query (`fq`) to filter out overlapping replicas.
 
-Calculating a coverage plan is handled by Riak Core.  It can be a very
-expensive operation as much computation is done symbolically and it
+Calculating a coverage plan is handled by Riak Core, and can be a very
+expensive operation as much computation is done symbolically, and the process algorithmically
 amounts to a knapsack problem.  The larger the ring the more
 expensive.  Yokozuna takes advantage of the fact that it has no
-physical partitions.  It computes a coverage plan asynchronously every
+physical partitions by computing a coverage plan asynchronously every
 few seconds, caching the plan for query use.  In the case of node
 failure or ownership change this could mean a delay between cluster
-state and the cached plan.  This is a good trade-off given the
-performance benefits.  Furthermore, even without caching there is a
-race it just has a smaller window.
+state and the cached plan.  This is, however, a good trade-off given the
+performance benefits, especially since even without caching there is a
+race, albeit one with a smaller window.
 
 [aae-sc]: http://coffee.jtuple.com/video/AAE.html
 
