@@ -83,7 +83,7 @@ function ant_version()
 
 function erl_version()
 {
-    erl -eval "io:format(\"~s~n\", [erlang:system_info(system_version)]), init:stop()." | sed -n -E 's/Erlang (R[A-Z0-9]+) .*/\1/p'
+    erl -eval "io:format(\"~s~n\", [erlang:system_info(system_version)]), init:stop()." | sed -n -E 's/Erlang (R[A-Z0-9a-z\-]+) .*/\1/p'
 }
 
 function sanity_check()

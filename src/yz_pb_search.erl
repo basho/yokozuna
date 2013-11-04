@@ -44,8 +44,15 @@ init() ->
     no_state.
 
 %% @doc decode/2 callback. Decodes an incoming message.
+%%      also checks that this request has permission
 decode(Code, Bin) ->
-    {ok, riak_pb_codec:decode(Code, Bin)}.
+    Msg = riak_pb_codec:decode(Code, Bin),
+    case Msg of
+        #rpbsearchqueryreq{index=Index} ->
+            {ok, Msg, {"yokozuna.search", {?YZ_SECURITY_THING1_INDEX, Index}}};
+        _ ->
+            {ok, Msg}
+    end.
 
 %% @doc encode/1 callback. Encodes an outgoing response message.
 encode(Message) ->

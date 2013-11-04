@@ -24,6 +24,9 @@
 -include_lib("webmachine/include/webmachine.hrl").
 -define(YZ_HEAD_FPROF, "yz-fprof").
 
+-record(ctx, {security      %% security context
+             }).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -46,7 +49,7 @@ routes() ->
 %%%===================================================================
 
 init(_) ->
-    {ok, none}.
+    {ok, #ctx{}}.
 
 allowed_methods(Req, S) ->
     Methods = ['GET', 'POST'],
@@ -58,6 +61,43 @@ content_types_provided(Req, S) ->
 
 service_available(Req, S) ->
     {yokozuna:is_enabled(search), Req, S}.
+
+is_authorized(ReqData, Ctx) ->
+    case riak_api_web_security:is_authorized(ReqData) of
+        false ->
+            {"Basic realm=\"Riak\"", ReqData, Ctx};
+        {true, SecContext} ->
+            {true, ReqData, Ctx#ctx{security=SecContext}};
+        insecure ->
+            %% XXX 301 may be more appropriate here, but since the http and
+            %% https port are different and configurable, it is hard to figure
+            %% out the redirect URL to serve.
+            {{halt, 426}, wrq:append_to_resp_body(<<"Security is enabled and "
+                    "Riak does not accept credentials over HTTP. Try HTTPS "
+                    "instead.">>, ReqData), Ctx}
+    end.
+
+%% Uses the riak_kv,secure_referer_check setting rather
+%% as opposed to a special yokozuna-specific config
+forbidden(RD, Ctx=#ctx{security=undefined}) ->
+    {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
+forbidden(RD, Ctx=#ctx{security=Security}) ->
+    case riak_kv_wm_utils:is_forbidden(RD) of
+        true ->
+            {true, RD, Ctx};
+        false ->
+            Index = list_to_binary(wrq:path_info(index, RD)),
+            Res = riak_core_security:check_permission({"yokozuna.search",
+                                                       {?YZ_SECURITY_THING1_SCHEMA,
+                                                       Index}},
+                                                      Security),
+            case Res of
+                {false, Error, _} ->
+                    {true, wrq:append_to_resp_body(list_to_binary(Error), RD), Ctx};
+                {true, _} ->
+                    {false, RD, Ctx}
+            end
+    end.
 
 %% Treat POST as GET in order to work with existing Solr clients.
 process_post(Req, S) ->
@@ -125,3 +165,7 @@ fprof_analyse(FileName) ->
     fprof:trace(stop),
     fprof:profile(file, FileName),
     fprof:analyse([{dest, FileName ++ ".analysis"}, {cols, 120}]).
+
+%% ====================================================================
+%% Private
+%% ====================================================================

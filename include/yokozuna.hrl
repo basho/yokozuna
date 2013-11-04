@@ -118,6 +118,11 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+%% Core security requires {BucketType, Bucket}. Technically, these arent so
+%% strict, and so we refer to them as {ThingOne, ThingTwo}, where ThingTwo is
+%% an Index name in yokozuna, and ThingOne is just a placeholder
+-define(YZ_SECURITY_THING1_INDEX, <<"index">>).
+-define(YZ_SECURITY_THING1_SCHEMA, <<"schema">>).
 -define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
 -define(YZ_DEFAULT_SOLR_PORT, 8983).
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
