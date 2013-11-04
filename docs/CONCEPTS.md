@@ -88,7 +88,7 @@ at all.
 
 Indices may be associated with zero or more buckets. At creation time,
 however, each index has no associated buckets -- unlike Riak Search
-yokozuna indices do not implicitly create bucket associations, meaning
+Yokozuna indices do not implicitly create bucket associations, meaning
 that this must be done as a separate configuration step.
 
 To associate a bucket with an index the bucket property `yz_index`
@@ -112,12 +112,13 @@ Extractors
 ----------
 
 There is a tension between Riak KV and Solr when it comes to data --
-Riak KV treats object values as opaque.  While KV does maintain an associated
-content-type, it simply treated as metadata to be returned to the
-user to provide context for interpreting the returned object; otherwise the user wouldn't know what type of data it is!
-Solr, on the other hand, wants semi-structured data; specifically
-a flat collection of field-value pairs.  "Flat" here means that a
-field's value cannot be a nested structure of field-value pairs, they
+Riak KV treats object values as opaque.  While KV does maintain an
+associated content-type, it is simply treated as metadata to be
+returned to the user to provide context for interpreting the returned
+object; otherwise the user wouldn't know what type of data it is!
+Solr, on the other hand, wants semi-structured data; specifically a
+flat collection of field-value pairs.  "Flat" here means that a
+field's value cannot be a nested structure of field-value pairs, the
 values are treated as-is (non-composite is another way to say it).
 
 Because of this mismatch between KV and Solr, Yokozuna must act as a
@@ -265,7 +266,7 @@ The corresponding date type is declared under `<types>` like so.
 <fieldType name="date" class="solr.TrieDateField" precisionStep="0" positionIncrementGap="0"/>
 ```
 
-For a complete reference of the Solr schemata, as well as their included types and
+For a complete reference of the Solr schema, the included types, and
 analyzers, refer to the [Solr 4.4 reference guide][solr440-ref].
 
 Yokozuna comes bundled with a [default schema][ds] called
@@ -280,12 +281,12 @@ AAE
 Active Anti-Entropy (AAE) is the process of discovering and correcting
 entropy (divergence) between the data stored in Riak's key-value
 backend and the indexes stored in Solr.  The impetus for AAE is that
-failures come in all shapes and sizes -- disk failure, dropped messages, network
-partitions, timeouts, overflowing queues, segment faults, power
-outages, etc.  Failures range from obvious to invisible, and failure prevention
-is fraught with failure points as well: how do you prevent your
-prevention system from failing?  You don't -- code for detection, not
-prevention.  That is the purpose of AAE.
+failures come in all shapes and sizes -- disk failure, dropped
+messages, network partitions, timeouts, overflowing queues, segment
+faults, power outages, etc.  Failures range from obvious to
+invisible. Failure prevention is fraught with failure, as well. How do
+you prevent your prevention system from failing?  You don't. Code for
+detection, not prevention.  That is the purpose of AAE.
 
 Constantly reading and re-indexing every object in Riak could be quite
 expensive.  To minimize the overall cost of detection AAE make use of
@@ -304,14 +305,14 @@ side is missing a key or the hashes for a key do not match then
 _repair_ is invoked on that key.  Repair converges the KV data and its
 indexes, removing the entropy.
 
-Since failure is inevitable, and absolute prevention impossible, eventually
-the hashtrees themselves will contain some entropy. For example, what if the
-root hashes agree but a divergence exists in the actual data?  Simple,
-you assume you can never fully trust the hashtrees so periodically
-you _expire_ them.  When expired, a tree is completely destroyed and
-the re-built from scratch.  This requires folding all data for a
-partition, which can be expensive and take some time.  For this reason, by
-default, expiration occurs after one week.
+Since failure is inevitable, and absolute prevention impossible, the
+hashtrees themselves may contain some entropy. For example, what if
+the root hashes agree but a divergence exists in the actual data?
+Simple, you assume you can never fully trust the hashtrees so
+periodically you _expire_ them.  When expired, a tree is completely
+destroyed and the re-built from scratch.  This requires folding all
+data for a partition, which can be expensive and take some time.  For
+this reason, by default, expiration occurs after one week.
 
 For an in-depth look at Riak's AAE process watch Joseph Blomstedt's
 [screencast][aae-sc].
@@ -321,7 +322,7 @@ Analysis & Analyzers
 
 Analysis is the process of breaking apart (analyzing) text into a
 stream of tokens.  Solr allows many different methods of analysis,
-a fact made important because different field values may represent
+an important fact because different field values may represent
 different types of data.  For data like unique identifiers, dates, and
 categories you want to index the value verbatim -- it shouldn't be
 analyzed at all.  For text like product summaries, or a blog post,
@@ -356,30 +357,32 @@ Coverage
 
 Yokozuna uses _doc-based partitioning_.  This means that all index
 entries for a given Riak Object are co-located on the same physical
-machine.  This means that to query the entire index all partitions must be contacted.
-This process is made less costly, however, by considering parition replicas
-stored by Riak in the course of normal operations -- adjacent partitions keep replicas
-of the same object.  This replication allows the entire index to be
-considered by only contacting a subset of the partitions in a process
-known as _coverage_.
+machine. To query the entire index all partitions must be
+contacted. Adjacent partitions keep replicas of the same object.
+Replication allows the entire index to be considered by only
+contacting a subset of the partitions. The process of finding a
+covering set of partitions is known as _coverage_.
 
-Every single query sent to Yokozuna must contact a covering set of
-partitions, meaning a coverage plan must be calculated for every
-query.  However, because Yokozuna is different from Riak KV in that the semantic of
-_partition_ is done logically rather than physically,
-coverage plans only need to find a covering set of nodes and pass
-a filter query (`fq`) to filter out overlapping replicas.
+Each partition in the coverage plan has an owning node. Thus a plan
+can be thought of as a unique set of nodes along with a covering set
+of partitions. Yokozuna treats the node list as physical hostnames and
+passes them to Solr's distributed search via the `shards`
+parameter. Partitions, on the other hand, are treated logically in
+Yokozuna. All partitions for a given node are stored in the same
+index; unlike KV which uses _partition_ as a physical separation. To
+properly filter out overlapping replicas the partition data from the
+cover plan is passed to Solr via the filter query (`fq`) parameter.
 
-Calculating a coverage plan is handled by Riak Core, and can be a very
-expensive operation as much computation is done symbolically, and the process algorithmically
-amounts to a knapsack problem.  The larger the ring the more
+Calculating a coverage plan is handled by Riak Core. It can be a very
+expensive operation as much computation is done symbolically, and the
+process amounts to a knapsack problem.  The larger the ring the more
 expensive.  Yokozuna takes advantage of the fact that it has no
 physical partitions by computing a coverage plan asynchronously every
 few seconds, caching the plan for query use.  In the case of node
 failure or ownership change this could mean a delay between cluster
-state and the cached plan.  This is, however, a good trade-off given the
-performance benefits, especially since even without caching there is a
-race, albeit one with a smaller window.
+state and the cached plan.  This is, however, a good trade-off given
+the performance benefits, especially since even without caching there
+is a race, albeit one with a smaller window.
 
 [aae-sc]: http://coffee.jtuple.com/video/AAE.html
 
