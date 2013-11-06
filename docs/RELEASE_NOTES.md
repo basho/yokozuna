@@ -1,6 +1,87 @@
 Yokozuna Release Notes
 ==========
 
+0.11.0
+------
+
+This release brings Riak Java Client support as well as authentication
+and security for the HTTP and protocol buffer transports. An access
+control list (ACL) may be created to control administration and access
+to indexes. All official Riak clients should now have full support for
+Yokozuna's administration and search API. Stored boolean fields and
+tagging support were fixed for the protocol buffer transport. And
+finally, documentation was added. The new CONCEPTS document goes over
+various important concepts in Yokozuna and the RESOURCES document has
+links to other resources for learning.
+
+### Features ###
+
+* [106][] - Add administration and search support to the Java client.
+
+* [157][] - Add index and schema administration support to all
+  official Riak clients. This was completed with the closing of [106][].
+
+* [145][] - Allow authentication and secure connections for both the
+  HTTP and protocol buffer protocols. When enabled, the security
+  system allows an ACL to be setup for administration and search
+  operations. A user may have all or no administration rights as well
+  as search rights on none, some, or all of the available
+  indexes. Security showed a 3-6% decrease in indexing/querying
+  throughput for one benchmark.
+
+### Bugs/Misc ###
+
+* [132][], [203][], [204][]  - Add integration tests to Basho's internal CI tool.
+
+* [177][], [206][] - Don't wait for Riak KV service. This prevents
+  Yokozuna from blocking start of other applications in Riak.
+
+* [202][] - Don't convert index name to a list; it is always binary.
+
+* [209][], [214][] - Fix handling of stored boolean fields in the
+  protocol buffer transport.
+
+* [212][] - Don't allow siblings in the schema bucket. Yokozuna
+  expects only value for each schema name.
+
+* [222][] - Remove bucket field from index info. It is a hold-over
+  from the days of one-to-one indexing.
+
+* [223][] - Fix tagging over the protocol buffer transport.
+
+* [224][] - Keep support for Erlang R15B.
+
+* [226][] - Add support for secure protocol buffer transport to
+  Yokozuna's basho bench driver.
+
+### Documentation ###
+
+* [208][] - Small clarification to installation doc.
+
+* [213][] - Add doc with links to resources on Yokozuna and Search.
+
+* [225][] - Add doc about various important concepts in Yokozuna.
+
+[106]: https://github.com/basho/yokozuna/issues/106
+[132]: https://github.com/basho/yokozuna/issues/132
+[145]: https://github.com/basho/yokozuna/pull/145
+[157]: https://github.com/basho/yokozuna/issues/157
+[177]: https://github.com/basho/yokozuna/issues/177
+[203]: https://github.com/basho/yokozuna/pull/203
+[204]: https://github.com/basho/yokozuna/pull/204
+[202]: https://github.com/basho/yokozuna/pull/202
+[206]: https://github.com/basho/yokozuna/pull/206
+[208]: https://github.com/basho/yokozuna/pull/208
+[209]: https://github.com/basho/yokozuna/issues/209
+[212]: https://github.com/basho/yokozuna/pull/212
+[213]: https://github.com/basho/yokozuna/pull/213
+[214]: https://github.com/basho/yokozuna/pull/214
+[222]: https://github.com/basho/yokozuna/pull/222
+[223]: https://github.com/basho/yokozuna/pull/223
+[224]: https://github.com/basho/yokozuna/pull/224
+[225]: https://github.com/basho/yokozuna/pull/225
+[226]: https://github.com/basho/yokozuna/pull/226
+
 0.10.0
 ------
 
