@@ -1,17 +1,56 @@
 Install
 =======
 
-Currently there are no platform specific packages.  Yokozuna must be
-built from source.
+There are three methods for obtaining Yokozuna. Which method you
+choose depends on how close to the bleeding edge you want to be. The
+easiest and most convenient method is to use official packages. Binary
+packages are provided for many different operating systems and
+represent the official way to install Riak in production. The other
+two methods are the source package and cloning from GitHub. The
+source package provides an easy way to build the latest official
+Yokozuna tag which should pass all integration tests. This package is
+not an official Riak package but instead is a convenient way to test
+features or bug fixes which have not made it into an official Riak
+release yet. For those that need the latest code then building from
+GitHub is the only way. Instructions for all three methods are
+provided below.
+
+Official Packages
+----------
+
+The current Riak 2.0 preview (riak-2.0.0pre5) comes bundled with
+Yokozuna. It is the same as the 0.11.0 release minus the new security
+feature.
+
+http://docs.basho.com/riak/2.0.0pre5/downloads/
+
+One you have the package you can follow the [install instructions][ii]
+on the official Riak documentation site.
+
+If you are a developer and want to build a local dev cluster then you
+can follow the instructions for the [five minute install][fmi].
+
+[ii]: http://docs.basho.com/riak/2.0.0pre5/ops/building/installing/
+[fmi]: http://docs.basho.com/riak/2.0.0pre5/quickstart/
+[riak20-pre5]: http://docs.basho.com/riak/2.0.0pre5/downloads/
 
 Source Package
 --------------
 
+Approximately every month a release is cut. Thus, Yokozuna development
+can outpace official Riak releases. The source package provides an
+easy method for building the latest release and thus testing the
+newest features and bug fixes. The source package should always pass
+all Yokozuna integration tests and be stable as possible. It should
+not be deployed in production, however. These releases are more like
+previews and compatibility could break between them. Use official
+packages for production.
+
 ### Requirements ###
 
-* Erlang R15B03, or higher
+* Erlang R15B03 or later, 16B02 is recommended
 
-* Oracle Java JRE 1.6 or later, not Open JRE
+* Java 1.6 or later, Oracle 7u25 is recommended
 
 * GNU make
 
@@ -22,31 +61,31 @@ Source Package
 Download the source package and corresponding md5 from one of the
 following locations.
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.10.0-src.tar.gz
+* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.10.0-src.tar.gz.md5
+* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz.md5
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.10.0-src.tar.gz
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.11.0-src.tar.gz
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.10.0-src.tar.gz.md5
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.11.0-src.tar.gz.md5
 
 E.g. download from [riakcs.net][rcs].
 
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.10.0-src.tar.gz
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.10.0-src.tar.gz.md5
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz.md5
 
 Verify the md5 (note: `md5` might be `md5sum`).
 
-	md5 riak-yokozuna-0.10.0-src.tar.gz
-	cat riak-yokozuna-0.10.0-src.tar.gz.md5
+	md5 riak-yokozuna-0.11.0-src.tar.gz
+	cat riak-yokozuna-0.11.0-src.tar.gz.md5
 
 Unpack the archive.
 
-    tar zxvf riak-yokozuna-0.10.0-src.tar.gz
+    tar zxvf riak-yokozuna-0.11.0-src.tar.gz
 
 Compile.
 
-	cd riak-yokozuna-0.10.0-src
+	cd riak-yokozuna-0.11.0-src
 	make
 
 To deploy Riak-Yokozuna in a production configuration then you'll want
@@ -86,9 +125,8 @@ release.
 Install From GitHub
 -----------------
 
-Unless you plan to submit a patch to Yokozuna or require the
-latest-n-greatest it is recommended to use the source package as
-described above.
+Unless you plan to submit a patch to Yokozuna or require the bleeding
+edge it is recommended to use the official packages described above.
 
 Clone Riak.
 
