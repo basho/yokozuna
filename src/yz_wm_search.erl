@@ -87,10 +87,8 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
             {true, RD, Ctx};
         false ->
             Index = list_to_binary(wrq:path_info(index, RD)),
-            Res = riak_core_security:check_permission({"yokozuna.search",
-                                                       {?YZ_SECURITY_THING1_SCHEMA,
-                                                       Index}},
-                                                      Security),
+            PermAndResource = {?YZ_SECURITY_SEARCH_PERM, {?YZ_SECURITY_INDEX, Index}},
+            Res = riak_core_security:check_permission(PermAndResource, Security),
             case Res of
                 {false, Error, _} ->
                     {true, wrq:append_to_resp_body(list_to_binary(Error), RD), Ctx};
