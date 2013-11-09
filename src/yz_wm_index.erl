@@ -147,9 +147,8 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
         true ->
             {true, RD, Ctx};
         false ->
-            Res = riak_core_security:check_permission({"yokozuna.admin",
-                                                       ?YZ_SECURITY_THING1_INDEX},
-                                                      Security),
+            PermAndResource = {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX},
+            Res = riak_core_security:check_permission(PermAndResource, Security),
             case Res of
                 {false, Error, _} ->
                     {true, wrq:append_to_resp_body(list_to_binary(Error), RD), Ctx};

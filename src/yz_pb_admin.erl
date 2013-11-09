@@ -49,17 +49,17 @@ decode(Code, Bin) ->
     Msg = riak_pb_codec:decode(Code, Bin),
     case Msg of
         #rpbyokozunaschemaputreq{} ->
-            {ok, Msg, {"yokozuna.admin", ?YZ_SECURITY_THING1_SCHEMA}};
+            {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_SCHEMA}};
         #rpbyokozunaschemagetreq{} ->
-            {ok, Msg, {"yokozuna.admin", ?YZ_SECURITY_THING1_SCHEMA}};
+            {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_SCHEMA}};
         #rpbyokozunaindexputreq{} ->
-            {ok, Msg, {"yokozuna.admin", ?YZ_SECURITY_THING1_INDEX}};
+            {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
         rpbyokozunaindexgetreq ->
-            {ok, Msg, {"yokozuna.admin", ?YZ_SECURITY_THING1_INDEX}};
+            {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
         #rpbyokozunaindexgetreq{} ->
-            {ok, Msg, {"yokozuna.admin", ?YZ_SECURITY_THING1_INDEX}};
+            {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
         #rpbyokozunaindexdeletereq{} ->
-            {ok, Msg, {"yokozuna.admin", ?YZ_SECURITY_THING1_INDEX}};
+            {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
         _ ->
             {ok, Msg}
     end.
