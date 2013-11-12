@@ -51,6 +51,6 @@ API but that is hidden for you.  This means you don't have to worry
 about where your shards are located.  This also means you should be
 able to use any off-the-shelf Solr client to query Yokozuna.
 
-    curl 'http://localhost:10018/search/my_index?q=text:Ryan'
+    curl 'http://localhost:10018/yz/search/my_index?q=text:Ryan'
 
 [INSTALL]: https://github.com/basho/yokozuna/blob/develop/docs/INSTALL.md
