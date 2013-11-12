@@ -245,38 +245,47 @@ Content-Length: 0
 
 ### Index Data ###
 
-Before Ryan can start indexing data he needs to associate a bucket
-with an index. God will be given permissions to change bucket
-properties. Ryan will also need write permissions on his bucket in
-order to write data.
+Before Ryan can start indexing a bucket type must be created to hold
+the various buckets.
 
 ```
-% riak-admin security grant riak_core.set_bucket,riak_core.get_bucket ON default TO god
+% riak-admin bucket-type create data '{"props":{}}'
 
-% riak-admin security grant riak_kv.put,riak_kv.get ON default ryan TO ryan
+% riak-admin bucket-type activate data
 ```
 
-The first line gives permission to set bucket properties on the `ryan`
-bucket under the `default` bucket-type. In this case the `default`
-bucket-type is the _resource_ and the `ryan` bucket is the
-_sub-resource_. The second line grants permission to write data to the
-same bucket. Now the index may be associated and data written.
+Now god will be given permissions to change bucket properties on the
+`data` bucket type, and Ryan will also need write permissions on his
+bucket in order to write data.
 
 ```
-% curl -k --user god:iruleudrool -H 'content-type: application/json' -X PUT 'https://127.0.0.1:10012/buckets/ryan/props' -d '{"props":{"yz_index":"ryans_index"}}'
+% riak-admin security grant riak_core.set_bucket,riak_core.get_bucket ON data TO god
+
+% riak-admin security grant riak_kv.put,riak_kv.get ON data ryan TO ryan
+```
+
+The first line gives permission to set bucket properties under the
+`data` bucket-type. In this case the `data` bucket-type is the
+_resource_ and it applies to any _sub-resource_ since none was
+specified. The second line grants permission to write data to the the
+`ryan` bucket under the `data` type. Now the index may be associated
+and data written.
+
+```
+% curl -k --user god:iruleudrool -H 'content-type: application/json' -X PUT 'https://127.0.0.1:10012/types/data/buckets/ryan/props' -d '{"props":{"yz_index":"ryans_index"}}'
 
 % curl -s -k --user god:god 'https://127.0.0.1:10012/buckets/ryan/props' | grep -o '"yz_index.*"'
 "yz_index":"ryans_index"
 
-% curl -s -k --user ryan:ryan -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/buckets/ryan/keys/1' -d @- <<EOF
+% curl -s -k --user ryan:ryan -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/types/data/buckets/ryan/keys/1' -d @- <<EOF
 One man's constant is another man's variable.
 EOF
 
-% curl -s -k --user ryan:ryan -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/buckets/ryan/keys/2' -d @- <<EOF
+% curl -s -k --user ryan:ryan -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/types/data/buckets/ryan/keys/2' -d @- <<EOF
 Functions delay binding; data structures induce binding. Moral: Structure data late in the programming process.
 EOF
 
-% curl -s -k --user ryan:ryan -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/buckets/ryan/keys/3' -d @- <<EOF
+% curl -s -k --user ryan:ryan -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/types/data/buckets/ryan/keys/3' -d @- <<EOF
 Syntactic sugar causes cancer of the semicolon.
 EOF
 ```
@@ -284,19 +293,19 @@ EOF
 It appears Ryan has knack for Perlisms. Eric is more of a Dijkstra fan.
 
 ```
-riak-admin security grant riak_kv.put,riak_kv.get ON default eric TO eric
+riak-admin security grant riak_kv.put,riak_kv.get ON data eric TO eric
 
-% curl -k --user god:iruleudrool -H 'content-type: application/json' -X PUT 'https://127.0.0.1:10012/buckets/eric/props' -d '{"props":{"yz_index":"erics_index"}}'
+% curl -k --user god:iruleudrool -H 'content-type: application/json' -X PUT 'https://127.0.0.1:10012/types/data/buckets/eric/props' -d '{"props":{"yz_index":"erics_index"}}'
 
-curl -s -k --user eric:eric -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/buckets/eric/keys/1' -d @- <<EOF
+% curl -s -k --user eric:eric -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/types/data/buckets/eric/keys/1' -d @- <<EOF
 Program testing can be used to show the presence of bugs, but never to show their absence!
 EOF
 
-curl -s -k --user eric:eric -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/buckets/eric/keys/2' -d @- <<EOF
+% curl -s -k --user eric:eric -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/types/data/buckets/eric/keys/2' -d @- <<EOF
 Please don't fall into the trap of believing that I am terribly dogmatic about [the go to statement]. I have the uncomfortable feeling that others are making a religion out of it, as if the conceptual problems of programming could be solved by a simple trick, by a simple form of coding discipline!
 EOF
 
-curl -s -k --user eric:eric -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/buckets/eric/keys/3' -d @- <<EOF
+% curl -s -k --user eric:eric -H 'content-type: text/plain' -X PUT 'https://127.0.0.1:10012/types/data/buckets/eric/keys/3' -d @- <<EOF
 Several people have told me that my inability to suffer fools gladly is one of my main weaknesses.
 EOF
 ```
@@ -316,8 +325,9 @@ search both in separate requests.
     "maxScore": 0.45273256,
     "docs": [
       {
-        "_yz_id": "2_9",
+        "_yz_id": "data_ryan_2_40",
         "_yz_rk": "2",
+        "_yz_rt": "data",
         "_yz_rb": "ryan"
       }
     ]
@@ -348,8 +358,9 @@ search for a word in both indexes?
     "maxScore": 0.396141,
     "docs": [
       {
-        "_yz_id": "1_62",
+        "_yz_id": "data_eric_1_6",
         "_yz_rk": "1",
+        "_yz_rt": "data",
         "_yz_rb": "eric"
       }
     ]
