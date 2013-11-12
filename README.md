@@ -9,7 +9,7 @@ _Yokozuna_ - Horizontal rope.  The top rank in sumo, usually
 translated _Grand Champion_.  The name comes from the rope a yokozuna
 wears.
 
-The goal of the yokozuna application is to integrate Apache Solr with
+The goal of the Yokozuna application is to integrate Apache Solr with
 Riak in order to find the "top rank" documents for a given query.
 
 
@@ -27,30 +27,48 @@ An _index_ must be created for bucket data to be indexed under.  Many
 buckets may use the same index.  To create an index via the HTTP
 interface the following.
 
-    curl -XPUT -i 'http://localhost:10018/yz/index/my_index'
+```
+curl -XPUT -i 'http://localhost:10018/yz/index/my_index'
+```
 
-### Associating a Bucket with an Index ###
+### Create Bucket Type, and Associate Index ###
 
-A bucket property must be added to tell Yokozuna where to store the
-indexes for a given bucket.
+**N.B.** This is a breaking change in the 0.12.0 version. Previously
+associating an index was done by updating a bucket's properties.
 
-    curl -XPUT -i -H 'content-type: application/json' 'http://localhost:10018/buckets/my_bucket/props' -d '{"props":{"yz_index":"my_index"}}'
+A bucket type must be created and the `yz_index` field must be set
+either at the type-level properties, as shown here, or name-level.
+
+```
+riak-admin bucket-type create my_type '{"props":{"yz_index":"my_index"}}'
+riak-admin bucket-type activate my_type
+```
 
 ### Index Some Data ###
 
 Indexing data is a matter of writing data to KV.  Currently Yokozuna
 knows hows to index plain text, XML, and JSON.
 
-    curl -H 'content-type: text/plain' -X PUT 'http://localhost:10018/buckets/my_bucket/keys/name' -d "Ryan Zezeski"
+```
+curl -H 'content-type: text/plain' -X PUT 'http://localhost:10018/types/my_type/buckets/my_bucket/keys/name' -d "Ryan Zezeski"
+```
 
 ### Searching ###
 
 The syntax for querying Yokozuna is the same as querying a single
 instance of Solr.  Yokozuna actually uses Solr's distributed search
 API but that is hidden for you.  This means you don't have to worry
-about where your shards are located.  This also means you should be
-able to use any off-the-shelf Solr client to query Yokozuna.
+about where your shards are located.
 
-    curl 'http://localhost:10018/yz/search/my_index?q=text:Ryan'
+```
+curl 'http://localhost:10018/yz/search/my_index?q=text:Ryan'
+```
+
+The canonical Solr URL is also supported allowing the use of an
+existing Solr client to query Yokozuna.
+
+```
+curl 'http://localhost:10018/solr/my_index/select?q=text:Ryan'
+```
 
 [INSTALL]: https://github.com/basho/yokozuna/blob/develop/docs/INSTALL.md
