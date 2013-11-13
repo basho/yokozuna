@@ -44,16 +44,6 @@ start_link() ->
 register_stats() ->
     riak_core_stat:register_stats(?APP, stats()).
 
-%% @doc Transform the yz stats to a format consistent
-%% with "legacy" stats and rename them
--spec search_stats() -> proplists:proplist().
-search_stats() ->
-    {Legacy, _Calculated} = lists:foldl(fun({Old, New, Type}, {Acc, Cache}) ->
-                                                riak_kv_stat_bc:bc_stat({Old, New, Type}, Acc, Cache) end,
-                                        {[], []},
-                                        stats_map()),
-    lists:reverse(Legacy).
-
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, term()}.
 get_stats() ->
