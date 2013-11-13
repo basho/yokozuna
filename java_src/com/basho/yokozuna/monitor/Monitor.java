@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * down or yz_solr_proc exits.
  */
 public class Monitor extends Thread {
-    protected static Logger log = LoggerFactory.getLogger(Monitor.class);
+    protected static final Logger log = LoggerFactory.getLogger(Monitor.class);
 
     public Monitor() {
         // nothing to init
@@ -33,15 +33,23 @@ public class Monitor extends Thread {
 
     public void run() {
             try {
-                log.debug("Monitor attempting read on stdin");
+                if (log.isDebugEnabled()) {
+                    log.debug("Monitor attempting read on stdin");
+                }
                 if (System.in.read() < 0) {
-                    log.info("Yokozuna has exited - shutting down Solr");
+                    if (log.isInfoEnabled()) {
+                        log.info("Yokozuna has exited - shutting down Solr");
+                    }
                     System.exit(0);
                 }
-                log.debug("Monitoring succeeded reading stdin");
+                if (log.isDebugEnabled()) {
+                    log.debug("Monitoring succeeded reading stdin");
+                }
             }
-            catch (IOException ioe) {
-                log.info("Yokozuna has exited - shutting down Solr");
+            catch (final IOException ioe) {
+                if (log.isInfoEnabled()) {
+                    log.info("Yokozuna has exited - shutting down Solr");
+                }
                 System.exit(0);
             }
     }
@@ -50,7 +58,7 @@ public class Monitor extends Thread {
      * Start monitoring stdin in a background thread
      */
     public static Monitor monitor() {
-        Monitor m = new Monitor();
+        final Monitor m = new Monitor();
         m.start();
         return m;
     }
@@ -67,7 +75,7 @@ public class Monitor extends Thread {
                 Thread.sleep(1000);
             }
         }
-        catch (InterruptedException ie) {
+        catch (final InterruptedException ie) {
             // nothing to do but shutdown
         }
     }
