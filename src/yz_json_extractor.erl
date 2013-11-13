@@ -37,12 +37,12 @@
 %% Options:
 %%
 %%   `field_separator' - Use a different field separator than the
-%%                       default of `_'.
+%%                       default of `.'.
 
 -module(yz_json_extractor).
 -compile(export_all).
 -include("yokozuna.hrl").
--define(DEFAULT_FIELD_SEPARATOR, <<"_">>).
+-define(DEFAULT_FIELD_SEPARATOR, <<".">>).
 -record(state, {
           fields = [],
           field_separator = ?DEFAULT_FIELD_SEPARATOR
