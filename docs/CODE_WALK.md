@@ -45,4 +45,54 @@ code.  Please file an issue if you notice modules missing.
 |`yz_wm_search`             |HTTP resource for querying.  Presents the same interface as a Solr server so that existing Solr clients may be used to query Yokozuna. |
 |`yz_xml_extractor`         |Extractor for XML data (`application/xml`). |
 
+Process Tree
+------------
+
+The following is the entire Yokozuna process tree.
+
+![Yokozuna Process Tree](http://data.riakcs.net:8080/yokozuna/yz-tree.png)
+
+Write Path (Index Path)
+-----------------------
+
+### Pseudo Steps ###
+
+1. Client request arrives via Webmachine (HTTP) or riak_api (Protobuffs) processes.
+
+2. A new put coordinator (`riak_kv_put_fsm`) is created.
+
+3. The request is sent to 3 KV VNodes.
+
+4. The KV VNode writes the object to disk.
+
+5. The Yokozuna index hook is called (`yz_kv:index`).
+
+6. Check if:
+   a. Yokozuna is enabled
+   b. Indexing capability is enabled
+   c. The bucket has an associated index
+   d. The node is NOT a fallback for the partition
+
+7. Extract special fields from object:
+   a. unique identifier (`_yz_id`), type + name + key + logical partition
+   b. bucket type (`_yz_rt`)
+   c. bucket name (`_yz_rb`)
+   d. key (`_yz_rk`)
+   e. entropy data (`_yz_ed`)
+   f. logical partition number (`_yz_pn`)
+   g. logical first partition number (`_yz_fpn`)
+   h. node name (`_yz_node`)
+   i. vtag (`_yz_vtag`)
+
+8. Extract tags from object.
+
+9. Extract set of field-value pairs for each sibling in the object. A union of special fields, tags, and field-value pairs create a document. Each sibling is its own document.
+
+10. Convert each document from Erlang proplist to JSON binary. i.e. `[{Field :: binary(), Value :: binary()}]` => `<<"{\"field\":\"value\", ...}">>`
+
+11. Send index operation to Solr via HTTP.
+
+12. Update Yokozuna hashtree.
+
+
 [ds]: https://github.com/basho/yokozuna/blob/develop/priv/default_schema.xml#L112
