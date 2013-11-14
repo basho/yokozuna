@@ -52,10 +52,10 @@ The following is the entire Yokozuna process tree.
 
 ![Yokozuna Process Tree](http://data.riakcs.net:8080/yokozuna/yz-tree.png)
 
-Write Path (Index Path)
+Write Path (Index)
 -----------------------
 
-### Pseudo Steps ###
+### Major Steps ###
 
 1. Client request arrives via Webmachine (HTTP) or riak_api (Protobuffs) processes.
 
@@ -94,5 +94,23 @@ Write Path (Index Path)
 
 12. Update Yokozuna hashtree.
 
+Query Path (Search)
+-------------------
+
+### Major Steps ###
+
+1. Client request arrives at Webmachine (HTTP) or riak_api (Protobuffs) process. This process is used for the entire query request
+
+2. Extract the request parameters and convert them to a proplist.
+
+3. Get a coverage plan from the cache.
+
+4. Build the `shards` and `fq` parameters based on the coverage plan.
+
+5. Send the search request to Solr.
+
+6. Return result to client.
+   1. If HTTP return the response verbatim.
+   2. If protobuffs then decode JSON response and convert into search protobuff format.
 
 [ds]: https://github.com/basho/yokozuna/blob/develop/priv/default_schema.xml#L112
