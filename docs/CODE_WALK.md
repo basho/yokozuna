@@ -68,21 +68,21 @@ Write Path (Index Path)
 5. The Yokozuna index hook is called (`yz_kv:index`).
 
 6. Check if:
-   a. Yokozuna is enabled
-   b. Indexing capability is enabled
-   c. The bucket has an associated index
-   d. The node is NOT a fallback for the partition
+   1. Yokozuna is enabled
+   2. Indexing capability is enabled
+   3. The bucket has an associated index
+   4. The node is NOT a fallback for the partition
 
 7. Extract special fields from object:
-   a. unique identifier (`_yz_id`), type + name + key + logical partition
-   b. bucket type (`_yz_rt`)
-   c. bucket name (`_yz_rb`)
-   d. key (`_yz_rk`)
-   e. entropy data (`_yz_ed`)
-   f. logical partition number (`_yz_pn`)
-   g. logical first partition number (`_yz_fpn`)
-   h. node name (`_yz_node`)
-   i. vtag (`_yz_vtag`)
+   * unique identifier (`_yz_id`), type + name + key + logical partition
+   * bucket type (`_yz_rt`)
+   * bucket name (`_yz_rb`)
+   * key (`_yz_rk`)
+   * entropy data (`_yz_ed`)
+   * logical partition number (`_yz_pn`)
+   * logical first partition number (`_yz_fpn`)
+   * node name (`_yz_node`)
+   * vtag (`_yz_vtag`)
 
 8. Extract tags from object.
 
