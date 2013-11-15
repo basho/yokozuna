@@ -40,3 +40,8 @@
 {mapping, "yokozuna.data_dir", "yokozuna.yz_dir", [
   {default, "{{yz_dir}}" }
 ]}.
+
+%% @doc The directory where aae data files are stored
+{mapping, "yokozuna.anti_entropy.data_dir", "yokozuna.anti_entropy_data_dir", [
+  {default, "{{platform_data_dir}}/yz_anti_entropy" }
+]}.
