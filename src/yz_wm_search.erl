@@ -115,9 +115,8 @@ search(Req, S) ->
     T1 = os:timestamp(),
     Index = list_to_binary(wrq:path_info(index, Req)),
     Params = wrq:req_qs(Req),
-    ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        Result = yz_solr:dist_search(Index, ReqHeaders, Params),
+        Result = yz_solr:dist_search(Index, Params),
         case Result of
             {error, insufficient_vnodes_available} ->
                 yz_stat:search_fail(),
