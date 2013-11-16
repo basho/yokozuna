@@ -223,11 +223,11 @@ dist_search(Core, Headers, Params) ->
     end.
 
 search(Core, Headers, Params) ->
-    Encoded = mochiweb_util:urlencode(Params),
-    URL = ?FMT("~s/~s/select?~s", [base_url(), Core, Encoded]),
-    Body = [],
+    Body = mochiweb_util:urlencode(Params),
+    URL = ?FMT("~s/~s/select", [base_url(), Core]),
+    Headers2 = [{content_type, "application/x-www-form-urlencoded"}|Headers],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, get, Body, Opts) of
+    case ibrowse:send_req(URL, Headers2, post, Body, Opts) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
         {ok, "404", _, _} -> throw(not_found);
         {ok, CodeStr, _, Err} ->
