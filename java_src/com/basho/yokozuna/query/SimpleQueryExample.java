@@ -19,24 +19,23 @@ import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.request.QueryRequest;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 
 public class SimpleQueryExample {
 
     public static void main(String[] args) throws SolrServerException {
-        String baseURL = args[0];
-        String index = args[1];
-        String field = args[2];
-        String term = args[3];
+        final String baseURL = args[0];
+        final String index = args[1];
+        final String field = args[2];
+        final String term = args[3];
 
-        SolrServer solr = new HttpSolrServer(baseURL + "/" + index);
-        ModifiableSolrParams params = new ModifiableSolrParams();
+        final SolrServer solr = new HttpSolrServer(baseURL + "/" + index);
+        final ModifiableSolrParams params = new ModifiableSolrParams();
         params.set("qt", "/");
         params.set("q", field + ":" + term);
-        SolrRequest req = new QueryRequest(params);
+        final SolrRequest req = new QueryRequest(params);
 
-        QueryResponse resp = solr.query(params);
+        final QueryResponse resp = solr.query(params);
         System.out.println("resp: " + resp);
     }
 }

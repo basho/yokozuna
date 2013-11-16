@@ -24,7 +24,6 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -32,7 +31,6 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.core.PluginInfo;
-import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
@@ -51,53 +49,55 @@ public class EntropyData
     extends RequestHandlerBase
     implements PluginInfoInitialized {
 
-    protected static Logger log = LoggerFactory.getLogger(EntropyData.class);
+    protected static final Logger log = LoggerFactory.getLogger(EntropyData.class);
     static final BytesRef DEFAULT_CONT = null;
     static final int DEFAULT_N = 1000;
     static final String ENTROPY_DATA_FIELD = "_yz_ed";
 
     // Pass info from solrconfig.xml
-    public void init(PluginInfo info) {
+    public void init(final PluginInfo info) {
         init(info.initArgs);
     }
 
     @Override
-    public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp)
+    public void handleRequestBody(final SolrQueryRequest req, final SolrQueryResponse rsp)
         throws Exception, InstantiationException, IllegalAccessException {
 
-        String contParam = req.getParams().get("continue");
-        BytesRef cont = contParam != null ?
+        final String contParam = req.getParams().get("continue");
+        final BytesRef cont = contParam != null ?
             decodeCont(contParam) : DEFAULT_CONT;
 
-        int n = req.getParams().getInt("n", DEFAULT_N);
+        final int n = req.getParams().getInt("n", DEFAULT_N);
 
-        String partition = req.getParams().get("partition");
+        final String partition = req.getParams().get("partition");
         if (partition == null) {
             throw new Exception("Parameter 'partition' is required");
         }
 
-        SolrDocumentList docs = new SolrDocumentList();
+        final SolrDocumentList docs = new SolrDocumentList();
 
         // Add docs here and modify object inline in code
         rsp.add("response", docs);
 
         try {
-            SolrIndexSearcher searcher = req.getSearcher();
-            AtomicReader rdr = searcher.getAtomicReader();
+            final SolrIndexSearcher searcher = req.getSearcher();
+            final AtomicReader rdr = searcher.getAtomicReader();
             BytesRef tmp = null;
-            Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
+            final Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
 
             if (terms == null) {
                 rsp.add("more", false);
                 return;
             }
 
-            TermsEnum te = terms.iterator(null);
+            final TermsEnum te = terms.iterator(null);
 
             if (isContinue(cont)) {
-                log.debug("continue from " + cont);
+                if (log.isDebugEnabled()) {
+                    log.debug("continue from " + cont);
+                }
 
-                TermsEnum.SeekStatus status = te.seekCeil(cont, true);
+                final TermsEnum.SeekStatus status = te.seekCeil(cont);
 
                 if (status == TermsEnum.SeekStatus.END) {
                     rsp.add("more", false);
@@ -117,22 +117,23 @@ public class EntropyData
                 tmp = te.next();
             }
 
-            String text = null;
-            String[] vals = null;
-            String docPartition = null;
-            String riakBucket = null;
-            String riakKey = null;
-            String hash = null;
+            String text;
+            String[] vals;
+            String docPartition;
+            String riakBucket;
+            String riakKey;
+            String hash;
             int count = 0;
             BytesRef current = null;
-            DocsEnum de = null;
-            Bits liveDocs = rdr.getLiveDocs();
+            final Bits liveDocs = rdr.getLiveDocs();
 
             while(!endOfItr(tmp) && count < n) {
                 if (isLive(liveDocs, te)) {
                     current = BytesRef.deepCopyOf(tmp);
                     text = tmp.utf8ToString();
-                    log.debug("text: " + text);
+                    if (log.isDebugEnabled()) {
+                        log.debug("text: " + text);
+                    }
                     vals = text.split(" ");
 
                     docPartition = vals[0];
@@ -155,7 +156,7 @@ public class EntropyData
                 rsp.add("more", false);
             } else {
                 rsp.add("more", true);
-                String newCont = Base64.encodeBase64URLSafeString(current.bytes);
+                final String newCont = Base64.encodeBase64URLSafeString(current.bytes);
                 // The continue context for next req to start where
                 // this one finished.
                 rsp.add("continuation", newCont);
@@ -163,26 +164,26 @@ public class EntropyData
 
             docs.setNumFound(count);
 
-        } catch (Exception e) {
+        } catch (final Exception e) {
             e.printStackTrace();
         }
     }
 
-    static boolean isLive(Bits liveDocs, TermsEnum te) throws IOException {
-        DocsEnum de = te.docs(liveDocs, null);
+    static boolean isLive(final Bits liveDocs, final TermsEnum te) throws IOException {
+        final DocsEnum de = te.docs(liveDocs, null);
         return de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS;
     }
 
-    static BytesRef decodeCont(String cont) {
-        byte[] bytes = Base64.decodeBase64(cont);
+    static BytesRef decodeCont(final String cont) {
+        final byte[] bytes = Base64.decodeBase64(cont);
         return new BytesRef(bytes);
     }
 
-    static boolean endOfItr(BytesRef returnValue) {
+    static boolean endOfItr(final BytesRef returnValue) {
         return returnValue == null;
     }
 
-    static boolean isContinue(BytesRef cont) {
+    static boolean isContinue(final BytesRef cont) {
         return DEFAULT_CONT != cont;
     }
 
