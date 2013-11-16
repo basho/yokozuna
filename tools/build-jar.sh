@@ -2,6 +2,7 @@
 #
 # Temporary script to build JAR file containing customer Solr request
 # handlers.
+set -e
 
 if [ -z "$SKIP_JAVA" ]; then
     if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then

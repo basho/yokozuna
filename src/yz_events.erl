@@ -65,14 +65,7 @@ handle_cast({ring_event, Ring}, S) ->
     Current = names(yz_index:get_indexes_from_ring(Ring)),
     {Removed, Added, Same} = yz_misc:delta(Previous, Current),
 
-    PreviousFlags = flagged_buckets(PrevRing),
-    CurrentFlags = flagged_buckets(Ring),
-    {FlagsRemoved, FlagsAdded, _} = yz_misc:delta(PreviousFlags, CurrentFlags),
-
     ok = sync_indexes(Ring, Removed, Added, Same),
-    %% Pass `PrevRing' because need access to index name associated
-    %% with bucket.
-    ok = sync_data(PrevRing, FlagsRemoved, FlagsAdded),
 
     {noreply, S2}.
 
@@ -80,10 +73,7 @@ handle_info(tick, S) ->
     %% TODO: tick and ring_event should be merged, actions taken in
     %% ring_event could fail and should be retried during tick, may
     %% need to rely on something other than ring to determine when to
-    %% retry certain actions, e.g. if the `sync_data' call fails then
-    %% AAE trees will be incorrect until the next ring_event or until
-    %% tree rebuild
-    ok = remove_non_owned_data(),
+    %% retry certain actions.  Make all actions in here idempotent.
 
     %% Index creation may have failed during ring event.
     PrevRing = ?PREV_RING(S),
@@ -136,13 +126,6 @@ destroy_events_table() ->
     true = ets:delete(?YZ_EVENTS_TAB),
     ok.
 
--spec flagged_buckets(ring()) -> ordset(bucket()).
-flagged_buckets(Ring) ->
-    Buckets = riak_core_bucket:get_buckets(Ring),
-    ordsets:from_list(
-      [proplists:get_value(name, BProps)
-       || BProps <- Buckets, yz_kv:should_index(yz_kv:get_index(BProps))]).
-
 get_tick_interval() ->
     app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
 
@@ -192,29 +175,6 @@ send_ring_event(Ring) ->
 set_tick() ->
     Interval = get_tick_interval(),
     erlang:send_after(Interval, ?MODULE, tick),
-    ok.
-
--spec sync_data(ring(), list(), list()) -> ok.
-sync_data(PrevRing, Removed, Added) ->
-    %% TODO: check for case where index isn't added or removed, but changed
-    [sync_added(Bucket) || Bucket <- Added],
-    [sync_removed(PrevRing, Bucket) || Bucket <- Removed],
-    ok.
-
--spec sync_added(bucket()) -> ok.
-sync_added(Bucket) ->
-    lager:info("indexing enabled for bucket ~s -- clearing AAE trees", [Bucket]),
-    %% TODO: add hashtree.erl function to clear hashes for Bucket
-    yz_entropy_mgr:clear_trees(),
-    ok.
-
--spec sync_removed(ring(), bucket()) -> ok.
-sync_removed(PrevRing, Bucket) ->
-    lager:info("indexing disabled for bucket ~s", [Bucket]),
-    Index = yz_kv:get_index(riak_core_bucket:get_bucket(Bucket, PrevRing)),
-    ok = yz_solr:delete(Index, [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}]),
-    yz_solr:commit(Index),
-    yz_entropy_mgr:clear_trees(),
     ok.
 
 sync_indexes(Ring, Removed, Added, Same) ->

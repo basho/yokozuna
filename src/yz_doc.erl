@@ -35,13 +35,21 @@ add_to_doc({doc, Fields}, Field) ->
 
 -spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    <<(yz_kv:get_obj_key(O))/binary,"_",Partition/binary>>.
+    Bucket = yz_kv:get_obj_bucket(O),
+    BType = yz_kv:bucket_type(Bucket),
+    BName = yz_kv:bucket_name(Bucket),
+    Key = yz_kv:get_obj_key(O),
+    <<BType/binary,"_",BName/binary,"_",Key/binary,"_",Partition/binary>>.
 
 doc_id(O, Partition, none) ->
     doc_id(O, Partition);
 
 doc_id(O, Partition, Sibling) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary,"_",Sibling/binary>>.
+    Bucket = yz_kv:get_obj_bucket(O),
+    BType = yz_kv:bucket_type(Bucket),
+    BName = yz_kv:bucket_name(Bucket),
+    Key = yz_kv:get_obj_key(O),
+    <<BType/binary,"_",BName/binary,"_",Key/binary,"_",Partition/binary,"_",Sibling/binary>>.
 
 % @doc `true' if this Object has multiple contents
 has_siblings(O) -> riak_object:value_count(O) > 1.
@@ -71,7 +79,8 @@ make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
      {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
      {?YZ_PN_FIELD, Partition},
      {?YZ_RK_FIELD, Key},
-     {?YZ_RB_FIELD, Bucket}];
+     {?YZ_RT_FIELD, yz_kv:bucket_type(Bucket)},
+     {?YZ_RB_FIELD, yz_kv:bucket_name(Bucket)}];
 
 make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
     make_fields({DocId, BKey, FPN, Partition, none, EntropyData}) ++
@@ -197,10 +206,14 @@ doc_ts(MD) ->
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.
 gen_ed(O, Hash, Partition) ->
+    %% Store `Vsn' to allow future changes to this format.
+    Vsn = <<"1">>,
     RiakBucket = yz_kv:get_obj_bucket(O),
+    RiakBType = yz_kv:bucket_type(RiakBucket),
+    RiakBName = yz_kv:bucket_name(RiakBucket),
     RiakKey = yz_kv:get_obj_key(O),
     Hash64 = base64:encode(Hash),
-    <<Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash64/binary>>.
+    <<Vsn/binary," ",Partition/binary," ",RiakBType/binary," ",RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
 
 %% Meta keys and values can be strings or binaries
 format_meta(key, Value) when is_binary(Value) ->

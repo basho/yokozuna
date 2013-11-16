@@ -1,6 +1,68 @@
 Yokozuna Release Notes
 ==========
 
+0.12.0 (WIP)
+------
+
+### Breaking Changes ###
+
+#### Associating Indexes (Bucket Type Support) ####
+
+During Riak 2.0 development the new bucket type feature was
+added. This provides an additional level of namespacing objects as
+well as a more efficient and robust property mechanism. However, it
+also requires creating a bucket type which can only be done at the
+console with `raik-admin`.
+
+As of 0.12.0 Yokozuna requires the use of bucket types. All bucket
+names with no explicit type will be considered "legacy" and will live
+under the `default` bucket type. You can set the `yz_index` property
+on these buckets but it will be ignored.
+
+Moving forward, the only way to use Yokozuna is to first create a
+bucket type. Then an index can be associated by either setting the
+`yz_index` property on the bucket type, which will apply it to all
+bucket names underneath that type, or set it per bucket name.
+
+In the case where you have many bucket names with their own index then
+creating one type to hold all names makes sense. You create the type
+and then associate the index for each individual name. The example
+below shows two indexes being associated with two bucket names under
+the same type. Note that the type only needs to be created once and
+then you can create as many names under it as you like via HTTP or
+various Riak clients.
+
+```
+curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/yz/index/people -d '{"schema":"people.xml"}'
+
+curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/yz/index/events -d '{"schema":events.xml"}'
+
+riak-admin bucket-type create data '{"props":{}}'
+
+riak-admin bucket-type activate data
+
+curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/types/data/buckets/people/props' -d '{"props":{"yz_index":"people"}}'
+
+curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/types/data/buckets/events/props' -d '{"props":{"yz_index":"events"}}'
+```
+
+In the case where you have many bucket names which should map to one
+index you can also set the index property on the type and have it
+inherited by all the names. The example below shows creating a
+`people` type mapping to an index for people where the people are
+grouped under bucket names based on state.
+
+```
+curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/yz/index/people -d '{"schema":"people.xml"}'
+
+riak-admin bucket-type create people '{"props":{"yz_index":"people"}}'
+
+riak-admin bucket-type activate people
+
+curl ... 'http://localhost:10018/types/people/buckets/maryland/keys/ryan_zezeski' ...
+curl ... 'http://localhost:10018/types/people/buckets/oregon/keys/eric_redmond' ...
+```
+
 0.11.0
 ------
 

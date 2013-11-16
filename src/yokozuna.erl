@@ -132,12 +132,18 @@ search_fold(Index, Query, Filter, F, Acc) ->
               {fq, Filter},
               {start, Start},
               {rows, 10},
-              {fl, <<?YZ_RB_FIELD_S,",",?YZ_RK_FIELD_S>>},
+              {fl, <<?YZ_RT_FIELD_S,",",?YZ_RB_FIELD_S,",",?YZ_RK_FIELD_S>>},
               {omitHeader, <<"true">>},
               {wt, <<"json">>}],
     {_, Body} = yz_solr:dist_search(Index, Params),
-    E = extract_results(Body),
-    search_fold(E, Start, Params, Index, Query, Filter, F, Acc).
+    case extract_docs(Body) of
+        [] ->
+            Acc;
+        Docs ->
+            Positions = positions(hd(Docs)),
+            E = extract_results(Docs, Positions),
+            search_fold(E, Start, Params, Positions, Index, Query, Filter, F, Acc)
+    end.
 
 search(Index, Query) ->
     yz_solr:dist_search(Index, [{q, Query}]).
@@ -166,37 +172,57 @@ switch_to_yokozuna() ->
 
 %% @private
 %%
+%% @doc Decode the `Body' and extract the doc list.
+-spec extract_docs(binary()) -> Docs :: term().
+extract_docs(Body) ->
+    Obj = mochijson2:decode(Body),
+    kvc:path([<<"response">>, <<"docs">>], Obj).
+
+%% @private
+%%
 %% @doc Extract the bucket/key results from the `Body' of a search
 %%      result.
--spec extract_results(binary()) -> [{binary(),binary(),[term()]}].
-extract_results(Body) ->
-    Obj = mochijson2:decode(Body),
-    Docs = kvc:path([<<"response">>, <<"docs">>], Obj),
-    %% N.B. This ugly hack is required because as far as I can tell
-    %% there is not defined order of the fields inside the results
-    %% returned by Solr.
+-type positions() :: {integer(), integer(), integer()}.
+-spec extract_results(term(), positions()) -> [{bucket(),binary(),[term()]}].
+extract_results(Docs, {TP, BP, KP}) ->
     [begin
-         case {X,Y} of
-             {{?YZ_RB_FIELD_B,B}, {?YZ_RK_FIELD_B,K}} ->
-                 {B,K,[]};
-             {{_,K},{_,B}} ->
-                 {B,K,[]}
-         end
-     end|| {struct,[X,Y]} <- Docs].
+         {_, BType} = lists:nth(TP, Fields),
+         {_, BName} = lists:nth(BP, Fields),
+         {_, Key} = lists:nth(KP, Fields),
+         {{BType, BName}, Key, []}
+     end|| {struct, Fields} <- Docs].
+
+%% @private
+%%
+%% @doc Determine the positions of the bucket-type, bucket-name and
+%% key in the doc list.
+%%
+%% N.B. This ugly hack is required because as far as I can tell
+%% there is not defined order of the fields inside the results
+%% returned by Solr.
+-spec positions({struct, [tuple()]}) ->
+                       {integer(), integer(), integer()}.
+positions({struct,[X, Y, Z]}) ->
+    L1 = [{element(1, X), 1}, {element(1, Y), 2}, {element(1, Z), 3}],
+    {value, {_,BTypePos}, L2} = lists:keytake(?YZ_RT_FIELD_B, 1, L1),
+    {value, {_,BNamePos}, L3} = lists:keytake(?YZ_RB_FIELD_B, 1, L2),
+    {value, {_,KeyPos}, _} = lists:keytake(?YZ_RK_FIELD_B, 1, L3),
+    {BTypePos, BNamePos, KeyPos}.
 
 %% @private
 %%
 %% @doc This is the interal part of `search_fold' where the actual
 %%      iteration happens.
--spec search_fold(list(), non_neg_integer(), list(), index_name(),
+-spec search_fold(list(), non_neg_integer(), list(), positions(), index_name(),
                   binary(), binary(), fold_fun(), Acc::term()) ->
                          Acc::term().
-search_fold([], _, _, _, _, _, _, Acc) ->
+search_fold([], _, _, _, _, _, _, _, Acc) ->
     Acc;
-search_fold(Results, Start, Params, Index, Query, Filter, F, Acc) ->
+search_fold(Results, Start, Params, Positions, Index, Query, Filter, F, Acc) ->
     F(Results, Acc),
     Start2 = Start + 10,
     Params2 = lists:keystore(start, 1, Params, {start, Start2}),
     {_, Body} = yz_solr:dist_search(Index, Params2),
-    E = extract_results(Body),
-    search_fold(E, Start2, Params, Index, Query, Filter, F, Acc).
+    Docs = extract_docs(Body),
+    E = extract_results(Docs, Positions),
+    search_fold(E, Start2, Params, Positions, Index, Query, Filter, F, Acc).

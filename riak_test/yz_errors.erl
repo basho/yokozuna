@@ -39,10 +39,11 @@ test_errors(Cluster) ->
 
 expect_bad_json(Cluster) ->
     Index = <<"bad_json">>,
+    Bucket = {<<"bad_json">>,<<"bucket">>},
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, Index),
-    lager:info("Write bad json"),
-    URL = bucket_url(HP, Index, "test"),
+    ok = create_index(Cluster, Index),
+    lager:info("Write bad json [~p]", [HP]),
+    URL = bucket_url(HP, Bucket, "test"),
     Opts = [],
     CT = "application/json",
     Headers = [{"content-type", CT}],
@@ -59,10 +60,11 @@ expect_bad_json(Cluster) ->
 
 expect_bad_xml(Cluster) ->
     Index = <<"bad_xml">>,
+    Bucket = {Index,<<"bucket">>},
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, Index),
-    lager:info("Write bad xml"),
-    URL = bucket_url(HP, Index, "test"),
+    ok = create_index(Cluster, Index),
+    lager:info("Write bad xml [~p]", [HP]),
+    URL = bucket_url(HP, Bucket, "test"),
     Opts = [],
     CT = "application/xml",
     Headers = [{"content-type", CT}],
@@ -79,10 +81,11 @@ expect_bad_xml(Cluster) ->
 
 expect_bad_query(Cluster) ->
     Index = <<"bad_query">>,
+    Bucket = {Index, <<"bucket">>},
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, Index),
-    lager:info("Write bad query"),
-    URL = bucket_url(HP, Index, "test"),
+    ok = create_index(Cluster, Index),
+    lager:info("Write bad query [~p]", [HP]),
+    URL = bucket_url(HP, Bucket, "test"),
     Opts = [],
     CT = "text/plain",
     Headers = [{"content-type", CT}],
@@ -100,22 +103,24 @@ expect_bad_query(Cluster) ->
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
 
-bucket_url({Host,Port}, Bucket, Key) ->
-    ?FMT("http://~s:~B/buckets/~s/keys/~s", [Host, Port, Bucket, Key]).
+bucket_url({Host,Port}, {BType, BName}, Key) ->
+    ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).
 
-search_url({Host,Port}, Bucket) ->
-    ?FMT("http://~s:~B/search/~s", [Host, Port, Bucket]).
+search_url({Host,Port}, Index) ->
+    ?FMT("http://~s:~B/solr/~s/select", [Host, Port, Index]).
 
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
-create_index(Cluster, HP, Index) ->
+create_index(Cluster, Index) ->
     Node = yz_rt:select_random(Cluster),
-    lager:info("create_index ~s [~p]", [Index, HP]),
+    HP = hd(host_entries(rt:connection_info([Node]))),
+    lager:info("create_index ~s [~p]", [Index, Node]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    yz_rt:set_index(Node, Index),
+    yz_rt:set_bucket_type_index(Node, Index),
+    yz_rt:wait_for_bucket_type(Cluster, Index),
     yz_rt:wait_for_index(Cluster, Index),
     ?assertEqual("204", Status).
