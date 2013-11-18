@@ -126,7 +126,8 @@ verify_fields({ok, Schema}) ->
               ?YZ_PN_FIELD_XPATH,
               ?YZ_RK_FIELD_XPATH,
               ?YZ_RT_FIELD_XPATH,
-              ?YZ_RB_FIELD_XPATH],
+              ?YZ_RB_FIELD_XPATH,
+              ?YZ_ERR_FIELD_XPATH],
     Checks = [verify_field(F, Schema) || F <- Fields],
     IsError = fun(X) -> X /= ok end,
     case lists:filter(IsError, Checks) of
