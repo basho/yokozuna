@@ -179,7 +179,7 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
-    SolrHome = "-Dsolr.solr.home=" ++ Dir,
+    SolrHome = "-Dsolr.solr.home=" ++ filename:absname(Dir),
     JettyHome = "-Djetty.home=" ++ YZPrivSolr,
     Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
     CP = "-cp",

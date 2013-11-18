@@ -135,7 +135,8 @@
 %% TODO: See if using mochiglobal for this makes difference in performance.
 -define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_EVENTS_TAB, yz_events_tab).
--define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
+-define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir,
+                        app_helper:get_env(riak_core, platform_data_dir)++"/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).

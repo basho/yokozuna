@@ -35,7 +35,7 @@
   {default, "-Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
 ]}.
 
-%% @doc The data under which to store all Yokozuna related data.
+%% @doc The directory under which to store all Yokozuna related data.
 %% Including the Solr index data.
 {mapping, "yokozuna.data_dir", "yokozuna.yz_dir", [
   {default, "{{yz_dir}}" }
@@ -44,4 +44,9 @@
 %% @doc The directory where aae data files are stored
 {mapping, "yokozuna.anti_entropy.data_dir", "yokozuna.anti_entropy_data_dir", [
   {default, "{{platform_data_dir}}/yz_anti_entropy" }
+]}.
+
+%% @doc The root directory for yokozuna configs, such as solr.
+{mapping, "yokozuna.root_dir", "yokozuna.root_dir", [
+  {default, "{{platform_data_dir}}/yz" }
 ]}.
