@@ -139,6 +139,7 @@ local_create(Ring, Name) ->
     case yz_schema:get(SchemaName) of
         {ok, RawSchema} ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
+            LocalSchemaFile = filename:join([".", yz_schema:filename(SchemaName)]),
 
             yz_misc:make_dirs([ConfDir, DataDir]),
             yz_misc:copy_files(ConfFiles, ConfDir, update),
@@ -148,7 +149,7 @@ local_create(Ring, Name) ->
                          {name, Name},
                          {index_dir, IndexDir},
                          {cfg_file, ?YZ_CORE_CFG_FILE},
-                         {schema_file, SchemaFile}
+                         {schema_file, LocalSchemaFile}
                         ],
             case yz_solr:core(create, CoreProps) of
                 {ok, _, _} ->
