@@ -136,17 +136,7 @@ get_md_entry(MD, Key) ->
 -spec get_index(bkey(), ring()) -> index_name().
 get_index({Bucket, _}, Ring) ->
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    case is_default_type(Bucket) of
-        false ->
-            proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE);
-        true ->
-            case proplists:get_value(search, BProps, false) of
-                false ->
-                    ?YZ_INDEX_TOMBSTONE;
-                true ->
-                    bucket_name(Bucket)
-            end
-    end.
+    proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
 
 %% @doc Determine the "short" preference list given the `BKey' and
 %% `Ring'.  A short preflist is one that defines the preflist by
