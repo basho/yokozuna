@@ -140,7 +140,15 @@ stop_riak_search(Cluster) ->
 %% @doc Disable the search hook on `Bucket'.
 set_search_false(Cluster, Bucket) ->
     lager:info("Uninstall search hook for bucket ~p", [Bucket]),
-    ?assertEqual(ok, rpc:call(hd(Cluster), riak_search_kv_hook, uninstall, [Bucket])).
+    ok = rpc:call(hd(Cluster), riak_search_kv_hook, uninstall, [Bucket]),
+    F = fun(Node) ->
+                PB = create_pb_conn(Node),
+                PC = pb_get_bucket_prop(PB, ?FRUIT_BUCKET, precommit, false),
+                close_pb_conn(PB),
+                PC == []
+        end,
+    yz_rt:wait_until(Cluster, F),
+    ok.
 
 %% @doc Disable Riak Search in all app.config files.
 disable_riak_search() ->
@@ -207,7 +215,9 @@ create_pb_conn(Node) ->
 
 load_data(Cluster, YZBenchDir, NumKeys) ->
     {ExitCode, _} = yz_rt:load_data(Cluster, ?FRUIT_BUCKET, YZBenchDir, NumKeys),
-    ?assertEqual(0,ExitCode).
+    ?assertEqual(0,ExitCode),
+    %% Sleep for soft-commit.
+    timer:sleep(1100).
 
 query_data(Cluster, YZBenchDir, NumKeys, Time) ->
     lager:info("Run query against cluster ~p", [Cluster]),
