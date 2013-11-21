@@ -101,7 +101,7 @@ expect_bad_query(Cluster) ->
     ok.
 
 index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).

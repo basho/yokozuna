@@ -23,13 +23,13 @@
 %%
 %% Available operations:
 %%
-%% GET /yz/index
+%% GET /search/index
 %%
 %%   Get information about every index in JSON format.
-%%   Currently the same information as /yz/index/Index,
+%%   Currently the same information as /search/index/Index,
 %%   but as an array of JSON objects.
 %%
-%% GET /yz/index/Index
+%% GET /search/index/Index
 %%
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
@@ -45,7 +45,7 @@
 %%   index. That schema file must already be installed on the server.
 %%   Defaults to "_yz_default".
 %%
-%% PUT /yz/index/Index
+%% PUT /search/index/Index
 %%
 %%   Creates a new index with the given name.
 %%
@@ -60,7 +60,7 @@
 %%
 %%   Returns a '409 Conflict' code if the index already exists.
 %%
-%% DELETE /yz/index/Index
+%% DELETE /search/index/Index
 %%
 %%   Deletes the index with the given index name.
 %%
@@ -83,8 +83,8 @@
 
 %% @doc Return the list of routes provided by this resource.
 routes() ->
-    [{["yz", "index", index], yz_wm_index, []},
-     {["yz", "index"], yz_wm_index, []}].
+    [{["search", "index", index], yz_wm_index, []},
+     {["search", "index"], yz_wm_index, []}].
 
 %%%===================================================================
 %%% Callbacks

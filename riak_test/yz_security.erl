@@ -137,7 +137,7 @@ confirm_index_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.admin","ON","index","TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","index","TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create an index"),
@@ -181,7 +181,7 @@ confirm_schema_permission_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant schema permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.admin","ON","schema","TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","schema","TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create schema"),
@@ -201,7 +201,7 @@ confirm_search_pb(Node) ->
 
     lager:info("Grant search permission to user on ~s", [?INDEX]),
     IndexS = binary_to_list(?INDEX),
-    ok = ?GRANT(Node, [["yokozuna.search","ON","index",IndexS,"TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_SEARCH_PERM,"ON","index",IndexS,"TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can search granted on ~s", [?INDEX]),
@@ -238,12 +238,12 @@ confirm_index_https(Node) ->
               [{"content-type", "application/json"}]
                ++ get_auth_header(?HUSER, ?PASSWORD),
     Body = <<"{\"schema\":\"_yz_default\"}">>,
-    URL = lists:flatten(io_lib:format("https://~s:~s/yz/index/~s",
+    URL = lists:flatten(io_lib:format("https://~s:~s/search/index/~s",
                                       [Host, integer_to_list(Port), ?HINDEX])),
     {ok, "403", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.admin","ON","index","TO",?HUSER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","index","TO",?HUSER]]),
 
     %% this should work now that this user has permission
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),

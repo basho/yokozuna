@@ -1,10 +1,41 @@
 Yokozuna Release Notes
 ==========
 
-0.12.0 (WIP)
+
+0.12.0
 ------
 
 ### Breaking Changes ###
+
+Yokozuna has been publicly renamed to Search 2. Although internally
+the Yokozuna name will still be used (in the code and project name),
+all public facing options will remove the use of "Yokozuna" or "yz"
+in favor of "Yokozuna" or simply "search".
+
+Configuration (riak.conf) changes all yokozuna prefixes to search:
+
+```
+## To enable Search 2, set this 'on'.
+search = on
+
+## The port number which Solr binds to.
+search.solr_port = 10014
+
+## The port number which Solr JMX binds to.
+search.solr_jmx_port = 10013
+
+# and so on...
+```
+
+The index property to associate a bucket will changed from
+`yz_index` to `search_index`.
+
+All HTTP administration request have changed to rename the `yz`
+prefix to `search`. To manage an index or schema, use, respectively:
+
+* http://localhost:10018/search/index/INDEX_NAME
+* http://localhost:10018/search/schema/INDEX_NAME
+
 
 #### Associating Indexes (Bucket Type Support) ####
 

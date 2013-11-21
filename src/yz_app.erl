@@ -57,7 +57,7 @@ maybe_setup(true) ->
     maybe_register_pb(?QUERY_SERVICES),
     maybe_register_pb(?ADMIN_SERVICES),
     setup_stats(),
-    ok = riak_core:register(yokozuna, [{permissions, [search,admin]}]),
+    ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
     ok.
 

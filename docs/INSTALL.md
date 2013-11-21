@@ -1,9 +1,9 @@
 Install
 =======
 
-There are three methods for obtaining Yokozuna. Which method you
-choose depends on how close to the bleeding edge you want to be. The
-easiest and most convenient method is to use official packages. Binary
+There are three methods for obtaining Yokozuna. Which
+method you choose depends on how close to the bleeding edge you want to be.
+The easiest and most convenient method is to use official packages. Binary
 packages are provided for many different operating systems and
 represent the official way to install Riak in production. The other
 two methods are the source package and cloning from GitHub. The
@@ -41,7 +41,7 @@ Approximately every month a release is cut. Thus, Yokozuna development
 can outpace official Riak releases. The source package provides an
 easy method for building the latest release and thus testing the
 newest features and bug fixes. The source package should always pass
-all Yokozuna integration tests and be stable as possible. It should
+all Searh 2 integration tests and be stable as possible. It should
 not be deployed in production, however. These releases are more like
 previews and compatibility could break between them. Use official
 packages for production.
@@ -92,13 +92,13 @@ To deploy Riak-Yokozuna in a production configuration then you'll want
 to build a normal release.
 
 	make stage
-	sed -e 's/yokozuna = off/yokozuna = on/' -i.back rel/riak/etc/riak.conf
+	sed -e 's/search = off/search = on/' -i.back rel/riak/etc/riak.conf
 
 If you want to develop against multiple nodes on one machine then you
 can build a local development cluster.
 
 	make stagedevrel
-    for d in dev/dev*; do sed -e 's/yokozuna = off/yokozuna = on/' -i.back $d/etc/riak.conf; done
+    for d in dev/dev*; do sed -e 's/search = off/search = on/' -i.back $d/etc/riak.conf; done
 
 At this point creating a cluster is the same as vanilla Riak.  See
 [Basic Cluster Setup][bcs] for more details.  The Riak docs are
@@ -141,6 +141,6 @@ Make `stage` or `stagedevrel`.
 
 	make stagedevrel
 
-Enable Yokozuna.
+Enable Yokozuna.0.
 
-	for d in dev/dev*; do sed -e 's/yokozuna = off/yokozuna = on/' -i.back $d/etc/riak.conf; done
+	for d in dev/dev*; do sed -e 's/search = off/search = on/' -i.back $d/etc/riak.conf; done
