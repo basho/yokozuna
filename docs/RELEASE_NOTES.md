@@ -7,7 +7,7 @@ Yokozuna Release Notes
 
 ### Breaking Changes ###
 
-Yokozuna has been publicly renamed to Search 2. Although internally
+Yokozuna has been publicly renamed to Search. Although internally
 the Yokozuna name will still be used (in the code and project name),
 all public facing options will remove the use of "Yokozuna" or "yz"
 in favor of "Yokozuna" or simply "search".
@@ -15,7 +15,7 @@ in favor of "Yokozuna" or simply "search".
 Configuration (riak.conf) changes all yokozuna prefixes to search:
 
 ```
-## To enable Search 2, set this 'on'.
+## To enable Search, set this 'on'.
 search = on
 
 ## The port number which Solr binds to.
