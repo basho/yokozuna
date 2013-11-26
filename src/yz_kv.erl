@@ -159,7 +159,7 @@ get_short_preflist({Bucket, _} = BKey, Ring) ->
 %% types to transfer.  Once types have transfered some global flag
 %% which is cheap to check would be set and this call would simply
 %% check that.
--spec should_handoff({p(), node()}) -> boolean().
+-spec should_handoff({term(), {p(), node()}}) -> boolean().
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
     BucketTypesPrefix = {core, bucket_types},
     Server = {riak_core_metadata_hashtree, TargetNode},
