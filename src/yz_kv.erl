@@ -360,19 +360,6 @@ put(Client, Bucket, Key, Value, ContentType) ->
 
 %% @private
 %%
-%% @docs remove a hook from the bucket
-%%
-%% NOTE: Move this into riak_kv
-remove_obj_modified_hook(Bucket, Mod, Fun) ->
-    BProps = riak_core_bucket:get_bucket(Bucket),
-    Existing = proplists:get_value(obj_modified_hooks, BProps, []),
-    HookProp = {Mod, Fun},
-    Hooks = lists:delete(HookProp, Existing),
-    ok = riak_core_bucket:set_bucket(Bucket, [{obj_modified_hooks, Hooks}]).
-
-
-%% @private
-%%
 %% @doc Determine whether process `Flag' is set.
 -spec check_flag(term()) -> boolean().
 check_flag(Flag) ->
