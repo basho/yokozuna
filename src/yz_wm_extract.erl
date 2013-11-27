@@ -29,7 +29,7 @@
          }).
 
 routes() ->
-    [{["yz", "extract"], yz_wm_extract, []}].
+    [{["search", "extract"], yz_wm_extract, []}].
 
 init(_) ->
     {ok, #state{}}.

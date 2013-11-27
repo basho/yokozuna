@@ -124,8 +124,8 @@
 %% and `SubResource' is a specific instance.
 -define(YZ_SECURITY_INDEX, <<"index">>).
 -define(YZ_SECURITY_SCHEMA, <<"schema">>).
--define(YZ_SECURITY_SEARCH_PERM, "yokozuna.search").
--define(YZ_SECURITY_ADMIN_PERM, "yokozuna.admin").
+-define(YZ_SECURITY_SEARCH_PERM, "search.query").
+-define(YZ_SECURITY_ADMIN_PERM, "search.admin").
 
 -define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
 -define(YZ_DEFAULT_SOLR_PORT, 8983).
@@ -269,7 +269,7 @@
 -type index_name() :: binary().
 
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
--define(YZ_INDEX, yz_index).
+-define(YZ_INDEX, search_index).
 
 %%%===================================================================
 %%% Solr Config

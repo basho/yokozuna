@@ -41,25 +41,25 @@ currently has two different resources and two different permissions.
 
 | Permission          | Description                               |
 |---------------------|-------------------------------------------|
-| yokozuna.admin      | Ability to admin (CRUD) a resource.       |
-| yokozuna.search     | Ability to search an index.               |
+| search.admin        | Ability to admin (CRUD) a resource.       |
+| search.query        | Ability to query an index.                |
 
 The resources are the objects to control access to and the permissions
 are the actions which may be taken on them. Notice that the
-permissions are name-spaced with `yokozuna.`. This is required because
-other Riak sub-systems may one day have notions of `admin` or `search`
+permissions are name-spaced with `search.`. This is required because
+other Riak sub-systems may one day have notions of `admin` or `query`
 and this prevents collision.
 
 Currently the security system will allow any combination of resource
 and permission but not all combinations make sense. For example,
-giving the search permission on a schema. That makes no sense. Here is
+giving the query permission on a schema. That makes no sense. Here is
 a table covering the legal combinations.
 
-| Permission          | Resource(s)     | Sub-Resource            |
-|---------------------|-----------------|-------------------------|
-| yokozuna.admin      | index           | No                      |
-| yokozuna.admin      | schema          | No                      |
-| yokozuna.search     | index           | Yes                     |
+| Permission        | Resource(s)     | Sub-Resource            |
+|-------------------|-----------------|-------------------------|
+| search.admin      | index           | No                      |
+| search.admin      | schema          | No                      |
+| search.query      | index           | Yes                     |
 
 The sub-resource section denotes whether or not a sub-resource
 identifier can be applies to that combination. Sub-resources are
@@ -78,7 +78,7 @@ Three pieces of information are always required: 1) the permission
 given, 2) the resource the permission applies to, and 3) the user
 receiving the grant. There is an optional piece of information, the
 `<sub-resource>` which allows the grant to apply only to a specific
-instance of a `<resource>`. For example, granting search on a specific
+instance of a `<resource>`. For example, granting query on a specific
 index rather than all indexes.
 
 Examples
@@ -87,11 +87,11 @@ Examples
 In this example there are 3 users. Below is a list of their names
 along with the permissions each should have.
 
-* `ryan` - Is a developer. He needs to write apps that can search any
+* `ryan` - Is a developer. He needs to write apps that can query any
   index.
 
 * `eric` - Is an administrator. He needs to administrate schemas and
-  indexes as well as be able to search one index that he calls his
+  indexes as well as be able to query one index that he calls his
   own.
 
 * `god` - This user can do anything, because why not.
@@ -138,15 +138,15 @@ connections. Mainly because it makes this example easier to write :).
 Note that `all` is syntactic sugar that allows me to apply this source
 rule to all users rather than typing them out.
 
-### Granting Yokozuna Permissions ###
+### Granting Search Permissions ###
 
 With the users created and sources configured Yokozuna specific grants
 can now be applied.
 
-First is `ryan` who can search any index, but that's it.
+First is `ryan` who can query any index, but that's it.
 
 ```
-% riak-admin security grant yokozuna.search ON index TO ryan
+% riak-admin security grant search.query ON index TO ryan
 
 % riak-admin security print-user ryan
 
@@ -161,26 +161,26 @@ Applied permissions
 +----------+----------+----------------------------------------+
 |   type   |  bucket  |                 grants                 |
 +----------+----------+----------------------------------------+
-|  index   |    *     |            yokozuna.search             |
+|  index   |    *     |            search.query             |
 +----------+----------+----------------------------------------+
 ```
 
 Note that `ON` and `TO` must be capitalized.
 
-Next is `eric` who can admin everything but only search his personal
+Next is `eric` who can admin everything but only query his personal
 index.
 
 ```
-% riak-admin security grant yokozuna.admin ON schema TO eric
-% riak-admin security grant yokozuna.admin ON index TO eric
-% riak-admin security grant yokozuna.search ON index erics_index TO eric
+% riak-admin security grant search.admin ON schema TO eric
+% riak-admin security grant search.admin ON index TO eric
+% riak-admin security grant search.query ON index erics_index TO eric
 ```
 
 Finally, there is `god` who does whatever she pleases.
 
 ```
-% riak-admin security grant yokozuna.admin ON schema TO god
-% riak-admin security grant yokozuna.admin,yokozuna.search ON index TO god
+% riak-admin security grant search.admin ON schema TO god
+% riak-admin security grant search.admin,search.query ON index TO god
 ```
 
 Note that there must NOT be any white-space between permissions when
@@ -199,7 +199,7 @@ Server: MochiWeb/1.1 WebMachine/1.10.5 (jokes are better explained)
 Date: Thu, 07 Nov 2013 21:22:16 GMT
 Content-Length: 75
 
-Permission denied: User 'ryan' does not have'yokozuna.admin' on <<"index">>
+Permission denied: User 'ryan' does not have'search.admin' on <<"index">>
 ```
 
 As expected Ryan cannot create a new index. You'll have to excuse the
@@ -221,7 +221,7 @@ try listing the indexes.
 
 ```
 % curl -k --user ryan:ryan 'https://127.0.0.1:10012/yz/index'
-Permission denied: User 'ryan' does not have'yokozuna.admin' on <<"index">>
+Permission denied: User 'ryan' does not have'search.admin' on <<"index">>
 ```
 
 Once again Ryan does not have admin permission for indexes. Only Eric
@@ -317,7 +317,7 @@ both be searched at the same time but Ryan does have permission to
 search both in separate requests.
 
 ```
-% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/yz/search/ryans_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/search/ryans_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 1,
@@ -334,7 +334,7 @@ search both in separate requests.
   }
 }
 
-% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/yz/search/erics_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/search/erics_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 0,
@@ -347,10 +347,10 @@ search both in separate requests.
 
 Ryan found the work structure once in his corpus of Perlis quotes but
 zero times in Eric's collection of Dijkstra. What if Eric wants to
-search for a word in both indexes?
+query for a word in both indexes?
 
 ```
-% curl -s -k --user eric:eric 'https://127.0.0.1:10012/yz/search/erics_index?q=text:program&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user eric:eric 'https://127.0.0.1:10012/search/erics_index?q=text:program&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 1,
@@ -367,11 +367,11 @@ search for a word in both indexes?
   }
 }
 
-% curl -s -k --user eric:eric 'https://127.0.0.1:10012/yz/search/ryans_index?q=text:program&wt=json&omitHeader=true'
-Permission denied: User 'eric' does not have'yokozuna.search' on {<<"index">>,
-                                                                  <<"ryans_index">>}
+% curl -s -k --user eric:eric 'https://127.0.0.1:10012/search/ryans_index?q=text:program&wt=json&omitHeader=true'
+Permission denied: User 'eric' does not have'search.query' on {<<"index">>,
+                                                               <<"ryans_index">>}
 
-% curl -s -k --user god:iruleudrool 'https://127.0.0.1:10012/yz/search/ryans_index?q=text:program&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user god:iruleudrool 'https://127.0.0.1:10012/search/ryans_index?q=text:program&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 0,
@@ -384,7 +384,7 @@ Permission denied: User 'eric' does not have'yokozuna.search' on {<<"index">>,
 
 Eric found one quote with the word "program" in his index but was
 denied access to Ryan's index as expected. God, however, can do
-anything and was able to search Ryan's index.
+anything and was able to query Ryan's index.
 
 This is the gist of how security may be applied in Yokozuna. Once
 again, for more information refer to [Riak 355][355].

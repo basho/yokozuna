@@ -12,7 +12,7 @@
 %% index in Yokozuna.
 %%
 %% 3. For every bucket which is indexed by Riak Search the user must
-%% add the `yz_index' bucket property to point to the Yokozuna index
+%% add the `search_index' bucket property to point to the Yokozuna index
 %% which is going to eventually be migrated to.
 %%
 %% 4. As objects are written or modified they will be indexed by both

@@ -13,13 +13,13 @@ resource.
 
 ### HTTP Index Admin
 
-To create a new index, PUT to `/yz/index` path, suffixed with your
+To create a new index, PUT to `/search/index` path, suffixed with your
 index name, with a content type of `application/json`.  The JSON
 content itself is optional and allows specifying a schema to use
 besides the default schema.
 
 ```bash
-curl -i -XPUT http://localhost:8098/yz/index/my_bucket \
+curl -i -XPUT http://localhost:8098/search/index/my_bucket \
   -H 'content-type: application/json' \
   -d '{"schema":"my_schema"}'
 ```
@@ -29,7 +29,7 @@ A `204 No Content` should be returned if successful, or a `409 Conflict` code if
 To get information about the index, issue a GET request to the same URL.
 
 ```bash
-curl http://localhost:8098/yz/index/my_bucket | jsonpp
+curl http://localhost:8098/search/index/my_bucket | jsonpp
 {
   "name":"my_bucket",
   "bucket":"my_bucket",
@@ -44,5 +44,5 @@ Finally, when you are done with the index, you can issue a DELETE
 method with an index name to remove the index.
 
 ```bash
-curl -XDELETE http://localhost:8098/yz/index/my_bucket
+curl -XDELETE http://localhost:8098/search/index/my_bucket
 ```

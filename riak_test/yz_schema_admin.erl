@@ -354,7 +354,7 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 index_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Name]).
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Name]).
 
 schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/yz/schema/~s", [Host, Port, Name]).
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).

@@ -78,7 +78,7 @@ confirm_delete(Cluster, Index) ->
     lager:info("confirm_delete ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
 
-    Suffix = "yz/index/" ++ Index,
+    Suffix = "search/index/" ++ Index,
     Is200 = is_status("200", get, Suffix, ?NO_HEADERS, ?NO_BODY),
     [ ?assertEqual(ok, rt:wait_until(Node, Is200)) || Node <- Cluster],
 
@@ -90,7 +90,7 @@ confirm_delete(Cluster, Index) ->
     [ ?assertEqual(ok, rt:wait_until(Node, Is404)) || Node <- Cluster],
 
     %% Verify the index dir was removed from disk as well
-    [ ?assertEqual(ok, rt:wait_until(Node, is_deleted("data/yz/" ++ binary_to_list(Index))))
+    [ ?assertEqual(ok, rt:wait_until(Node, is_deleted("data/search/" ++ binary_to_list(Index))))
       || Node <- Cluster].
 
 is_status(ExpectedStatus, Method, URLSuffix, Headers, Body) ->
@@ -132,7 +132,7 @@ confirm_delete_409(Cluster, Index) ->
     URL = index_url(HP, Index),
     {ok, "204", _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     H = [{"content-type", "application/json"}],
-    B = <<"{\"props\":{\"yz_index\":\"delete_409\"}}">>,
+    B = <<"{\"props\":{\"search_index\":\"delete_409\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B),
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B),
 
@@ -150,13 +150,13 @@ confirm_delete_409(Cluster, Index) ->
     %% Can't be deleted because of associated buckets
     {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 
-    B2 = <<"{\"props\":{\"yz_index\":\"_yz_default\"}}">>,
+    B2 = <<"{\"props\":{\"search_index\":\"_yz_default\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B2),
 
     %% Still can't delete because of associated bucket
     {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 
-    B2 = <<"{\"props\":{\"yz_index\":\"_yz_default\"}}">>,
+    B2 = <<"{\"props\":{\"search_index\":\"_yz_default\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B2),
 
     %% TODO: wait_for_index_delete?
@@ -189,10 +189,10 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 index_list_url({Host, Port}) ->
-    ?FMT("http://~s:~B/yz/index", [Host, Port]).
+    ?FMT("http://~s:~B/search/index", [Host, Port]).
 
 index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 
 url({Host,Port}, Suffix) ->
     ?FMT("http://~s:~B/~s", [Host, Port, Suffix]).
