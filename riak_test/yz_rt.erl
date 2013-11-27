@@ -207,10 +207,18 @@ select_random(List) ->
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
 
--spec remove_index(node(), bucket()) -> ok.
+%% @doc Associate the `Index' with the `Bucket', sending the request
+%% to `Node'.
+-spec set_index(node(), bucket(), index_name()) -> ok.
+set_index(Node, Bucket, Index) ->
+    Props = [{?YZ_INDEX, Index}],
+    ok = rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
+
+-spec remove_index(node(), binary()) -> ok.
 remove_index(Node, BucketType) ->
     lager:info("Remove index from bucket type ~s [~p]", [BucketType, Node]),
-    ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}]]).
+    Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
+    ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, Props]).
 
 set_bucket_type_index(Node, BucketType) ->
     set_bucket_type_index(Node, BucketType, BucketType).
@@ -231,6 +239,18 @@ store_schema(PBConn, Name, Raw) ->
     ?assertEqual(ok, riakc_pb_socket:create_search_schema(PBConn, Name, Raw)),
     ok.
 
+%% @doc Wait for all AAE trees to be built.
+-spec wait_for_all_trees([node()]) -> ok.
+wait_for_all_trees(Cluster) ->
+    F = fun(Node) ->
+                lager:info("Check if all trees built for node ~p", [Node]),
+                Info = rpc:call(Node, yz_kv, compute_tree_info, []),
+                NotBuilt = [X || {_,undefined}=X <- Info],
+                NotBuilt == []
+        end,
+    yz_rt:wait_until(Cluster, F),
+    ok.
+
 wait_for_bucket_type(Cluster, BucketType) ->
     F = fun(Node) ->
                 {Host, Port} = riak_pb(hd(rt:connection_info([Node]))),
@@ -242,6 +262,28 @@ wait_for_bucket_type(Cluster, BucketType) ->
                 end
         end,
     wait_until(Cluster, F),
+    ok.
+
+%% @doc Wait for a full exchange round since `Timestamp'.  This means
+%% that all `{Idx,N}' for all partitions must have exchanged after
+%% `Timestamp'.
+-spec wait_for_full_exchange_round([node()], os:now()) -> ok.
+wait_for_full_exchange_round(Cluster, Timestamp) ->
+    MoreRecent =
+        fun({_Idx, _, undefined, _RepairStats}) ->
+                false;
+           ({_Idx, _, AllExchangedTime, _RepairStats}) ->
+                AllExchangedTime > Timestamp
+        end,
+    AllExchanged =
+        fun(Node) ->
+                Exchanges = rpc:call(Node, yz_kv, compute_exchange_info, []),
+                {_Recent, WaitingFor1} = lists:partition(MoreRecent, Exchanges),
+                WaitingFor2 = [element(1,X) || X <- WaitingFor1],
+                lager:info("Still waiting for AAE of ~p ~p", [Node, WaitingFor2]),
+                [] == WaitingFor2
+        end,
+    yz_rt:wait_until(Cluster, AllExchanged),
     ok.
 
 %% @see wait_for_schema/3
