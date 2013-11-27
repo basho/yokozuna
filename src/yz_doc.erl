@@ -197,11 +197,6 @@ split_tag_names(TagNames) ->
 %%% Private
 %%%===================================================================
 
-%% TODO: I don't like having X-Riak-Last-Modified in here.  Add
-%%       function to riak_object.
-doc_ts(MD) ->
-    dict:fetch(<<"X-Riak-Last-Modified">>, MD).
-
 %% NOTE: All of this data needs to be in one field to efficiently
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.

@@ -42,7 +42,7 @@ confirm() ->
     %% to verify that the exact number of repairs was made given the
     %% number of keys deleted.
     TS1 = erlang:now(),
-    wait_for_full_exchange_round(Cluster, TS1),
+    yz_rt:wait_for_full_exchange_round(Cluster, TS1),
     RepairCountBefore = get_cluster_repair_count(Cluster),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     Keys = yz_rt:random_keys(?NUM_KEYS),
@@ -58,7 +58,7 @@ confirm() ->
     %% Yokozuna hashtree must be built.  Wait for all trees before
     %% checking that Solr indexes are repaired.
     TS2 = erlang:now(),
-    wait_for_full_exchange_round(Cluster, TS2),
+    yz_rt:wait_for_full_exchange_round(Cluster, TS2),
     lager:info("Verify AAE repairs missing Solr documents"),
     verify_num_match(Cluster, ?NUM_KEYS),
     %% Multiply by 3 because of N value
@@ -93,11 +93,6 @@ get_total_repair_count(Node) ->
     Sums = [Sum || {_Key,{index_info,_,{simple_stat,_,_,_,_,Sum},_,_}} <- YZInfo],
     lists:sum(Sums).
 
-greater_than(TimestampA) ->
-    fun(TimestampB) ->
-            TimestampB > TimestampA
-    end.
-
 read_schema(YZBenchDir) ->
     Path = filename:join([YZBenchDir, "schemas", "fruit_schema.xml"]),
     {ok, RawSchema} = file:read_file(Path),
@@ -115,7 +110,7 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
 verify_no_repair(Cluster) ->
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     TS = erlang:now(),
-    wait_for_full_exchange_round(Cluster, TS),
+    yz_rt:wait_for_full_exchange_round(Cluster, TS),
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(0, Count).
@@ -130,29 +125,3 @@ verify_num_match(Cluster, Num) ->
 verify_repair_count(Cluster, ExpectedNumRepairs) ->
     RepairCount = get_cluster_repair_count(Cluster),
     ?assertEqual(ExpectedNumRepairs, RepairCount).
-
-
-%% Eneded up not needing this function but leaving here in casse
-%% useful later.
-
-%% wait_for_all_trees(Cluster) ->
-%%     F = fun(Node) ->
-%%                 lager:info("Check if all trees built for node ~p", [Node]),
-%%                 Info = rpc:call(Node, yz_kv, compute_tree_info, []),
-%%                 NotBuilt = [X || {_,undefined}=X <- Info],
-%%                 NotBuilt == []
-%%         end,
-%%     yz_rt:wait_until(Cluster, F).
-
-
-%% @doc Wait for a full exchange round since `Timestamp'.  This means
-%% that all `{Idx,N}' for all partitions must have exchanged after
-%% `Timestamp'.
-wait_for_full_exchange_round(Cluster, Timestamp) ->
-    F = fun(Node) ->
-                lager:info("Check if all partitions have had full exchange for ~p", [Node]),
-                EIs = rpc:call(Node, yz_kv, compute_exchange_info, []),
-                AllTimes = [AllTime || {_,_,AllTime,_} <- EIs],
-                lists:all(greater_than(Timestamp), AllTimes)
-        end,
-    yz_rt:wait_until(Cluster, F).

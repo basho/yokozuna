@@ -35,7 +35,7 @@
 -spec routes() -> [tuple()].
 routes() ->
     Routes1 = [{["search", index], ?MODULE, []}],
-    case yz_misc:is_riak_search_enabled() of
+    case yz_rs_migration:is_riak_search_enabled() of
         false ->
             [{["solr", index, "select"], ?MODULE, []}|Routes1];
         true ->
