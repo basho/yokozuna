@@ -193,7 +193,7 @@ The user Ryan should be prevented from creating or listing indexes
 based on the permissions given.
 
 ```
-% curl -i -k --user ryan:ryan -X PUT 'https://127.0.0.1:10012/yz/index/ryans_index'
+% curl -i -k --user ryan:ryan -X PUT 'https://127.0.0.1:10012/search/index/ryans_index'
 HTTP/1.1 403 Forbidden
 Server: MochiWeb/1.1 WebMachine/1.10.5 (jokes are better explained)
 Date: Thu, 07 Nov 2013 21:22:16 GMT
@@ -207,7 +207,7 @@ funny looking string. There is still some polish to be made to the new
 security system. What if Eric tries to create the index?
 
 ```
-% curl -i -k --user eric:eric -X PUT 'https://127.0.0.1:10012/yz/index/ryans_index'
+% curl -i -k --user eric:eric -X PUT 'https://127.0.0.1:10012/search/index/ryans_index'
 HTTP/1.1 204 No Content
 Server: MochiWeb/1.1 WebMachine/1.10.5 (jokes are better explained)
 Date: Thu, 07 Nov 2013 21:27:21 GMT
@@ -220,7 +220,7 @@ mean success but to verify the indexes can be listed. First, Ryan will
 try listing the indexes.
 
 ```
-% curl -k --user ryan:ryan 'https://127.0.0.1:10012/yz/index'
+% curl -k --user ryan:ryan 'https://127.0.0.1:10012/search/index'
 Permission denied: User 'ryan' does not have'search.admin' on <<"index">>
 ```
 
@@ -228,14 +228,14 @@ Once again Ryan does not have admin permission for indexes. Only Eric
 or god can list indexes.
 
 ```
-% curl -i -k --user god:iruleudrool 'https://127.0.0.1:10012/yz/index'
+% curl -i -k --user god:iruleudrool 'https://127.0.0.1:10012/search/index'
 [{"name":"ryans_index","schema":"_yz_default"}]
 ```
 
 Finally, Eric will create his own index which he can search.
 
 ```
-% curl -i -k --user eric:eric -X PUT 'https://127.0.0.1:10012/yz/index/erics_index'
+% curl -i -k --user eric:eric -X PUT 'https://127.0.0.1:10012/search/index/erics_index'
 HTTP/1.1 204 No Content
 Server: MochiWeb/1.1 WebMachine/1.10.5 (jokes are better explained)
 Date: Thu, 07 Nov 2013 22:06:55 GMT
