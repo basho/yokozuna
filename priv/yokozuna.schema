@@ -6,9 +6,9 @@
 ]}.
 
 { translation,
-  "search.enabled",
+  "yokozuna.enabled",
   fun(Conf) ->
-          Setting = cuttlefish_util:conf_get_value("yokozuna", Conf),
+          Setting = cuttlefish_util:conf_get_value("search", Conf),
           case Setting of
               on -> true;
               off -> false;
