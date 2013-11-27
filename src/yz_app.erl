@@ -59,7 +59,7 @@ maybe_setup(true) ->
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
     setup_stats(),
-    ok = riak_core:register(yokozuna, [{permissions, [search,admin]}]),
+    ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
     ok.
 

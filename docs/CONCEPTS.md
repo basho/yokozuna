@@ -1,9 +1,9 @@
 Yokozuna Concepts
 ==========
 
-This document goes over important concepts in Yokozuna.  This will not
-cover every detail of every concept.  Instead it is meant as an
-overview of the most important concepts.
+This document goes over important concepts in Yokozuna.
+This will not cover every detail of every concept.
+Instead it is meant as an overview of the most important concepts.
 
 Yokozuna is an Erlang Application
 ---------------------------------
@@ -221,7 +221,7 @@ extraction and return the document structure as `application/json`.
 
 ```
 curl -XPUT -H 'content-type: application/json' \
-  'http://localhost:8098/yz/extract' --data-binary @object.json
+  'http://localhost:8098/search/extract' --data-binary @object.json
 ```
 
 Schemas
