@@ -1,4 +1,4 @@
--module(yz_rs_migration).
+-module(yz_rs_migration_test).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/file.hrl").
