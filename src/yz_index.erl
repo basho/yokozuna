@@ -22,8 +22,6 @@
 -include("yokozuna.hrl").
 -compile(export_all).
 
--define(YZ_DEFAULT_DIR, filename:join(["data", "yz"])).
-
 %% @doc This module contains functionaity for using and administrating
 %%      indexes.  In this case an index is an instance of a Solr Core.
 
@@ -234,8 +232,7 @@ remove_from_ring(Name) ->
     end.
 
 index_dir(Name) ->
-    YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
-    filename:absname(filename:join([YZDir, Name])).
+    filename:absname(filename:join([?YZ_ROOT_DIR, Name])).
 
 %% @private
 %%

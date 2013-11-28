@@ -23,10 +23,10 @@
 %%
 %% Available operations:
 %% 
-%% GET /yz/schema/Schema
+%% GET /search/schema/Schema
 %%   Retrieves the schema with the given name
 %%
-%% PUT /yz/schema/Schema
+%% PUT /search/schema/Schema
 %%   Uploads a schema with the given name
 %%   A PUT request requires this header:
 %%     Content-Type: application/xml
@@ -50,7 +50,7 @@
 
 %% @doc Return the list of routes provided by this resource.
 routes() ->
-    [{["yz", "schema", schema], yz_wm_schema, []}].
+    [{["search", "schema", schema], yz_wm_schema, []}].
 
 
 %%%===================================================================

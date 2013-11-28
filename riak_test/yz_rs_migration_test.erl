@@ -1,4 +1,4 @@
--module(yz_rs_migration).
+-module(yz_rs_migration_test).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -12,18 +12,21 @@
 %% index in Yokozuna.
 %%
 %% 3. For every bucket which is indexed by Riak Search the user must
-%% add the `yz_index' bucket property to point to the Yokozuna index
+%% add the `search_index' bucket property to point to the Yokozuna index
 %% which is going to eventually be migrated to.
 %%
 %% 4. As objects are written or modified they will be indexed by both
 %% Riak Search and Yokozuna.  But the HTTP and PB query interfaces
 %% will continue to use Riak Search.
 %%
-%% 5a. In the background AAE will start building trees for Yokozuna and
+%% 5a. The YZ AAE trees must be manually cleared so that AAE will notice
+%% the missing indexes.
+%%
+%% 5b. In the background AAE will start building trees for Yokozuna and
 %% exchange them with KV.  These exchanges will notice objects are
 %% missing and index them in Yokozuna.
 %%
-%% 5b. The user wants Yokozuna to index the missing objects as fast as
+%% 5c. The user wants Yokozuna to index the missing objects as fast as
 %% possible.  A command may be used (repair? bucket map-reduce? custom
 %% fold function?) to immediately re-index data.
 %%
@@ -77,16 +80,12 @@ confirm() ->
     check_for_errors(Cluster),
 
     create_index(Cluster, yokozuna),
-    yz_rt:set_index(hd(Cluster), ?FRUIT_BUCKET),
-    %% TODO: actually this would require clearing trees (which
-    %% yokozuna normally handles in yz_events but in this case if AAE
-    %% didn't already index at least some stuff in the default index
-    %% then adding the property won't trip the clear trees call, and
-    %% besides once the default index is removed I imagine that code
-    %% path will be as well.
-    %%
-    %% For now just going to verify that this fails, although it might not
-    wait_for_aae(yokozuna, Cluster),
+    yz_rt:set_index(hd(Cluster), ?FRUIT_BUCKET, ?FRUIT_BUCKET),
+
+    clear_aae_trees(Cluster),
+    timer:sleep(2000),
+
+    wait_for_aae(Cluster),
     %% Sleep for auto-commit
     timer:sleep(1100),
 
@@ -100,7 +99,6 @@ confirm() ->
     ?assertEqual(5000, Found),
     close_pb_conn(PB),
 
-    %% TODO: This won't work until fix to `riak_core_bucket:set_bucket' is made
     set_search_false(Cluster, ?FRUIT_BUCKET),
     disable_riak_search(),
     stop_riak_search(Cluster),
@@ -122,6 +120,10 @@ confirm() ->
 
     pass.
 
+clear_aae_trees(Cluster) ->
+    lager:info("Clearing AAE trees across cluster"),
+    [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster].
+
 restart(Cluster) ->
     [rt:stop_and_wait(Node) || Node <- Cluster],
     [rt:start_and_wait(Node) || Node <- Cluster],
@@ -138,7 +140,15 @@ stop_riak_search(Cluster) ->
 %% @doc Disable the search hook on `Bucket'.
 set_search_false(Cluster, Bucket) ->
     lager:info("Uninstall search hook for bucket ~p", [Bucket]),
-    ?assertEqual(ok, rpc:call(hd(Cluster), riak_search_kv_hook, uninstall, [Bucket])).
+    ok = rpc:call(hd(Cluster), riak_search_kv_hook, uninstall, [Bucket]),
+    F = fun(Node) ->
+                PB = create_pb_conn(Node),
+                PC = pb_get_bucket_prop(PB, ?FRUIT_BUCKET, precommit, false),
+                close_pb_conn(PB),
+                PC == []
+        end,
+    yz_rt:wait_until(Cluster, F),
+    ok.
 
 %% @doc Disable Riak Search in all app.config files.
 disable_riak_search() ->
@@ -151,23 +161,12 @@ switch_to_yokozuna(Cluster) ->
 
 %% Use AAE status to verify that exchange has occurred for all
 %% partitions since the time this function was invoked.
-wait_for_aae(yokozuna, Cluster) ->
+-spec wait_for_aae([node()]) -> ok.
+wait_for_aae(Cluster) ->
     lager:info("Wait for AAE to migrate/repair indexes"),
-    Now = os:timestamp(),
-    MoreRecent =  fun({_Idx, _, undefined, _RepairStats}) ->
-                          false;
-                     ({_Idx, _, AllExchanged, _RepairStats}) ->
-                          AllExchanged > Now
-                  end,
-    AllExchanged =
-        fun(Node) ->
-                Exchanges = rpc:call(Node, yz_kv, compute_exchange_info, []),
-                {Recent, WaitingFor1} = lists:partition(MoreRecent, Exchanges),
-                WaitingFor2 = [element(1,X) || X <- WaitingFor1],
-                lager:info("Still waiting for AAE of ~p ~p", [Node, WaitingFor2]),
-                length(Recent) == length(Exchanges)
-        end,
-    yz_rt:wait_until(Cluster, AllExchanged).
+    yz_rt:wait_for_all_trees(Cluster),
+    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    ok.
 
 is_error_or_crash_log({FileName,_}) ->
     Base = filename:basename(FileName, ".log"),
@@ -216,7 +215,9 @@ create_pb_conn(Node) ->
 
 load_data(Cluster, YZBenchDir, NumKeys) ->
     {ExitCode, _} = yz_rt:load_data(Cluster, ?FRUIT_BUCKET, YZBenchDir, NumKeys),
-    ?assertEqual(0,ExitCode).
+    ?assertEqual(0,ExitCode),
+    %% Sleep for soft-commit.
+    timer:sleep(1100).
 
 query_data(Cluster, YZBenchDir, NumKeys, Time) ->
     lager:info("Run query against cluster ~p", [Cluster]),
@@ -253,7 +254,6 @@ http_get_bucket_prop({Host, Port}, Bucket, Prop, Default) ->
     {struct, Props} = element(2,hd(element(2, Struct))),
     proplists:get_value(Prop, Props, Default).
 
-%% TODO: enable Yokozuna
 rolling_upgrade(Cluster, Vsn) ->
     lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
     SolrPorts = lists:seq(11000, 11000 + length(Cluster) - 1),
@@ -268,7 +268,7 @@ rolling_upgrade(Cluster, Vsn) ->
                             {anti_entropy_concurrency, 6},
                             {anti_entropy_build_limit, {6,500}},
                             {enabled, true},
-			    {solr_port, integer_to_list(SolrPort)}]}],
+			    {solr_port, SolrPort}]}],
 	 rt:upgrade(Node, Vsn, Cfg),
 	 rt:wait_for_service(Node, riak_kv),
 	 rt:wait_for_service(Node, riak_search),

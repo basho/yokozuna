@@ -136,17 +136,7 @@ get_md_entry(MD, Key) ->
 -spec get_index(bkey(), ring()) -> index_name().
 get_index({Bucket, _}, Ring) ->
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    case is_default_type(Bucket) of
-        false ->
-            proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE);
-        true ->
-            case proplists:get_value(search, BProps, false) of
-                false ->
-                    ?YZ_INDEX_TOMBSTONE;
-                true ->
-                    bucket_name(Bucket)
-            end
-    end.
+    proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
 
 %% @doc Determine the "short" preference list given the `BKey' and
 %% `Ring'.  A short preflist is one that defines the preflist by
@@ -169,7 +159,7 @@ get_short_preflist({Bucket, _} = BKey, Ring) ->
 %% types to transfer.  Once types have transfered some global flag
 %% which is cheap to check would be set and this call would simply
 %% check that.
--spec should_handoff({p(), node()}) -> boolean().
+-spec should_handoff({term(), {p(), node()}}) -> boolean().
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
     BucketTypesPrefix = {core, bucket_types},
     Server = {riak_core_metadata_hashtree, TargetNode},
@@ -367,19 +357,6 @@ put(Client, Bucket, Key, Value, ContentType) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
-%% @private
-%%
-%% @docs remove a hook from the bucket
-%%
-%% NOTE: Move this into riak_kv
-remove_obj_modified_hook(Bucket, Mod, Fun) ->
-    BProps = riak_core_bucket:get_bucket(Bucket),
-    Existing = proplists:get_value(obj_modified_hooks, BProps, []),
-    HookProp = {Mod, Fun},
-    Hooks = lists:delete(HookProp, Existing),
-    ok = riak_core_bucket:set_bucket(Bucket, [{obj_modified_hooks, Hooks}]).
-
 
 %% @private
 %%

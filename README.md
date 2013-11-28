@@ -28,7 +28,7 @@ buckets may use the same index.  To create an index via the HTTP
 interface the following.
 
 ```
-curl -XPUT -i 'http://localhost:10018/yz/index/my_index'
+curl -XPUT -i 'http://localhost:10018/search/index/my_index'
 ```
 
 ### Create Bucket Type, and Associate Index ###
@@ -36,11 +36,11 @@ curl -XPUT -i 'http://localhost:10018/yz/index/my_index'
 **N.B.** This is a breaking change in the 0.12.0 version. Previously
 associating an index was done by updating a bucket's properties.
 
-A bucket type must be created and the `yz_index` field must be set
+A bucket type must be created and the `search_index` field must be set
 either at the type-level properties, as shown here, or name-level.
 
 ```
-riak-admin bucket-type create my_type '{"props":{"yz_index":"my_index"}}'
+riak-admin bucket-type create my_type '{"props":{"search_index":"my_index"}}'
 riak-admin bucket-type activate my_type
 ```
 
@@ -61,7 +61,7 @@ API but that is hidden for you.  This means you don't have to worry
 about where your shards are located.
 
 ```
-curl 'http://localhost:10018/yz/search/my_index?q=text:Ryan'
+curl 'http://localhost:10018/search/my_index?q=text:Ryan'
 ```
 
 The canonical Solr URL is also supported allowing the use of an
