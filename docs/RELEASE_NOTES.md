@@ -63,7 +63,7 @@ separator, and bucket type creation. More details later in the notes.
 
 ### Breaking Changes ###
 
-### Default Nested Field Separators ([231][]) ###
+#### Default Nested Field Separators ([231][]) ####
 
 The default field separator for nested objects has been changed from
 `_` to `.`. This means the following nested JSON object
@@ -120,7 +120,7 @@ that type, or set it per bucket.
 
 See [ADMIN][] for more details.
 
-[ADMIN][]: https://github.com/basho/yokozuna/blob/develop/docs/ADMIN.md
+[ADMIN]: https://github.com/basho/yokozuna/blob/develop/docs/ADMIN.md
 
 [176]: https://github.com/basho/yokozuna/issues/176
 [186]: https://github.com/basho/yokozuna/issues/186
