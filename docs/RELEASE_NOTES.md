@@ -1,18 +1,83 @@
 Yokozuna Release Notes
 ==========
 
-
 0.12.0
 ------
 
+This release integrates the new bucket type feature and adds the
+ability to migrate from Riak Search using AAE. Less disk space will be
+used per index and a slight bump in query performance may be
+noticed. Also, documentation was added on using Riak's new security
+features with Yokozuna. Finally, three breaking changes were
+made. There is some API rebranding, a change of the default field
+separator, and bucket type creation. More details later in the notes.
+
+### Features ###
+
+* [176][], [230][] - Add support for the new bucket types feature in
+  Riak. Bucket types allow an additional level of namespacing as well
+  as a more efficient mechanism for storing custom properties. If no
+  type is specified then the _default_ type is assumed. Yokozuna works
+  with the default type but it is highly recommended you create your
+  own types to take advantage of the more efficient property storage.
+
+* [238][] - Ability to migrate from Riak Search via AAE.
+
+### Performance ###
+
+* [205][] - Don't store all Yokozuna specific fields. Several of the
+  fields are only used for filtering and thus don't need to be
+  stored. By not storing them the disk usage of the index was reduced
+  by 25% in one micro-benchmark.
+
+* [221][], [236][] - Use HTTP POST to send queries to Solr. This was
+  done to prevent large filter queries from creating overly long URLs
+  but also gave a slight bump in performance on one micro benchmark.
+
+### Bugs/Misc ###
+
+* [189][], [230][] - Make sure `_yz_id` is unique.
+
+* [186][] - Remove defunct `bucket` field from HTTP index properties.
+
+* [210][] - Use common URL prefix.
+
+* [216][] - Add anti-entropy directory to configuration.
+
+* [217][] - Require the `_yz_err` field.
+
+* [220][] - Set `solr.solr.home` correctly.
+
+* [228][] - Use a relative path for the schema file.
+
+* [231][] - Change default field separator to `.`.
+
+* [235][], [240][] - Rename some public facing parts of Yokozuna to "search".
+
+* [237][] - Increase Solr startup timeout.
+
+### Documentation ###
+
+* [229][] - Add documentation on using the new Riak 2.0 security
+  features with Yokozuna.
+
 ### Breaking Changes ###
 
-Yokozuna has been publicly renamed to Search. Although internally
-the Yokozuna name will still be used (in the code and project name),
-all public facing options will remove the use of "Yokozuna" or "yz"
-in favor of "Yokozuna" or simply "search".
+### Default Nested Field Separators ([231][]) ###
 
-Configuration (riak.conf) changes all yokozuna prefixes to search:
+The default field separator for nested objects has been changed from
+`_` to `.`. This means the following nested JSON object
+`{"info":{"name":"ryan"}}` now creates a field with the name
+`info.name`.
+
+#### Public Interface Renaming ([235][]) ####
+
+Some of the public facing bits of Yokozuna have been renamed to
+"Search". Internally, the Yokozuna code-name will still be used but
+some public facing parts replaced "yokozuna" or "yz" with "search".
+
+The "yokozuna" prefix was renamed to "search" in the `riak.conf`
+configuration file. It is still "yokozuna" in the `advanced.config`.
 
 ```
 ## To enable Search, set this 'on'.
@@ -27,72 +92,54 @@ search.solr_jmx_port = 10013
 # and so on...
 ```
 
-The index property to associate a bucket will changed from
-`yz_index` to `search_index`.
+The type/bucket property to associate an index is now `search_index`.
 
-All HTTP administration request have changed to rename the `yz`
-prefix to `search`. To manage an index or schema, use, respectively:
+All HTTP resources renamed `yz` to `search`. To manage an index or
+schema, use, respectively:
 
 * http://localhost:10018/search/index/INDEX_NAME
-* http://localhost:10018/search/schema/INDEX_NAME
+* http://localhost:10018/search/schema/SCHEMA_NAME
 
+#### Associating Indexes, Bucket Type Support ([176][] & [230][]) ####
 
-#### Associating Indexes (Bucket Type Support) ####
+During Riak 2.0 development the new bucket type feature was added. It
+provides an additional level of namespacing as well as a more
+efficient and robust property mechanism. However, it also requires
+creating a bucket type which can only be done at the console with
+`raik-admin`.
 
-During Riak 2.0 development the new bucket type feature was
-added. This provides an additional level of namespacing objects as
-well as a more efficient and robust property mechanism. However, it
-also requires creating a bucket type which can only be done at the
-console with `raik-admin`.
+All buckets with no explicit type will be considered "legacy" and will
+live under the `default` type. Yokozuna indexes may be associated with
+buckets under the default type but it is highly recommended that a
+custom type be created to take advantage of the more efficient
+property mechanism.
 
-As of 0.12.0 Yokozuna requires the use of bucket types. All bucket
-names with no explicit type will be considered "legacy" and will live
-under the `default` bucket type. You can set the `yz_index` property
-on these buckets but it will be ignored.
+An index can be associated by either setting the `search_index`
+property on the type, which will apply it to all buckets underneath
+that type, or set it per bucket.
 
-Moving forward, the only way to use Yokozuna is to first create a
-bucket type. Then an index can be associated by either setting the
-`yz_index` property on the bucket type, which will apply it to all
-bucket names underneath that type, or set it per bucket name.
+See [ADMIN][] for more details.
 
-In the case where you have many bucket names with their own index then
-creating one type to hold all names makes sense. You create the type
-and then associate the index for each individual name. The example
-below shows two indexes being associated with two bucket names under
-the same type. Note that the type only needs to be created once and
-then you can create as many names under it as you like via HTTP or
-various Riak clients.
+[ADMIN][]: https://github.com/basho/yokozuna/blob/develop/docs/ADMIN.md
 
-```
-curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/yz/index/people -d '{"schema":"people.xml"}'
-
-curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/yz/index/events -d '{"schema":events.xml"}'
-
-riak-admin bucket-type create data '{"props":{}}'
-
-riak-admin bucket-type activate data
-
-curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/types/data/buckets/people/props' -d '{"props":{"yz_index":"people"}}'
-
-curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/types/data/buckets/events/props' -d '{"props":{"yz_index":"events"}}'
-```
-
-In the case where you have many bucket names which should map to one
-index you can also set the index property on the type and have it
-inherited by all the names. The example below shows creating a
-`people` type mapping to an index for people where the people are
-grouped under bucket names based on state.
-
-```
-curl -XPUT -H 'content-type: application/json' 'http://localhost:10018/yz/index/people -d '{"schema":"people.xml"}'
-
-riak-admin bucket-type create people '{"props":{"yz_index":"people"}}'
-
-riak-admin bucket-type activate people
-
-curl ... 'http://localhost:10018/types/people/buckets/maryland/keys/ryan_zezeski' ...
-curl ... 'http://localhost:10018/types/people/buckets/oregon/keys/eric_redmond' ...
-```
+[176]: https://github.com/basho/yokozuna/issues/176
+[186]: https://github.com/basho/yokozuna/issues/186
+[189]: https://github.com/basho/yokozuna/issues/189
+[205]: https://github.com/basho/yokozuna/pull/205
+[210]: https://github.com/basho/yokozuna/pull/210
+[216]: https://github.com/basho/yokozuna/pull/216
+[217]: https://github.com/basho/yokozuna/pull/217
+[220]: https://github.com/basho/yokozuna/pull/220
+[221]: https://github.com/basho/yokozuna/issues/221
+[228]: https://github.com/basho/yokozuna/pull/228
+[229]: https://github.com/basho/yokozuna/pull/229
+[230]: https://github.com/basho/yokozuna/pull/230
+[231]: https://github.com/basho/yokozuna/pull/231
+[235]: https://github.com/basho/yokozuna/pull/235
+[236]: https://github.com/basho/yokozuna/pull/236
+[237]: https://github.com/basho/yokozuna/pull/237
+[238]: https://github.com/basho/yokozuna/pull/238
+[240]: https://github.com/basho/yokozuna/pull/240
 
 0.11.0
 ------
