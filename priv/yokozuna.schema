@@ -16,6 +16,12 @@
           end
   end}.
 
+%% Critical once Solr is loaded with data it can takes a minute to startup. milliseconds for Riak to wait for solr to startup before terminating
+{mapping, "yokozuna.solr_startup_wait", "yokozuna.solr_startup_wait", [
+  {default, {{15000}} },
+  {datatype, integer}
+]}.
+
 %% @doc The port number which Solr binds to.
 {mapping, "search.solr_port", "yokozuna.solr_port", [
   {default, {{yz_solr_port}} },
