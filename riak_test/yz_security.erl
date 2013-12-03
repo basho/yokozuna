@@ -39,13 +39,15 @@
 <schema name=\"test\" version=\"1.5\">
 <fields>
    <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\"/>
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
 </fields>
 <uniqueKey>_yz_id</uniqueKey>
 <types>
@@ -54,13 +56,9 @@
 </schema>">>).
 -define(USER, "user").
 -define(PASSWORD, "password").
--define(INDEX, "myindex").
--define(INDEX_B, <<"myindex">>).
--define(INDEX2, "myindex2").
--define(INDEX2_B, <<"myindex2">>).
--define(SCHEMA, "myschema").
--define(SCHEMA_B, <<"myschema">>).
--define(BUCKET, "mybucket").
+-define(INDEX, <<"myindex">>).
+-define(INDEX2, <<"myindex2">>).
+-define(SCHEMA, <<"myschema">>).
 -define(HUSER, "h_user").
 -define(HINDEX, "h_myindex").
 -define(ADD_USER(N,D), rpc:call(N, riak_core_console, add_user, D)).
@@ -130,7 +128,7 @@ confirm_index_pb(Node) ->
     Pid0 = get_secure_pid(Host, Port),
     lager:info("verifying user cannot create index without grants"),
     ?assertMatch({error, <<"Permission", _/binary>>},
-        riakc_pb_socket:create_search_index(Pid0, ?INDEX_B)),
+        riakc_pb_socket:create_search_index(Pid0, ?INDEX)),
 
     lager:info("verifying user cannot list indexes without grants"),
     ?assertMatch({error, <<"Permission", _/binary>>},
@@ -139,23 +137,21 @@ confirm_index_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.admin","ON","index","TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","index","TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create an index"),
-    ?assertEqual(ok,
-        riakc_pb_socket:create_search_index(Pid1, ?INDEX_B)),
-    yz_rt:set_index(Node, ?INDEX, ?BUCKET),
+    ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid1, ?INDEX)),
     yz_rt:wait_for_index([Node], ?INDEX),
 
     %% create another index, never give permission to use it
     ?assertEqual(ok,
-        riakc_pb_socket:create_search_index(Pid1, ?INDEX2_B)),
+        riakc_pb_socket:create_search_index(Pid1, ?INDEX2)),
     yz_rt:wait_for_index([Node], ?INDEX2),
 
     ?assertEqual(ok,
         riakc_pb_socket:create_search_index(Pid1, <<"_gonna_be_dead_">>)),
-    yz_rt:wait_for_index([Node], "_gonna_be_dead_"),
+    yz_rt:wait_for_index([Node], <<"_gonna_be_dead_">>),
 
     lager:info("verifying user can delete an index"),
     ?assertEqual(ok,
@@ -163,7 +159,7 @@ confirm_index_pb(Node) ->
 
     lager:info("verifying user can get an index"),
     ?assertMatch({ok,[_|_]},
-        riakc_pb_socket:get_search_index(Pid1, ?INDEX_B)),
+        riakc_pb_socket:get_search_index(Pid1, ?INDEX)),
 
     lager:info("verifying user can get all indexes"),
     ?assertMatch({ok,[_|_]},
@@ -177,20 +173,20 @@ confirm_schema_permission_pb(Node) ->
     Pid0 = get_secure_pid(Host, Port),
     lager:info("verifying user cannot create schema without grants"),
     ?assertMatch({error, <<"Permission", _/binary>>},
-        riakc_pb_socket:create_search_schema(Pid0, ?SCHEMA_B, ?SCHEMA_CONTENT)),
+        riakc_pb_socket:create_search_schema(Pid0, ?SCHEMA, ?SCHEMA_CONTENT)),
 
     lager:info("verifying user cannot get schemas without grants"),
     ?assertMatch({error, <<"Permission", _/binary>>},
-        riakc_pb_socket:get_search_schema(Pid0, ?SCHEMA_B)),
+        riakc_pb_socket:get_search_schema(Pid0, ?SCHEMA)),
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant schema permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.admin","ON","schema","TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","schema","TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create schema"),
     ?assertMatch(ok,
-        riakc_pb_socket:create_search_schema(Pid1, ?SCHEMA_B, ?SCHEMA_CONTENT)),
+        riakc_pb_socket:create_search_schema(Pid1, ?SCHEMA, ?SCHEMA_CONTENT)),
     riakc_pb_socket:stop(Pid1),
     ok.
 
@@ -200,20 +196,21 @@ confirm_search_pb(Node) ->
     Pid0 = get_secure_pid(Host, Port),
     lager:info("verifying user cannot search an index without grants"),
     ?assertMatch({error, <<"Permission", _/binary>>},
-        riakc_pb_socket:search(Pid0, ?INDEX_B, <<"*:*">>)),
+        riakc_pb_socket:search(Pid0, ?INDEX, <<"*:*">>)),
     riakc_pb_socket:stop(Pid0),
 
-    lager:info("Grant search permission to user on "++?INDEX),
-    ok = ?GRANT(Node, [["yokozuna.search","ON","index",?INDEX,"TO",?USER]]),
+    lager:info("Grant search permission to user on ~s", [?INDEX]),
+    IndexS = binary_to_list(?INDEX),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_SEARCH_PERM,"ON","index",IndexS,"TO",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
-    lager:info("verifying user can search granted on "++?INDEX),
+    lager:info("verifying user can search granted on ~s", [?INDEX]),
     ?assertMatch({ok, _Result},
-        riakc_pb_socket:search(Pid1, ?INDEX_B, <<"*:*">>)),
+        riakc_pb_socket:search(Pid1, ?INDEX, <<"*:*">>)),
 
     lager:info("verifying user cannot search a different index"),
     ?assertMatch({error, <<"Permission", _/binary>>},
-        riakc_pb_socket:search(Pid1, ?INDEX2_B, <<"*:*">>)),
+        riakc_pb_socket:search(Pid1, ?INDEX2, <<"*:*">>)),
 
     riakc_pb_socket:stop(Pid1),
     ok.
@@ -241,12 +238,12 @@ confirm_index_https(Node) ->
               [{"content-type", "application/json"}]
                ++ get_auth_header(?HUSER, ?PASSWORD),
     Body = <<"{\"schema\":\"_yz_default\"}">>,
-    URL = lists:flatten(io_lib:format("https://~s:~s/yz/index/~s",
+    URL = lists:flatten(io_lib:format("https://~s:~s/search/index/~s",
                                       [Host, integer_to_list(Port), ?HINDEX])),
     {ok, "403", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [["yokozuna.admin","ON","index","TO",?HUSER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","index","TO",?HUSER]]),
 
     %% this should work now that this user has permission
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),

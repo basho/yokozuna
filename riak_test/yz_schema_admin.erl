@@ -13,13 +13,15 @@
 <schema name=\"test\" version=\"1.5\">
 <fields>
    <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -89,6 +91,7 @@
    <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -125,6 +128,7 @@
    <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -148,6 +152,7 @@
 </types>
 </schema>">>).
 
+%% Use a bad class name for the `text_general' field type.
 -define(BAD_CLASS_SCHEMA,
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
@@ -158,8 +163,10 @@
    <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -347,7 +354,7 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 index_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Name]).
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Name]).
 
 schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/yz/schema/~s", [Host, Port, Name]).
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).

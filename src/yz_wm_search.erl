@@ -34,9 +34,8 @@
 %% @doc Return the list of routes provided by this resource.
 -spec routes() -> [tuple()].
 routes() ->
-    Routes1 = [{["yz", "search", index], ?MODULE, []},
-               {["search", index], ?MODULE, []}],
-    case yz_misc:is_riak_search_enabled() of
+    Routes1 = [{["search", index], ?MODULE, []}],
+    case yz_rs_migration:is_riak_search_enabled() of
         false ->
             [{["solr", index, "select"], ?MODULE, []}|Routes1];
         true ->
@@ -115,9 +114,8 @@ search(Req, S) ->
     T1 = os:timestamp(),
     Index = list_to_binary(wrq:path_info(index, Req)),
     Params = wrq:req_qs(Req),
-    ReqHeaders = mochiweb_headers:to_list(wrq:req_headers(Req)),
     try
-        Result = yz_solr:dist_search(Index, ReqHeaders, Params),
+        Result = yz_solr:dist_search(Index, Params),
         case Result of
             {error, insufficient_vnodes_available} ->
                 yz_stat:search_fail(),

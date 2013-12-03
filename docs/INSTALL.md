@@ -1,9 +1,9 @@
 Install
 =======
 
-There are three methods for obtaining Yokozuna. Which method you
-choose depends on how close to the bleeding edge you want to be. The
-easiest and most convenient method is to use official packages. Binary
+There are three methods for obtaining Yokozuna. Which
+method you choose depends on how close to the bleeding edge you want to be.
+The easiest and most convenient method is to use official packages. Binary
 packages are provided for many different operating systems and
 represent the official way to install Riak in production. The other
 two methods are the source package and cloning from GitHub. The
@@ -17,6 +17,11 @@ provided below.
 
 Official Packages
 ----------
+
+**WARNING**: The 2.0.0pre5 preview is very out of date as of the
+  0.12.0 release and thus the latest documentation will lead you
+  astray. It is recommended to use the source package for now until a
+  more up-to-date official package is cut.
 
 The current Riak 2.0 preview (riak-2.0.0pre5) comes bundled with
 Yokozuna. It is the same as the 0.11.0 release minus the new security
@@ -41,7 +46,7 @@ Approximately every month a release is cut. Thus, Yokozuna development
 can outpace official Riak releases. The source package provides an
 easy method for building the latest release and thus testing the
 newest features and bug fixes. The source package should always pass
-all Yokozuna integration tests and be stable as possible. It should
+all Searh 2 integration tests and be stable as possible. It should
 not be deployed in production, however. These releases are more like
 previews and compatibility could break between them. Use official
 packages for production.
@@ -61,44 +66,44 @@ packages for production.
 Download the source package and corresponding md5 from one of the
 following locations.
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz
+* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz.md5
+* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz.md5
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.11.0-src.tar.gz
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.12.0-src.tar.gz
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.11.0-src.tar.gz.md5
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.12.0-src.tar.gz.md5
 
 E.g. download from [riakcs.net][rcs].
 
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.11.0-src.tar.gz.md5
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz.md5
 
 Verify the md5 (note: `md5` might be `md5sum`).
 
-	md5 riak-yokozuna-0.11.0-src.tar.gz
-	cat riak-yokozuna-0.11.0-src.tar.gz.md5
+	md5 riak-yokozuna-0.12.0-src.tar.gz
+	cat riak-yokozuna-0.12.0-src.tar.gz.md5
 
 Unpack the archive.
 
-    tar zxvf riak-yokozuna-0.11.0-src.tar.gz
+    tar zxvf riak-yokozuna-0.12.0-src.tar.gz
 
 Compile.
 
-	cd riak-yokozuna-0.11.0-src
+	cd riak-yokozuna-0.12.0-src
 	make
 
 To deploy Riak-Yokozuna in a production configuration then you'll want
 to build a normal release.
 
 	make stage
-	sed -e 's/yokozuna = off/yokozuna = on/' -i.back rel/riak/etc/riak.conf
+	sed -e 's/search = off/search = on/' -i.back rel/riak/etc/riak.conf
 
 If you want to develop against multiple nodes on one machine then you
 can build a local development cluster.
 
 	make stagedevrel
-    for d in dev/dev*; do sed -e 's/yokozuna = off/yokozuna = on/' -i.back $d/etc/riak.conf; done
+    for d in dev/dev*; do sed -e 's/search = off/search = on/' -i.back $d/etc/riak.conf; done
 
 At this point creating a cluster is the same as vanilla Riak.  See
 [Basic Cluster Setup][bcs] for more details.  The Riak docs are
@@ -141,6 +146,6 @@ Make `stage` or `stagedevrel`.
 
 	make stagedevrel
 
-Enable Yokozuna.
+Enable Yokozuna.0.
 
-	for d in dev/dev*; do sed -e 's/yokozuna = off/yokozuna = on/' -i.back $d/etc/riak.conf; done
+	for d in dev/dev*; do sed -e 's/search = off/search = on/' -i.back $d/etc/riak.conf; done

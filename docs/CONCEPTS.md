@@ -1,9 +1,9 @@
 Yokozuna Concepts
 ==========
 
-This document goes over important concepts in Yokozuna.  This will not
-cover every detail of every concept.  Instead it is meant as an
-overview of the most important concepts.
+This document goes over important concepts in Yokozuna.
+This will not cover every detail of every concept.
+Instead it is meant as an overview of the most important concepts.
 
 Yokozuna is an Erlang Application
 ---------------------------------
@@ -183,7 +183,7 @@ top-level object can have an object as a value, and this object can
 have another object nested inside, an so on.  Yokozuna's JSON
 extractor must have some method of converting this arbitrary nesting
 into a flat list.  It does this by concatenating nested object fields
-with a separator.  The default separator is `_`.  An example should
+with a separator.  The default separator is `.`.  An example should
 make this more clear.
 
 Below is JSON that represents a person, what city they are from and
@@ -198,17 +198,17 @@ what cities they have traveled to.
 Below is the field list that would be created by the JSON extract.
 
 ```erlang
-[{<<"info_visited">>,<<"San Francisco">>},
- {<<"info_visited">>,<<"New York">>},
- {<<"info_visited">>,<<"Boston">>},
- {<<"info_city">>,<<"Baltimore">>},
+[{<<"info.visited">>,<<"San Francisco">>},
+ {<<"info.visited">>,<<"New York">>},
+ {<<"info.visited">>,<<"Boston">>},
+ {<<"info.city">>,<<"Baltimore">>},
  {<<"name">>,<<"ryan">>}]
 ```
 
 Some key points to notice.
 
 * Nested objects have their field names concatenated to form a field
-  name.  The default field separator is `_`.  This can be modified.
+  name.  The default field separator is `.`.  This can be modified.
 
 * Any array causes field names to repeat.  This will require that your
   schema defines this field as multi-valued.
@@ -221,7 +221,7 @@ extraction and return the document structure as `application/json`.
 
 ```
 curl -XPUT -H 'content-type: application/json' \
-  'http://localhost:8098/yz/extract' --data-binary @object.json
+  'http://localhost:8098/search/extract' --data-binary @object.json
 ```
 
 Schemas

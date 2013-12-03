@@ -4,6 +4,8 @@ Resources
 Yokozuna Talks
 --------------
 
+* Riak Search 2.0 - [video][ricon2013wv] | [slides][ricon2013ws]
+
 * Yokozuna, Scaling Solr with Riak - Berlin Buzzwords 2013 - [video][bbuzz2013v] | [slides][bbuzz2013s]
 
 * Yokozuna: Distributed Search You Don't Think About - RICON|East 2013 - [video][re2013v] | [slides][re2013s]
@@ -28,6 +30,8 @@ Books
 * [Solr In Action][sia] - 2013
 
 
+[ricon2013wv]: http://youtu.be/-c1eynVLNMo
+[ricon2013ws]: http://www.slideshare.net/eredmond/riak-search-2-yokozuna
 [bbuzz2013v]: http://www.youtube.com/watch?v=ETJqu5SmwOc&list=PLq-odUc2x7i8Qg4j2fix-QN6bjup-QYJW&index=12&noredirect=1
 [bbuzz2013s]: https://speakerdeck.com/rzezeski/yokozuna-scaling-solr-with-riak
 

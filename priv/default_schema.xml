@@ -130,8 +130,14 @@
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
    <field name="_yz_rk" type="_yz_str" indexed="true" stored="true"/>
 
+   <!-- Riak Bucket Type: The bucket type of the Riak object this doc corresponds to. -->
+   <field name="_yz_rt" type="_yz_str" indexed="true" stored="true"/>
+
    <!-- Riak Bucket: The bucket of the Riak object this doc corresponds to. -->
    <field name="_yz_rb" type="_yz_str" indexed="true" stored="true"/>
+
+   <!-- Node: Stores a flag if this doc is the product of a failed object extration -->
+   <field name="_yz_err" type="_yz_str" indexed="true" stored="false"/>
  </fields>
 
  <uniqueKey>_yz_id</uniqueKey>

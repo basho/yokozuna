@@ -1,6 +1,146 @@
 Yokozuna Release Notes
 ==========
 
+0.12.0
+------
+
+This release integrates the new bucket type feature and adds the
+ability to migrate from Riak Search using AAE. Less disk space will be
+used per index and a slight bump in query performance may be
+noticed. Also, documentation was added on using Riak's new security
+features with Yokozuna. Finally, three breaking changes were
+made. There is some API rebranding, a change of the default field
+separator, and bucket type creation. More details later in the notes.
+
+### Features ###
+
+* [176][], [230][] - Add support for the new bucket types feature in
+  Riak. Bucket types allow an additional level of namespacing as well
+  as a more efficient mechanism for storing custom properties. If no
+  type is specified then the _default_ type is assumed. Yokozuna works
+  with the default type but it is highly recommended you create your
+  own types to take advantage of the more efficient property storage.
+
+* [238][] - Ability to migrate from Riak Search via AAE.
+
+### Performance ###
+
+* [205][] - Don't store all Yokozuna specific fields. Several of the
+  fields are only used for filtering and thus don't need to be
+  stored. By not storing them the disk usage of the index was reduced
+  by 25% in one micro-benchmark.
+
+* [221][], [236][] - Use HTTP POST to send queries to Solr. This was
+  done to prevent large filter queries from creating overly long URLs
+  but also gave a slight bump in performance on one micro benchmark.
+
+### Bugs/Misc ###
+
+* [189][], [230][] - Make sure `_yz_id` is unique.
+
+* [186][] - Remove defunct `bucket` field from HTTP index properties.
+
+* [210][] - Use common URL prefix.
+
+* [216][] - Add anti-entropy directory to configuration.
+
+* [217][] - Require the `_yz_err` field.
+
+* [220][] - Set `solr.solr.home` correctly.
+
+* [228][] - Use a relative path for the schema file.
+
+* [231][] - Change default field separator to `.`.
+
+* [235][], [240][] - Rename some public facing parts of Yokozuna to "search".
+
+* [237][] - Increase Solr startup timeout.
+
+### Documentation ###
+
+* [229][] - Add documentation on using the new Riak 2.0 security
+  features with Yokozuna.
+
+### Breaking Changes ###
+
+#### Default Nested Field Separators ([231][]) ####
+
+The default field separator for nested objects has been changed from
+`_` to `.`. This means the following nested JSON object
+`{"info":{"name":"ryan"}}` now creates a field with the name
+`info.name`.
+
+#### Public Interface Renaming ([235][]) ####
+
+Some of the public facing bits of Yokozuna have been renamed to
+"Search". Internally, the Yokozuna code-name will still be used but
+some public facing parts replaced "yokozuna" or "yz" with "search".
+
+The "yokozuna" prefix was renamed to "search" in the `riak.conf`
+configuration file. It is still "yokozuna" in the `advanced.config`.
+
+```
+## To enable Search, set this 'on'.
+search = on
+
+## The port number which Solr binds to.
+search.solr_port = 10014
+
+## The port number which Solr JMX binds to.
+search.solr_jmx_port = 10013
+
+# and so on...
+```
+
+The type/bucket property to associate an index is now `search_index`.
+
+All HTTP resources renamed `yz` to `search`. To manage an index or
+schema, use, respectively:
+
+* http://localhost:10018/search/index/INDEX_NAME
+* http://localhost:10018/search/schema/SCHEMA_NAME
+
+#### Associating Indexes, Bucket Type Support ([176][] & [230][]) ####
+
+During Riak 2.0 development the new bucket type feature was added. It
+provides an additional level of namespacing as well as a more
+efficient and robust property mechanism. However, it also requires
+creating a bucket type which can only be done at the console with
+`raik-admin`.
+
+All buckets with no explicit type will be considered "legacy" and will
+live under the `default` type. Yokozuna indexes may be associated with
+buckets under the default type but it is highly recommended that a
+custom type be created to take advantage of the more efficient
+property mechanism.
+
+An index can be associated by either setting the `search_index`
+property on the type, which will apply it to all buckets underneath
+that type, or set it per bucket.
+
+See [ADMIN][] for more details.
+
+[ADMIN]: https://github.com/basho/yokozuna/blob/develop/docs/ADMIN.md
+
+[176]: https://github.com/basho/yokozuna/issues/176
+[186]: https://github.com/basho/yokozuna/issues/186
+[189]: https://github.com/basho/yokozuna/issues/189
+[205]: https://github.com/basho/yokozuna/pull/205
+[210]: https://github.com/basho/yokozuna/pull/210
+[216]: https://github.com/basho/yokozuna/pull/216
+[217]: https://github.com/basho/yokozuna/pull/217
+[220]: https://github.com/basho/yokozuna/pull/220
+[221]: https://github.com/basho/yokozuna/issues/221
+[228]: https://github.com/basho/yokozuna/pull/228
+[229]: https://github.com/basho/yokozuna/pull/229
+[230]: https://github.com/basho/yokozuna/pull/230
+[231]: https://github.com/basho/yokozuna/pull/231
+[235]: https://github.com/basho/yokozuna/pull/235
+[236]: https://github.com/basho/yokozuna/pull/236
+[237]: https://github.com/basho/yokozuna/pull/237
+[238]: https://github.com/basho/yokozuna/pull/238
+[240]: https://github.com/basho/yokozuna/pull/240
+
 0.11.0
 ------
 

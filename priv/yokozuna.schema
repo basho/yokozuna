@@ -1,6 +1,6 @@
-%% @doc The enabled Yokozuna set this 'on'.
+%% @doc To enable Search set this 'on'.
 %% @datatype enum on, off
-{mapping, "yokozuna", "yokozuna.enabled", [
+{mapping, "search", "yokozuna.enabled", [
   {default, off},
   {datatype, {enum, [on, off]}}
 ]}.
@@ -8,7 +8,7 @@
 { translation,
   "yokozuna.enabled",
   fun(Conf) ->
-          Setting = cuttlefish_util:conf_get_value("yokozuna", Conf),
+          Setting = cuttlefish_util:conf_get_value("search", Conf),
           case Setting of
               on -> true;
               off -> false;
@@ -17,13 +17,13 @@
   end}.
 
 %% @doc The port number which Solr binds to.
-{mapping, "yokozuna.solr_port", "yokozuna.solr_port", [
+{mapping, "search.solr_port", "yokozuna.solr_port", [
   {default, {{yz_solr_port}} },
   {datatype, integer}
 ]}.
 
 %% @doc The port number which Solr JMX binds to.
-{mapping, "yokozuna.solr_jmx_port", "yokozuna.solr_jmx_port", [
+{mapping, "search.solr_jmx_port", "yokozuna.solr_jmx_port", [
   {default, {{yz_solr_jmx_port}} },
   {datatype, integer}
 ]}.
@@ -31,12 +31,17 @@
 %% @doc The arguments to pass to the Solr JVM.  Non-standard
 %% arguments, i.e. -XX, may not be portable across JVM
 %% implementations.  E.g. -XX:+UseCompressedStrings.
-{mapping, "yokozuna.solr_jvm_args", "yokozuna.solr_jvm_args", [
+{mapping, "search.solr_jvm_args", "yokozuna.solr_jvm_args", [
   {default, "-Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
 ]}.
 
-%% @doc The data under which to store all Yokozuna related data.
-%% Including the Solr index data.
-{mapping, "yokozuna.data_dir", "yokozuna.yz_dir", [
-  {default, "{{yz_dir}}" }
+%% @doc The directory where AAE data files are stored
+{mapping, "search.anti_entropy.data_dir", "yokozuna.anti_entropy_data_dir", [
+  {default, "{{platform_data_dir}}/yz_anti_entropy" }
+]}.
+
+%% @doc The root directory for Yokozuna, under which index data and
+%% configuration is stored.
+{mapping, "search.root_dir", "yokozuna.root_dir", [
+  {default, "{{platform_data_dir}}/yz" }
 ]}.

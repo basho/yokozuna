@@ -92,14 +92,14 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http_put({string(), portnum()}, binary(), binary(), binary()) -> ok.
+-spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
--spec http_put({string(), portnum()}, binary(), binary(), string(), binary()) -> ok.
-http_put({Host, Port}, Bucket, Key, CT, Value) ->
-    URL = ?FMT("http://~s:~s/riak/~s/~s",
-               [Host, integer_to_list(Port), Bucket, Key]),
+-spec http_put({string(), portnum()}, bucket(), binary(), string(), binary()) -> ok.
+http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
+    URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
+               [Host, integer_to_list(Port), BType, BName, Key]),
     Opts = [],
     Headers = [{"content-type", CT}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
@@ -127,13 +127,13 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {index_path, "/riak/" ++ binary_to_list(Bucket)},
+           {bucket, Bucket},
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
            {operations, [{load_fruit, 1}]},
            {shutdown_on_error, true}],
-    File = "bb-load-" ++ binary_to_list(Bucket),
+    File = "load-data",
     write_terms(File, Cfg),
     run_bb(sync, File).
 
@@ -207,17 +207,26 @@ select_random(List) ->
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
 
-remove_index(Node, Bucket) ->
-    lager:info("Remove index from bucket ~s [~p]", [Bucket, Node]),
-    ok = rpc:call(Node, yz_kv, remove_index, [Bucket]).
-
-set_index(Node, Bucket) ->
-    set_index(Node, Bucket, Bucket).
-
-%% TODO: this should use PB interface like clients
+%% @doc Associate the `Index' with the `Bucket', sending the request
+%% to `Node'.
+-spec set_index(node(), bucket(), index_name()) -> ok.
 set_index(Node, Bucket, Index) ->
-    lager:info("Set bucket ~s index to ~s [~p]", [Bucket, Index, Node]),
-    ok = rpc:call(Node, yz_kv, set_index, [Bucket, Index]).
+    Props = [{?YZ_INDEX, Index}],
+    ok = rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
+
+-spec remove_index(node(), binary()) -> ok.
+remove_index(Node, BucketType) ->
+    lager:info("Remove index from bucket type ~s [~p]", [BucketType, Node]),
+    Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
+    ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, Props]).
+
+set_bucket_type_index(Node, BucketType) ->
+    set_bucket_type_index(Node, BucketType, BucketType).
+
+set_bucket_type_index(Node, BucketType, Index) ->
+    lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
+    rt:create_and_activate_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]),
+    rt:wait_until_bucket_type_status(BucketType, active, Node).
 
 solr_http(ConnInfo) ->
     proplists:get_value(solr_http, ConnInfo).
@@ -228,6 +237,53 @@ solr_http(ConnInfo) ->
 store_schema(PBConn, Name, Raw) ->
     lager:info("Storing schema ~s", [Name]),
     ?assertEqual(ok, riakc_pb_socket:create_search_schema(PBConn, Name, Raw)),
+    ok.
+
+%% @doc Wait for all AAE trees to be built.
+-spec wait_for_all_trees([node()]) -> ok.
+wait_for_all_trees(Cluster) ->
+    F = fun(Node) ->
+                lager:info("Check if all trees built for node ~p", [Node]),
+                Info = rpc:call(Node, yz_kv, compute_tree_info, []),
+                NotBuilt = [X || {_,undefined}=X <- Info],
+                NotBuilt == []
+        end,
+    yz_rt:wait_until(Cluster, F),
+    ok.
+
+wait_for_bucket_type(Cluster, BucketType) ->
+    F = fun(Node) ->
+                {Host, Port} = riak_pb(hd(rt:connection_info([Node]))),
+                {ok, PBConn} = riakc_pb_socket:start_link(Host, Port),
+                R = riakc_pb_socket:get_bucket_type(PBConn, BucketType),
+                case R of
+                    {ok,_} -> true;
+                    _ -> false
+                end
+        end,
+    wait_until(Cluster, F),
+    ok.
+
+%% @doc Wait for a full exchange round since `Timestamp'.  This means
+%% that all `{Idx,N}' for all partitions must have exchanged after
+%% `Timestamp'.
+-spec wait_for_full_exchange_round([node()], os:now()) -> ok.
+wait_for_full_exchange_round(Cluster, Timestamp) ->
+    MoreRecent =
+        fun({_Idx, _, undefined, _RepairStats}) ->
+                false;
+           ({_Idx, _, AllExchangedTime, _RepairStats}) ->
+                AllExchangedTime > Timestamp
+        end,
+    AllExchanged =
+        fun(Node) ->
+                Exchanges = rpc:call(Node, yz_kv, compute_exchange_info, []),
+                {_Recent, WaitingFor1} = lists:partition(MoreRecent, Exchanges),
+                WaitingFor2 = [element(1,X) || X <- WaitingFor1],
+                lager:info("Still waiting for AAE of ~p ~p", [Node, WaitingFor2]),
+                [] == WaitingFor2
+        end,
+    yz_rt:wait_until(Cluster, AllExchanged),
     ok.
 
 %% @see wait_for_schema/3
