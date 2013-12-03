@@ -15,7 +15,7 @@ fi
 
 SOLR_DIR=../priv/solr
 BUILD_DIR=../build
-VSN=solr-4.4.0-yz
+VSN=solr-4.6.0-yz1
 FILENAME=$VSN.tgz
 TMP_DIR=/var/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
@@ -81,7 +81,6 @@ echo "Creating Solr dir $SOLR_DIR"
 # detected.
 cp -r $EXAMPLE_DIR/contexts $SOLR_DIR
 cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
-cp -r $EXAMPLE_DIR/etc/logging.properties $SOLR_DIR/etc
 cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
 cp -r $EXAMPLE_DIR/lib $SOLR_DIR
 # TODO: does resources need to be copied?
