@@ -7,7 +7,7 @@
 -compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {fruits, pb_conns, index, iurls, surls}).
+-record(state, {fruits, pb_conns, index, bucket, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
 -define(M1, 1000000).
 -define(K100, 100000).
@@ -76,6 +76,7 @@ new(_Id) ->
     M = length(PB),
 
     {ok, #state{pb_conns={Conns, {0,M}},
+                bucket=Bucket,
                 index=Index,
                 iurls={IURLs, {0,N}},
                 surls={SURLs, {0,N}}}}.
@@ -148,10 +149,10 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
-run(load_fruit_pb, KeyValGen, _, S=#state{index=Index, pb_conns=Conns}) ->
+run(load_fruit_pb, KeyValGen, _, S=#state{bucket=Bucket, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
     {Key, Val} = KeyValGen(),
-    Obj = riakc_obj:new(Index, ?INT_TO_BIN(Key), list_to_binary(Val), "text/plain"),
+    Obj = riakc_obj:new(Bucket, ?INT_TO_BIN(Key), list_to_binary(Val), "text/plain"),
     S2 = S#state{pb_conns=wrap(Conns)},
     case riakc_pb_socket:put(Conn, Obj) of
         ok -> {ok, S2};
