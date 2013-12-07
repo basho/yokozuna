@@ -72,6 +72,9 @@ commit(Core) ->
 %% @doc Perform Core related actions.
 -spec core(atom(), proplists:proplist()) -> {ok, any(), any()} | {error, term()}.
 core(Action, Props) ->
+    core(Action, Props, 5000).
+
+core(Action, Props, Timeout) ->
     BaseURL = base_url() ++ "/admin/cores",
     Action2 = convert_action(Action),
     Params = proplists:substitute_aliases(?CORE_ALIASES,
@@ -80,7 +83,7 @@ core(Action, Props) ->
     Opts = [{response_format, binary}],
     URL = BaseURL ++ "?" ++ Encoded,
 
-    case ibrowse:send_req(URL, [], get, [], Opts) of
+    case ibrowse:send_req(URL, [], get, [], Opts, Timeout) of
         {ok, "200", Headers, Body} ->
             {ok, Headers, Body};
         X ->
@@ -291,7 +294,8 @@ fpn_str(FPN) ->
 
 convert_action(create) -> "CREATE";
 convert_action(status) -> "STATUS";
-convert_action(remove) -> "UNLOAD".
+convert_action(remove) -> "UNLOAD";
+convert_action(reload) -> "RELOAD".
 
 encode_commit() ->
     <<"{}">>.

@@ -183,6 +183,37 @@ local_remove(Name) ->
 name(Info) ->
     Info#index_info.name.
 
+%% @doc Reload the `Index' cluster-wide. By default this will also
+%% pull the latest version of the schema associated with the
+%% index. This call will block for up 5 seconds. Any node which could
+%% not reload its index will be returned in a list of failed nodes.
+%%
+%% Options:
+%%
+%%   `{schema, boolean()}' - Whether to reload the schema, defaults to
+%%   true.
+%%
+%%   `{timeout, ms()}' - Timeout in milliseconds.
+-spec reload_index(index_name()) -> ok | {error, [{node(), {error, term()}}]}.
+reload_index(Index) ->
+    reload_index(Index, []).
+
+-type reload_opt() :: {schema, boolean()} | {timeout, ms()}.
+-type reload_opts() :: [reload_opt()].
+-spec reload_index(index_name(), reload_opts()) -> ok | {error, [{node(), {error, term()}}]}.
+reload_index(Index, Opts) ->
+    TO = proplists:get_value(timeout, Opts, 5000),
+
+    {Responses, Down} = riak_core_util:rpc_every_member_ann(?MODULE, reload_index_local, [Index, Opts], TO),
+    Down2 = [{Node, {error,down}} || Node <- Down],
+    BadResponses = [R || {_,{error,_}}=R <- Responses],
+    case Down2 ++ BadResponses of
+        [] ->
+            ok;
+        Errors ->
+            {error, Errors}
+    end.
+
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
 -spec remove_non_owned_data(index_name()) -> [p()].
@@ -221,6 +252,42 @@ add_to_ring(Name, Info) ->
         not_changed ->
             %% index existed already
             ok
+    end.
+
+%% @private
+-spec reload_index_local(index_name(), reload_opts()) ->
+                                ok | {error, term()}.
+reload_index_local(Index, Opts) ->
+    TO = proplists:get_value(timeout, Opts, 5000),
+    ReloadSchema = proplists:get_value(schema, Opts, true),
+    case ReloadSchema of
+        true ->
+            case reload_schema_local(Index) of
+                ok ->
+                    yz_solr:core(reload, [{core, Index}], TO);
+                {error,_}=Err ->
+                    Err
+            end;
+        false ->
+            yz_solr:core(reload, [{core, Index}])
+    end.
+
+%% @private
+-spec reload_schema_local(index_name()) -> ok | {error, term()}.
+reload_schema_local(Index) ->
+    %% TODO: every step in here could go wrong
+    IndexDir = index_dir(Index),
+    ConfDir = filename:join([IndexDir, "conf"]),
+    Ring = yz_misc:get_ring(transformed),
+    Info = get_info_from_ring(Ring, Index),
+    SchemaName = schema_name(Info),
+    case yz_schema:get(SchemaName) of
+        {ok, RawSchema} ->
+            SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
+            ok = file:write_file(SchemaFile, RawSchema),
+            ok;
+        {error, _}=Err ->
+            Err
     end.
 
 -spec remove_index(indexes(), index_name()) -> indexes().

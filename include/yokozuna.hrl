@@ -36,6 +36,9 @@
 -type base64() :: binary().
 -type hash() :: binary().
 
+%% milliseconds
+-type ms() :: non_neg_integer().
+
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
 -type tree_name() :: atom().
