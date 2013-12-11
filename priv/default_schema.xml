@@ -106,6 +106,16 @@
    <dynamicField name="*_ig" type="ignored" multiValued="true"/>
    <dynamicField name="random_*" type="random" />
 
+   <!-- Riak datatypes default fields-->
+   <field name="counter" type="int"    indexed="true" stored="true" />
+   <field name="set"     type="string" indexed="true" stored="false" multiValued="true" />
+
+   <!-- Riak datatypes embedded fields -->
+   <dynamicField name="*_flag"     type="boolean" indexed="true" stored="true" />
+   <dynamicField name="*_counter"  type="int"     indexed="true" stored="true" />
+   <dynamicField name="*_register" type="string"  indexed="true" stored="false" />
+   <dynamicField name="*_set"      type="string"  indexed="true" stored="false" multiValued="true" />
+
    <!-- catch-all field -->
    <dynamicField name="*" type="text_general" indexed="true" stored="false" multiValued="true" />
 
