@@ -1,3 +1,4 @@
+%% -*- erlang -*-
 %% @doc To enable Search set this 'on'.
 %% @datatype enum on, off
 {mapping, "search", "yokozuna.enabled", [
