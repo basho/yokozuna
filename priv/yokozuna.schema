@@ -9,7 +9,7 @@
 { translation,
   "yokozuna.enabled",
   fun(Conf) ->
-          Setting = cuttlefish_util:conf_get_value("search", Conf),
+          Setting = cuttlefish:conf_get("search", Conf),
           case Setting of
               on -> true;
               off -> false;
