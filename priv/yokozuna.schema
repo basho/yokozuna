@@ -17,9 +17,12 @@
   end}.
 
 
-%% @doc The startup wait time, in milliseconds, Riak will wait for Solr to startup before exiting and shutting down the node (after the preset attempt limit). This may need to be increased as more data is indexed and Solr takes longer to start.
+%% @doc The startup wait time, in milliseconds, Riak will wait for Solr
+%% to startup before exiting and shutting down the node (after the preset
+%% attempt limit). This may need to be increased as more data is indexed
+%% and Solr takes longer to start.
 {mapping, "search.solr_startup_wait", "yokozuna.solr_startup_wait", [
-  {default, {{15000}} },
+  {default, {15000} },
   {datatype, integer}
 ]}.
 
