@@ -34,14 +34,16 @@ curl -XPUT -i 'http://localhost:10018/search/index/my_index'
 ### Create Bucket Type, and Associate Index ###
 
 **N.B.** This is a breaking change in the 0.12.0 version. Previously
-associating an index was done by updating a bucket's properties.
+  bucket types didn't have to be created.
 
-A bucket type must be created and the `search_index` field must be set
-either at the type-level properties, as shown here, or name-level.
+A bucket type must be created to hold the bucket and an index must be
+associated with the bucket via the `search_index` property.
 
 ```
-riak-admin bucket-type create my_type '{"props":{"search_index":"my_index"}}'
-riak-admin bucket-type activate my_type
+riak-admin bucket-type create data '{"props":{}}'
+riak-admin bucket-type activate data
+
+curl -i -H 'content-type: application/json' -X PUT 'http://localhost:10018/types/data/buckets/my_bucket/props' -d '{"props":{"search_index":"my_index"}}'
 ```
 
 ### Index Some Data ###
@@ -50,7 +52,7 @@ Indexing data is a matter of writing data to KV.  Currently Yokozuna
 knows hows to index plain text, XML, and JSON.
 
 ```
-curl -H 'content-type: text/plain' -X PUT 'http://localhost:10018/types/my_type/buckets/my_bucket/keys/name' -d "Ryan Zezeski"
+curl -i -H 'content-type: text/plain' -X PUT 'http://localhost:10018/types/data/buckets/my_bucket/keys/name' -d "Ryan Zezeski"
 ```
 
 ### Searching ###
