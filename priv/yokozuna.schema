@@ -22,7 +22,7 @@
 %% attempt limit). This may need to be increased as more data is indexed
 %% and Solr takes longer to start.
 {mapping, "search.solr_startup_wait", "yokozuna.solr_startup_wait", [
-  {default, {15000} },
+  {default, 15000},
   {datatype, integer}
 ]}.
 
