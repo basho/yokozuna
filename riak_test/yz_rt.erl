@@ -190,7 +190,9 @@ search(HP, Index, Name, Term) ->
 search(Type, {Host, Port}, Index, Name, Term) when is_integer(Port) ->
     search(Type, {Host, integer_to_list(Port)}, Index, Name, Term);
 
-search(Type, {Host, Port}, Index, Name, Term) ->
+search(Type, {Host, Port}, Index, Name0, Term0) ->
+    Name = mochiweb_util:quote_plus(Name0),
+    Term = mochiweb_util:quote_plus(Term0),
     FmtStr = case Type of
                  solr ->
                      "http://~s:~s/solr/~s/select?q=~s:~s&wt=json";

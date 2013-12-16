@@ -9,25 +9,28 @@
 -define(SET, <<"sets">>).
 -define(MAP, <<"maps">>).
 -define(TYPES,
-        [{?COUNTER, counter, riakc_counter},
-         {?SET, set, riakc_set},
-         {?MAP, map, riakc_map}]).
+        [{?COUNTER, counter},
+         {?SET, set},
+         {?MAP, map}]).
 
 -import(yz_rt, [
                 connection_info/1,
-                create_index/2, 
+                create_index/2,
                 search_expect/5,
-                solr_http/1,
                 wait_for_index/2
                ]).
+
+-define(assertSearch(Solr, Index, Field, Query, Count),
+        ?assertEqual(ok, rt:wait_until(fun() -> search_expect(Solr, Index, Field, Query, Count) end))).
+
 
 confirm() ->
     application:start(ibrowse),
     %% Build a cluster
     [Node|_] = Nodes = rt:build_cluster(4, ?CFG),
-    [CI|_] = connection_info(Nodes),
+    [{Node, CI}|_] = connection_info(Nodes),
     PB = rt:pbc(Node),
-    Solr = solr_http(CI),
+    HTTP = proplists:get_value(http, CI),
     [ begin
           %% Create an index for each type (default schema)
           create_index(Node, BType),
@@ -36,15 +39,15 @@ confirm() ->
           rt:create_and_activate_bucket_type(Node, BType, [{datatype, Type},
                                                            {allow_mult, true},
                                                            {search_index, BType}])
-      end || {BType, Type, _} <- ?TYPES ],
+      end || {BType, Type} <- ?TYPES ],
     %% Update some datatypes
     counter_update(PB),
     set_update(PB),
     map_update(PB),
     %% Search the index for the types
-    counter_search(Solr),
-    set_search(Solr),
-    map_search(Solr),
+    counter_search(HTTP),
+    set_search(HTTP),
+    map_search(HTTP),
     pass.
 
 counter_update(PB) ->
@@ -53,9 +56,9 @@ counter_update(PB) ->
     ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?COUNTER, <<"1">>}, <<"1000">>, {counter, {decrement, 1000}, undefined})).
 
 counter_search(Solr) ->
-    ?assert(search_expect(Solr, ?COUNTER, "counter", "10", 1)),
-    ?assert(search_expect(Solr, ?COUNTER, "counter", "[0 TO 999]", 2)),
-    ?assert(search_expect(Solr, ?COUNTER, "counter", "[99 TO 999]", 1)).
+    ?assertSearch(Solr, ?COUNTER, "counter", "10", 1),
+    ?assertSearch(Solr, ?COUNTER, "counter", "[0 TO 999]", 2),
+    ?assertSearch(Solr, ?COUNTER, "counter", "[99 TO 999]", 1).
 
 set_update(PB) ->
     Dynamos = lists:foldl(fun riakc_set:add_element/2, riakc_set:new(),
@@ -66,10 +69,10 @@ set_update(PB) ->
     ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?SET, <<"databass">>}, <<"erlang">>, riakc_set:to_op(Erlangs))).
 
 set_search(Solr) ->
-    ?assert(search_expect(Solr, ?SET, "set", "Riak", 2)),
-    ?assert(search_expect(Solr, ?SET, "set", "CouchDB", 1)),
-    ?assert(search_expect(Solr, ?SET, "set", "Voldemort", 1)),
-    ?assert(search_expect(Solr, ?SET, "set", "C*", 2)).
+    ?assertSearch(Solr, ?SET, "set", "Riak", 2),
+    ?assertSearch(Solr, ?SET, "set", "CouchDB", 1),
+    ?assertSearch(Solr, ?SET, "set", "Voldemort", 1),
+    ?assertSearch(Solr, ?SET, "set", "C*", 2).
 
 map_update(PB) ->
     Sam = lists:foldl(fun({Key, Fun}, Map) ->
@@ -114,28 +117,28 @@ map_update(PB) ->
                          fun(Reg) ->
                                  riakc_register:set(<<"Sean Cribbs">>, Reg)
                          end},
-                        {{<<"office">>, map}, 
-                         fun(M) -> 
+                        {{<<"office">>, map},
+                         fun(M) ->
                                  riakc_map:update(
-                                   {<<"cats">>, counter}, 
-                                   fun(C) -> riakc_counter:increment(2, C) end, 
+                                   {<<"cats">>, counter},
+                                   fun(C) -> riakc_counter:increment(2, C) end,
                                    riakc_map:update(
-                                     {<<"location">>, register}, 
+                                     {<<"location">>, register},
                                      fun(R) -> riakc_register:set(<<"The Cornfields, IL USA">>, R) end, M))
                          end}]),
-    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?MAP, <<"people">>},<<"lenary">> ,riakc_map:to_op(Sam))), 
-    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?MAP, <<"people">>},<<"rdb">> ,riakc_map:to_op(Russell))), 
-    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?MAP, <<"people">>},<<"scribbs">> ,riakc_map:to_op(Sean))).    
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?MAP, <<"people">>},<<"lenary">> ,riakc_map:to_op(Sam))),
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?MAP, <<"people">>},<<"rdb">> ,riakc_map:to_op(Russell))),
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?MAP, <<"people">>},<<"scribbs">> ,riakc_map:to_op(Sean))).
 
 map_search(Solr) ->
-    ?assert(search_expect(Solr, ?MAP, "burgers_counter", "*", 2)),
-    ?assert(search_expect(Solr, ?MAP, "burgers_counter", "[11 TO 1000]", 1)),
-    ?assert(search_expect(Solr, ?MAP, "student_flag", "*", 2)),
-    ?assert(search_expect(Solr, ?MAP, "student_flag", "true", 1)),
-    ?assert(search_expect(Solr, ?MAP, "name_register", "S*", 2)),
-    ?assert(search_expect(Solr, ?MAP, "office_map.cats_counter", "1", 0)),
-    ?assert(search_expect(Solr, ?MAP, "office_map.cats_counter", "2", 1)),
-    ?assert(search_expect(Solr, ?MAP, "office_map.location_register", "*", 1)),
-    ?assert(search_expect(Solr, ?MAP, "friends_set", "Sam", 1)),
-    ?assert(search_expect(Solr, ?MAP, "friends_set", "Joe", 1)),
-    ?assert(search_expect(Solr, ?MAP, "friends_set", "Russell", 2)).
+    ?assertSearch(Solr, ?MAP, "burgers_counter", "*", 2),
+    ?assertSearch(Solr, ?MAP, "burgers_counter", "[11 TO 1000]", 1),
+    ?assertSearch(Solr, ?MAP, "student_flag", "*", 2),
+    ?assertSearch(Solr, ?MAP, "student_flag", "true", 1),
+    ?assertSearch(Solr, ?MAP, "name_register", "S*", 2),
+    ?assertSearch(Solr, ?MAP, "office_map.cats_counter", "1", 0),
+    ?assertSearch(Solr, ?MAP, "office_map.cats_counter", "2", 1),
+    ?assertSearch(Solr, ?MAP, "office_map.location_register", "*", 1),
+    ?assertSearch(Solr, ?MAP, "friends_set", "Sam", 1),
+    ?assertSearch(Solr, ?MAP, "friends_set", "Joe", 1),
+    ?assertSearch(Solr, ?MAP, "friends_set", "Russell", 2).
