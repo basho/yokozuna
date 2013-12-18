@@ -260,13 +260,13 @@ rolling_upgrade(Cluster, Vsn) ->
     Cluster2 = lists:zip(SolrPorts, Cluster),
     [begin
 	 Cfg = [{riak_kv, [{anti_entropy, {on, [debug]}},
-                           {anti_entropy_concurrency, 6},
-                           {anti_entropy_build_limit, {6,500}},
-                           {entropy_tick, 10000}
+                           {anti_entropy_concurrency, 12},
+                           {anti_entropy_build_limit, {6,500}}
                           ]},
                 {yokozuna, [{anti_entropy, {on, [debug]}},
-                            {anti_entropy_concurrency, 6},
+                            {anti_entropy_concurrency, 12},
                             {anti_entropy_build_limit, {6,500}},
+                            {entropy_tick, 1000},
                             {enabled, true},
 			    {solr_port, SolrPort}]}],
 	 rt:upgrade(Node, Vsn, Cfg),
