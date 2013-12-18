@@ -113,7 +113,7 @@
    <!-- Riak datatypes embedded fields -->
    <dynamicField name="*_flag"     type="boolean" indexed="true" stored="true" />
    <dynamicField name="*_counter"  type="int"     indexed="true" stored="true" />
-   <dynamicField name="*_register" type="string"  indexed="true" stored="false" />
+   <dynamicField name="*_register" type="string"  indexed="true" stored="true" />
    <dynamicField name="*_set"      type="string"  indexed="true" stored="false" multiValued="true" />
 
    <!-- catch-all field -->

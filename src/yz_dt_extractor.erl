@@ -112,7 +112,6 @@ extract_fields(Name, flag, Value, #state{fields=Fields, field_separator=Sep}=Sta
 
 -spec field_name(field_path_name(), datatype(), binary()) -> binary().
 field_name(undefined, map, _Sep) ->
-    %% (timeforthat)
     undefined;
 field_name(undefined, Type, _Sep) ->
     ?ATOM_TO_BIN(Type);
