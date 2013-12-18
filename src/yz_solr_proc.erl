@@ -121,7 +121,7 @@ handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
             {stop, "solr didn't start in alloted time", S}
     end;
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
-    ?INFO("solr stdout/err: ~p", Data),
+    ?INFO("solr stdout/err: ~s", [Data]),
     {noreply, S};
 handle_info({_Port, {exit_status, ExitStatus}}, S) ->
     {stop, {"solr OS process exited", ExitStatus}, S};
