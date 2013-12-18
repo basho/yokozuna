@@ -88,10 +88,8 @@ extract(Value0, Opts) ->
 
 -spec extract_fields(#crdt{}, state()) -> fields().
 extract_fields(#crdt{mod=Mod, value=Data}, S) ->
-    case extract_fields(undefined, riak_kv_crdt:from_mod(Mod), Mod:value(Data), S) of
-        #state{fields=F} -> F;
-        Err -> Err
-    end.
+    #state{fields=F} = extract_fields(undefined, riak_kv_crdt:from_mod(Mod), Mod:value(Data), S),
+    F.
 
 -spec extract_fields(field_path_name(), datatype(), term(), state()) -> state().
 extract_fields(Name0, map, Pairs, #state{field_separator=Sep}=State) ->
@@ -110,7 +108,7 @@ extract_fields(Name, flag, Value, #state{fields=Fields, field_separator=Sep}=Sta
     FieldName = field_name(Name, flag, Sep),
     State#state{fields=[{FieldName, Value}|Fields]}.
 
--spec field_name(field_path_name(), datatype(), binary()) -> binary().
+-spec field_name(field_path_name(), datatype(), binary()) -> undefined | binary().
 field_name(undefined, map, _Sep) ->
     undefined;
 field_name(undefined, Type, _Sep) ->
