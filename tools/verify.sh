@@ -141,14 +141,6 @@ function compile_yz_bench()
         error "failed to compile yokozuna/misc/bench"
     fi
 
-    pushd deps/basho_bench
-
-    info "build basho_bench"
-    if ! make; then
-        error "failed to build yokozuna/misc/bench/deps/basho_bench"
-    fi
-    popd
-
     popd
 }
 
@@ -239,6 +231,10 @@ TEST_ONLY=
 while [ $# -gt 0 ]
 do
     case $1 in
+        -h | --help)
+            usage
+            exit 0
+            ;;
         --yz-source)
             YZ_SRC=$2
             shift
