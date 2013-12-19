@@ -141,6 +141,15 @@ local_create(Ring, Name) ->
 
             yz_misc:make_dirs([ConfDir, DataDir]),
             yz_misc:copy_files(ConfFiles, ConfDir, update),
+
+            %% Delete `core.properties' file or CREATE may complain
+            %% about the core already existing. This can happen when
+            %% the core is initially created with a bad schema. Solr
+            %% gets in a state where CREATE thinks the core already
+            %% exists but RELOAD says no core exists.
+            PropsFile = filename:join([IndexDir, "core.properties"]),
+            file:delete(PropsFile),
+
             ok = file:write_file(SchemaFile, RawSchema),
 
             CoreProps = [

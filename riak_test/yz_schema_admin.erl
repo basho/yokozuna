@@ -320,19 +320,18 @@ confirm_bad_schema(Cluster) ->
     lager:info("give solr time to attempt to create core ~s", [Name]),
     timer:sleep(5000),
     lager:info("verify solr core ~s is not up", [Name]),
-    ?assertNot(yz_solr:ping(binary_to_list(Name))),
+    ?assertNot(yz_solr:ping(Name)),
 
     lager:info("upload corrected schema ~s", [Name]),
     {ok, Status3, _, _} = http(put, URL, Headers, ?TEST_SCHEMA),
     ?assertEqual("204", Status3),
 
     lager:info("wait for yz to retry creation of core ~s", [Name]),
-    Node = select_random(Cluster),
     F = fun(Node2) ->
                 lager:info("try to ping core ~s", [Name]),
-                rpc:call(Node2, yz_solr, ping, [binary_to_list(Name)])
+                rpc:call(Node2, yz_solr, ping, [Name])
         end,
-    ?assertEqual(ok, rt:wait_until(Node, F)).
+    yz_rt:wait_until(Cluster, F).
 
 
 %%%===================================================================
