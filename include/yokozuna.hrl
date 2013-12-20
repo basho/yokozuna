@@ -36,6 +36,9 @@
 -type base64() :: binary().
 -type hash() :: binary().
 
+%% milliseconds
+-type ms() :: non_neg_integer().
+
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
 -type tree_name() :: atom().
@@ -267,6 +270,10 @@
 -type indexes() :: orddict(index_name(), index_info()).
 -type index_info() :: #index_info{}.
 -type index_name() :: binary().
+
+-type reload_opt() :: {schema, boolean()} | {timeout, ms()}.
+-type reload_opts() :: [reload_opt()].
+-type reload_errs() :: [{node(), {error, term()}}].
 
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
 -define(YZ_INDEX, search_index).

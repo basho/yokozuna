@@ -18,6 +18,80 @@
           ]}
         ]).
 
+-define(SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
+-define(SCHEMA_FIELD_ADDED,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+   <field name=\"my_new_field\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" />
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
 
 confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
@@ -30,6 +104,7 @@ confirm() ->
     confirm_get(Cluster, <<"test_index_2">>),
     confirm_404(Cluster, <<"not_an_index">>),
     confirm_delete_409(Cluster, <<"delete_409">>),
+    confirm_field_add(Cluster, <<"field_add">>),
     pass.
 
 %% @doc Test basic creation, no body.
@@ -162,6 +237,50 @@ confirm_delete_409(Cluster, Index) ->
     %% TODO: wait_for_index_delete?
     {ok, "204", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY).
 
+%% @doc Verify that an index's schema can have a field added to it and
+%% reloaded.
+confirm_field_add(Cluster, Index) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_field_add ~s [~p]", [Index, HP]),
+
+    lager:info("upload schema ~s [~p]", [Index, HP]),
+    SchemaURL = schema_url(HP, Index),
+    SchemaHeaders = [{"content-type", "application/xml"}],
+    {ok, Status1, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA),
+    ?assertEqual("204", Status1),
+
+    lager:info("create index ~s using schema ~s [~p]", [Index, Index, HP]),
+    IndexURL = index_url(HP, Index),
+    IndexHeaders = [{"content-type", "application/json"}],
+    Body = <<"{\"schema\":\"field_add\"}">>,
+    {ok, Status2, _, _} = http(put, IndexURL, IndexHeaders, Body),
+    ?assertEqual("204", Status2),
+
+    yz_rt:wait_for_index(Cluster, Index),
+
+    Node = select_random(Cluster),
+    FieldHP = hd(host_entries(rt:connection_info([Node]))),
+    FieldURL = url(FieldHP, Index) ++ "/schema/fields/my_new_field",
+    lager:info("verify index ~s doesn't have my_new_field [~p]", [Index, Node]),
+    {ok, "404", _, _} = http(get, FieldURL, ?NO_HEADERS, ?NO_BODY),
+
+    lager:info("upload schema ~s with new field [~p]", [Index, HP]),
+    {ok, Status3, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELD_ADDED),
+    ?assertEqual("204", Status3),
+
+    lager:info("reload index ~s [~p]", [Index, Node]),
+    {ok, _} = rpc:call(Node, yz_index, reload_index, [Index]),
+
+    F = fun(XNode) ->
+                XHP = yz_rt:solr_http(proplists:get_value(XNode, (yz_rt:connection_info(Cluster)))),
+                XURL = field_url(XHP, Index, "my_new_field"),
+                lager:info("verify my_new_field added ~s", [XURL]),
+
+                {ok, XStatus, _, _} = http(get, XURL, ?NO_HEADERS, ?NO_BODY),
+                XStatus == "200"
+        end,
+    yz_rt:wait_until(Cluster, F).
+
 %%%===================================================================
 %%% Helpers
 %%%===================================================================
@@ -181,6 +300,9 @@ ct(Headers) ->
     Headers2 = [{string:to_lower(Key), Value} || {Key, Value} <- Headers],
     proplists:get_value("content-type", Headers2).
 
+field_url({Host,Port}, Index, FieldName) ->
+    ?FMT("http://~s:~B/solr/~s/schema/fields/~s", [Host, Port, Index, FieldName]).
+
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
 
@@ -194,10 +316,13 @@ index_list_url({Host, Port}) ->
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 
-url({Host,Port}, Suffix) ->
-    ?FMT("http://~s:~B/~s", [Host, Port, Suffix]).
+schema_url({Host,Port}, Name) ->
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
 
 select_random(List) ->
     Length = length(List),
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
+
+url({Host,Port}, Suffix) ->
+    ?FMT("http://~s:~B/~s", [Host, Port, Suffix]).
