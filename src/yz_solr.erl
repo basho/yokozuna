@@ -70,10 +70,13 @@ commit(Core) ->
     end.
 
 %% @doc Perform Core related actions.
--spec core(atom(), proplists:proplist()) -> {ok, any(), any()} | {error, term()}.
+-spec core(atom(), proplist()) -> {ok, list(), binary()} |
+                                  {error, term()}.
 core(Action, Props) ->
     core(Action, Props, 5000).
 
+-spec core(atom(), proplist(), ms()) -> {ok, list(), binary()} |
+                                        {error, term()}.
 core(Action, Props, Timeout) ->
     BaseURL = base_url() ++ "/admin/cores",
     Action2 = convert_action(Action),
