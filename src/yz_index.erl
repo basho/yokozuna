@@ -166,7 +166,7 @@ local_create(Ring, Name) ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
             ok;
-        {error, _, Reason} ->
+        {error, Reason} ->
             lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
             ok
     end.
@@ -266,12 +266,18 @@ reload_index_local(Index, Opts) ->
         true ->
             case reload_schema_local(Index) of
                 ok ->
-                    yz_solr:core(reload, [{core, Index}], TO);
+                    case yz_solr:core(reload, [{core, Index}], TO) of
+                        {ok,_,_} -> ok;
+                        Err -> Err
+                    end;
                 {error,_}=Err ->
                     Err
             end;
         false ->
-            yz_solr:core(reload, [{core, Index}])
+            case yz_solr:core(reload, [{core, Index}]) of
+                {ok,_,_} -> ok;
+                Err -> Err
+            end
     end.
 
 %% @private
