@@ -195,24 +195,20 @@ name(Info) ->
 %%   true.
 %%
 %%   `{timeout, ms()}' - Timeout in milliseconds.
--spec reload_index(index_name()) -> ok | {error, [{node(), {error, term()}}]}.
+-spec reload_index(index_name()) -> ok | {error, reload_errs()}.
 reload_index(Index) ->
     reload_index(Index, []).
 
--type reload_opt() :: {schema, boolean()} | {timeout, ms()}.
--type reload_opts() :: [reload_opt()].
--spec reload_index(index_name(), reload_opts()) -> ok | {error, [{node(), {error, term()}}]}.
+-spec reload_index(index_name(), reload_opts()) -> ok | {error, reload_errs()}.
 reload_index(Index, Opts) ->
     TO = proplists:get_value(timeout, Opts, 5000),
-
-    {Responses, Down} = riak_core_util:rpc_every_member_ann(?MODULE, reload_index_local, [Index, Opts], TO),
+    {Responses, Down} =
+        riak_core_util:rpc_every_member_ann(?MODULE, reload_index_local, [Index, Opts], TO),
     Down2 = [{Node, {error,down}} || Node <- Down],
     BadResponses = [R || {_,{error,_}}=R <- Responses],
     case Down2 ++ BadResponses of
-        [] ->
-            ok;
-        Errors ->
-            {error, Errors}
+        [] -> ok;
+        Errors -> {error, Errors}
     end.
 
 %% @doc Remove documents in `Index' that are not owned by the local

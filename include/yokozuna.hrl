@@ -271,6 +271,10 @@
 -type index_info() :: #index_info{}.
 -type index_name() :: binary().
 
+-type reload_opt() :: {schema, boolean()} | {timeout, ms()}.
+-type reload_opts() :: [reload_opt()].
+-type reload_errs() :: [{node(), {error, term()}}].
+
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
 -define(YZ_INDEX, search_index).
 
