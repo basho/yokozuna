@@ -195,11 +195,12 @@ name(Info) ->
 %%   true.
 %%
 %%   `{timeout, ms()}' - Timeout in milliseconds.
--spec reload_index(index_name()) -> ok | {error, reload_errs()}.
+-spec reload_index(index_name()) -> {ok, [node()]} | {error, reload_errs()}.
 reload_index(Index) ->
     reload_index(Index, []).
 
--spec reload_index(index_name(), reload_opts()) -> ok | {error, reload_errs()}.
+-spec reload_index(index_name(), reload_opts()) -> {ok, [node()]} |
+                                                   {error, reload_errs()}.
 reload_index(Index, Opts) ->
     TO = proplists:get_value(timeout, Opts, 5000),
     {Responses, Down} =
@@ -207,8 +208,11 @@ reload_index(Index, Opts) ->
     Down2 = [{Node, {error,down}} || Node <- Down],
     BadResponses = [R || {_,{error,_}}=R <- Responses],
     case Down2 ++ BadResponses of
-        [] -> ok;
-        Errors -> {error, Errors}
+        [] ->
+            Nodes = [Node || {Node,_}=R <- Responses],
+            {ok, Nodes};
+        Errors ->
+            {error, Errors}
     end.
 
 %% @doc Remove documents in `Index' that are not owned by the local

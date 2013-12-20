@@ -64,6 +64,43 @@
 %%
 %%   Deletes the index with the given index name.
 %%
+%% POST /search/index/Index
+%%
+%%   Allow miscellaneous actions to be performed on `Index'. Currently
+%%   only `reload' is supported. This resource accepts a JSON body
+%%   describing the action to be taken. The JSON object must have an
+%%   `action' member which determines which action will be taken along
+%%   with 0 or many additional members which act as arguments to the
+%%   action.
+%%
+%%   RELOAD
+%%   ------
+%%
+%%   This is a cluster-wide, blocking action. The call will not return
+%%   until all nodes have reloaded the index or failed trying to do
+%%   so. The return value should be checked for errors and the action
+%%   replayed if errors occurred.
+%%
+%%   `reload_schema' - (Optional) - A boolean dictating if the
+%%   associated schema should be reloaded. Defaults to `true'. This is
+%%   used to load the latest schema after a modification such as
+%%   adding a field.
+%%
+%%   `timeout' - (Optional) - A number representing the number of
+%%   milliseconds to wait for completion. Default is 5000.
+%%
+%%   { "action":"reload",
+%%     [ "reload_schema": true | false ],
+%%     [ "timeout":5000 ] }
+%%
+%%   The response will be a JSON object as well. The status code will
+%%   be `200' to indicate success or `500' to indicate failure. In
+%%   both cases the JSON object will have two members: `success' and
+%%   `fail'.
+%%
+%%   { "success": ["riak@node1", "riak@node2", "riak@node3", ...],
+%%     "fail": [{"node":"riak@node4", "reason":"down"}] }
+%%
 
 -module(yz_wm_index).
 -compile(export_all).
@@ -111,7 +148,7 @@ service_available(RD, Ctx=#ctx{}) ->
     }.
 
 allowed_methods(RD, S) ->
-    Methods = ['GET', 'PUT', 'DELETE'],
+    Methods = ['GET', 'PUT', 'POST', 'DELETE'],
     {Methods, RD, S}.
 
 content_types_provided(RD, S) ->
@@ -214,6 +251,10 @@ index_body(Ring, IndexName) ->
         {"schema", SchemaName}
     ]}.
 
+-spec json_response({struct, list()}, term()) -> term().
+json_response(MochiStruct, RD) ->
+    RD1 = wrq:set_resp_header("Content-Type", "application/json", RD),
+    wrq:append_to_response_body(mochijson2:encode(MochiStruct), RD1).
 
 text_response(Result, Message, Data, RD, S) ->
     RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
@@ -246,14 +287,18 @@ malformed_request(RD, S) when S#ctx.method =:= 'DELETE' ->
         undefined -> {{halt, 404}, RD, S};
         _ -> {false, RD, S}
     end;
+%% TODO: Need to check index name on POST
 malformed_request(RD, S) ->
     IndexName = S#ctx.index_name,
     case IndexName of
-      undefined -> {false, RD, S};
+      undefined ->
+            {false, RD, S};
       _ ->
           case exists(IndexName) of
               true -> {false, RD, S};
-              _ -> text_response({halt, 404}, "not found~n", [], RD, S)
+              _ ->
+                  %% TODO: this should be 400 because a non-existant index was passed
+                  text_response({halt, 404}, "not found~n", [], RD, S)
           end
     end.
 
@@ -265,6 +310,59 @@ is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
             {true, RD, S};
         false ->
             {false, RD, S}
+    end.
+
+process_post(RD, S) ->
+    CT = wrq:get_req_header("content-type", RD),
+    case CT == "application/json" of
+        true ->
+            Body = wrq:req_body(RD),
+            case process_post_body(IndexName, Body) of
+                {ok, MochiStruct} ->
+                    RD2 = json_response(MochiStruct, RD),
+                    {true, RD2, S};
+                {error, MochiStruct} ->
+                    RD2 = json_response(MochiStruct, RD),
+                    {{halt,500}, RD2, S}
+            end;
+        false ->
+            %% TODO: set error myself, this looks like garbage
+            {{error, "Must use content-type of application/json"}, RD, S}
+    end.
+
+%% %% @doc Convert the binary to lowercase. Assumes ASCII only.
+%% -spec binary_lower_case(binary()) -> binary().
+%% binary_to_lower(Binary) ->
+%%     list_to_binary(string:to_lower(binary_to_list(Binary))).
+
+-spec process_post_body(index_name(), binary()) -> {ok | error, {struct, list()}}.
+process_post_body(IndexName, Body) ->
+    Decoded = mochijson2:decode(Body),
+    Action = kvc:path([<<"action">>], Decoded),
+    process_post_action(IndexName, Action, Decoded).
+
+-spec process_post_action(index_name(), binary(), {struct, list()}) ->
+                                 {ok | error, {struct, list()}}.
+process_post_action(IndexName, <<"reload">>, Decoded) ->
+    Opts1 = maybe_add(<<"reload_schema">>, Decoded, []),
+    Opts2 = maybe_add(<<"timeout">>, Decoded, Opts1),
+    case yz_index:reload_index(IndexName, Opts2) of
+        {ok, Nodes} ->
+            S = {struct, [{<<"success">>, Nodes}]},
+            {ok, S};
+        {error, Resps} ->
+            FailArr = [{struct, [{<<"node">>, N}, {<<"reason">>, R}]}
+                       || {N,{error,R}} <- Resps],
+            S = {struct, [<<"fail">>, FailArr]},
+            {error, S}
+    end.
+
+-spec maybe_add(binary(), {struct, list()}, [{atom(), term()}]) ->
+                       [{atom(), term()}].
+maybe_add(OptionName, Decoded, Opts) ->
+    case kvc:value(OptionName, Decoded, undefined) of
+        undefined -> Opts;
+        Val -> [{?BIN_TO_ATOM(OptionName), Val}|Opts]
     end.
 
 %%%===================================================================
