@@ -29,6 +29,8 @@
 -include("yokozuna.hrl").
 %% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
+-define(NOTIFY(A, B, Type, Arg),
+        folsom_metrics:notify_existing_metric({?YZ_APP_NAME, A, B}, Arg, Type)).
 -define(APP, ?YZ_APP_NAME).
 -define(PFX, riak_core_stat:prefix()).
 
@@ -42,12 +44,44 @@ start_link() ->
 %% @doc Register Yokozuna stats.
 -spec register_stats() -> ok.
 register_stats() ->
+    case riak_core_stat:stat_system() of
+        legacy   -> register_stats_legacy();
+        exoemter -> register_stats_exometer()
+    end.
+
+register_stats_legacy() ->
+    [begin
+         Name = stat_name(Path),
+         (catch folsom_metrics:delete_metric(Name)),
+         register_stat(Name, Type)
+     end || {Path, Type} <- stats()],
+    riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}),
+    ok.
+
+register_stats_exometer() ->
     riak_core_stat:register_stats(?APP, stats()).
 
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, term()}.
 get_stats() ->
+    case riak_core_stat:stat_system() of
+        legacy   -> get_stats_legacy();
+        exometer -> get_stats_exometer()
+    end.
+
+get_stats_legacy() ->
+    case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
+        {ok, Stats, _TS} -> Stats;
+        Error -> Error
+    end.
+
+get_stats_exometer() ->
     riak_core_stat:get_stats(?APP).
+
+%% TODO: export stats() type from riak_core_stat_q.
+-spec produce_stats() -> {atom(), list()}.
+produce_stats() ->
+    {?YZ_APP_NAME, riak_core_stat_q:get_stats([yokozuna])}.
 
 %% @doc Send stat updates for an index failure.
 -spec index_fail() -> ok.
@@ -105,17 +139,58 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% @doc Notify specific metrics in folsom based on the `StatUpdate' term
 %% passed in.
+-spec notify(StatUpdate::term()) -> ok.
+notify({index_end, Time}) ->
+    ?NOTIFY(index, latency, histogram, Time),
+    ?NOTIFY(index, throughput, spiral, 1);
+notify(index_fail) ->
+    ?NOTIFY(index, fail, spiral, 1);
+notify({search_end, Time}) ->
+    ?NOTIFY(search, latency, histogram, Time),
+    ?NOTIFY(search, throughput, spiral, 1);
+notify(search_fail) ->
+    ?NOTIFY(search, fail, spiral, 1).
+
+%% @private
+get_sample_type(Name) ->
+    SampleType0 = app_helper:get_env(riak_kv, stat_sample_type, {slide_uniform, {60, 1028}}),
+    app_helper:get_env(?YZ_APP_NAME, Name, SampleType0).
+
+%% @private
+-spec register_stat(riak_core_stat_q:stat_name(), atom()) -> ok |
+                                                             {error, Subject :: term(), Reason :: term()}.
+register_stat(Name, histogram) ->
+    {SampleType, SampleArgs} = get_sample_type(Name),
+    folsom_metrics:new_histogram(Name, SampleType, SampleArgs);
+register_stat(Name, spiral) ->
+    folsom_metrics:new_spiral(Name);
+register_stat(Name, counter) ->
+    folsom_metrics:new_counter(Name).
+
 -spec update(StatUpdate::term()) -> ok.
-update({index_end, Time}) ->
+update(Arg) ->
+    case riak_core_stat:stat_system() of
+        legacy   -> update_legacy(Arg);
+        exometer -> update_exometer(Arg)
+    end.
+
+update_exometer({index_end, Time}) ->
     exometer:update([?PFX, ?APP, index, latency], Time),
     exometer:update([?PFX, ?APP, index, throughput], 1);
-update(index_fail) ->
+update_exometer(index_fail) ->
     exometer:update([?PFX, ?APP, fail], 1);
-update({search_end, Time}) ->
+update_exometer({search_end, Time}) ->
     exometer:update([?PFX, ?APP, search, latency], Time),
     exometer:update([?PFX, ?APP, search, throughput], 1);
-update(search_fail) ->
+update_exometer(search_fail) ->
     exometer:update([?PFX, ?APP, search, fail], 1).
+
+update_legacy(StatUpdate) ->
+    case erlang:module_loaded(yz_stat_sj) of
+        true -> yz_stat_worker:update(StatUpdate);
+        false -> notify(StatUpdate)
+    end,
+    ok.
 
 %% %% @private
 %% get_sample_type(Name) ->
@@ -133,3 +208,8 @@ stats() ->
      {[search, latency], histogram},
      {[search, throughput], spiral}
     ].
+
+%% @private
+-spec stat_name(riak_core_stat_q:path()) -> riak_core_stat_q:stat_name().
+stat_name(Name) ->
+    list_to_tuple([?YZ_APP_NAME|Name]).
