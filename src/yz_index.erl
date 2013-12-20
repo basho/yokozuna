@@ -114,6 +114,7 @@ get_indexes_from_ring(Ring) ->
         undefined -> []
     end.
 
+%% @doc Get information for index `Name' stored in `Ring'.
 -spec get_info_from_ring(ring(), index_name()) -> index_info().
 get_info_from_ring(Ring, Name) ->
     Indexes = get_indexes_from_ring(Ring),
@@ -229,6 +230,7 @@ remove_non_owned_data(Index) ->
     ok = yz_solr:delete(Index, Queries),
     NonOwned.
 
+%% @doc Get the schema name from the index `Info'.
 -spec schema_name(index_info()) -> schema_name().
 schema_name(Info) ->
     Info#index_info.schema_name.
@@ -275,7 +277,6 @@ reload_index_local(Index, Opts) ->
 %% @private
 -spec reload_schema_local(index_name()) -> ok | {error, term()}.
 reload_schema_local(Index) ->
-    %% TODO: every step in here could go wrong
     IndexDir = index_dir(Index),
     ConfDir = filename:join([IndexDir, "conf"]),
     Ring = yz_misc:get_ring(transformed),
@@ -284,8 +285,7 @@ reload_schema_local(Index) ->
     case yz_schema:get(SchemaName) of
         {ok, RawSchema} ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
-            ok = file:write_file(SchemaFile, RawSchema),
-            ok;
+            file:write_file(SchemaFile, RawSchema);
         {error, _}=Err ->
             Err
     end.
