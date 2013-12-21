@@ -84,7 +84,7 @@ process(#rpbyokozunaschemagetreq{name = SchemaName}, State) ->
         {ok, Content} ->
             Schema = #rpbyokozunaschema{name = SchemaName, content = Content},
             {reply, #rpbyokozunaschemagetresp{schema = Schema}, State};
-        {error, _Name, notfound} ->
+        {error, notfound} ->
             {error, "notfound", State}
     end;
 

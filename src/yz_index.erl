@@ -165,7 +165,7 @@ local_create(Ring, Name) ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
             ok;
-        {error, _, Reason} ->
+        {error, Reason} ->
             lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
             ok
     end.
@@ -290,7 +290,7 @@ reload_schema_local(Index) ->
         {ok, RawSchema} ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
             file:write_file(SchemaFile, RawSchema);
-        {error, _, Reason} ->
+        {error, Reason} ->
             {error, Reason}
     end.
 

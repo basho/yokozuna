@@ -35,7 +35,7 @@ filename(SchemaName) ->
     binary_to_list(SchemaName) ++ ".xml".
 
 %% @doc Retrieve the raw schema from Riak.
--spec get(schema_name()) -> {ok, raw_schema()} | {error, schema_name(), term()}.
+-spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
     C = yz_kv:client(),
     R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
@@ -43,7 +43,7 @@ get(Name) ->
         {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
             {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
         {_, {error, Reason}} ->
-            {error, Name, Reason};
+            {error, Reason};
         {_, {value, RawSchema}} ->
             {ok, RawSchema}
     end.
@@ -63,7 +63,7 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
 -spec exists(schema_name()) -> true | false.
 exists(SchemaName) ->
     case yz_schema:get(SchemaName) of
-        {error, _, _} -> false;
+        {error, _} -> false;
         _ -> true
     end.
 
