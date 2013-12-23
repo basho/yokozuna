@@ -1,7 +1,14 @@
 %% @doc Test the index adminstration API in various ways.
 -module(yz_index_admin).
 -compile(export_all).
+-include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
+
+%% Copied from rt.erl, would be nice if there was a rt.hrl
+-type interface() :: {http, tuple()} | {pb, tuple()}.
+-type interfaces() :: [interface()].
+-type conn_info() :: [{node(), interfaces()}].
+-type cluster() :: [node()].
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
@@ -240,8 +247,10 @@ confirm_delete_409(Cluster, Index) ->
 %% @doc Verify that an index's schema can have a field added to it and
 %% reloaded.
 confirm_field_add(Cluster, Index) ->
-    HP = select_random(host_entries(rt:connection_info(Cluster))),
-    lager:info("confirm_field_add ~s [~p]", [Index, HP]),
+    CI = yz_rt:connection_info(Cluster),
+    RandCI = select_random(CI),
+    HP = yz_rt:riak_http(RandCI),
+    lager:info("confirm_field_add"),
 
     lager:info("upload schema ~s [~p]", [Index, HP]),
     SchemaURL = schema_url(HP, Index),
@@ -259,8 +268,7 @@ confirm_field_add(Cluster, Index) ->
     yz_rt:wait_for_index(Cluster, Index),
 
     Node = select_random(Cluster),
-    FieldHP = hd(host_entries(rt:connection_info([Node]))),
-    FieldURL = url(FieldHP, Index) ++ "/schema/fields/my_new_field",
+    FieldURL = field_url(yz_rt:solr_http(RandCI), Index, "my_new_field"),
     lager:info("verify index ~s doesn't have my_new_field [~p]", [Index, Node]),
     {ok, "404", _, _} = http(get, FieldURL, ?NO_HEADERS, ?NO_BODY),
 
@@ -271,15 +279,7 @@ confirm_field_add(Cluster, Index) ->
     lager:info("reload index ~s [~p]", [Index, Node]),
     {ok, _} = rpc:call(Node, yz_index, reload_index, [Index]),
 
-    F = fun(XNode) ->
-                XHP = yz_rt:solr_http(proplists:get_value(XNode, (yz_rt:connection_info(Cluster)))),
-                XURL = field_url(XHP, Index, "my_new_field"),
-                lager:info("verify my_new_field added ~s", [XURL]),
-
-                {ok, XStatus, _, _} = http(get, XURL, ?NO_HEADERS, ?NO_BODY),
-                XStatus == "200"
-        end,
-    yz_rt:wait_until(Cluster, F).
+    yz_rt:wait_until(Cluster, field_exists(Index, "my_new_field", CI)).
 
 %%%===================================================================
 %%% Helpers
@@ -299,6 +299,16 @@ contains_index(_Body) ->
 ct(Headers) ->
     Headers2 = [{string:to_lower(Key), Value} || {Key, Value} <- Headers],
     proplists:get_value("content-type", Headers2).
+
+-spec field_exists(index_name(), string(), conn_info()) -> predicate(node()).
+field_exists(Index, Field, ConnInfo) ->
+    fun(Node) ->
+            HP = yz_rt:solr_http(proplists:get_value(Node, ConnInfo)),
+            URL = field_url(HP, Index, Field),
+            lager:info("verify ~s added ~s", [URL]),
+            {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+            Status == "200"
+    end.
 
 field_url({Host,Port}, Index, FieldName) ->
     ?FMT("http://~s:~B/solr/~s/schema/fields/~s", [Host, Port, Index, FieldName]).

@@ -230,6 +230,8 @@ set_bucket_type_index(Node, BucketType, Index) ->
     rt:create_and_activate_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]),
     rt:wait_until_bucket_type_status(BucketType, active, Node).
 
+solr_http({_Node, ConnInfo}) ->
+    solr_http(ConnInfo);
 solr_http(ConnInfo) ->
     proplists:get_value(solr_http, ConnInfo).
 
