@@ -194,16 +194,16 @@ name(Info) ->
 %%   true.
 %%
 %%   `{timeout, ms()}' - Timeout in milliseconds.
--spec reload_index(index_name()) -> {ok, [node()]} | {error, reload_errs()}.
-reload_index(Index) ->
-    reload_index(Index, []).
+-spec reload(index_name()) -> {ok, [node()]} | {error, reload_errs()}.
+reload(Index) ->
+    reload(Index, []).
 
--spec reload_index(index_name(), reload_opts()) -> {ok, [node()]} |
-                                                   {error, reload_errs()}.
-reload_index(Index, Opts) ->
+-spec reload(index_name(), reload_opts()) -> {ok, [node()]} |
+                                             {error, reload_errs()}.
+reload(Index, Opts) ->
     TO = proplists:get_value(timeout, Opts, 5000),
     {Responses, Down} =
-        riak_core_util:rpc_every_member_ann(?MODULE, reload_index_local, [Index, Opts], TO),
+        riak_core_util:rpc_every_member_ann(?MODULE, reload_local, [Index, Opts], TO),
     Down2 = [{Node, {error,down}} || Node <- Down],
     BadResponses = [R || {_,{error,_}}=R <- Responses],
     case Down2 ++ BadResponses of
@@ -255,9 +255,9 @@ add_to_ring(Name, Info) ->
     end.
 
 %% @private
--spec reload_index_local(index_name(), reload_opts()) ->
-                                ok | {error, term()}.
-reload_index_local(Index, Opts) ->
+-spec reload_local(index_name(), reload_opts()) ->
+                          ok | {error, term()}.
+reload_local(Index, Opts) ->
     TO = proplists:get_value(timeout, Opts, 5000),
     ReloadSchema = proplists:get_value(schema, Opts, true),
     case ReloadSchema of

@@ -277,7 +277,7 @@ confirm_field_add(Cluster, Index) ->
     ?assertEqual("204", Status3),
 
     lager:info("reload index ~s [~p]", [Index, Node]),
-    {ok, _} = rpc:call(Node, yz_index, reload_index, [Index]),
+    {ok, _} = rpc:call(Node, yz_index, reload, [Index]),
 
     yz_rt:wait_until(Cluster, field_exists(Index, "my_new_field", CI)).
 
