@@ -39,10 +39,10 @@
   {datatype, integer}
 ]}.
 
-%% @doc The arguments to pass to the Solr JVM.  Non-standard
-%% arguments, i.e. -XX, may not be portable across JVM
+%% @doc The options to pass to the Solr JVM.  Non-standard
+%% options, i.e. -XX, may not be portable across JVM
 %% implementations.  E.g. -XX:+UseCompressedStrings.
-{mapping, "search.solr_jvm_args", "yokozuna.solr_jvm_args", [
+{mapping, "search.solr_jvm_opts", "yokozuna.solr_jvm_opts", [
   {default, "-Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
 ]}.
 
