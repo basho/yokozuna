@@ -1,6 +1,81 @@
 Yokozuna Release Notes
 ==========
 
+0.13.0
+------
+
+This release brings an upgrade to Solr, support for indexing Riak Data
+Structures, the ability to reload indexes via `riak attach`, and
+includes a query performance boost.
+
+### Features ###
+
+* [199][], [232][], [243][] - Upgrade to Solr 4.6.0.
+
+* [241][], [254][] - Add ability to configure Solr start-up wait in `riak.conf`.
+
+* [250][] - Add support for indexing Riak Data Structures (aka
+  CRDTs). These are data structures for Riak, such as sets and maps,
+  which automatically resolve themselves when siblings occur. This
+  means you can think in terms of common data structures, not worry
+  about sibling resolution, and query the data with Solr.
+
+* [260][] - Add ability to reload indexes. This is used to pick up
+  schema modifications, such as adding a field. This patch does not
+  provide and client facing APIs for this functionality. That will be
+  done in a separate patch.
+
+* [239][], [265][] - Shutdown if Java executable cannot be found on
+  the path.
+
+### Performance ###
+
+* [271][] - Add custom search component to perform per-node filter
+  queries and remove the `_yz_node` field. One micro benchmark showed
+  a 17% increase in queries per second.
+
+### Bugs/Misc ###
+
+* [245][], [257][] - Delete `core.properties` file during Solr Core
+  creation to avoid indefinite errors after a bad schema has been
+  used.
+
+* [247][] - Fix logging of Solr stdout/stderr.
+
+* [255][] - Fix dialyzer errors.
+
+* [256][] - Speedup riak tests.
+
+* [262][] - Renamed `solr_jvm_args` to `solr_jvm_opts`.
+
+* [264][] - Fix the security test.
+
+* [267][] - Reestablish check to remove indexes for non owned data.
+
+### Documentation ###
+
+* [244][] - Use one-to-one mapping example in README.
+
+[199]: https://github.com/basho/yokozuna/issues/199
+[232]: https://github.com/basho/yokozuna/pull/232
+[239]: https://github.com/basho/yokozuna/issues/239
+[241]: https://github.com/basho/yokozuna/pull/241
+[243]: https://github.com/basho/yokozuna/pull/243
+[244]: https://github.com/basho/yokozuna/pull/244
+[245]: https://github.com/basho/yokozuna/issues/245
+[247]: https://github.com/basho/yokozuna/pull/247
+[250]: https://github.com/basho/yokozuna/pull/250
+[254]: https://github.com/basho/yokozuna/pull/254
+[255]: https://github.com/basho/yokozuna/pull/255
+[256]: https://github.com/basho/yokozuna/pull/256
+[257]: https://github.com/basho/yokozuna/pull/257
+[260]: https://github.com/basho/yokozuna/pull/260
+[262]: https://github.com/basho/yokozuna/pull/262
+[264]: https://github.com/basho/yokozuna/pull/264
+[265]: https://github.com/basho/yokozuna/pull/265
+[267]: https://github.com/basho/yokozuna/pull/267
+[271]: https://github.com/basho/yokozuna/pull/271
+
 0.12.0
 ------
 
