@@ -81,18 +81,23 @@ getpid() ->
 %%       timeout expires.
 init([Dir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
-    process_flag(trap_exit, true),
-    {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
-    ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
-    Port = run_cmd(Cmd, Args),
-    schedule_solr_check(solr_startup_wait()),
-    S = #state{
-      dir=Dir,
-      port=Port,
-      solr_port=SolrPort,
-      solr_jmx_port=SolrJMXPort
-     },
-    {ok, S}.
+    case get_java_path() of
+        undefined ->
+            {stop, "unable to locate `java` on the PATH"};
+        JavaPath ->
+            process_flag(trap_exit, true),
+            {Cmd, Args} = build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir),
+            ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
+            Port = run_cmd(Cmd, Args),
+            schedule_solr_check(solr_startup_wait()),
+            S = #state{
+                   dir=Dir,
+                   port=Port,
+                   solr_port=SolrPort,
+                   solr_jmx_port=SolrJMXPort
+                  },
+            {ok, S}
+    end.
 
 handle_call(getpid, _, S) ->
     {reply, get_pid(?S_PORT(S)), S};
@@ -152,13 +157,14 @@ terminate(_, S) ->
 %%%===================================================================
 
 %% @private
--spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
-build_cmd(_SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
+-spec build_cmd(filename(), non_neg_integer(), non_neg_integer(), string()) ->
+                       {string(), [string()]}.
+build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
     %% this will start an executable to keep yz_solr_proc's port
     %% happy, but will never respond to pings, so we can test the
     %% timeout capability
     {os:find_executable("grep"), ["foo"]};
-build_cmd(SolrPort, SolrJMXPort, Dir) ->
+build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
@@ -187,7 +193,7 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
 
     Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
         ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
-    {os:find_executable("java"), Args}.
+    {JavaPath, Args}.
 
 %% @private
 %%
@@ -207,6 +213,16 @@ ensure_data_dir(Dir) ->
             ok = filelib:ensure_dir(SolrConfig),
             {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
             ok
+    end.
+
+%% @prviate
+%%
+%% @doc Get the path of `java' executable.
+-spec get_java_path() -> undefined | filename().
+get_java_path() ->
+    case os:find_executable("java") of
+        false -> undefined;
+        Val -> Val
     end.
 
 %% @private
