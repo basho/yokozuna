@@ -35,9 +35,11 @@
 -type index_set() :: ordset(index_name()).
 -type base64() :: binary().
 -type hash() :: binary().
+-type filename() :: string().
 
 %% milliseconds
 -type ms() :: non_neg_integer().
+-type seconds() :: non_neg_integer().
 
 -type predicate(A) :: fun((A) -> boolean()).
 

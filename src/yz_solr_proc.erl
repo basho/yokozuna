@@ -151,6 +151,7 @@ terminate(_, S) ->
 %%% Private
 %%%===================================================================
 
+%% @private
 -spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
 build_cmd(_SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
     %% this will start an executable to keep yz_solr_proc's port
@@ -188,6 +189,8 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
         ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
     {os:find_executable("java"), Args}.
 
+%% @private
+%%
 %% @doc Make sure that the data directory (passed in as `Dir') exists,
 %% and that the `solr.xml' config file is in it.
 -spec ensure_data_dir(string()) -> ok.
@@ -227,6 +230,8 @@ is_up() ->
         _ -> false
     end.
 
+%% @private
+-spec run_cmd(filename(), [string()]) -> port().
 run_cmd(Cmd, Args) ->
     open_port({spawn_executable, Cmd}, [exit_status, {args, Args}, use_stdio, stderr_to_stdout]).
 
@@ -234,14 +239,19 @@ run_cmd(Cmd, Args) ->
 %%
 %% @doc send a message to this server to remind it to check if solr
 %% finished starting
+-spec schedule_solr_check(seconds()) -> reference().
 schedule_solr_check(WaitTimeSecs) ->
     erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
 
+%% @private
+-spec solr_startup_wait() -> seconds().
 solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_startup_wait,
                        ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
 
+%% @private
+-spec solr_jvm_args() -> string().
 solr_jvm_args() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_jvm_args,
