@@ -35,9 +35,11 @@
 -type index_set() :: ordset(index_name()).
 -type base64() :: binary().
 -type hash() :: binary().
+-type filename() :: string().
 
 %% milliseconds
 -type ms() :: non_neg_integer().
+-type seconds() :: non_neg_integer().
 
 -type predicate(A) :: fun((A) -> boolean()).
 
@@ -255,6 +257,7 @@
 %%%===================================================================
 
 -define(DEBUG(Fmt, Args), lager:debug(Fmt, Args)).
+-define(ERROR(Fmt), lager:error(Fmt)).
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
 -define(WARN(Fmt, Args), lager:warning(Fmt, Args)).

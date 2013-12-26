@@ -81,18 +81,28 @@ getpid() ->
 %%       timeout expires.
 init([Dir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
-    process_flag(trap_exit, true),
-    {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
-    ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
-    Port = run_cmd(Cmd, Args),
-    schedule_solr_check(solr_startup_wait()),
-    S = #state{
-      dir=Dir,
-      port=Port,
-      solr_port=SolrPort,
-      solr_jmx_port=SolrJMXPort
-     },
-    {ok, S}.
+    case get_java_path() of
+        undefined ->
+            %% This logging call is needed because the stop reason
+            %% (which logs as a crash report) isn't always logged. My
+            %% guess is that there is some race between shutdown and
+            %% the logging.
+            ?ERROR("unable to locate `java` on the PATH, shutting down"),
+            {stop, "unable to locate `java` on the PATH"};
+        JavaPath ->
+            process_flag(trap_exit, true),
+            {Cmd, Args} = build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir),
+            ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
+            Port = run_cmd(Cmd, Args),
+            schedule_solr_check(solr_startup_wait()),
+            S = #state{
+                   dir=Dir,
+                   port=Port,
+                   solr_port=SolrPort,
+                   solr_jmx_port=SolrJMXPort
+                  },
+            {ok, S}
+    end.
 
 handle_call(getpid, _, S) ->
     {reply, get_pid(?S_PORT(S)), S};
@@ -151,31 +161,15 @@ terminate(_, S) ->
 %%% Private
 %%%===================================================================
 
-%% @doc Make sure that the data directory (passed in as `Dir') exists,
-%% and that the `solr.xml' config file is in it.
--spec ensure_data_dir(string()) -> ok.
-ensure_data_dir(Dir) ->
-    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
-    case filelib:is_file(SolrConfig) of
-        true ->
-            %% For future YZ releases, this path will probably need to
-            %% check the existing solr.xml to see if it needs updates
-            lager:debug("Existing solr config found, leaving it in place"),
-            ok;
-        false ->
-            lager:info("No solr config found, creating a new one"),
-            ok = filelib:ensure_dir(SolrConfig),
-            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
-            ok
-    end.
-
--spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
-build_cmd(_SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
+%% @private
+-spec build_cmd(filename(), non_neg_integer(), non_neg_integer(), string()) ->
+                       {string(), [string()]}.
+build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
     %% this will start an executable to keep yz_solr_proc's port
     %% happy, but will never respond to pings, so we can test the
     %% timeout capability
     {os:find_executable("grep"), ["foo"]};
-build_cmd(SolrPort, SolrJMXPort, Dir) ->
+build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
@@ -204,7 +198,37 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
 
     Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
         ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
-    {os:find_executable("java"), Args}.
+    {JavaPath, Args}.
+
+%% @private
+%%
+%% @doc Make sure that the data directory (passed in as `Dir') exists,
+%% and that the `solr.xml' config file is in it.
+-spec ensure_data_dir(string()) -> ok.
+ensure_data_dir(Dir) ->
+    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
+    case filelib:is_file(SolrConfig) of
+        true ->
+            %% For future YZ releases, this path will probably need to
+            %% check the existing solr.xml to see if it needs updates
+            lager:debug("Existing solr config found, leaving it in place"),
+            ok;
+        false ->
+            lager:info("No solr config found, creating a new one"),
+            ok = filelib:ensure_dir(SolrConfig),
+            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
+            ok
+    end.
+
+%% @prviate
+%%
+%% @doc Get the path of `java' executable.
+-spec get_java_path() -> undefined | filename().
+get_java_path() ->
+    case os:find_executable("java") of
+        false -> undefined;
+        Val -> Val
+    end.
 
 %% @private
 %%
@@ -219,13 +243,6 @@ get_pid(Port) ->
 
 %% @private
 %%
-%% @doc send a message to this server to remind it to check if solr
-%% finished starting
-schedule_solr_check(WaitTimeSecs) ->
-    erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
-
-%% @private
-%%
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().
 is_up() ->
@@ -234,14 +251,28 @@ is_up() ->
         _ -> false
     end.
 
+%% @private
+-spec run_cmd(filename(), [string()]) -> port().
 run_cmd(Cmd, Args) ->
     open_port({spawn_executable, Cmd}, [exit_status, {args, Args}, use_stdio, stderr_to_stdout]).
 
+%% @private
+%%
+%% @doc send a message to this server to remind it to check if solr
+%% finished starting
+-spec schedule_solr_check(seconds()) -> reference().
+schedule_solr_check(WaitTimeSecs) ->
+    erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
+
+%% @private
+-spec solr_startup_wait() -> seconds().
 solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_startup_wait,
                        ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
 
+%% @private
+-spec solr_jvm_args() -> string().
 solr_jvm_args() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_jvm_args,

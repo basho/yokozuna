@@ -30,7 +30,6 @@
 -define(MAX_WAIT_FOR_INDEX, app_helper:get_env(?YZ_APP_NAME, max_wait_for_index_seconds, 5)).
 
 -type check() :: {module(), atom(), list()}.
--type seconds() :: pos_integer().
 -type write_reason() :: delete | handoff | put | anti_entropy.
 
 
