@@ -151,24 +151,6 @@ terminate(_, S) ->
 %%% Private
 %%%===================================================================
 
-%% @doc Make sure that the data directory (passed in as `Dir') exists,
-%% and that the `solr.xml' config file is in it.
--spec ensure_data_dir(string()) -> ok.
-ensure_data_dir(Dir) ->
-    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
-    case filelib:is_file(SolrConfig) of
-        true ->
-            %% For future YZ releases, this path will probably need to
-            %% check the existing solr.xml to see if it needs updates
-            lager:debug("Existing solr config found, leaving it in place"),
-            ok;
-        false ->
-            lager:info("No solr config found, creating a new one"),
-            ok = filelib:ensure_dir(SolrConfig),
-            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
-            ok
-    end.
-
 -spec build_cmd(non_neg_integer(), non_neg_integer(), string()) -> {string(), [string()]}.
 build_cmd(_SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
     %% this will start an executable to keep yz_solr_proc's port
@@ -206,6 +188,24 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
         ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
     {os:find_executable("java"), Args}.
 
+%% @doc Make sure that the data directory (passed in as `Dir') exists,
+%% and that the `solr.xml' config file is in it.
+-spec ensure_data_dir(string()) -> ok.
+ensure_data_dir(Dir) ->
+    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
+    case filelib:is_file(SolrConfig) of
+        true ->
+            %% For future YZ releases, this path will probably need to
+            %% check the existing solr.xml to see if it needs updates
+            lager:debug("Existing solr config found, leaving it in place"),
+            ok;
+        false ->
+            lager:info("No solr config found, creating a new one"),
+            ok = filelib:ensure_dir(SolrConfig),
+            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
+            ok
+    end.
+
 %% @private
 %%
 %% @doc Get the operating system's PID of the Solr/JVM process.  May
@@ -219,13 +219,6 @@ get_pid(Port) ->
 
 %% @private
 %%
-%% @doc send a message to this server to remind it to check if solr
-%% finished starting
-schedule_solr_check(WaitTimeSecs) ->
-    erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
-
-%% @private
-%%
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().
 is_up() ->
@@ -236,6 +229,13 @@ is_up() ->
 
 run_cmd(Cmd, Args) ->
     open_port({spawn_executable, Cmd}, [exit_status, {args, Args}, use_stdio, stderr_to_stdout]).
+
+%% @private
+%%
+%% @doc send a message to this server to remind it to check if solr
+%% finished starting
+schedule_solr_check(WaitTimeSecs) ->
+    erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
 
 solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
