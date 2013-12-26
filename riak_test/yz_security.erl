@@ -21,8 +21,7 @@
                                        "certs/selfsigned/site3-cert.pem"])},
              {keyfile, filename:join([PrivDir,
                                        "certs/selfsigned/site3-key.pem"])}
-              ]},
-           {security, true}
+              ]}
           ]},
          {riak_api, [
              {certfile, filename:join([PrivDir,
@@ -75,6 +74,8 @@ confirm() ->
     lager:info("r_t priv: ~p", [PrivDir]),
     Cluster = build_cluster(1, ?CFG(PrivDir)),
     Node = hd(Cluster),
+    %% enable security on the cluster
+    ok = rpc:call(Node, riak_core_console, security_enable, [[]]),
     enable_https(Node),
     wait_for_cluster_service(Cluster, yokozuna),
     create_user(Node, ?USER),
