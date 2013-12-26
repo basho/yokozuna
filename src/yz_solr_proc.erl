@@ -83,6 +83,11 @@ init([Dir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
     case get_java_path() of
         undefined ->
+            %% This logging call is needed because the stop reason
+            %% (which logs as a crash report) isn't always logged. My
+            %% guess is that there is some race between shutdown and
+            %% the logging.
+            ?ERROR("unable to locate `java` on the PATH, shutting down"),
             {stop, "unable to locate `java` on the PATH"};
         JavaPath ->
             process_flag(trap_exit, true),
