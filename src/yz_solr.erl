@@ -223,8 +223,8 @@ dist_search(Core, Headers, Params) ->
             HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
             ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
             ShardFrags2 = string:join(ShardFrags, ","),
-            FQ = build_fq(FilterPairs),
-            Params2 = Params ++ [{shards, ShardFrags2}, {fq, FQ}],
+            ShardFQs = build_shard_fq(FilterPairs, Mapping),
+            Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
             search(Core, Headers, Params2)
     end.
 
@@ -255,6 +255,19 @@ build_fq(Partitions) ->
     GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
     Fields = [group_to_str(G) || G <- GroupedByNode],
     string:join(Fields, " OR ").
+
+%% @private
+%%
+%% @doc Build list of per-node filter queries.
+-spec build_shard_fq([{lp_node(), logical_filter()}], [{node(), {string(), string()}}]) -> [{binary(), string()}].
+build_shard_fq(Partitions, Mapping) ->
+    GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
+    [begin
+         {Host, Port} = proplists:get_value(Node, Mapping),
+         Key = <<(list_to_binary(Host))/binary,":",(list_to_binary(Port))/binary>>,
+         Value = partitions_to_str(NodePartitions),
+         {Key, Value}
+     end || {Node, NodePartitions} <- GroupedByNode].
 
 %% @private
 %%

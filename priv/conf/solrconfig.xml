@@ -539,16 +539,11 @@
        <int name="rows">10</int>
        <str name="df">text</str>
      </lst>
-    <!-- If the default list of SearchComponents is not desired, that
-         list can either be overridden completely, or components can be
-         prepended or appended to the default list.  (see below)
-      -->
-    <!--
-       <arr name="components">
-         <str>nameOfCustomComponent1</str>
-         <str>nameOfCustomComponent2</str>
-       </arr>
-      -->
+     <!-- Custom Yokozuna component to translate custom shard filter
+          queries. -->
+     <arr name="first-components">
+       <str>fq_shard_translator</str>
+     </arr>
     </requestHandler>
 
   <!-- Update Request Handler.
@@ -705,48 +700,8 @@
     <!-- <str name="healthcheckFile">server-enabled.txt</str> -->
   </requestHandler>
 
-  <!-- Search Components
-
-       Search components are registered to SolrCore and used by
-       instances of SearchHandler (which can access them by name)
-
-       By default, the following components are available:
-
-       <searchComponent name="query"     class="solr.QueryComponent" />
-       <searchComponent name="facet"     class="solr.FacetComponent" />
-       <searchComponent name="mlt"       class="solr.MoreLikeThisComponent" />
-       <searchComponent name="highlight" class="solr.HighlightComponent" />
-       <searchComponent name="stats"     class="solr.StatsComponent" />
-       <searchComponent name="debug"     class="solr.DebugComponent" />
-
-       Default configuration in a requestHandler would look like:
-
-       <arr name="components">
-         <str>query</str>
-         <str>facet</str>
-         <str>mlt</str>
-         <str>highlight</str>
-         <str>stats</str>
-         <str>debug</str>
-       </arr>
-
-       If you register a searchComponent to one of the standard names,
-       that will be used instead of the default.
-
-       To insert components before or after the 'standard' components, use:
-
-       <arr name="first-components">
-         <str>myFirstComponentName</str>
-       </arr>
-
-       <arr name="last-components">
-         <str>myLastComponentName</str>
-       </arr>
-
-       NOTE: The component registered with the name "debug" will
-       always be executed after the "last-components"
-
-     -->
+  <searchComponent name="fq_shard_translator"
+                   class="com.basho.yokozuna.handler.component.FQShardTranslator" />
 
   <!-- Terms Component
 

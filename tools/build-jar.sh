@@ -35,7 +35,11 @@ if [ ! -e $SOLR_JAR_DIR ]; then
 fi
 
 echo "Compile..."
-javac -cp "$SOLR_JAR_DIR/*" ../java_src/com/basho/yokozuna/handler/*.java ../java_src/com/basho/yokozuna/query/*.java ../java_src/com/basho/yokozuna/monitor/*.java
+javac -cp "$SOLR_JAR_DIR/*" \
+    ../java_src/com/basho/yokozuna/handler/*.java \
+    ../java_src/com/basho/yokozuna/handler/component/*.java \
+    ../java_src/com/basho/yokozuna/query/*.java \
+    ../java_src/com/basho/yokozuna/monitor/*.java
 echo "Create yokozuna.jar..."
 if [ ! -e "../priv/java_lib" ]; then
     mkdir ../priv/java_lib
