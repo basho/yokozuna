@@ -22,8 +22,9 @@
 %%       cluster and you will see zero repairs occur.
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
--define(BUCKET, {<<"fruit">>,<<"b1">>}).
+-define(BUCKET_TYPE, <<"data">>).
 -define(INDEX, <<"fruit">>).
+-define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
 -define(CFG,
@@ -120,7 +121,7 @@ test_escaped_key(Cluster) ->
     lager:info("Test key escape"),
     {H, P} = hd(host_entries(rt:connection_info(Cluster))),
     Value = <<"Never gonna give you up">>,
-    Bucket = {<<"escaped">>,<<"b1">>},
+    Bucket = {<<"data">>,<<"escaped">>},
     Key = edoc_lib:escape_uri("rick/astley-rolled:derp"),
     ok = yz_rt:http_put({H, P}, Bucket, Key, Value),
     ok = http_get({H, P}, Bucket, Key),
@@ -145,7 +146,7 @@ test_tagging(Cluster) ->
 
 write_with_tag({Host, Port}) ->
     lager:info("Tag the object tagging/test"),
-    URL = lists:flatten(io_lib:format("http://~s:~s/types/tagging/buckets/b1/keys/test",
+    URL = lists:flatten(io_lib:format("http://~s:~s/types/data/buckets/tagging/keys/test",
                                       [Host, integer_to_list(Port)])),
     Opts = [],
     Body = <<"testing tagging">>,
@@ -170,6 +171,7 @@ async_query(Cluster, YZBenchDir) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {bucket, ?BUCKET},
+           {index, ?INDEX},
            {shutdown_on_error, true}],
     File = "bb-query-fruit",
     write_terms(File, Cfg),
@@ -216,20 +218,24 @@ reap_sleep() ->
 setup_indexing(Cluster, PBConns, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     PBConn = yz_rt:select_random(PBConns),
+
+    yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
+
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME),
-    yz_rt:set_bucket_type_index(Node, ?INDEX),
+    yz_rt:set_index(Node, ?BUCKET, ?INDEX),
+
     ok = create_index(Node, <<"tagging">>),
-    yz_rt:set_bucket_type_index(Node, <<"tagging">>),
-    ok = create_index(Node, <<"siblings">>),
-    yz_rt:set_bucket_type_index(Node, <<"siblings">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
+
     ok = create_index(Node, <<"escaped">>),
-    yz_rt:set_bucket_type_index(Node, <<"escaped">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>),
+
     ok = create_index(Node, <<"unique">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- [<<"fruit">>, <<"tagging">>, <<"siblings">>, <<"escaped">>, <<"unique">>]].
+     || I <- [<<"fruit">>, <<"tagging">>, <<"escaped">>, <<"unique">>]].
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),
@@ -247,6 +253,7 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {bucket, ?BUCKET},
+           {index, ?INDEX},
            {shutdown_on_error, true}],
     File = "bb-verify-deletes",
     write_terms(File, Cfg),
