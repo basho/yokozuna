@@ -83,6 +83,8 @@ handle_info(tick, S) ->
     {Removed, Added, Same} = yz_misc:delta(Previous, Current),
     ok = sync_indexes(Ring, Removed, Added, Same),
 
+    remove_non_owned_data(),
+
     ok = set_tick(),
     {noreply, S}.
 

@@ -7,6 +7,7 @@
                 verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
+-include("yokozuna.hrl").
 
 %% @doc Test essential behavior of Yokozuna.
 %%
@@ -22,8 +23,9 @@
 %%       cluster and you will see zero repairs occur.
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
--define(BUCKET, {<<"fruit">>,<<"b1">>}).
+-define(BUCKET_TYPE, <<"data">>).
 -define(INDEX, <<"fruit">>).
+-define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
 -define(CFG,
@@ -56,6 +58,7 @@ confirm() ->
     Cluster2 = join_rest(Cluster, Nodes),
     rt:wait_for_cluster_service(Cluster2, yokozuna),
     check_status(wait_for(Ref)),
+    verify_non_owned_data_deleted(Cluster, ?INDEX),
     ok = test_tagging(Cluster),
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
@@ -63,6 +66,33 @@ confirm() ->
     verify_unique_id(Cluster2, PBConns),
     yz_rt:close_pb_conns(PBConns),
     pass.
+
+%% @doc Verify that indexes for non-owned data have been
+%% deleted. I.e. after a node performs ownership handoff to a joining
+%% node it should delete indexes for the partitions it no longer owns.
+verify_non_owned_data_deleted(Cluster, Index) ->
+    yz_rt:wait_until(Cluster, is_non_owned_data_deleted(Index)).
+
+%% @doc Predicate to determine if the node's indexes for non-owned
+%% data have been deleted.
+is_non_owned_data_deleted(Index) ->
+    fun(Node) ->
+            Ring = rpc:call(Node, yz_misc, get_ring, [raw]),
+            PartitionList = rpc:call(Node, yokozuna, partition_list, [Index]),
+            IndexPartitions = rpc:call(Node, yz_cover, reify_partitions, [Ring, PartitionList]),
+            OwnedAndNext = rpc:call(Node, yz_misc, owned_and_next_partitions, [Node, Ring]),
+            NonOwned = ordsets:subtract(IndexPartitions, OwnedAndNext),
+            LNonOwned = rpc:call(Node, yz_cover, logical_partitions, [Ring, NonOwned]),
+            QueryStrings = [?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(LP)
+                            || LP <- LNonOwned],
+            Query = list_to_binary(string:join(QueryStrings, " OR ")),
+            {_, Resp} = rpc:call(Node, yz_solr, search, [Index, [], [{q, Query}, {wt, <<"json">>}]]),
+            Decoded = mochijson2:decode(Resp),
+            NumFound = kvc:path([<<"response">>, <<"numFound">>], Decoded),
+            lager:info("checking node ~p for non-owned data in index ~p, E: 0 A: ~p",
+                       [Node, Index, NumFound]),
+            0 == NumFound
+    end.
 
 %% @doc Verify that Solr documents are unique based on type + bucket +
 %% key + partition.
@@ -120,7 +150,7 @@ test_escaped_key(Cluster) ->
     lager:info("Test key escape"),
     {H, P} = hd(host_entries(rt:connection_info(Cluster))),
     Value = <<"Never gonna give you up">>,
-    Bucket = {<<"escaped">>,<<"b1">>},
+    Bucket = {<<"data">>,<<"escaped">>},
     Key = edoc_lib:escape_uri("rick/astley-rolled:derp"),
     ok = yz_rt:http_put({H, P}, Bucket, Key, Value),
     ok = http_get({H, P}, Bucket, Key),
@@ -145,7 +175,7 @@ test_tagging(Cluster) ->
 
 write_with_tag({Host, Port}) ->
     lager:info("Tag the object tagging/test"),
-    URL = lists:flatten(io_lib:format("http://~s:~s/types/tagging/buckets/b1/keys/test",
+    URL = lists:flatten(io_lib:format("http://~s:~s/types/data/buckets/tagging/keys/test",
                                       [Host, integer_to_list(Port)])),
     Opts = [],
     Body = <<"testing tagging">>,
@@ -170,6 +200,7 @@ async_query(Cluster, YZBenchDir) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {bucket, ?BUCKET},
+           {index, ?INDEX},
            {shutdown_on_error, true}],
     File = "bb-query-fruit",
     write_terms(File, Cfg),
@@ -216,20 +247,24 @@ reap_sleep() ->
 setup_indexing(Cluster, PBConns, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     PBConn = yz_rt:select_random(PBConns),
+
+    yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
+
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME),
-    yz_rt:set_bucket_type_index(Node, ?INDEX),
+    yz_rt:set_index(Node, ?BUCKET, ?INDEX),
+
     ok = create_index(Node, <<"tagging">>),
-    yz_rt:set_bucket_type_index(Node, <<"tagging">>),
-    ok = create_index(Node, <<"siblings">>),
-    yz_rt:set_bucket_type_index(Node, <<"siblings">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
+
     ok = create_index(Node, <<"escaped">>),
-    yz_rt:set_bucket_type_index(Node, <<"escaped">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>),
+
     ok = create_index(Node, <<"unique">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- [<<"fruit">>, <<"tagging">>, <<"siblings">>, <<"escaped">>, <<"unique">>]].
+     || I <- [<<"fruit">>, <<"tagging">>, <<"escaped">>, <<"unique">>]].
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),
@@ -247,6 +282,7 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {bucket, ?BUCKET},
+           {index, ?INDEX},
            {shutdown_on_error, true}],
     File = "bb-verify-deletes",
     write_terms(File, Cfg),

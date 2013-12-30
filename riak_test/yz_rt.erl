@@ -31,6 +31,15 @@ connection_info(Cluster) ->
                                   || Node <- Cluster]),
     orddict:merge(fun(_,V1,V2) -> V1 ++ V2 end, CI, SolrInfo).
 
+-spec create_bucket_type(node(), binary()) -> ok.
+create_bucket_type(Node, BucketType) ->
+    create_bucket_type(Node, BucketType, []).
+
+-spec create_bucket_type(node(), binary(), [term()]) -> ok.
+create_bucket_type(Node, BucketType, Props) ->
+    rt:create_and_activate_bucket_type(Node, BucketType, Props),
+    rt:wait_until_bucket_type_status(BucketType, active, Node).
+
 -spec create_index(node(), index_name()) -> ok.
 create_index(Node, Index) ->
     lager:info("Creating index ~s [~p]", [Index, Node]),
@@ -227,8 +236,7 @@ set_bucket_type_index(Node, BucketType) ->
 
 set_bucket_type_index(Node, BucketType, Index) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
-    rt:create_and_activate_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]),
-    rt:wait_until_bucket_type_status(BucketType, active, Node).
+    create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]).
 
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);
