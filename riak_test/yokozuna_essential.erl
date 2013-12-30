@@ -7,6 +7,7 @@
                 verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
+-include("yokozuna.hrl").
 
 %% @doc Test essential behavior of Yokozuna.
 %%
@@ -57,6 +58,7 @@ confirm() ->
     Cluster2 = join_rest(Cluster, Nodes),
     rt:wait_for_cluster_service(Cluster2, yokozuna),
     check_status(wait_for(Ref)),
+    verify_non_owned_data_deleted(Cluster, ?INDEX),
     ok = test_tagging(Cluster),
     KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
     verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
@@ -64,6 +66,33 @@ confirm() ->
     verify_unique_id(Cluster2, PBConns),
     yz_rt:close_pb_conns(PBConns),
     pass.
+
+%% @doc Verify that indexes for non-owned data have been
+%% deleted. I.e. after a node performs ownership handoff to a joining
+%% node it should delete indexes for the partitions it no longer owns.
+verify_non_owned_data_deleted(Cluster, Index) ->
+    yz_rt:wait_until(Cluster, is_non_owned_data_deleted(Index)).
+
+%% @doc Predicate to determine if the node's indexes for non-owned
+%% data have been deleted.
+is_non_owned_data_deleted(Index) ->
+    fun(Node) ->
+            Ring = rpc:call(Node, yz_misc, get_ring, [raw]),
+            PartitionList = rpc:call(Node, yokozuna, partition_list, [Index]),
+            IndexPartitions = rpc:call(Node, yz_cover, reify_partitions, [Ring, PartitionList]),
+            OwnedAndNext = rpc:call(Node, yz_misc, owned_and_next_partitions, [Node, Ring]),
+            NonOwned = ordsets:subtract(IndexPartitions, OwnedAndNext),
+            LNonOwned = rpc:call(Node, yz_cover, logical_partitions, [Ring, NonOwned]),
+            QueryStrings = [?YZ_PN_FIELD_S ++ ":" ++ integer_to_list(LP)
+                            || LP <- LNonOwned],
+            Query = list_to_binary(string:join(QueryStrings, " OR ")),
+            {_, Resp} = rpc:call(Node, yz_solr, search, [Index, [], [{q, Query}, {wt, <<"json">>}]]),
+            Decoded = mochijson2:decode(Resp),
+            NumFound = kvc:path([<<"response">>, <<"numFound">>], Decoded),
+            lager:info("checking node ~p for non-owned data in index ~p, E: 0 A: ~p",
+                       [Node, Index, NumFound]),
+            0 == NumFound
+    end.
 
 %% @doc Verify that Solr documents are unique based on type + bucket +
 %% key + partition.
