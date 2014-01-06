@@ -82,7 +82,6 @@ handle_info(tick, S) ->
     Current = names(yz_index:get_indexes_from_ring(Ring)),
     {Removed, Added, Same} = yz_misc:delta(Previous, Current),
     ok = sync_indexes(Ring, Removed, Added, Same),
-    remove_non_owned_data(),
 
     remove_non_owned_data(),
 
