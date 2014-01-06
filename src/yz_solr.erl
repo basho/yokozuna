@@ -251,11 +251,6 @@ search(Core, Headers, Params) ->
 base_url() ->
     "http://localhost:" ++ integer_to_list(port()) ++ "/solr".
 
-build_fq(Partitions) ->
-    GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
-    Fields = [group_to_str(G) || G <- GroupedByNode],
-    string:join(Fields, " OR ").
-
 %% @private
 %%
 %% @doc Build list of per-node filter queries.
