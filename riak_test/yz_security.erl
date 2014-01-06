@@ -42,7 +42,6 @@
    <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\"/>
    <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\"/>
    <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\"/>
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>

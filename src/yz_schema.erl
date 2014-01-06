@@ -122,7 +122,6 @@ verify_fields({ok, Schema}) ->
               ?YZ_ED_FIELD_XPATH,
               ?YZ_FPN_FIELD_XPATH,
               ?YZ_VTAG_FIELD_XPATH,
-              ?YZ_NODE_FIELD_XPATH,
               ?YZ_PN_FIELD_XPATH,
               ?YZ_RK_FIELD_XPATH,
               ?YZ_RT_FIELD_XPATH,

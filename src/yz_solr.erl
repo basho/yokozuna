@@ -283,10 +283,6 @@ group_by_node({{Partition, Owner}, all}) ->
 group_by_node({{Partition, Owner}, FPFilter}) ->
     {Owner, {Partition, FPFilter}}.
 
-group_to_str({Owner, Partitions}) ->
-    OwnerQ = ?YZ_NODE_FIELD_S ++ ":" ++ atom_to_list(Owner),
-    "(" ++ OwnerQ ++ " AND " ++ "(" ++ partitions_to_str(Partitions) ++ "))".
-
 partitions_to_str(Partitions) ->
     F = fun({Partition, FPFilter}) ->
                 PNQ = pn_str(Partition),

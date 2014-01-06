@@ -150,7 +150,6 @@
 -define(YZ_SEARCH_CMD, #yz_search_cmd).
 -define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
--define(YZ_VNODE_MASTER, yokozuna_vnode_master).
 -define(YZ_META_INDEXES, yokozuna_indexes).
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
@@ -334,12 +333,6 @@
 -define(YZ_VTAG_FIELD_XML, ?YZ_FIELD_XML(?YZ_VTAG_FIELD_S)).
 -define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
-%% Node
--define(YZ_NODE_FIELD, '_yz_node').
--define(YZ_NODE_FIELD_S, "_yz_node").
--define(YZ_NODE_FIELD_XML, ?YZ_FIELD_XML(?YZ_NODE_FIELD_S)).
--define(YZ_NODE_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_node\" and @type=\"_yz_str\" and @indexed=\"true\"]").
-
 %% Partition Number
 -define(YZ_PN_FIELD, '_yz_pn').
 -define(YZ_PN_FIELD_S, "_yz_pn").
@@ -368,7 +361,6 @@
 -define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
 -define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
-
 %% Riak extraction error
 -define(YZ_ERR_FIELD, '_yz_err').
 -define(YZ_ERR_FIELD_S, "_yz_err").
@@ -381,7 +373,6 @@
         Name == ?YZ_ED_FIELD_S orelse
         Name == ?YZ_FPN_FIELD_S orelse
         Name == ?YZ_VTAG_FIELD_S orelse
-        Name == ?YZ_NODE_FIELD_S orelse
         Name == ?YZ_PN_FIELD_S orelse
         Name == ?YZ_RK_FIELD_S orelse
         Name == ?YZ_RB_FIELD_S orelse
