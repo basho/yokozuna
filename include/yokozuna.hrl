@@ -75,9 +75,11 @@
 -type filter() :: all | [p()].
 -type p_node() :: {p(), node()}.
 -type lp_node() :: {lp(), node()}.
--type cover_set() :: [p_node()].
--type logical_cover_set() :: [{lp_node(), filter()}].
--type filter_cover_set() :: [{p_node(), filter()}].
+-type p_set() :: [p_node()].
+-type logical_cover_pair() :: {lp_node(), logical_filter()}.
+-type logical_cover_set() :: [logical_cover_pair()].
+-type solr_host_mapping() :: [{node(), {string(),string()}}].
+-type plan() :: {[node()], logical_cover_set(), solr_host_mapping()}.
 
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().

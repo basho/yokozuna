@@ -217,15 +217,15 @@ dist_search(Core, Params) ->
 dist_search(Core, Headers, Params) ->
     Plan = yz_cover:plan(Core),
     case Plan of
-        {error, _} = Err ->
-            Err;
-        {Nodes, FilterPairs, Mapping} ->
+        {ok, {Nodes, FilterPairs, Mapping}} ->
             HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
             ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
             ShardFrags2 = string:join(ShardFrags, ","),
             ShardFQs = build_shard_fq(FilterPairs, Mapping),
             Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
-            search(Core, Headers, Params2)
+            search(Core, Headers, Params2);
+        {error, _} = Err ->
+            Err
     end.
 
 search(Core, Headers, Params) ->
@@ -254,15 +254,16 @@ base_url() ->
 %% @private
 %%
 %% @doc Build list of per-node filter queries.
--spec build_shard_fq([{lp_node(), logical_filter()}], [{node(), {string(), string()}}]) -> [{binary(), string()}].
-build_shard_fq(Partitions, Mapping) ->
-    GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
+-spec build_shard_fq(logical_cover_set(), solr_host_mapping()) ->
+                            [{binary(), string()}].
+build_shard_fq(LCoverSet, Mapping) ->
+    GroupedByNode = yz_misc:group_by(LCoverSet, fun group_by_node/1),
     [begin
          {Host, Port} = proplists:get_value(Node, Mapping),
          Key = <<(list_to_binary(Host))/binary,":",(list_to_binary(Port))/binary>>,
-         Value = partitions_to_str(NodePartitions),
+         Value = partition_filters_to_str(PartitionFilters),
          {Key, Value}
-     end || {Node, NodePartitions} <- GroupedByNode].
+     end || {Node, PartitionFilters} <- GroupedByNode].
 
 %% @private
 %%
@@ -283,7 +284,8 @@ group_by_node({{Partition, Owner}, all}) ->
 group_by_node({{Partition, Owner}, FPFilter}) ->
     {Owner, {Partition, FPFilter}}.
 
-partitions_to_str(Partitions) ->
+-spec partition_filters_to_str([{lp(), logical_filter()}]) -> string().
+partition_filters_to_str(Partitions) ->
     F = fun({Partition, FPFilter}) ->
                 PNQ = pn_str(Partition),
                 FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),

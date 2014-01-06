@@ -42,8 +42,7 @@ logical_partitions(Ring, Partitions) ->
     ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
 
 %% @doc Get the coverage plan for `Index'.
--spec plan(index_name()) -> {[node()], term(), [{node(),{string(),string()}}]} |
-                            {error, term()}.
+-spec plan(index_name()) -> {ok, plan()} | {error, term()}.
 plan(Index) ->
     case mochiglobal:get(?BIN_TO_ATOM(Index), undefined) of
         undefined -> calc_plan(Index);
@@ -95,13 +94,12 @@ terminate(_, _) ->
 
 %% @doc Create a covering set using logical partitions and add
 %%      filtering information to eliminate overlap.
--spec add_filtering(n(), q(), logical_idx(), cover_set()) ->
-                           [{lp_node(), logical_filter()}].
-add_filtering(N, Q, LPI, CS) ->
-    CS2 = make_logical(LPI, CS),
+-spec add_filtering(n(), q(), logical_idx(), p_set()) -> logical_cover_set().
+add_filtering(N, Q, LPI, PS) ->
+    CS2 = make_logical(LPI, PS),
     CS3 = yz_misc:make_pairs(CS2),
     CS4 = make_distance_pairs(Q, CS3),
-    make_filter_pairs(N, Q, CS4).
+    make_cover_set(N, Q, CS4).
 
 %% @private
 %%
@@ -112,16 +110,15 @@ cache_plan(Index) ->
     case calc_plan(Index) of
         {error, _} ->
             mochiglobal:put(?BIN_TO_ATOM(Index), undefined);
-        Plan ->
-            mochiglobal:put(?BIN_TO_ATOM(Index), Plan)
+        {ok, Plan} ->
+            mochiglobal:put(?BIN_TO_ATOM(Index), {ok, Plan})
     end,
     ok.
 
 %% @private
 %%
 %% @doc Calculate a plan for the `Index'.
--spec calc_plan(index_name()) -> {[node()], term(), [{node(), {string(),string()}}]} |
-                                 {error, term()}.
+-spec calc_plan(index_name()) -> {ok, plan()} | {error, term()}.
 calc_plan(Index) ->
     Ring = yz_misc:get_ring(transformed),
     Q = riak_core_ring:num_partitions(Ring),
@@ -147,7 +144,7 @@ calc_plan(Index) ->
             Mapping = yz_solr:build_mapping(UniqNodes),
             case length(Mapping) == length(UniqNodes) of
                 true ->
-                    {UniqNodes, LogicalCoverSet, Mapping};
+                    {ok, {UniqNodes, LogicalCoverSet, Mapping}};
                 false ->
                     {error, "Failed to determine Solr port for all nodes in search plan"}
             end
@@ -208,24 +205,22 @@ make_distance_pairs(Q, PartitionPairs) ->
 %%      The value `all' means all replicas.  If the value if a list of
 %%      `lp()' then a replica must has one of the LPs as it's first
 %%      primary partition on the preflist.
--spec make_filter_pair(n(), q(), {lp_node(), dist()}) ->
-                              {lp_node(), all | [lp()]}.
-make_filter_pair(N, _Q, {LPNode, N}) ->
+-spec make_cover_pair(n(), q(), {lp_node(), dist()}) -> logical_cover_pair().
+make_cover_pair(N, _Q, {LPNode, N}) ->
     {LPNode, all};
-make_filter_pair(N, Q, {{LP, Node}, Dist}) ->
+make_cover_pair(N, Q, {{LP, Node}, Dist}) ->
     LPSeq = lists:reverse(lp_seq(N, Q, LP)),
     Filter = lists:sublist(LPSeq, Dist),
     {{LP, Node}, Filter}.
 
--spec make_filter_pairs(n(), q(), [{lp_node(), dist()}]) ->
-                               logical_cover_set().
-make_filter_pairs(N, Q, Cover) ->
-    [make_filter_pair(N, Q, DP) || DP <- Cover].
+-spec make_cover_set(n(), q(), [{lp_node(), dist()}]) -> logical_cover_set().
+make_cover_set(N, Q, Cover) ->
+    [make_cover_pair(N, Q, DP) || DP <- Cover].
 
-%% @doc Convert the `Cover' set to use logical partitions.
--spec make_logical(logical_idx(), cover_set()) -> [lp_node()].
-make_logical(LogicalIndex, Cover) ->
-    [{logical_partition(LogicalIndex, P), Node} || {P, Node} <- Cover].
+%% @doc Convert the partition set to use logical partitions.
+-spec make_logical(logical_idx(), p_set()) -> [lp_node()].
+make_logical(LogicalIndex, PSet) ->
+    [{logical_partition(LogicalIndex, P), Node} || {P, Node} <- PSet].
 
 %% @doc Map `LP' to actual partition.
 -spec partition(logical_idx(), lp()) -> p().
