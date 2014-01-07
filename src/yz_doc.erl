@@ -76,7 +76,6 @@ make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
     [{?YZ_ID_FIELD, DocId},
      {?YZ_ED_FIELD, EntropyData},
      {?YZ_FPN_FIELD, FPN},
-     {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
      {?YZ_PN_FIELD, Partition},
      {?YZ_RK_FIELD, Key},
      {?YZ_RT_FIELD, yz_kv:bucket_type(Bucket)},

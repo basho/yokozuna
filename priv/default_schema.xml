@@ -134,9 +134,6 @@
    <!-- If there is a sibling, use vtag to differentiate them -->
    <field name="_yz_vtag" type="_yz_str" indexed="true" stored="false"/>
 
-   <!-- Node: The name of the node that this doc was created on. -->
-   <field name="_yz_node" type="_yz_str" indexed="true" stored="false"/>
-
    <!-- Riak Key: The key of the Riak object this doc corresponds to. -->
    <field name="_yz_rk" type="_yz_str" indexed="true" stored="true"/>
 
@@ -146,7 +143,7 @@
    <!-- Riak Bucket: The bucket of the Riak object this doc corresponds to. -->
    <field name="_yz_rb" type="_yz_str" indexed="true" stored="true"/>
 
-   <!-- Node: Stores a flag if this doc is the product of a failed object extration -->
+   <!-- Flag indicating if this doc is the product of a failed object extraction -->
    <field name="_yz_err" type="_yz_str" indexed="true" stored="false"/>
  </fields>
 

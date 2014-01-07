@@ -217,15 +217,15 @@ dist_search(Core, Params) ->
 dist_search(Core, Headers, Params) ->
     Plan = yz_cover:plan(Core),
     case Plan of
-        {error, _} = Err ->
-            Err;
-        {Nodes, FilterPairs, Mapping} ->
+        {ok, {Nodes, FilterPairs, Mapping}} ->
             HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
             ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
             ShardFrags2 = string:join(ShardFrags, ","),
-            FQ = build_fq(FilterPairs),
-            Params2 = Params ++ [{shards, ShardFrags2}, {fq, FQ}],
-            search(Core, Headers, Params2)
+            ShardFQs = build_shard_fq(FilterPairs, Mapping),
+            Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
+            search(Core, Headers, Params2);
+        {error, _} = Err ->
+            Err
     end.
 
 search(Core, Headers, Params) ->
@@ -251,10 +251,19 @@ search(Core, Headers, Params) ->
 base_url() ->
     "http://localhost:" ++ integer_to_list(port()) ++ "/solr".
 
-build_fq(Partitions) ->
-    GroupedByNode = yz_misc:group_by(Partitions, fun group_by_node/1),
-    Fields = [group_to_str(G) || G <- GroupedByNode],
-    string:join(Fields, " OR ").
+%% @private
+%%
+%% @doc Build list of per-node filter queries.
+-spec build_shard_fq(logical_cover_set(), solr_host_mapping()) ->
+                            [{binary(), string()}].
+build_shard_fq(LCoverSet, Mapping) ->
+    GroupedByNode = yz_misc:group_by(LCoverSet, fun group_by_node/1),
+    [begin
+         {Host, Port} = proplists:get_value(Node, Mapping),
+         Key = <<(list_to_binary(Host))/binary,":",(list_to_binary(Port))/binary>>,
+         Value = partition_filters_to_str(PartitionFilters),
+         {Key, Value}
+     end || {Node, PartitionFilters} <- GroupedByNode].
 
 %% @private
 %%
@@ -275,11 +284,8 @@ group_by_node({{Partition, Owner}, all}) ->
 group_by_node({{Partition, Owner}, FPFilter}) ->
     {Owner, {Partition, FPFilter}}.
 
-group_to_str({Owner, Partitions}) ->
-    OwnerQ = ?YZ_NODE_FIELD_S ++ ":" ++ atom_to_list(Owner),
-    "(" ++ OwnerQ ++ " AND " ++ "(" ++ partitions_to_str(Partitions) ++ "))".
-
-partitions_to_str(Partitions) ->
+-spec partition_filters_to_str([{lp(), logical_filter()}]) -> string().
+partition_filters_to_str(Partitions) ->
     F = fun({Partition, FPFilter}) ->
                 PNQ = pn_str(Partition),
                 FPQ = string:join(lists:map(fun fpn_str/1, FPFilter), " OR "),
