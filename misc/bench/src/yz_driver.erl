@@ -9,18 +9,23 @@
 -include_lib("basho_bench/include/basho_bench.hrl").
 -record(state, {fruits, pb_conns, index, bucket, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
--define(M1, 1000000).
--define(K100, 100000).
--define(K10, 10000).
--define(K1, 1000).
+
+-define(M100,   100000000).
+-define(M10,    10000000).
+-define(M1,     1000000).
+-define(K100,   100000).
+-define(K10,    10000).
+-define(K1,     1000).
 -define(FRUITS,
-        [{?M1, "blueberry apricot guava feijoa jackfruit jambul"},
-         {?K100, "apple grape orange pineapple strawberry kiwi"},
-         {?K10, "avocado raspberry persimmon blackberry cherry tomato"},
-         {?K1, "clementine lime lemon melon plum pear"},
-         {100, "marang nutmeg olive pecan peanut tangerine"},
-         {10, "nunga nance mulberry langsat karonda kumquat"},
-         {1, "korlan jocote genip elderberry citron jujube"}]).
+        [{?M100, "safou rimu medlar mayapple muskmelon kitembilla hackberry gac"},
+         {?M10, "pumpkin rollinia soncoya toyon yew wampee ugni tamarind"},
+         {?M1, "blueberry apricot guava feijoa jackfruit jambul limequat pulasan"},
+         {?K100, "apple grape orange pineapple strawberry kiwi huito lychee"},
+         {?K10, "avocado raspberry persimmon blackberry cherry tomato huckleberry elderberry"},
+         {?K1, "clementine lime lemon melon plum pear gooseberry honeydew"},
+         {100, "marang nutmeg olive pecan peanut tangerine barbadine duku"},
+         {10, "nunga nance mulberry langsat karonda kumquat bacupari bael"},
+         {1, "korlan jocote genip elderberry citron jujube abiu babaco"}]).
 
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 
@@ -267,7 +272,8 @@ fruit_key_val_gen(Id) ->
     fruit_key_val_gen(Id, ?K100).
 
 fruit_key_val_gen(Id, NumKeys) ->
-    Fruits2 = [{N, combine(?FRUITS, N)} || N <- [1, 10, 100, ?K1, ?K10, ?K100, ?M1]],
+    Fruits2 = [{N, combine(?FRUITS, N)}
+               || N <- [1, 10, 100, ?K1, ?K10, ?K100, ?M1, ?M10, ?M100]],
     Workers = basho_bench_config:get(concurrent),
     {Start, NumToWrite} = key_range(Id, NumKeys, Workers),
     Ref = make_ref(),
