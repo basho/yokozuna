@@ -83,7 +83,7 @@ public class FQShardTranslator extends SearchComponent {
         String shards = params.get(ShardParams.SHARDS);
         boolean hasShardURL = shards != null;
 
-        return hasShardURL | distrib;
+        return hasShardURL || distrib;
     }
 
 }
