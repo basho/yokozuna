@@ -2,17 +2,19 @@
 #
 # Build a source package of Yokozuna.
 #
-#> Usage:
-#>
-#>    ./src-pkg.sh <working dir> <version>
-#>
-#> Example:
-#>
-#>    ./src-pkg.sh /tmp 0.3.0
+## SYNOPSIS
+##
+##    ./src-pkg.sh [-rt riak_tag] working_dir version
+##
+## EXAMPLE
+##
+##    ./src-pkg.sh /tmp v0.3.0
+##
+##    ./src-pkg.sh -rt riak-2.0.0pre9 /tmp v0.13.0
 
 usage() {
     echo
-    grep '#>' $0 | tr -d '#>' | sed '$d'
+    grep '##' $0 | sed -r 's/##//' | sed '$d'
 }
 
 error() {
@@ -20,6 +22,27 @@ error() {
     usage
     exit 1
 }
+
+while [ $# -gt 0 ]
+do
+    case $1 in
+        -rt)
+            riak_tag=$2
+            shift
+            ;;
+        -h)
+            usage
+            exit 0
+            ;;
+        -*)
+            error "unrecognized option $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
 
 if [ ! $# -eq 2 ]; then
     error "incorrect number of arguments"
@@ -33,6 +56,10 @@ TGZ=$RIAK_DIR.tar.gz
 pushd $WD
 git clone git://github.com/basho/riak.git $RIAK_DIR
 pushd $RIAK_DIR
+if [ -n $riak_tag ]
+then
+    git checkout $riak_tag
+fi
 make deps
 pushd deps/yokozuna
 git checkout v$VSN
