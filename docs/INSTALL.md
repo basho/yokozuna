@@ -19,7 +19,7 @@ Official Packages
 ----------
 
 **WARNING**: The 2.0.0pre5 preview is very out of date as of the
-  0.12.0 release and thus the latest documentation will lead you
+  0.13.0 release and thus the latest documentation will lead you
   astray. It is recommended to use the source package for now until a
   more up-to-date official package is cut.
 
@@ -66,31 +66,26 @@ packages for production.
 Download the source package and corresponding md5 from one of the
 following locations.
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.13.0-src.tar.gz
 
-* http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz.md5
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.13.0-src.tar.gz.sha1
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.12.0-src.tar.gz
+Download using wget.
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.12.0-src.tar.gz.md5
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.13.0-src.tar.gz
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.13.0-src.tar.gz.sha1
 
-E.g. download from [riakcs.net][rcs].
+Verify the sha1 (might need to use `sha1sum`).
 
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.12.0-src.tar.gz.md5
-
-Verify the md5 (note: `md5` might be `md5sum`).
-
-	md5 riak-yokozuna-0.12.0-src.tar.gz
-	cat riak-yokozuna-0.12.0-src.tar.gz.md5
+    shasum -a1 -c riak-yokozuna-0.13.0-src.tar.gz.sha1 riak-yokozuna-0.13.0-src.tar.gz
 
 Unpack the archive.
 
-    tar zxvf riak-yokozuna-0.12.0-src.tar.gz
+    tar zxvf riak-yokozuna-0.13.0-src.tar.gz
 
 Compile.
 
-	cd riak-yokozuna-0.12.0-src
+	cd riak-yokozuna-0.13.0-src
 	make
 
 To deploy Riak-Yokozuna in a production configuration then you'll want
@@ -124,8 +119,6 @@ release.
 
 
 [bcs]: http://docs.basho.com/riak/latest/cookbooks/Basic-Cluster-Setup/
-
-[rcs]: https://www.riakcs.net/
 
 Install From GitHub
 -----------------
