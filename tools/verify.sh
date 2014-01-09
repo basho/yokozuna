@@ -110,24 +110,6 @@ function sanity_check()
     fi
 }
 
-function verify_yokozuna()
-{
-    maybe_clone yokozuna $YZ_SRC $YZ_BRANCH
-    pushd yokozuna
-
-    info "build yokozuna"
-    if ! make; then
-        error "failed to compile yokozuna"
-    fi
-
-    info "run yokozuna unit tests"
-    if ! make test; then
-        error "yokozuna unit tests failed ($tmp)"
-    fi
-
-    popd
-}
-
 function compile_yz_bench()
 {
     pushd yokozuna/misc/bench
@@ -284,7 +266,6 @@ WORK_DIR=$(pwd)
 
 ln -s $PREV_DIR $(basename $PREV_DIR)
 
-verify_yokozuna
 compile_yz_bench
 build_riak_yokozuna
 build_riak_test
