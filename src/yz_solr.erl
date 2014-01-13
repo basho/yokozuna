@@ -175,6 +175,14 @@ index(Core, Docs, DelOps) ->
         Err -> throw({"Failed to index docs", Ops, Err})
     end.
 
+%% @doc Determine if Solr is running.
+-spec is_up() -> boolean().
+is_up() ->
+    case cores() of
+        {ok, _} -> true;
+        _ -> false
+    end.
+
 prepare_json(Docs) ->
     Content = {struct, [{add, encode_doc(D)} || D <- Docs]},
     mochijson2:encode(Content).

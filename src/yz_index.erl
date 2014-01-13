@@ -82,14 +82,25 @@ create(Name, SchemaName) ->
             end
     end.
 
-%% @doc Determine if an index exists in the ring and on disk.
+%% @doc Determine if an index exists. For an index to exist it must 1)
+%% be written to official index list, 2) have a corresponding index
+%% dir in the root dir and 3) respond to a ping indicating it started
+%% properly.  If Solr is down then the check will fallback to
+%% performing only the first two checks. If they fail then it
+%% shouldn't exist in Solr.
 -spec exists(index_name()) -> boolean().
 exists(Name) ->
     RingIndexes = get_indexes_from_ring(yz_misc:get_ring(raw)),
     DiskIndexNames = get_indexes_from_disk(?YZ_ROOT_DIR),
     InRing = orddict:is_key(Name, RingIndexes),
     OnDisk = lists:member(Name, DiskIndexNames),
-    InRing andalso OnDisk.
+    case yz_solr:is_up() of
+        true ->
+            Ping = yz_solr:ping(Name),
+            InRing andalso OnDisk andalso yz_solr:ping(Name);
+        false ->
+            InRing andalso OnDisk
+    end.
 
 %% @doc Removed the index `Name' from the entire cluster.
 -spec remove(index_name()) -> ok | {error, badrpc}.
