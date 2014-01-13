@@ -112,7 +112,7 @@ function sanity_check()
 
 function compile_yz_bench()
 {
-    pushd yokozuna/misc/bench
+    pushd riak_yz/deps/yokozuna/misc/bench
 
     info "compile yokozuna bench driver"
     if ! ../../rebar get-deps; then
@@ -134,9 +134,19 @@ function build_riak_yokozuna()
     info "build riak_yz"
 
     mkdir deps
-    pushd deps
-    maybe_clone yokozuna $YZ_SRC $YZ_BRANCH
-    popd
+    pushd deps                  # in deps
+
+    if [ $YZ_BRANCH = "_using_local_" ]; then
+        info "using local working copy of Yokozuna"
+        rm -rf yokozuna
+        maybe_clone yokozuna $YZ_SRC $YZ_BRANCH
+    elif [ $YZ_BRANCH != "develop" ]; then
+        info "using branch $YZ_BRANCH of Yokozuna"
+        cd yokozuna
+        git checkout $YZ_BRANCH
+    fi
+
+    popd                        # out deps
 
     if ! make; then
         error "failed to make riak_yz"
@@ -178,7 +188,7 @@ function setup_rt_dir()
 
 function run_riak_test_tests()
 {
-    pushd yokozuna
+    pushd riak_yz/deps/yokozuna
 
     info "compile yokozuna riak_test tests"
     if ! make compile-riak-test; then
@@ -219,6 +229,7 @@ do
             ;;
         --yz-source)
             YZ_SRC=$2
+            YZ_BRANCH=_using_local_
             shift
             ;;
         --yz-branch)
@@ -266,8 +277,8 @@ WORK_DIR=$(pwd)
 
 ln -s $PREV_DIR $(basename $PREV_DIR)
 
-compile_yz_bench
 build_riak_yokozuna
+compile_yz_bench
 build_riak_test
 setup_rt_dir
 run_riak_test_tests
