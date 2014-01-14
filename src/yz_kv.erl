@@ -160,19 +160,18 @@ get_short_preflist({Bucket, _} = BKey, Ring) ->
 %% check that.
 -spec should_handoff({term(), {p(), node()}}) -> boolean().
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
-    BucketTypesPrefix = {core, bucket_types},
-    Server = {riak_core_metadata_hashtree, TargetNode},
-    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
-    %% TODO Even though next call is local should also add 1s timeout
-    %% since this call blocks vnode.  Or see above.
-    LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
-    case LocalHash == RemoteHash of
+    case ?YZ_ENABLED of
         true ->
-            true;
+            case is_metadata_consistent(TargetNode) of
+                true ->
+                    true;
+                false ->
+                    ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false
+            end;
         false ->
-            ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
-                  [node(), TargetNode]),
-            false
+            true
     end.
 
 index(Obj, Reason, P) ->
@@ -416,6 +415,20 @@ get_and_set_tree(Partition) ->
             erlang:put({tree,Partition}, undefined),
             not_registered
     end.
+
+%% @private
+%%
+%% @doc Determine if the local node and remote node have the same
+%% metadata.
+-spec is_metadata_consistent(node()) -> boolean().
+is_metadata_consistent(RemoteNode) ->
+    BucketTypesPrefix = {core, bucket_types},
+    Server = {riak_core_metadata_hashtree, RemoteNode},
+    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
+    %% TODO Even though next call is local should also add 1s timeout
+    %% since this call blocks vnode.  Or see above.
+    LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
+    LocalHash == RemoteHash.
 
 %% @private
 %%
