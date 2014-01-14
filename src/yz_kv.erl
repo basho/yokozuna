@@ -160,7 +160,7 @@ get_short_preflist({Bucket, _} = BKey, Ring) ->
 %% check that.
 -spec should_handoff({term(), {p(), node()}}) -> boolean().
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
-    case ?YZ_ENABLED of
+    case ?YZ_ENABLED andalso is_service_up(?YZ_SVC_NAME, TargetNode) of
         true ->
             case is_metadata_consistent(TargetNode) of
                 true ->
@@ -438,6 +438,13 @@ is_metadata_consistent(RemoteNode) ->
 is_owner_or_future_owner(P, Node, Ring) ->
     OwnedAndNext = yz_misc:owned_and_next_partitions(Node, Ring),
     ordsets:is_element(P, OwnedAndNext).
+
+%% @private
+%%
+%% @doc Determine if service is up on node.
+-spec is_service_up(atom(), node()) -> boolean().
+is_service_up(Service, Node) ->
+    lists:member(Service, riak_core_node_watcher:services(Node)).
 
 %% @private
 %%
