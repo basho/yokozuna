@@ -82,13 +82,25 @@ create(Name, SchemaName) ->
             end
     end.
 
+%% @doc Determine if an index exists. For an index to exist it must 1)
+%% be written to official index list, 2) have a corresponding index
+%% dir in the root dir and 3) respond to a ping indicating it started
+%% properly.  If Solr is down then the check will fallback to
+%% performing only the first two checks. If they fail then it
+%% shouldn't exist in Solr.
 -spec exists(index_name()) -> boolean().
 exists(Name) ->
-    Indexes = get_indexes_from_ring(yz_misc:get_ring(raw)),
-    InRing = orddict:is_key(Name, Indexes),
-    SolrPing = yz_solr:ping(Name),
-    InRing andalso SolrPing.
-
+    RingIndexes = get_indexes_from_ring(yz_misc:get_ring(raw)),
+    DiskIndexNames = get_indexes_from_disk(?YZ_ROOT_DIR),
+    InRing = orddict:is_key(Name, RingIndexes),
+    OnDisk = lists:member(Name, DiskIndexNames),
+    case yz_solr:is_up() of
+        true ->
+            Ping = yz_solr:ping(Name),
+            InRing andalso OnDisk andalso yz_solr:ping(Name);
+        false ->
+            InRing andalso OnDisk
+    end.
 
 %% @doc Removed the index `Name' from the entire cluster.
 -spec remove(index_name()) -> ok | {error, badrpc}.
@@ -106,6 +118,22 @@ remove(Name) ->
                     {error, badrpc}
             end
     end.
+
+%% @doc Determine list of indexes based on filesystem as opposed to
+%% the Riak ring or Solr HTTP resource.
+%%
+%% NOTE: This function assumes that all Yokozuna indexes live directly
+%% under the Yokozuna root data directory and that any dir with a
+%% `core.properties' file is an index. DO NOT create a dir with a
+%% `core.properties' for any other reason or it will confuse this
+%% function and potentially have other consequences up the stack.
+-spec get_indexes_from_disk(string()) -> [index_name()].
+get_indexes_from_disk(Dir) ->
+    Files = filelib:wildcard(filename:join([Dir, "*"])),
+    [unicode:characters_to_binary(filename:basename(F))
+     || F <- Files,
+        filelib:is_dir(F) andalso
+            filelib:is_file(filename:join([F, "core.properties"]))].
 
 -spec get_indexes_from_ring(ring()) -> indexes().
 get_indexes_from_ring(Ring) ->

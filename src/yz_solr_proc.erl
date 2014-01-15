@@ -115,7 +115,7 @@ handle_cast(Req, S) ->
     {noreply, S}.
 
 handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
-    case is_up() of
+    case yz_solr:is_up() of
         true ->
             %% solr finished its startup, be merry
             ?INFO("solr is up", []),
@@ -239,16 +239,6 @@ get_pid(Port) ->
     case erlang:port_info(Port) of
         undefined -> undefined;
         PI -> proplists:get_value(os_pid, PI)
-    end.
-
-%% @private
-%%
-%% @doc Determine if Solr is running.
--spec is_up() -> boolean().
-is_up() ->
-    case yz_solr:cores() of
-        {ok, _} -> true;
-        _ -> false
     end.
 
 %% @private
