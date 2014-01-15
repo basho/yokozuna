@@ -137,16 +137,6 @@ get_index({Bucket, _}, Ring) ->
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
     proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
 
-%% @doc Determine the "short" preference list given the `BKey' and
-%% `Ring'.  A short preflist is one that defines the preflist by
-%% partition number and N value.
--spec get_short_preflist(bkey(), ring()) -> short_preflist().
-get_short_preflist({Bucket, _} = BKey, Ring) ->
-    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    NVal = riak_core_bucket:n_val(BProps),
-    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-    {first_partition(PrimaryPL), NVal}.
-
 %% @doc Called by KV vnode to determine if handoff should start or
 %% not.  Yokozuna needs to make sure that the bucket types have been
 %% transfered first.  Otherwise the bucket-to-index associations may
@@ -185,7 +175,7 @@ index(Obj, Reason, P) ->
                     BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
                     try
                         Index = get_index(BKey, Ring),
-                        ShortPL = get_short_preflist(BKey, Ring),
+                        ShortPL = riak_kv_util:get_index_n(BKey),
                         case should_index(Index) of
                             true ->
                                 index(Obj, Reason, Ring, P, BKey, ShortPL, Index);

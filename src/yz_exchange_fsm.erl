@@ -201,7 +201,7 @@ repair(Partition, {remote_missing, KeyBin}) ->
     Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey, Ring),
-    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    ShortPL = riak_kv_util:get_index_n(BKey),
     FakeObj = fake_kv_object(BKey),
     %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
     %% assume that Yokozuna is enabled and current node is owner.
@@ -219,7 +219,7 @@ repair(Partition, {_Reason, KeyBin}) ->
     Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey, Ring),
-    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    ShortPL = riak_kv_util:get_index_n(BKey),
     %% Can assume here that Yokozua is enabled and current
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
