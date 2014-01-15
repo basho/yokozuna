@@ -96,7 +96,6 @@ exists(Name) ->
     OnDisk = lists:member(Name, DiskIndexNames),
     case yz_solr:is_up() of
         true ->
-            Ping = yz_solr:ping(Name),
             InRing andalso OnDisk andalso yz_solr:ping(Name);
         false ->
             InRing andalso OnDisk
