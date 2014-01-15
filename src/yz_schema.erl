@@ -37,17 +37,19 @@ filename(SchemaName) ->
 %% @doc Retrieve the raw schema from Riak.
 -spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
-    Ring = yz_misc:get_ring(transformed),
-    Schemas = get_schemas_from_ring(Ring),
-    R = orddict:fetch(Name, Schemas),
+    R = riak_core_metadata:get({yokozuna, schemas}, Name),
     case {Name, R} of
         {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
-            {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
+            {ok, _} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
         {_, undefined} ->
             {error, notfound};
         {_, R} ->
             {ok, yz_misc:decompress(R)}
     end.
+
+-spec add_schema(schemas(), {schema_name(), compressed_schema()}) -> schemas().
+add_schema(Schemas, {Name, CompressedSchema}) ->
+    orddict:store(Name, CompressedSchema, Schemas).
 
 %% @doc Store the `RawSchema' with `Name'.
 -spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
@@ -55,23 +57,10 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
             CompressedSchema = yz_misc:compress(RawSchema),
-            % either unchanged or ok, both are good
-            yz_misc:set_ring_meta(
-                ?YZ_META_SCHEMAS, [], fun add_schema/2, {Name, CompressedSchema}),
+            riak_core_metadata:put({yokozuna, schemas}, Name, ["CompressedSchema"]),
             ok;
         {error, _} = Err ->
             Err
-    end.
-
--spec add_schema(schemas(), {schema_name(), compressed_schema()}) -> schemas().
-add_schema(Schemas, {Name, CompressedSchema}) ->
-    orddict:store(Name, CompressedSchema, Schemas).
-
--spec get_schemas_from_ring(ring()) -> indexes().
-get_schemas_from_ring(Ring) ->
-    case riak_core_ring:get_meta(?YZ_META_SCHEMAS, Ring) of
-        {ok, Schemas} -> Schemas;
-        undefined -> []
     end.
 
 %% @doc Checks if the given `SchemaName' actually exists.

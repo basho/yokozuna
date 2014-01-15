@@ -336,11 +336,12 @@ confirm_bad_schema(Cluster) ->
 confirm_compressed_metadata(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_compressed_metadata ~s [~p]", [Name, HP]),
+    % riak_core_metadata_manager:start_link(),
     ok = yz_schema:store(Name, RawSchema),
-    Ring = yz_misc:get_ring(transformed),
-    Schemas = yz_schema:get_schemas_from_ring(Ring),
-    R = orddict:fetch(Name, Schemas),
+    lager:info("STORED: ~p", [Name]),
+    R = riak_core_metadata:get({yokozuna, schemas}, Name),
     ?assertEqual(RawSchema, yz_misc:decompress(R)).
+
 
 %%%===================================================================
 %%% Helpers
