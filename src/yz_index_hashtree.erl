@@ -437,7 +437,9 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
         {ok, Tree} ->
             spawn_link(
               fun() ->
+                      Remote(init, self()),
                       Result = hashtree:compare(Tree, Remote, AccFun, Acc),
+                      Remote(final, self()),
                       gen_server:reply(From, Result)
               end)
     end,

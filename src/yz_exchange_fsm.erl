@@ -156,7 +156,9 @@ key_exchange(timeout, S=#state{index=Index,
     Remote = fun(get_bucket, {L, B}) ->
                      exchange_bucket_kv(KVTree, IndexN, L, B);
                 (key_hashes, Segment) ->
-                     exchange_segment_kv(KVTree, IndexN, Segment)
+                     exchange_segment_kv(KVTree, IndexN, Segment);
+                (_, _) ->
+                     ok
              end,
 
     AccFun = fun(KeyDiff, Count) ->
