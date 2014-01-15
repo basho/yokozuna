@@ -37,15 +37,16 @@ filename(SchemaName) ->
 %% @doc Retrieve the raw schema from Riak.
 -spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
-    C = yz_kv:client(),
-    R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
+    Ring = yz_misc:get_ring(transformed),
+    Schemas = get_schemas_from_ring(Ring),
+    R = orddict:fetch(Name, Schemas),
     case {Name, R} of
-        {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
+        {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
             {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
-        {_, {error, Reason}} ->
-            {error, Reason};
-        {_, {value, RawSchema}} ->
-            {ok, RawSchema}
+        {_, undefined} ->
+            {error, notfound};
+        {_, R} ->
+            {ok, yz_misc:decompress(R)}
     end.
 
 %% @doc Store the `RawSchema' with `Name'.
@@ -53,10 +54,24 @@ get(Name) ->
 store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
-            C = yz_kv:client(),
-            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
+            CompressedSchema = yz_misc:compress(RawSchema),
+            % either unchanged or ok, both are good
+            yz_misc:set_ring_meta(
+                ?YZ_META_SCHEMAS, [], fun add_schema/2, {Name, CompressedSchema}),
+            ok;
         {error, _} = Err ->
             Err
+    end.
+
+-spec add_schema(schemas(), {schema_name(), compressed_schema()}) -> schemas().
+add_schema(Schemas, {Name, CompressedSchema}) ->
+    orddict:store(Name, CompressedSchema, Schemas).
+
+-spec get_schemas_from_ring(ring()) -> indexes().
+get_schemas_from_ring(Ring) ->
+    case riak_core_ring:get_meta(?YZ_META_SCHEMAS, Ring) of
+        {ok, Schemas} -> Schemas;
+        undefined -> []
     end.
 
 %% @doc Checks if the given `SchemaName' actually exists.

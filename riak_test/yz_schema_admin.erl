@@ -190,6 +190,7 @@
 confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
+    confirm_compressed_metadata(Cluster, <<"some_schema">>, ?TEST_SCHEMA),
     confirm_create_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_get_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_not_found(Cluster, <<"not_a_schema">>),
@@ -329,6 +330,17 @@ confirm_bad_schema(Cluster) ->
         end,
     yz_rt:wait_until(Cluster, F).
 
+%% @doc Confirm that creating a new shema gets added to the Ring
+%%      metadata as a compressed blob, and is retrievable
+%%      as its original raw text
+confirm_compressed_metadata(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_compressed_metadata ~s [~p]", [Name, HP]),
+    ok = yz_schema:store(Name, RawSchema),
+    Ring = yz_misc:get_ring(transformed),
+    Schemas = yz_schema:get_schemas_from_ring(Ring),
+    R = orddict:fetch(Name, Schemas),
+    ?assertEqual(RawSchema, yz_misc:decompress(R)).
 
 %%%===================================================================
 %%% Helpers
