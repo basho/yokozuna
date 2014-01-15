@@ -303,7 +303,7 @@ field_exists(Index, Field, ConnInfo) ->
     fun(Node) ->
             HP = yz_rt:solr_http(proplists:get_value(Node, ConnInfo)),
             URL = field_url(HP, Index, Field),
-            lager:info("verify ~s added ~s", [URL]),
+            lager:info("verify ~s added ~s", [Index, URL]),
             {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
             Status == "200"
     end.

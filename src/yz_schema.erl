@@ -37,14 +37,14 @@ filename(SchemaName) ->
 %% @doc Retrieve the raw schema from Riak.
 -spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
-    R = riak_core_metadata:get({yokozuna, schemas}, Name),
+    R = riak_core_metadata:get(?YZ_META_SCHEMAS, Name),
     case {Name, R} of
         {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
             {ok, _} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
         {_, undefined} ->
             {error, notfound};
         {_, R} ->
-            {ok, yz_misc:decompress(R)}
+            {ok, iolist_to_binary(yz_misc:decompress(R))}
     end.
 
 -spec add_schema(schemas(), {schema_name(), compressed_schema()}) -> schemas().
@@ -57,7 +57,7 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
             CompressedSchema = yz_misc:compress(RawSchema),
-            riak_core_metadata:put({yokozuna, schemas}, Name, CompressedSchema),
+            riak_core_metadata:put(?YZ_META_SCHEMAS, Name, CompressedSchema),
             ok;
         {error, _} = Err ->
             Err

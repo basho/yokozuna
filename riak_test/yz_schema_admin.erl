@@ -2,6 +2,7 @@
 -module(yz_schema_admin).
 -compile(export_all).
 -import(yz_rt, [host_entries/1, select_random/1]).
+-include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
@@ -334,13 +335,13 @@ confirm_bad_schema(Cluster) ->
 %%      metadata as a compressed blob, and is retrievable
 %%      as its original raw text
 confirm_compressed_metadata(Cluster, Name, RawSchema) ->
-    HP = select_random(host_entries(rt:connection_info(Cluster))),
-    lager:info("confirm_compressed_metadata ~s [~p]", [Name, HP]),
-    % riak_core_metadata_manager:start_link(),
-    ok = yz_schema:store(Name, RawSchema),
-    lager:info("STORED: ~p", [Name]),
-    R = riak_core_metadata:get({yokozuna, schemas}, Name),
-    ?assertEqual(RawSchema, yz_misc:decompress(R)).
+    Node = select_random(Cluster),
+    lager:info("confirm_compressed_metadata ~s [~p]", [Name, Node]),
+    ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]),
+    R = rpc:call(Node, riak_core_metadata, get, [?YZ_META_SCHEMAS, Name]),
+    ?assertEqual(RawSchema, iolist_to_binary(yz_misc:decompress(R))),
+    {ok, RawSchema2} = rpc:call(Node, yz_schema, get, [Name]),
+    ?assertEqual(RawSchema, RawSchema2).
 
 
 %%%===================================================================
