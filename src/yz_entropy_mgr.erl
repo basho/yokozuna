@@ -29,6 +29,9 @@
 
 -record(state, {mode :: exchange_mode(),
                 trees :: trees(),
+                %% `kv_trees' is just local cache of KV Tree Pids, no
+                %% need to poke them
+                kv_trees :: trees(),
                 tree_queue :: trees(),
                 locks :: [{pid(),reference()}],
                 build_tokens = 0 :: non_neg_integer(),
@@ -136,6 +139,7 @@ init([]) ->
            end,
     S = #state{mode=Mode,
                trees=Trees,
+               kv_trees=[],
                tree_queue=[],
                locks=[],
                exchanges=[],
@@ -149,7 +153,7 @@ handle_call({get_lock, Type, Pid}, _From, S) ->
     {reply, Reply, S2};
 
 handle_call({get_tree, Index}, _From, S) ->
-    Resp = get_tree(Index, S),
+    Resp = get_tree(?YZ_SVC_NAME, Index, S),
     {reply, Resp, S};
 
 handle_call({manual_exchange, Exchange}, _From, S) ->
@@ -207,6 +211,28 @@ handle_info(reset_build_tokens, S) ->
     schedule_reset_build_tokens(),
     {noreply, S2};
 
+handle_info({{hashtree_pid, Index}, Reply}, S) ->
+    %% Reply from KV VNode, add Tree's `Pid' to locally cached list of
+    %% KV Tree Pids.
+    case Reply of
+        {ok, Pid} when is_pid(Pid) ->
+            case get_tree(riak_kv, Index, S) of
+                {ok, Pid} ->
+                    {noreply, S};
+                _ ->
+                    %% Either the Pid has changed or nothing was
+                    %% registered for the index. In any case add the
+                    %% Pid.
+                    monitor(process, Pid),
+                    KVTrees1 = S#state.kv_trees,
+                    KVTrees2 = orddict:store(Index, Pid, KVTrees1),
+                    S2 = S#state{kv_trees=KVTrees2},
+                    {noreply, S2}
+            end;
+        _ ->
+            %% The Tree doesn't exist on the KV side.
+            {noreply, S}
+    end;
 handle_info({'DOWN', Ref, _, Obj, Status}, S) ->
     %% NOTE: The down msg could be for exchange FSM or tree
     S2 = maybe_release_lock(Ref, S),
@@ -263,9 +289,13 @@ settings() ->
     end.
 
 %% @private
--spec get_tree(p(), state()) -> {ok, tree()} | not_registered.
-get_tree(Index, S) ->
-    case orddict:find(Index, S#state.trees) of
+-spec get_tree(atom(), p(), state()) -> {ok, tree()} | not_registered.
+get_tree(Service, Index, S) ->
+    Trees = case Service of
+                riak_kv -> S#state.kv_trees;
+                yokozuna -> S#state.trees
+            end,
+    case orddict:find(Index, Trees) of
         {ok, Tree} -> {ok, Tree};
         error -> not_registered
     end.
@@ -317,9 +347,22 @@ reload_hashtrees(true, Ring, S=#state{mode=Mode, trees=Trees}) ->
                                  automatic -> enqueue_exchange(Idx, SAcc)
                              end
                      end, S2, L),
-    S3;
+    S4 = reload_kv_trees(Ring, S3),
+    S4;
 reload_hashtrees(false, _, S) ->
     S.
+
+%% @private
+reload_kv_trees(Ring, S) ->
+    KVTrees = S#state.kv_trees,
+    Indices = riak_core_ring:my_indices(Ring),
+    Existing = dict:from_list(KVTrees),
+    MissingIdx = [Idx || Idx <- Indices,
+                         not dict:is_key(Idx, Existing)],
+    %% Make async request for tree pid, add to `kv_trees' in `handle_info'.
+    [riak_kv_vnode:request_hashtree_pid(Idx) || Idx <- MissingIdx],
+    S.
+
 
 %% @private
 %%
@@ -375,10 +418,15 @@ maybe_clear_exchange(Ref, Status, S) ->
             S#state{exchanges=Exchanges}
     end.
 
+%% @private
+%%
+%% @doc If the `Pid' matches a cached copy for either a Yokozuna or KV
+%% trees then remove it from the list.
 -spec maybe_clear_registered_tree(pid(), state()) -> state().
 maybe_clear_registered_tree(Pid, S) when is_pid(Pid) ->
-    Trees = lists:keydelete(Pid, 2, S#state.trees),
-    S#state{trees=Trees};
+    YZTrees = lists:keydelete(Pid, 2, S#state.trees),
+    KVTrees = lists:keydelete(Pid, 2, S#state.kv_trees),
+    S#state{trees=YZTrees, kv_trees=KVTrees};
 maybe_clear_registered_tree(_, S) ->
     S.
 
@@ -459,28 +507,30 @@ start_exchange(Index, Preflist, Ring, S) ->
         {false, _} ->
             {not_responsible, S};
         {true, false} ->
-            %% TODO: check for not_registered
-            %%
-            %% TODO: even though ownership change is checked this
-            %%       could still return {error,wrong_node} because
+            %% NOTE: even though ownership change is checked this
+            %%       could still return `{error,wrong_node}' because
             %%       ownership change could have started since the
             %%       check.
-            {ok, YZTree} = get_tree(Index, S),
-            %% TODO: use async version in case vnode is backed up
-            %%
-            %% TODO: hashtree_pid can return {error, wrong_node}
-            %%       during ownership transfer, handle that case
-            {ok, KVTree} = riak_kv_vnode:hashtree_pid(Index),
-            case yz_exchange_fsm:start(Index, Preflist, YZTree,
-                                       KVTree, self()) of
-                {ok, FsmPid} ->
-                    Ref = monitor(process, FsmPid),
-                    E = S#state.exchanges,
-                    %% TODO: add timestamp so we know how long ago
-                    %%       exchange was started
-                    {ok, S#state{exchanges=[{Index,Ref,FsmPid}|E]}};
-                {error, Reason} ->
-                    {Reason, S}
+            YZ = get_tree(?YZ_SVC_NAME, Index, S),
+            KV = get_tree(riak_kv, Index, S),
+
+            case {YZ, KV} of
+                {{ok, YZTree}, {ok, KVTree}} ->
+                    case yz_exchange_fsm:start(Index, Preflist, YZTree,
+                                               KVTree, self()) of
+                        {ok, FsmPid} ->
+                            Ref = monitor(process, FsmPid),
+                            E = S#state.exchanges,
+                            %% TODO: add timestamp so we know how long ago
+                            %%       exchange was started
+                            {ok, S#state{exchanges=[{Index,Ref,FsmPid}|E]}};
+                        {error, Reason} ->
+                            {Reason, S}
+                    end;
+                {{ok,_}, NotOK} ->
+                    {{kv_tree, NotOK}, S};
+                {NotOK, {ok,_}} ->
+                    {{yz_tree, NotOK}, S}
             end;
         {true, true} ->
             {pending_ownership_change, S}

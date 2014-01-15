@@ -2,6 +2,14 @@
 #
 # Temporary script to build JAR file containing customer Solr request
 # handlers.
+set -e
+
+if [ -z "$SKIP_JAVA" ]; then
+    if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
+        echo "Couldn't find javac and/or jar, which is needed to compile Yokozuna."
+        exit 1
+    fi
+fi
 
 if [ $(basename $PWD) != "tools" ]
 then
@@ -27,7 +35,11 @@ if [ ! -e $SOLR_JAR_DIR ]; then
 fi
 
 echo "Compile..."
-javac -cp "$SOLR_JAR_DIR/*" ../java_src/com/basho/yokozuna/handler/*.java ../java_src/com/basho/yokozuna/query/*.java ../java_src/com/basho/yokozuna/monitor/*.java
+javac -cp "$SOLR_JAR_DIR/*" \
+    ../java_src/com/basho/yokozuna/handler/*.java \
+    ../java_src/com/basho/yokozuna/handler/component/*.java \
+    ../java_src/com/basho/yokozuna/query/*.java \
+    ../java_src/com/basho/yokozuna/monitor/*.java
 echo "Create yokozuna.jar..."
 if [ ! -e "../priv/java_lib" ]; then
     mkdir ../priv/java_lib

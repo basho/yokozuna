@@ -22,8 +22,6 @@
 -include("yokozuna.hrl").
 -compile(export_all).
 
--define(YZ_DEFAULT_DIR, filename:join(["data", "yz"])).
-
 %% @doc This module contains functionaity for using and administrating
 %%      indexes.  In this case an index is an instance of a Solr Core.
 
@@ -31,7 +29,19 @@
 %%% API
 %%%===================================================================
 
--spec create(string()) -> ok.
+%% @doc Get the list of buckets associated with `Index'.
+-spec associated_buckets(index_name(), ring()) -> [bucket()].
+associated_buckets(Index, Ring) ->
+    AllProps = riak_core_bucket:get_buckets(Ring),
+    Assoc = [riak_core_bucket:name(BProps)
+             || BProps <- AllProps,
+                proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE) == Index],
+    case is_default_type_indexed(Index, Ring) of
+        true -> [Index|Assoc];
+        false -> Assoc
+    end.
+
+-spec create(index_name()) -> ok.
 create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
 
@@ -48,9 +58,9 @@ create(Name) ->
 %% NOTE: All create requests are serialized through the claimant node
 %%       to avoid races between disjoint nodes.  If the claimant is
 %%       down no indexes may be created.
--spec create(string(), schema_name()) -> ok |
-                                         {error, schema_not_found} |
-                                         {error, {rpc_fail, node(), term()}}.
+-spec create(index_name(), schema_name()) -> ok |
+                                             {error, schema_not_found} |
+                                             {error, {rpc_fail, node(), term()}}.
 create(Name, SchemaName) ->
     case yz_schema:exists(SchemaName) of
         false ->
@@ -72,13 +82,25 @@ create(Name, SchemaName) ->
             end
     end.
 
+%% @doc Determine if an index exists. For an index to exist it must 1)
+%% be written to official index list, 2) have a corresponding index
+%% dir in the root dir and 3) respond to a ping indicating it started
+%% properly.  If Solr is down then the check will fallback to
+%% performing only the first two checks. If they fail then it
+%% shouldn't exist in Solr.
 -spec exists(index_name()) -> boolean().
 exists(Name) ->
-    Indexes = get_indexes_from_ring(yz_misc:get_ring(raw)),
-    InRing = orddict:is_key(Name, Indexes),
-    SolrPing = yz_solr:ping(Name),
-    InRing andalso SolrPing.
-
+    RingIndexes = get_indexes_from_ring(yz_misc:get_ring(raw)),
+    DiskIndexNames = get_indexes_from_disk(?YZ_ROOT_DIR),
+    InRing = orddict:is_key(Name, RingIndexes),
+    OnDisk = lists:member(Name, DiskIndexNames),
+    case yz_solr:is_up() of
+        true ->
+            Ping = yz_solr:ping(Name),
+            InRing andalso OnDisk andalso yz_solr:ping(Name);
+        false ->
+            InRing andalso OnDisk
+    end.
 
 %% @doc Removed the index `Name' from the entire cluster.
 -spec remove(index_name()) -> ok | {error, badrpc}.
@@ -96,6 +118,22 @@ remove(Name) ->
                     {error, badrpc}
             end
     end.
+
+%% @doc Determine list of indexes based on filesystem as opposed to
+%% the Riak ring or Solr HTTP resource.
+%%
+%% NOTE: This function assumes that all Yokozuna indexes live directly
+%% under the Yokozuna root data directory and that any dir with a
+%% `core.properties' file is an index. DO NOT create a dir with a
+%% `core.properties' for any other reason or it will confuse this
+%% function and potentially have other consequences up the stack.
+-spec get_indexes_from_disk(string()) -> [index_name()].
+get_indexes_from_disk(Dir) ->
+    Files = filelib:wildcard(filename:join([Dir, "*"])),
+    [unicode:characters_to_binary(filename:basename(F))
+     || F <- Files,
+        filelib:is_dir(F) andalso
+            filelib:is_file(filename:join([F, "core.properties"]))].
 
 -spec get_indexes_from_ring(ring()) -> indexes().
 get_indexes_from_ring(Ring) ->
@@ -115,7 +153,7 @@ get_info_from_ring(Ring, Name) ->
 %% NOTE: This should typically be called by a the ring handler in
 %%       `yz_event'.  The `create/1' API should be used to create a
 %%       cluster-wide index.
--spec local_create(ring(), string()) -> ok.
+-spec local_create(ring(), index_name()) -> ok.
 local_create(Ring, Name) ->
     %% TODO: Allow data dir to be changed
     IndexDir = index_dir(Name),
@@ -127,16 +165,26 @@ local_create(Ring, Name) ->
     case yz_schema:get(SchemaName) of
         {ok, RawSchema} ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
+            LocalSchemaFile = filename:join([".", yz_schema:filename(SchemaName)]),
 
             yz_misc:make_dirs([ConfDir, DataDir]),
             yz_misc:copy_files(ConfFiles, ConfDir, update),
+
+            %% Delete `core.properties' file or CREATE may complain
+            %% about the core already existing. This can happen when
+            %% the core is initially created with a bad schema. Solr
+            %% gets in a state where CREATE thinks the core already
+            %% exists but RELOAD says no core exists.
+            PropsFile = filename:join([IndexDir, "core.properties"]),
+            file:delete(PropsFile),
+
             ok = file:write_file(SchemaFile, RawSchema),
 
             CoreProps = [
                          {name, Name},
                          {index_dir, IndexDir},
                          {cfg_file, ?YZ_CORE_CFG_FILE},
-                         {schema_file, SchemaFile}
+                         {schema_file, LocalSchemaFile}
                         ],
             case yz_solr:core(create, CoreProps) of
                 {ok, _, _} ->
@@ -145,13 +193,13 @@ local_create(Ring, Name) ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
             ok;
-        {error, _, Reason} ->
+        {error, Reason} ->
             lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
             ok
     end.
 
 %% @doc Remove the index `Name' locally.
--spec local_remove(string()) -> ok.
+-spec local_remove(index_name()) -> ok.
 local_remove(Name) ->
     CoreProps = [
                     {core, Name},
@@ -163,9 +211,40 @@ local_remove(Name) ->
 name(Info) ->
     Info#index_info.name.
 
+%% @doc Reload the `Index' cluster-wide. By default this will also
+%% pull the latest version of the schema associated with the
+%% index. This call will block for up 5 seconds. Any node which could
+%% not reload its index will be returned in a list of failed nodes.
+%%
+%% Options:
+%%
+%%   `{schema, boolean()}' - Whether to reload the schema, defaults to
+%%   true.
+%%
+%%   `{timeout, ms()}' - Timeout in milliseconds.
+-spec reload(index_name()) -> {ok, [node()]} | {error, reload_errs()}.
+reload(Index) ->
+    reload(Index, []).
+
+-spec reload(index_name(), reload_opts()) -> {ok, [node()]} |
+                                             {error, reload_errs()}.
+reload(Index, Opts) ->
+    TO = proplists:get_value(timeout, Opts, 5000),
+    {Responses, Down} =
+        riak_core_util:rpc_every_member_ann(?MODULE, reload_local, [Index, Opts], TO),
+    Down2 = [{Node, {error,down}} || Node <- Down],
+    BadResponses = [R || {_,{error,_}}=R <- Responses],
+    case Down2 ++ BadResponses of
+        [] ->
+            Nodes = [Node || {Node,_} <- Responses],
+            {ok, Nodes};
+        Errors ->
+            {error, Errors}
+    end.
+
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
--spec remove_non_owned_data(string()) -> [{ordset(p()), ordset(lp())}].
+-spec remove_non_owned_data(index_name()) -> [p()].
 remove_non_owned_data(Index) ->
     Ring = yz_misc:get_ring(raw),
     IndexPartitions = yz_cover:reify_partitions(Ring,
@@ -176,7 +255,7 @@ remove_non_owned_data(Index) ->
     Queries = [{'query', <<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>}
                || LP <- LNonOwned],
     ok = yz_solr:delete(Index, Queries),
-    lists:zip(NonOwned, LNonOwned).
+    NonOwned.
 
 -spec schema_name(index_info()) -> schema_name().
 schema_name(Info) ->
@@ -203,6 +282,46 @@ add_to_ring(Name, Info) ->
             ok
     end.
 
+%% @private
+-spec reload_local(index_name(), reload_opts()) ->
+                          ok | {error, term()}.
+reload_local(Index, Opts) ->
+    TO = proplists:get_value(timeout, Opts, 5000),
+    ReloadSchema = proplists:get_value(schema, Opts, true),
+    case ReloadSchema of
+        true ->
+            case reload_schema_local(Index) of
+                ok ->
+                    case yz_solr:core(reload, [{core, Index}], TO) of
+                        {ok,_,_} -> ok;
+                        Err -> Err
+                    end;
+                {error,_}=Err ->
+                    Err
+            end;
+        false ->
+            case yz_solr:core(reload, [{core, Index}]) of
+                {ok,_,_} -> ok;
+                Err -> Err
+            end
+    end.
+
+%% @private
+-spec reload_schema_local(index_name()) -> ok | {error, term()}.
+reload_schema_local(Index) ->
+    IndexDir = index_dir(Index),
+    ConfDir = filename:join([IndexDir, "conf"]),
+    Ring = yz_misc:get_ring(transformed),
+    Info = get_info_from_ring(Ring, Index),
+    SchemaName = schema_name(Info),
+    case yz_schema:get(SchemaName) of
+        {ok, RawSchema} ->
+            SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
+            file:write_file(SchemaFile, RawSchema);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 -spec remove_index(indexes(), index_name()) -> indexes().
 remove_index(Indexes, Name) ->
     orddict:erase(Name, Indexes).
@@ -221,8 +340,20 @@ remove_from_ring(Name) ->
     end.
 
 index_dir(Name) ->
-    YZDir = app_helper:get_env(?YZ_APP_NAME, yz_dir, ?YZ_DEFAULT_DIR),
-    filename:absname(filename:join([YZDir, Name])).
+    filename:absname(filename:join([?YZ_ROOT_DIR, Name])).
+
+%% @private
+%%
+%% @doc Determine if the bucket named `Index' under the default
+%% bucket-type has `search' property set to `true'. If so41 this is a
+%% legacy Riak Search bucket/index which is associated with a Yokozuna
+%% index of the same name.
+-spec is_default_type_indexed(index_name(), ring()) -> boolean().
+is_default_type_indexed(Index, Ring) ->
+    Props = riak_core_bucket:get_bucket(Index, Ring),
+    %% Check against `true' atom in case the value is <<"true">> or
+    %% "true" which, hopefully, it should not be.
+    true == proplists:get_value(search, Props, false).
 
 make_info(IndexName, SchemaName) ->
     #index_info{name=IndexName,

@@ -67,25 +67,41 @@ getpid() ->
 %%% Callbacks
 %%%===================================================================
 
-%% NOTE: Doing the work here will slow down startup but I think that's
-%%       desirable given that Solr must be up for Yokozuna to work
-%%       properly.
+%% NOTE: JVM startup is broken into two pieces:
+%%       1. ensuring the data dir exists, and spawning the JVM process
+%%       2. checking whether solr finished initialization
+%%
+%%       The first bit is done here, because if it take more than the
+%%       five second supervisor limit, something is *really* wrong.
+%%
+%%       The second bit is done once per second until solr is found to
+%%       be up, or until the startup timeout expires. The idea behind
+%%       the once-per second check is to get something in the log soon
+%%       after Solr is confirmed up, instead of waiting until the
+%%       timeout expires.
 init([Dir, SolrPort, SolrJMXPort]) ->
-    process_flag(trap_exit, true),
-    {Cmd, Args} = build_cmd(SolrPort, SolrJMXPort, Dir),
-    ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
-    Port = run_cmd(Cmd, Args),
-    case wait_for_solr(solr_startup_wait()) of
-        ok ->
+    ensure_data_dir(Dir),
+    case get_java_path() of
+        undefined ->
+            %% This logging call is needed because the stop reason
+            %% (which logs as a crash report) isn't always logged. My
+            %% guess is that there is some race between shutdown and
+            %% the logging.
+            ?ERROR("unable to locate `java` on the PATH, shutting down"),
+            {stop, "unable to locate `java` on the PATH"};
+        JavaPath ->
+            process_flag(trap_exit, true),
+            {Cmd, Args} = build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir),
+            ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
+            Port = run_cmd(Cmd, Args),
+            schedule_solr_check(solr_startup_wait()),
             S = #state{
-              dir=Dir,
-              port=Port,
-              solr_port=SolrPort,
-              solr_jmx_port=SolrJMXPort
-             },
-            {ok, S};
-        Reason ->
-            Reason
+                   dir=Dir,
+                   port=Port,
+                   solr_port=SolrPort,
+                   solr_jmx_port=SolrJMXPort
+                  },
+            {ok, S}
     end.
 
 handle_call(getpid, _, S) ->
@@ -98,8 +114,24 @@ handle_cast(Req, S) ->
     ?WARN("unexpected request ~p", [Req]),
     {noreply, S}.
 
+handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
+    case yz_solr:is_up() of
+        true ->
+            %% solr finished its startup, be merry
+            ?INFO("solr is up", []),
+            riak_core_node_watcher:service_up(yokozuna, self()),
+            {noreply, S};
+        false when WaitTimeSecs > 0 ->
+            %% solr hasn't finished yet, keep waiting
+            schedule_solr_check(WaitTimeSecs),
+            {noreply, S};
+        false ->
+            %% solr did not finish startup quickly enough, or has just
+            %% crashed and the exit message is on its way, shutdown
+            {stop, "solr didn't start in alloted time", S}
+    end;
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
-    ?DEBUG("~p", Data),
+    ?INFO("solr stdout/err: ~s", [Data]),
     {noreply, S};
 handle_info({_Port, {exit_status, ExitStatus}}, S) ->
     {stop, {"solr OS process exited", ExitStatus}, S};
@@ -121,7 +153,7 @@ terminate(_, S) ->
             ok;
         Pid ->
             os:cmd("kill -TERM " ++ integer_to_list(Pid)),
-            port_close(Port),
+            catch port_close(Port),
             ok
     end.
 
@@ -129,14 +161,21 @@ terminate(_, S) ->
 %%% Private
 %%%===================================================================
 
--spec build_cmd(string(), string(), string()) -> {string(), [string()]}.
-build_cmd(SolrPort, SolrJMXPort, Dir) ->
+%% @private
+-spec build_cmd(filename(), non_neg_integer(), non_neg_integer(), string()) ->
+                       {string(), [string()]}.
+build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
+    %% this will start an executable to keep yz_solr_proc's port
+    %% happy, but will never respond to pings, so we can test the
+    %% timeout capability
+    {os:find_executable("grep"), ["foo"]};
+build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
-    SolrHome = "-Dsolr.solr.home=" ++ Dir,
+    SolrHome = "-Dsolr.solr.home=" ++ filename:absname(Dir),
     JettyHome = "-Djetty.home=" ++ YZPrivSolr,
-    Port = "-Djetty.port=" ++ SolrPort,
+    Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
     CP = "-cp",
     CP2 = filename:join([YZPrivSolr, "start.jar"]),
     %% log4j.properties must be in the classpath unless a full URL
@@ -151,15 +190,45 @@ build_cmd(SolrPort, SolrJMXPort, Dir) ->
         undefined ->
             JMX = [];
         _ ->
-            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ SolrJMXPort,
+            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ integer_to_list(SolrJMXPort),
             JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
             JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
     Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
-        ++ solr_vm_args() ++ JMX ++ [Class],
-    {os:find_executable("java"), Args}.
+        ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
+    {JavaPath, Args}.
+
+%% @private
+%%
+%% @doc Make sure that the data directory (passed in as `Dir') exists,
+%% and that the `solr.xml' config file is in it.
+-spec ensure_data_dir(string()) -> ok.
+ensure_data_dir(Dir) ->
+    SolrConfig = filename:join(Dir, ?YZ_SOLR_CONFIG_NAME),
+    case filelib:is_file(SolrConfig) of
+        true ->
+            %% For future YZ releases, this path will probably need to
+            %% check the existing solr.xml to see if it needs updates
+            lager:debug("Existing solr config found, leaving it in place"),
+            ok;
+        false ->
+            lager:info("No solr config found, creating a new one"),
+            ok = filelib:ensure_dir(SolrConfig),
+            {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
+            ok
+    end.
+
+%% @prviate
+%%
+%% @doc Get the path of `java' executable.
+-spec get_java_path() -> undefined | filename().
+get_java_path() ->
+    case os:find_executable("java") of
+        false -> undefined;
+        Val -> Val
+    end.
 
 %% @private
 %%
@@ -173,35 +242,28 @@ get_pid(Port) ->
     end.
 
 %% @private
-%%
-%% @doc Determine if Solr is running.
--spec is_up() -> boolean().
-is_up() ->
-    case yz_solr:cores() of
-        {ok, _} -> true;
-        _ -> false
-    end.
-
+-spec run_cmd(filename(), [string()]) -> port().
 run_cmd(Cmd, Args) ->
     open_port({spawn_executable, Cmd}, [exit_status, {args, Args}, use_stdio, stderr_to_stdout]).
 
+%% @private
+%%
+%% @doc send a message to this server to remind it to check if solr
+%% finished starting
+-spec schedule_solr_check(seconds()) -> reference().
+schedule_solr_check(WaitTimeSecs) ->
+    erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
+
+%% @private
+-spec solr_startup_wait() -> seconds().
 solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_startup_wait,
                        ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
 
-solr_vm_args() ->
+%% @private
+-spec solr_jvm_args() -> string().
+solr_jvm_args() ->
     app_helper:get_env(?YZ_APP_NAME,
-                       solr_vm_args,
-                       ?YZ_DEFAULT_SOLR_VM_ARGS).
-
-wait_for_solr(0) ->
-    {stop, "Solr didn't start in alloted time"};
-wait_for_solr(N) ->
-    case is_up() of
-        true ->
-            ok;
-        false ->
-            timer:sleep(1000),
-            wait_for_solr(N-1)
-    end.
+                       solr_jvm_args,
+                       ?YZ_DEFAULT_SOLR_JVM_ARGS).

@@ -1,6 +1,503 @@
 Yokozuna Release Notes
 ==========
 
+0.13.0
+------
+
+This release brings an upgrade to Solr, support for indexing Riak Data
+Structures, the ability to reload indexes via `riak attach`, and
+includes a query performance boost.
+
+### Features ###
+
+* [199][], [232][], [243][] - Upgrade to Solr 4.6.0.
+
+* [241][], [254][] - Add ability to configure Solr start-up wait in `riak.conf`.
+
+* [250][] - Add support for indexing Riak Data Structures (aka
+  CRDTs). These are data structures for Riak, such as sets and maps,
+  which automatically resolve themselves when siblings occur. This
+  means you can think in terms of common data structures, not worry
+  about sibling resolution, and query the data with Solr.
+
+* [260][] - Add ability to reload indexes. This is used to pick up
+  schema modifications, such as adding a field. This patch does not
+  provide and client facing APIs for this functionality. That will be
+  done in a separate patch.
+
+* [239][], [265][] - Shutdown if Java executable cannot be found on
+  the path.
+
+### Performance ###
+
+* [271][] - Add custom search component to perform per-node filter
+  queries and remove the `_yz_node` field. One micro benchmark showed
+  a 17% increase in queries per second.
+
+### Bugs/Misc ###
+
+* [245][], [257][] - Delete `core.properties` file during Solr Core
+  creation to avoid indefinite errors after a bad schema has been
+  used.
+
+* [247][] - Fix logging of Solr stdout/stderr.
+
+* [255][] - Fix dialyzer errors.
+
+* [256][] - Speedup riak tests.
+
+* [262][] - Renamed `solr_jvm_args` to `solr_jvm_opts`.
+
+* [264][] - Fix the security test.
+
+* [267][] - Reestablish check to remove indexes for non owned data.
+
+### Documentation ###
+
+* [244][] - Use one-to-one mapping example in README.
+
+[199]: https://github.com/basho/yokozuna/issues/199
+[232]: https://github.com/basho/yokozuna/pull/232
+[239]: https://github.com/basho/yokozuna/issues/239
+[241]: https://github.com/basho/yokozuna/pull/241
+[243]: https://github.com/basho/yokozuna/pull/243
+[244]: https://github.com/basho/yokozuna/pull/244
+[245]: https://github.com/basho/yokozuna/issues/245
+[247]: https://github.com/basho/yokozuna/pull/247
+[250]: https://github.com/basho/yokozuna/pull/250
+[254]: https://github.com/basho/yokozuna/pull/254
+[255]: https://github.com/basho/yokozuna/pull/255
+[256]: https://github.com/basho/yokozuna/pull/256
+[257]: https://github.com/basho/yokozuna/pull/257
+[260]: https://github.com/basho/yokozuna/pull/260
+[262]: https://github.com/basho/yokozuna/pull/262
+[264]: https://github.com/basho/yokozuna/pull/264
+[265]: https://github.com/basho/yokozuna/pull/265
+[267]: https://github.com/basho/yokozuna/pull/267
+[271]: https://github.com/basho/yokozuna/pull/271
+
+0.12.0
+------
+
+This release integrates the new bucket type feature and adds the
+ability to migrate from Riak Search using AAE. Less disk space will be
+used per index and a slight bump in query performance may be
+noticed. Also, documentation was added on using Riak's new security
+features with Yokozuna. Finally, three breaking changes were
+made. There is some API rebranding, a change of the default field
+separator, and bucket type creation. More details later in the notes.
+
+### Features ###
+
+* [176][], [230][] - Add support for the new bucket types feature in
+  Riak. Bucket types allow an additional level of namespacing as well
+  as a more efficient mechanism for storing custom properties. If no
+  type is specified then the _default_ type is assumed. Yokozuna works
+  with the default type but it is highly recommended you create your
+  own types to take advantage of the more efficient property storage.
+
+* [238][] - Ability to migrate from Riak Search via AAE.
+
+### Performance ###
+
+* [205][] - Don't store all Yokozuna specific fields. Several of the
+  fields are only used for filtering and thus don't need to be
+  stored. By not storing them the disk usage of the index was reduced
+  by 25% in one micro-benchmark.
+
+* [221][], [236][] - Use HTTP POST to send queries to Solr. This was
+  done to prevent large filter queries from creating overly long URLs
+  but also gave a slight bump in performance on one micro benchmark.
+
+### Bugs/Misc ###
+
+* [189][], [230][] - Make sure `_yz_id` is unique.
+
+* [186][] - Remove defunct `bucket` field from HTTP index properties.
+
+* [210][] - Use common URL prefix.
+
+* [216][] - Add anti-entropy directory to configuration.
+
+* [217][] - Require the `_yz_err` field.
+
+* [220][] - Set `solr.solr.home` correctly.
+
+* [228][] - Use a relative path for the schema file.
+
+* [231][] - Change default field separator to `.`.
+
+* [235][], [240][] - Rename some public facing parts of Yokozuna to "search".
+
+* [237][] - Increase Solr startup timeout.
+
+### Documentation ###
+
+* [229][] - Add documentation on using the new Riak 2.0 security
+  features with Yokozuna.
+
+### Breaking Changes ###
+
+#### Default Nested Field Separators ([231][]) ####
+
+The default field separator for nested objects has been changed from
+`_` to `.`. This means the following nested JSON object
+`{"info":{"name":"ryan"}}` now creates a field with the name
+`info.name`.
+
+#### Public Interface Renaming ([235][]) ####
+
+Some of the public facing bits of Yokozuna have been renamed to
+"Search". Internally, the Yokozuna code-name will still be used but
+some public facing parts replaced "yokozuna" or "yz" with "search".
+
+The "yokozuna" prefix was renamed to "search" in the `riak.conf`
+configuration file. It is still "yokozuna" in the `advanced.config`.
+
+```
+## To enable Search, set this 'on'.
+search = on
+
+## The port number which Solr binds to.
+search.solr_port = 10014
+
+## The port number which Solr JMX binds to.
+search.solr_jmx_port = 10013
+
+# and so on...
+```
+
+The type/bucket property to associate an index is now `search_index`.
+
+All HTTP resources renamed `yz` to `search`. To manage an index or
+schema, use, respectively:
+
+* http://localhost:10018/search/index/INDEX_NAME
+* http://localhost:10018/search/schema/SCHEMA_NAME
+
+#### Associating Indexes, Bucket Type Support ([176][] & [230][]) ####
+
+During Riak 2.0 development the new bucket type feature was added. It
+provides an additional level of namespacing as well as a more
+efficient and robust property mechanism. However, it also requires
+creating a bucket type which can only be done at the console with
+`raik-admin`.
+
+All buckets with no explicit type will be considered "legacy" and will
+live under the `default` type. Yokozuna indexes may be associated with
+buckets under the default type but it is highly recommended that a
+custom type be created to take advantage of the more efficient
+property mechanism.
+
+An index can be associated by either setting the `search_index`
+property on the type, which will apply it to all buckets underneath
+that type, or set it per bucket.
+
+See [ADMIN][] for more details.
+
+[ADMIN]: https://github.com/basho/yokozuna/blob/develop/docs/ADMIN.md
+
+[176]: https://github.com/basho/yokozuna/issues/176
+[186]: https://github.com/basho/yokozuna/issues/186
+[189]: https://github.com/basho/yokozuna/issues/189
+[205]: https://github.com/basho/yokozuna/pull/205
+[210]: https://github.com/basho/yokozuna/pull/210
+[216]: https://github.com/basho/yokozuna/pull/216
+[217]: https://github.com/basho/yokozuna/pull/217
+[220]: https://github.com/basho/yokozuna/pull/220
+[221]: https://github.com/basho/yokozuna/issues/221
+[228]: https://github.com/basho/yokozuna/pull/228
+[229]: https://github.com/basho/yokozuna/pull/229
+[230]: https://github.com/basho/yokozuna/pull/230
+[231]: https://github.com/basho/yokozuna/pull/231
+[235]: https://github.com/basho/yokozuna/pull/235
+[236]: https://github.com/basho/yokozuna/pull/236
+[237]: https://github.com/basho/yokozuna/pull/237
+[238]: https://github.com/basho/yokozuna/pull/238
+[240]: https://github.com/basho/yokozuna/pull/240
+
+0.11.0
+------
+
+This release brings Riak Java Client support as well as authentication
+and security for the HTTP and protocol buffer transports. An access
+control list (ACL) may be created to control administration and access
+to indexes. All official Riak clients should now have full support for
+Yokozuna's administration and search API. Stored boolean fields and
+tagging support were fixed for the protocol buffer transport. And
+finally, documentation was added. The new CONCEPTS document goes over
+various important concepts in Yokozuna and the RESOURCES document has
+links to other resources for learning.
+
+### Features ###
+
+* [106][] - Add administration and search support to the Java client.
+
+* [157][] - Add index and schema administration support to all
+  official Riak clients. This was completed with the closing of [106][].
+
+* [145][] - Allow authentication and secure connections for both the
+  HTTP and protocol buffer protocols. When enabled, the security
+  system allows an ACL to be setup for administration and search
+  operations. A user may have all or no administration rights as well
+  as search rights on none, some, or all of the available
+  indexes. Security showed a 3-6% decrease in indexing/querying
+  throughput for one benchmark.
+
+### Bugs/Misc ###
+
+* [132][], [203][], [204][]  - Add integration tests to Basho's internal CI tool.
+
+* [177][], [206][] - Don't wait for Riak KV service. This prevents
+  Yokozuna from blocking start of other applications in Riak.
+
+* [202][] - Don't convert index name to a list; it is always binary.
+
+* [209][], [214][] - Fix handling of stored boolean fields in the
+  protocol buffer transport.
+
+* [212][] - Don't allow siblings in the schema bucket. Yokozuna
+  expects only value for each schema name.
+
+* [222][] - Remove bucket field from index info. It is a hold-over
+  from the days of one-to-one indexing.
+
+* [223][] - Fix tagging over the protocol buffer transport.
+
+* [224][] - Keep support for Erlang R15B.
+
+* [226][] - Add support for secure protocol buffer transport to
+  Yokozuna's basho bench driver.
+
+### Documentation ###
+
+* [208][] - Small clarification to installation doc.
+
+* [213][] - Add doc with links to resources on Yokozuna and Search.
+
+* [225][] - Add doc about various important concepts in Yokozuna.
+
+[106]: https://github.com/basho/yokozuna/issues/106
+[132]: https://github.com/basho/yokozuna/issues/132
+[145]: https://github.com/basho/yokozuna/pull/145
+[157]: https://github.com/basho/yokozuna/issues/157
+[177]: https://github.com/basho/yokozuna/issues/177
+[203]: https://github.com/basho/yokozuna/pull/203
+[204]: https://github.com/basho/yokozuna/pull/204
+[202]: https://github.com/basho/yokozuna/pull/202
+[206]: https://github.com/basho/yokozuna/pull/206
+[208]: https://github.com/basho/yokozuna/pull/208
+[209]: https://github.com/basho/yokozuna/issues/209
+[212]: https://github.com/basho/yokozuna/pull/212
+[213]: https://github.com/basho/yokozuna/pull/213
+[214]: https://github.com/basho/yokozuna/pull/214
+[222]: https://github.com/basho/yokozuna/pull/222
+[223]: https://github.com/basho/yokozuna/pull/223
+[224]: https://github.com/basho/yokozuna/pull/224
+[225]: https://github.com/basho/yokozuna/pull/225
+[226]: https://github.com/basho/yokozuna/pull/226
+
+0.10.0
+------
+
+This release brings a few features such as an upgrade in Solr version
+along with some basic indexing and query stats.  The default index has
+been removed returning write performance closer to baseline for
+non-indexed buckets.  Disk usage was decreased by removing the default
+index and the unused timestamp from the entropy data.  Among the list
+of other fixes a notable one is the improvement of Solr start-up and
+crash semantics.  If Solr crashes too frequently then Yokozuna will
+stop the local Riak node.
+
+### Features ###
+
+* [150][], [197][] - Upgrade to Solr 4.4.0.
+
+* [179][] - Add support for stats.  Add basic index and query stats.
+
+* [107][] - Verify support for Riak Ruby client over protocol
+  buffers.
+
+* [108][] - Verify support for Riak Python client over protocol
+  buffers.
+
+### Performance ###
+
+* [190][] - Remove the entropy data timestamp.  It hasn't been used
+  for over a year.  The throughput and latency improvements were small
+  but it save 7.4% in index size for one benchmark.
+
+* [171][] - Remove the default index.  Since the 0.1.0 release of
+  Yokozuna a "default index" was needed to avoid constant repair by
+  AAE.  It came at a cost of performance degredation of all writes,
+  more disk space, and more CPU/memory usage.  Simply enabling
+  Yokozuna, write performance would drop to 57% of baseline.  With the
+  default index removed that figure rises to 93% of baseline.
+  Furthermore, less disk space will be used.
+
+### Bugs/Misc ###
+
+* [188][] - More robust Solr start-up and crash semantics.  If the Solr
+  JVM instance cannot stay up then bring down the Riak node with it.
+  This fail-fast behavior is preferred to silently ignoring the issue.
+  It brings the problem to the attention of the user more quickly,
+  forcing the problem to be addressed.
+
+* [192][], [194][] - Handle not-found case when fetching a schema via
+  protobuffs.
+
+* [175][] - Fix the `associated_buckets` function.
+
+* [165][], [173][] - Create data directory and `solr.xml` at run-time,
+  not build-time.  This makes it easier to wipe data by removing
+  physical files.
+
+* [129][] - Fix persistence of schema attribute in `solr.xml`.
+
+* [198][] - Fix Solaris build.
+
+* [196][] - Allowing javac to be skipped during Yokozuna build.  This
+  is for developers of Riak who don't have a JDK and don't want to
+  test Yokozuna.
+
+* [195][] - Cache the Solr package for future builds.  For those
+  developing against Riak/Yokozuna this saves network bandwidth and
+  time.
+
+* [193][] - Various cleanup of integration tests.
+
+* [184][] - Refactor the `index_name()` type to be `binary()`.
+
+* [182][] - Check for presence of certain tools at build time.
+
+* [180][] - Disable certificate check when pulling Solr package.
+
+* [172][] - Small fixes based on Dialyzer errors.
+
+* [200][], [201][] - Update to new hashtree API.
+
+[107]: https://github.com/basho/yokozuna/issues/107
+[108]: https://github.com/basho/yokozuna/issues/108
+[129]: https://github.com/basho/yokozuna/issues/129
+[150]: https://github.com/basho/yokozuna/issues/150
+[165]: https://github.com/basho/yokozuna/issues/165
+[171]: https://github.com/basho/yokozuna/pull/171
+[172]: https://github.com/basho/yokozuna/pull/172
+[173]: https://github.com/basho/yokozuna/pull/173
+[175]: https://github.com/basho/yokozuna/pull/175
+[179]: https://github.com/basho/yokozuna/pull/179
+[180]: https://github.com/basho/yokozuna/pull/180
+[182]: https://github.com/basho/yokozuna/pull/182
+[184]: https://github.com/basho/yokozuna/pull/184
+[188]: https://github.com/basho/yokozuna/pull/188
+[190]: https://github.com/basho/yokozuna/pull/190
+[192]: https://github.com/basho/yokozuna/issues/192
+[193]: https://github.com/basho/yokozuna/pull/193
+[194]: https://github.com/basho/yokozuna/pull/194
+[195]: https://github.com/basho/yokozuna/pull/195
+[196]: https://github.com/basho/yokozuna/pull/196
+[197]: https://github.com/basho/yokozuna/pull/197
+[198]: https://github.com/basho/yokozuna/pull/198
+[200]: https://github.com/basho/yokozuna/issues/200
+[201]: https://github.com/basho/yokozuna/pull/201
+
+0.9.0
+-----
+
+The ninth release of Yokozuna.  Now integrated with the latest
+development branch of Riak.  No special branches required.  Schema and
+index administration supported over protocol buffers transport.  A
+major performance regression is fixed as well as a deadlock in AAE.
+Work on support for migrating from Riak Search has started.  Along
+with various other bug fixes.
+
+### Features ###
+
+* [60][] - Various patches integrating Yokozuna and Riak.
+
+  * [154][], - Allow Yokozuna to report AAE status such as tree build
+    times and exchange stats. ([kv-596][], [kv-654][])
+
+  * [155][], [156][], [166][] - Integration with Riak development
+    branch. ([riak-375][])
+
+* [163][] - Add a function to perform a live switch of query handling
+  from Riak Search to Yokozuna.  This is a building block to allow
+  migration without restarting the node.
+
+* [163][] - Add a test to verify using AAE as a means to migrate from
+  Riak Search to Yokozuna.
+
+* [144][], [161][] - Add index and schema administration support to
+  the protocol buffers interface. ([pb-51][])
+
+* [riakc-112][] - Add support for index and schema administration to
+  the Riak Erlang Client.
+
+### Performance ###
+
+* [164][] - There is a major performance regression in the 0.8.0
+  release.  It affects KV writes and indexing.  Even if Yokozuna is
+  disabled.  This patch fixes the regression.
+
+### Bugs/Misc ###
+
+* [153][] - Fix field name creation in XML extractor.
+
+* [159][] - More reliable tear down of JVM process.  Move JAR files
+  into `priv` dir which makes upgrades easier.  Move
+  `log4j.properties` into `etc` dir.
+
+* [162][] - Simplify the script that downloads Solr.
+
+* [163][] - Fix AAE deadlock.
+
+* [163][] - Fix mixed cluster issues when upgrading from previous Riak
+  versions.
+
+* [163][] - Don't send empty parameters to Solr when querying Yokozuna
+  via protocol buffers.
+
+* [163][] - Simplify AAE repair function to repairing the local index
+  only, thus avoiding RPC.  Fix tree mapping to avoid indefinite index
+  repair.
+
+* [167][] - Perform AAE hashtree updates in asynchronous fashion with
+  periodic synchronous (blocking) calls.  Use an infinity timeout for
+  synchronous call to avoid crashing the KV vnode.  This should also
+  help write throughput but no benchmarks were performed.
+
+* [169][] - Add `*_coordinate` field for spatial indexing.
+
+### Documentation ###
+
+* [158][] - Fix example doc.
+
+[60]: https://github.com/basho/yokozuna/issues/60
+[144]: https://github.com/basho/yokozuna/pull/144
+[153]: https://github.com/basho/yokozuna/pull/153
+[154]: https://github.com/basho/yokozuna/issues/154
+[155]: https://github.com/basho/yokozuna/issues/155
+[156]: https://github.com/basho/yokozuna/issues/156
+[158]: https://github.com/basho/yokozuna/pull/158
+[159]: https://github.com/basho/yokozuna/pull/159
+[161]: https://github.com/basho/yokozuna/pull/161
+[162]: https://github.com/basho/yokozuna/pull/162
+[163]: https://github.com/basho/yokozuna/pull/163
+[164]: https://github.com/basho/yokozuna/pull/164
+[166]: https://github.com/basho/yokozuna/pull/166
+[167]: https://github.com/basho/yokozuna/pull/167
+[169]: https://github.com/basho/yokozuna/pull/169
+
+[kv-596]: https://github.com/basho/riak_kv/pull/596
+[kv-654]: https://github.com/basho/riak_kv/pull/654
+
+[pb-51]: https://github.com/basho/riak_pb/pull/51
+
+[riak-375]: https://github.com/basho/riak/pull/375
+
+[riakc-112]: https://github.com/basho/riak-erlang-client/pull/112
+
 0.8.0
 -----
 

@@ -54,4 +54,4 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 extract_url({Host,Port}) ->
-    ?FMT("http://~s:~B/extract", [Host, Port]).
+    ?FMT("http://~s:~B/search/extract", [Host, Port]).

@@ -34,6 +34,14 @@
 
 -type index_set() :: ordset(index_name()).
 -type base64() :: binary().
+-type hash() :: binary().
+-type filename() :: string().
+
+%% milliseconds
+-type ms() :: non_neg_integer().
+-type seconds() :: non_neg_integer().
+
+-type predicate(A) :: fun((A) -> boolean()).
 
 %% An iso8601 datetime as binary, e.g. <<"20121221T000000">>.
 -type iso8601() :: binary().
@@ -51,8 +59,10 @@
 -type lp() :: pos_integer().
 %% Preflist, list of partition/owner pairs
 -type preflist() :: [{p(),term()}].
+%% Short representation of a preflist, partition + n_val
+-type short_preflist() :: {p(), n()}.
 %% Riak bucket
--type bucket() :: binary().
+-type bucket() :: Name :: binary() | {Type :: binary(), Name :: binary()}.
 %% Riak key
 -type key() :: binary().
 %% Bucket/Key pair
@@ -65,9 +75,11 @@
 -type filter() :: all | [p()].
 -type p_node() :: {p(), node()}.
 -type lp_node() :: {lp(), node()}.
--type cover_set() :: [p_node()].
--type logical_cover_set() :: [lp_node()].
--type filter_cover_set() :: [{p_node(), filter()}].
+-type p_set() :: [p_node()].
+-type logical_cover_pair() :: {lp_node(), logical_filter()}.
+-type logical_cover_set() :: [logical_cover_pair()].
+-type solr_host_mapping() :: [{node(), {string(),string()}}].
+-type plan() :: {[node()], logical_cover_set(), solr_host_mapping()}.
 
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
@@ -103,32 +115,45 @@
            true -> ok
         end).
 -define(ATOM_TO_BIN(A), list_to_binary(atom_to_list(A))).
+-define(BIN_TO_ATOM(B), list_to_atom(binary_to_list(B))).
 -define(BIN_TO_INT(B), list_to_integer(binary_to_list(B))).
+-define(BIN_TO_FLOAT(B), list_to_float(binary_to_list(B))).
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 -define(INT_TO_STR(I), integer_to_list(I)).
+-define(FLOAT_TO_BIN(F), list_to_binary(float_to_list(F))).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 -define(HEAD_CTYPE, "content-type").
 -define(YZ_HEAD_EXTRACTOR, "yz-extractor").
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+%% Core security requires `{BucketType, Bucket}'. Technically, these
+%% arent so strict, and so we refer to them as `{Resource,
+%% SubResource}' where `Resource' is a resource like index or schema
+%% and `SubResource' is a specific instance.
+-define(YZ_SECURITY_INDEX, <<"index">>).
+-define(YZ_SECURITY_SCHEMA, <<"schema">>).
+-define(YZ_SECURITY_SEARCH_PERM, "search.query").
+-define(YZ_SECURITY_ADMIN_PERM, "search.admin").
+
 -define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
--define(YZ_DEFAULT_SOLR_PORT, "8983").
--define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 15).
+-define(YZ_DEFAULT_SOLR_PORT, 8983).
+-define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 30).
 -define(YZ_DEFAULT_TICK_INTERVAL, 60000).
--define(YZ_DEFAULT_SOLR_VM_ARGS, []).
+-define(YZ_DEFAULT_SOLR_JVM_ARGS, "").
 %% TODO: See if using mochiglobal for this makes difference in performance.
 -define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_EVENTS_TAB, yz_events_tab).
--define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir, "data/yz")).
+-define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir,
+                        app_helper:get_env(riak_core, platform_data_dir)++"/yz")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
 -define(YZ_SEARCH_CMD, #yz_search_cmd).
 -define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
--define(YZ_VNODE_MASTER, yokozuna_vnode_master).
 -define(YZ_META_INDEXES, yokozuna_indexes).
+-define(YZ_META_SCHEMAS, {yokozuna, schemas}).
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
@@ -136,6 +161,10 @@
         "No index ~p found.").
 -define(YZ_ERR_QUERY_FAILURE,
         "Query unsuccessful check the logs.").
+
+%% Given the `StartTime' calculate the amount of time elapsed in
+%% microseconds.
+-define(YZ_TIME_ELAPSED(StartTime), timer:now_diff(os:timestamp(), StartTime)).
 
 -define(RS_SVC, riak_search).
 
@@ -230,6 +259,7 @@
 %%%===================================================================
 
 -define(DEBUG(Fmt, Args), lager:debug(Fmt, Args)).
+-define(ERROR(Fmt), lager:error(Fmt)).
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
 -define(WARN(Fmt, Args), lager:warning(Fmt, Args)).
@@ -246,10 +276,22 @@
 
 -type indexes() :: orddict(index_name(), index_info()).
 -type index_info() :: #index_info{}.
--type index_name() :: string().
+-type index_name() :: binary().
 
--define(YZ_DEFAULT_INDEX, "_yz_default").
--define(YZ_INDEX, yz_index).
+-type reload_opt() :: {schema, boolean()} | {timeout, ms()}.
+-type reload_opts() :: [reload_opt()].
+-type reload_errs() :: [{node(), {error, term()}}].
+
+-define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
+-define(YZ_INDEX, search_index).
+
+%%%===================================================================
+%%% Solr Config
+%%%===================================================================
+
+-define(YZ_SOLR_CONFIG_NAME, "solr.xml").
+-define(YZ_SOLR_CONFIG_TEMPLATE,
+        filename:join([?YZ_PRIV, "template_solr.xml"])).
 
 %%%===================================================================
 %%% Schemas
@@ -263,6 +305,8 @@
 -type raw_schema() :: binary().
 -type schema() :: xmerl_scan:document().
 -type schema_name() :: binary().
+-type compressed_schema() :: binary().
+-type schemas() :: orddict(schema_name(), compressed_schema()).
 
 %%%===================================================================
 %%% Solr Fields
@@ -278,34 +322,28 @@
 -define(YZ_ED_FIELD, '_yz_ed').
 -define(YZ_ED_FIELD_S, "_yz_ed").
 -define(YZ_ED_FIELD_XML, ?YZ_FIELD_XML(?YZ_ED_FIELD_S)).
--define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% First Partition Number
 -define(YZ_FPN_FIELD, '_yz_fpn').
 -define(YZ_FPN_FIELD_S, "_yz_fpn").
 -define(YZ_FPN_FIELD_B, <<"_yz_fpn">>).
 -define(YZ_FPN_FIELD_XML, ?YZ_FIELD_XML(?YZ_FPN_FIELD_S)).
--define(YZ_FPN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_fpn\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_FPN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_fpn\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Sibling VTags
 -define(YZ_VTAG_FIELD, '_yz_vtag').
 -define(YZ_VTAG_FIELD_S, "_yz_vtag").
 -define(YZ_VTAG_FIELD_B, <<"_yz_vtag">>).
 -define(YZ_VTAG_FIELD_XML, ?YZ_FIELD_XML(?YZ_VTAG_FIELD_S)).
--define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
-
-%% Node
--define(YZ_NODE_FIELD, '_yz_node').
--define(YZ_NODE_FIELD_S, "_yz_node").
--define(YZ_NODE_FIELD_XML, ?YZ_FIELD_XML(?YZ_NODE_FIELD_S)).
--define(YZ_NODE_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_node\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_VTAG_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_vtag\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Partition Number
 -define(YZ_PN_FIELD, '_yz_pn').
 -define(YZ_PN_FIELD_S, "_yz_pn").
 -define(YZ_PN_FIELD_B, <<"_yz_pn">>).
 -define(YZ_PN_FIELD_XML, ?YZ_FIELD_XML(?YZ_PN_FIELD_S)).
--define(YZ_PN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_pn\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+-define(YZ_PN_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_pn\" and @type=\"_yz_str\" and @indexed=\"true\"]").
 
 %% Riak key
 -define(YZ_RK_FIELD, '_yz_rk').
@@ -314,13 +352,19 @@
 -define(YZ_RK_FIELD_XML, ?YZ_FIELD_XML(?YZ_RK_FIELD_S)).
 -define(YZ_RK_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rk\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
 
+%% Riak bucket type
+-define(YZ_RT_FIELD, '_yz_rt').
+-define(YZ_RT_FIELD_S, "_yz_rt").
+-define(YZ_RT_FIELD_B, <<"_yz_rt">>).
+-define(YZ_RT_FIELD_XML, ?YZ_FIELD_XML(?YZ_RT_FIELD_S)).
+-define(YZ_RT_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rt\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
+
 %% Riak bucket
 -define(YZ_RB_FIELD, '_yz_rb').
 -define(YZ_RB_FIELD_S, "_yz_rb").
 -define(YZ_RB_FIELD_B, <<"_yz_rb">>).
 -define(YZ_RB_FIELD_XML, ?YZ_FIELD_XML(?YZ_RB_FIELD_S)).
 -define(YZ_RB_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_rb\" and @type=\"_yz_str\" and @indexed=\"true\" and @stored=\"true\"]").
-
 
 %% Riak extraction error
 -define(YZ_ERR_FIELD, '_yz_err').
@@ -334,7 +378,6 @@
         Name == ?YZ_ED_FIELD_S orelse
         Name == ?YZ_FPN_FIELD_S orelse
         Name == ?YZ_VTAG_FIELD_S orelse
-        Name == ?YZ_NODE_FIELD_S orelse
         Name == ?YZ_PN_FIELD_S orelse
         Name == ?YZ_RK_FIELD_S orelse
         Name == ?YZ_RB_FIELD_S orelse

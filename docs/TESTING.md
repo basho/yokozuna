@@ -17,7 +17,7 @@ The rest is like the [Yokozuna Getting Started][yz_gs] guide but
 checkout riak as `riak_yz`.  Don't start the cluster.  Just build the
 devrel.
 
-    git clone -b rz-yz-merge-1.4.0 git://github.com/basho/riak.git riak_yz
+    git clone git://github.com/basho/riak.git riak_yz
     cd riak_yz
     make stagedevrel
 
@@ -52,6 +52,7 @@ Open `~/.riak_test.config` and add the following to the end.
     {yokozuna, [
                 {rt_project, "yokozuna"},
                 {rt_deps, ["<path-to-testing-dir>/riak_yz/deps"]},
+                {yz_dir, ["<path-to-testing-dir>/riak_yz/deps/yokozuna"]},
                 {rtdev_path, [{root, "/tmp/rt"},
                               {current, "/tmp/rt/riak_yz"}]}
                ]}.

@@ -4,7 +4,7 @@
 -import(yz_rt, [host_entries/1,
                 run_bb/2, search_expect/5,
                 select_random/1, verify_count/2,
-                wait_for_joins/1, write_terms/2]).
+                write_terms/2]).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -25,24 +25,11 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
-    Cluster = prepare_cluster(4),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     ok = test_errors(Cluster),
     pass.
-
-prepare_cluster(NumNodes) ->
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
 
 test_errors(Cluster) ->
     ok = expect_bad_json(Cluster),
@@ -51,10 +38,12 @@ test_errors(Cluster) ->
     ok.
 
 expect_bad_json(Cluster) ->
+    Index = <<"bad_json">>,
+    Bucket = {<<"bad_json">>,<<"bucket">>},
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"bad_json">>),
-    lager:info("Write bad json"),
-    URL = bucket_url(HP, "bad_json", "test"),
+    ok = create_index(Cluster, Index),
+    lager:info("Write bad json [~p]", [HP]),
+    URL = bucket_url(HP, Bucket, "test"),
     Opts = [],
     CT = "application/json",
     Headers = [{"content-type", CT}],
@@ -66,14 +55,16 @@ expect_bad_json(Cluster) ->
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% Sleep for soft commit
     timer:sleep(1100),
-    ?assert(search_expect(HP, "bad_json", ?YZ_ERR_FIELD_S, "1", 1)),
+    ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
 expect_bad_xml(Cluster) ->
+    Index = <<"bad_xml">>,
+    Bucket = {Index,<<"bucket">>},
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"bad_xml">>),
-    lager:info("Write bad xml"),
-    URL = bucket_url(HP, "bad_xml", "test"),
+    ok = create_index(Cluster, Index),
+    lager:info("Write bad xml [~p]", [HP]),
+    URL = bucket_url(HP, Bucket, "test"),
     Opts = [],
     CT = "application/xml",
     Headers = [{"content-type", CT}],
@@ -85,14 +76,16 @@ expect_bad_xml(Cluster) ->
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% Sleep for soft commit
     timer:sleep(1100),
-    ?assert(search_expect(HP, "bad_xml", ?YZ_ERR_FIELD_S, "1", 1)),
+    ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
 expect_bad_query(Cluster) ->
+    Index = <<"bad_query">>,
+    Bucket = {Index, <<"bucket">>},
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
-    ok = create_index(Cluster, HP, <<"bad_query">>),
-    lager:info("Write bad query"),
-    URL = bucket_url(HP, "bad_query", "test"),
+    ok = create_index(Cluster, Index),
+    lager:info("Write bad query [~p]", [HP]),
+    URL = bucket_url(HP, Bucket, "test"),
     Opts = [],
     CT = "text/plain",
     Headers = [{"content-type", CT}],
@@ -103,29 +96,31 @@ expect_bad_query(Cluster) ->
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% send a bad query
-    SearchURL = search_url(HP, "bad_query") ++ "?q=*:*&sort=sco+desc",
+    SearchURL = search_url(HP, Index) ++ "?q=*:*&sort=sco+desc",
     {ok, "400", _, _} = ibrowse:send_req(SearchURL, [], get, []),
     ok.
 
 index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Index]).
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 
-bucket_url({Host,Port}, Bucket, Key) ->
-    ?FMT("http://~s:~B/buckets/~s/keys/~s", [Host, Port, Bucket, Key]).
+bucket_url({Host,Port}, {BType, BName}, Key) ->
+    ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).
 
-search_url({Host,Port}, Bucket) ->
-    ?FMT("http://~s:~B/search/~s", [Host, Port, Bucket]).
+search_url({Host,Port}, Index) ->
+    ?FMT("http://~s:~B/solr/~s/select", [Host, Port, Index]).
 
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
-create_index(Cluster, HP, Index) ->
+create_index(Cluster, Index) ->
     Node = yz_rt:select_random(Cluster),
-    lager:info("create_index ~s [~p]", [Index, HP]),
+    HP = hd(host_entries(rt:connection_info([Node]))),
+    lager:info("create_index ~s [~p]", [Index, Node]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    yz_rt:set_index(Node, Index),
-    yz_rt:wait_for_index(Cluster, binary_to_list(Index)),
+    yz_rt:set_bucket_type_index(Node, Index),
+    yz_rt:wait_for_bucket_type(Cluster, Index),
+    yz_rt:wait_for_index(Cluster, Index),
     ?assertEqual("204", Status).

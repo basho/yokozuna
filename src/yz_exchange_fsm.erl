@@ -159,22 +159,20 @@ key_exchange(timeout, S=#state{index=Index,
                      exchange_segment_kv(KVTree, IndexN, Segment)
              end,
 
-    {ok, RC} = riak:local_client(),
-    AccFun = fun(KeyDiff, Acc) ->
-                     lists:foldl(fun(Diff, Acc2) ->
-                                         read_repair_keydiff(RC, Diff),
-                                         case Acc2 of
-                                             [] -> [1];
-                                             [Count] -> [Count+1]
+    AccFun = fun(KeyDiff, Count) ->
+                     lists:foldl(fun(Diff, InnerCount) ->
+                                         case repair(Index, Diff) of
+                                             full_repair -> InnerCount + 1;
+                                             _ -> InnerCount
                                          end
-                                 end, Acc, KeyDiff)
+                                 end, Count, KeyDiff)
              end,
 
-    case yz_index_hashtree:compare(IndexN, Remote, AccFun, YZTree) of
-        [] ->
+    case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
+        0 ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0),
             ok;
-        [Count] ->
+        Count ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
             lager:info("Repaired ~b keys during active anti-entropy exchange "
                        "of partition ~p for preflist ~p",
@@ -195,37 +193,45 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
 %% @private
--spec read_repair_keydiff(term(), keydiff()) -> ok.
-read_repair_keydiff(_RC, {remote_missing, KeyBin}) ->
+-spec repair(p(), keydiff()) -> full_repair | tree_repair | failed_repair.
+repair(Partition, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
-    BKey = {Bucket, Key} = binary_to_term(KeyBin),
     Ring = yz_misc:get_ring(transformed),
-    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    N = proplists:get_value(n_val,BucketProps),
-    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
-    FakeObj = fake_kv_object(Bucket, Key),
-
-    lists:foreach(fun({Partition, Node}) ->
-                          FakeState = fake_kv_vnode_state(Partition),
-                          rpc:call(Node, yz_kv, index, [FakeObj, delete, FakeState])
-                  end, PrimaryPL),
-
-    ok;
-
-read_repair_keydiff(RC, {_Reason, KeyBin}) ->
-    BKey = {Bucket, Key} = binary_to_term(KeyBin),
-    case RC:get(Bucket, Key) of
+    BKey = binary_to_term(KeyBin),
+    Index = yz_kv:get_index(BKey, Ring),
+    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    FakeObj = fake_kv_object(BKey),
+    %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
+    %% assume that Yokozuna is enabled and current node is owner.
+    case yz_kv:should_index(Index) of
+        true ->
+            yz_kv:index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index),
+            full_repair;
+        false ->
+            yz_kv:dont_index(FakeObj, delete, Partition, BKey, ShortPL),
+            tree_repair
+    end;
+repair(Partition, {_Reason, KeyBin}) ->
+    %% Either Yokozuna is missing the key or the hash doesn't
+    %% match. In either case the object must be re-indexed.
+    Ring = yz_misc:get_ring(transformed),
+    BKey = binary_to_term(KeyBin),
+    Index = yz_kv:get_index(BKey, Ring),
+    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    %% Can assume here that Yokozua is enabled and current
+    %% node is owner.
+    case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
-            Ring = yz_misc:get_ring(transformed),
-            BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-            N = proplists:get_value(n_val,BucketProps),
-            PrimaryPL = yz_misc:primary_preflist(BKey, Ring, N),
-            lists:foreach(fun({Partition, Node}) ->
-                                  FakeState = fake_kv_vnode_state(Partition),
-                                  rpc:call(Node, yz_kv, index,
-                                           [Obj, anti_entropy, FakeState])
-                          end, PrimaryPL),
-            ok;
+            case yz_kv:should_index(Index) of
+                true ->
+                    yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
+                    full_repair;
+                false ->
+                    %% TODO: pass obj hash to repair fun to avoid
+                    %% object read just to update hash.
+                    yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                    tree_repair
+            end;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
             %% is fine because hashtree updates are async and the
@@ -234,16 +240,12 @@ read_repair_keydiff(RC, {_Reason, KeyBin}) ->
             %% the meantime the KV object has since been deleted.  In
             %% the case of other errors just ignore them and let the
             %% next exchange retry the repair if it is still needed.
-            ok
+            failed_repair
     end.
 
 %% @private
-fake_kv_object(Bucket, Key) ->
+fake_kv_object({Bucket, Key}) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
-
-%% @private
-fake_kv_vnode_state(Partition) ->
-    {state,Partition,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake,fake}.
 
 %% @private
 update_request(Module, Tree, Index, IndexN) ->

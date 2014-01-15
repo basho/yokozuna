@@ -35,12 +35,12 @@
 %%
 %% Options:
 %%
-%%   `field_separator' - Use a different field separator than the default of `_'.
+%%   `field_separator' - Use a different field separator than the default of `.'.
 %%
 -module(yz_xml_extractor).
 -compile(export_all).
 -include("yokozuna.hrl").
--define(DEFAULT_FIELD_SEPARATOR, <<"_">>).
+-define(DEFAULT_FIELD_SEPARATOR, <<".">>).
 -record(state, {
           name_stack = [],
           fields = [],

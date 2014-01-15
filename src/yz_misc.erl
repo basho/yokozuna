@@ -33,15 +33,17 @@
 get_claimant(Ring) ->
     riak_core_ring:claimant(Ring).
 
+%% @doc Extract the hostname from `Node'.
+-spec hostname(node()) -> string().
+hostname(Node) ->
+    S = atom_to_list(Node),
+    [_, Host] = re:split(S, "@", [{return, list}]),
+    Host.
+
 %% @doc Check if the given `Node' is the claimant according to `Ring'.
 -spec is_claimant(ring(), node()) -> boolean().
 is_claimant(Ring, Node) ->
     Node == get_claimant(Ring).
-
-%% @doc Determine if Riak Search is enabled.
--spec is_riak_search_enabled() -> boolean().
-is_riak_search_enabled() ->
-    app_helper:get_env(?RS_SVC, enabled, false).
 
 %% @doc Add list of webmachine routes to the router.
 add_routes(Routes) ->
@@ -259,6 +261,22 @@ set_ring_meta(Name, Default, Fun, Arg) ->
     riak_core_ring_manager:ring_trans(
       fun set_ring_trans/2,
       {Name, Default, Fun, Arg}).
+
+-spec compress(iodata()) -> iolist().
+compress(Data) ->
+    Z = zlib:open(),
+    ok = zlib:deflateInit(Z),
+    Compressed = zlib:deflate(Z, Data, finish),
+    ok = zlib:deflateEnd(Z),
+    Compressed.
+
+-spec decompress(iodata()) -> iolist().
+decompress(Data) ->
+    Z = zlib:open(),
+    zlib:inflateInit(Z),
+    Decompressed = zlib:inflate(Z, Data),
+    zlib:inflateEnd(Z),
+    Decompressed.
 
 %%%===================================================================
 %%% Private

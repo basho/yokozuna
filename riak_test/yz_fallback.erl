@@ -3,8 +3,9 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 1000).
--define(INDEX, "fallback").
--define(INDEX_B, <<"fallback">>).
+-define(INDEX, <<"fallback">>).
+-define(BUCKET, {?INDEX, <<"bucket">>}).
+-define(KEY, <<"key">>).
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(CFG,
         [{riak_core,
@@ -18,34 +19,33 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt_config:get_os_env("YZ_BENCH_DIR"),
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
     Cluster = rt:build_cluster(2, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     create_index(Cluster, ?INDEX),
     Cluster2 = take_node_down(Cluster),
-    write_obj(Cluster2),
-    check_fallbacks(Cluster2),
+    write_obj(Cluster2, ?BUCKET, ?KEY),
+    check_fallbacks(Cluster2, ?INDEX, ?BUCKET, ?KEY),
     HP = riak_hp(yz_rt:select_random(Cluster2), Cluster2),
-    ?assert(yz_rt:search_expect(yokozuna, HP, "fallback", "*", "*", 1)),
+    ?assert(yz_rt:search_expect(yokozuna, HP, ?INDEX, "*", "*", 1)),
     pass.
 
-check_fallbacks(Cluster) ->
+check_fallbacks(Cluster, Index, Bucket, Key) ->
     Node = yz_rt:select_random(Cluster),
-    KVPreflist = kv_preflist(Node, ?INDEX_B, ?INDEX_B),
+    KVPreflist = kv_preflist(Node, Bucket, Key),
     FallbackPreflist = filter_fallbacks(KVPreflist),
     LogicalFallbackPL = make_logical(Node, FallbackPreflist),
     [begin
          {H, P} = solr_hp(FNode, Cluster),
-         ?assert(yz_rt:search_expect(solr, {H, P}, "fallback", "_yz_pn", integer_to_list(LPN), 0))
+         ?assert(yz_rt:search_expect(solr, {H, P}, Index, "_yz_pn", integer_to_list(LPN), 0))
      end
      || {LPN, FNode} <- LogicalFallbackPL].
 
 create_index(Cluster, Index) ->
     Node = yz_rt:select_random(Cluster),
     yz_rt:create_index(Node, Index),
-    ok = yz_rt:set_index(Node, list_to_binary(Index)),
+    ok = yz_rt:set_bucket_type_index(Node, Index),
     timer:sleep(5000).
-    
+
 make_logical(Node, Preflist) ->
     rpc:call(Node, yz_misc, convert_preflist, [Preflist, logical]).
 
@@ -70,12 +70,12 @@ take_node_down(Cluster) ->
     timer:sleep(5000),
     Cluster -- [DownNode].
 
-write_obj(Cluster) ->
+write_obj(Cluster, {BType, BName}, Key) ->
     Node = yz_rt:select_random(Cluster),
     {Host, Port} = riak_hp(Node, Cluster),
     lager:info("write obj to node ~p", [Node]),
-    URL = ?FMT("http://~s:~s/buckets/~s/keys/~s",
-               [Host, integer_to_list(Port), ?INDEX, ?INDEX]),
+    URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
+               [Host, integer_to_list(Port), BType, BName, Key]),
     Headers = [{"content-type", "text/plain"}],
     Body = <<"yokozuna">>,
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, []),

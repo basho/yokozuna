@@ -10,6 +10,8 @@
 #>
 #>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.2.0-yz http://www.motorlogy.com/apache/lucene/solr/4.2.0/solr-4.2.0-src.tgz | tee build-solr.out
 
+set -e
+
 error()
 {
     echo "ERROR: $1"
@@ -68,9 +70,13 @@ WORK_DIR=$1; shift
 NAME=$1; shift
 URL=$1; shift
 
-mkdir $WORK_DIR
+if [ ! -x "`which ant`" ]; then
+  echo "Couldn't find ant, which is needed to compile Solr."
+  exit 1
+fi
+
 if test ! -e $WORK_DIR; then
-    error "failed to created work dir: $WORK_DIR"
+    mkdir $WORK_DIR
 fi
 
 cd $WORK_DIR

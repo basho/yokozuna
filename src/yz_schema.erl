@@ -35,26 +35,30 @@ filename(SchemaName) ->
     binary_to_list(SchemaName) ++ ".xml".
 
 %% @doc Retrieve the raw schema from Riak.
--spec get(schema_name()) -> {ok, raw_schema()} | {error, schema_name(), term()}.
+-spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
-    C = yz_kv:client(),
-    R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
+    R = riak_core_metadata:get(?YZ_META_SCHEMAS, Name),
     case {Name, R} of
-        {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
-            {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
-        {_, {error, Reason}} ->
-            {error, Name, Reason};
-        {_, {value, RawSchema}} ->
-            {ok, RawSchema}
+        {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
+            {ok, _} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
+        {_, undefined} ->
+            {error, notfound};
+        {_, R} ->
+            {ok, iolist_to_binary(yz_misc:decompress(R))}
     end.
+
+-spec add_schema(schemas(), {schema_name(), compressed_schema()}) -> schemas().
+add_schema(Schemas, {Name, CompressedSchema}) ->
+    orddict:store(Name, CompressedSchema, Schemas).
 
 %% @doc Store the `RawSchema' with `Name'.
 -spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
 store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
-            C = yz_kv:client(),
-            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
+            CompressedSchema = yz_misc:compress(RawSchema),
+            riak_core_metadata:put(?YZ_META_SCHEMAS, Name, CompressedSchema),
+            ok;
         {error, _} = Err ->
             Err
     end.
@@ -63,13 +67,19 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
 -spec exists(schema_name()) -> true | false.
 exists(SchemaName) ->
     case yz_schema:get(SchemaName) of
-        {error, _, _} -> false;
+        {error, _} -> false;
         _ -> true
     end.
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @doc Set ?YZ_SCHEMA_BUCKET with the property {allow_mult, false}
+%%      We never want schema value siblings.
+-spec setup_schema_bucket() -> ok.
+setup_schema_bucket() ->
+    ok = riak_core_bucket:set_bucket(?YZ_SCHEMA_BUCKET, [{allow_mult, false}]).
 
 %% @private
 %%
@@ -116,10 +126,11 @@ verify_fields({ok, Schema}) ->
               ?YZ_ED_FIELD_XPATH,
               ?YZ_FPN_FIELD_XPATH,
               ?YZ_VTAG_FIELD_XPATH,
-              ?YZ_NODE_FIELD_XPATH,
               ?YZ_PN_FIELD_XPATH,
               ?YZ_RK_FIELD_XPATH,
-              ?YZ_RB_FIELD_XPATH],
+              ?YZ_RT_FIELD_XPATH,
+              ?YZ_RB_FIELD_XPATH,
+              ?YZ_ERR_FIELD_XPATH],
     Checks = [verify_field(F, Schema) || F <- Fields],
     IsError = fun(X) -> X /= ok end,
     case lists:filter(IsError, Checks) of

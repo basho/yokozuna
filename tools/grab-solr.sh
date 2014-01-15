@@ -4,83 +4,23 @@
 #
 # Usage:
 #     ./grab-solr.sh
-
-SRC="bin-tar"
+#
+#     specify SOLR_PKG_DIR to skip the solr download and use a local copy
+set -e
 
 if [ $(basename $PWD) != "tools" ]
 then
     cd tools
 fi
 
-while [ $# -gt 0 ]
-do
-    case $1 in
-        git)
-            SRC="git"
-            shift
-            ;;
-        src-tar)
-            SRC="src-tar"
-            shift
-            ;;
-        *)
-            echo Invalid argument $1
-            exit 1
-    esac
-done
-
-echo "Create solr dir..."
 SOLR_DIR=../priv/solr
 BUILD_DIR=../build
-
-if [ $SRC == "git" ]; then
-    VSN=lucene-solr
-    src_dir=$BUILD_DIR/$VSN
-    example_dir=$src_dir/solr/example
-    patch_dir=../solr-patches
-    branch=branch_4x
-elif [ $SRC == "src-tar" ]; then
-    VSN=solr-4.1.0-src
-    src_dir=$BUILD_DIR/${VSN%-src}
-    example_dir=$src_dir/solr/example
-    patch_dir=../solr-patches
-else
-    VSN=solr-4.3.0-yz
-    src_dir=$BUILD_DIR/$VSN
-    example_dir=$src_dir/example
-fi
-
-apply_patches()
-{
-    if [ -e $patch_dir ]; then
-        echo "applying patches in $patch_dir"
-        for p in $patch_dir/*.patch; do
-            patch -p1 < $p
-        done
-    fi
-}
-
-build_solr()
-{
-    echo "Building Solr..."
-    pushd $src_dir
-    apply_patches
-    ant ivy-bootstrap
-    ant compile
-    pushd solr
-    mkdir test-framework/lib
-    ant dist example
-    popd
-    popd
-}
-
-checkout_branch()
-{
-    branch=$1
-    pushd $src_dir
-    git checkout $branch
-    popd
-}
+VSN=solr-4.6.0-yz1
+FILENAME=$VSN.tgz
+TMP_DIR=/var/tmp/yokozuna
+TMP_FILE=$TMP_DIR/$FILENAME
+SRC_DIR=$BUILD_DIR/$VSN
+EXAMPLE_DIR=$SRC_DIR/example
 
 check_for_solr()
 {
@@ -90,44 +30,63 @@ check_for_solr()
 
 get_solr()
 {
-    echo "Getting Solr..."
-    if [ $SRC == "git" ]; then
-        git clone git://github.com/apache/$VSN.git
-    else
-        wget https://s3.amazonaws.com/yzami/pkgs/$VSN.tgz
-        tar zxf $VSN.tgz
-    fi
+        if [[ -z ${SOLR_PKG_DIR+x} ]]
+        then
+            if [ -e $TMP_FILE ]; then
+                echo "Using cached copy of Solr $TMP_FILE"
+                ln -s $TMP_FILE $FILENAME
+            else
+                echo "Pulling Solr from S3"
+                wget --no-check-certificate --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$FILENAME
+                if [ -d $TMP_DIR ]; then
+                    cp $FILENAME $TMP_DIR
+                else
+                    mkdir $TMP_DIR
+                    cp $FILENAME $TMP_DIR
+                fi
+            fi
+        else
+            # This is now obsolete thanks to implicit caching above
+            # but will leave in for now as to not break anyone.
+            echo "Using local copy of Solr $SOLR_PKG_DIR/$FILENAME"
+            cp $SOLR_PKG_DIR/$FILENAME ./
+        fi
+        tar zxf $FILENAME
 }
 
 if check_for_solr
 then
-    echo "Solr already exists, exiting..."
+    echo "Solr already exists, exiting"
     exit 0
 fi
 
-echo "Create build dir..."
+echo "Create dir $BUILD_DIR"
 if [ ! -e $BUILD_DIR ]; then
     mkdir $BUILD_DIR
 fi
 
 cd $BUILD_DIR
 
-if [ ! -e $src_dir ]
+if [ ! -e $SRC_DIR ]
 then
     get_solr
 fi
 
-if [ $SRC == "git" ]; then
-    checkout_branch $branch
-    build_solr
-elif [ $SRC == "src-tar" ]; then
-    build_solr
-fi
+echo "Creating Solr dir $SOLR_DIR"
 
-echo "Creating solr dir from Solr example..."
-# -n prevents cp from overwriting our solr.xml and etc/jetty.xml
-cp -rn $example_dir/* $SOLR_DIR
-rm -rf $SOLR_DIR/{cloud-scripts,example-DIH,exampledocs,multicore,logs,solr,README.txt,logging.properties}
+# Explicitly copy files needed rather than copying everything and
+# removing which requires using cp -rn (since $SOLR_DIR/etc has files
+# which shouldn't be overwritten).  For whatever reason, cp -n causes
+# non-zero exit code when files that would have been overwritten are
+# detected.
+cp -r $EXAMPLE_DIR/contexts $SOLR_DIR
+cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
+cp -r $EXAMPLE_DIR/lib $SOLR_DIR
+# TODO: does resources need to be copied?
+cp -r $EXAMPLE_DIR/resources $SOLR_DIR
+cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
+cp -r $EXAMPLE_DIR/start.jar $SOLR_DIR
+cp -r $EXAMPLE_DIR/webapps $SOLR_DIR
 
-
-echo "Finished creating solr dir..."
+echo "Solr dir created successfully"

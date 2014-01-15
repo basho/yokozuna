@@ -14,7 +14,7 @@
 #
 #> Usage:
 #>
-#>  ./verify.sh [OPTIONS] <tmp dir>
+#>  ./verify.sh [OPTIONS] <previous riak dir> <scratch dir>
 #>
 #> Options:
 #>
@@ -31,9 +31,9 @@
 #>
 #> Example:
 #>
-#>  ./verify.sh /tmp/yz-verify | tee verify.out
+#>  ./verify.sh ~/riak-builds/1.4.1 /tmp/yz-verify | tee verify.out
 #>
-#>  ./verify.sh --yz-source ~/home/user/yokozuna /tmp/yz-verify | tee verify.out
+#>  ./verify.sh --yz-source ~/home/user/yokozuna ~/riak-builds/1.4.1 /tmp/yz-verify | tee verify.out
 
 # **********************************************************************
 # HELPERS
@@ -83,7 +83,7 @@ function ant_version()
 
 function erl_version()
 {
-    erl -eval "io:format(\"~s~n\", [erlang:system_info(system_version)]), init:stop()." | sed -n -E 's/Erlang (R[A-Z0-9]+) .*/\1/p'
+    erl -eval "io:format(\"~s~n\", [erlang:system_info(system_version)]), init:stop()." | sed -n -E 's/Erlang (R[A-Z0-9a-z\-]+) .*/\1/p'
 }
 
 function sanity_check()
@@ -110,27 +110,9 @@ function sanity_check()
     fi
 }
 
-function verify_yokozuna()
-{
-    maybe_clone yokozuna $YZ_SRC $YZ_BRANCH
-    pushd yokozuna
-
-    info "build yokozuna"
-    if ! make; then
-        error "failed to compile yokozuna"
-    fi
-
-    info "run yokozuna unit tests"
-    if ! make test; then
-        error "yokozuna unit tests failed ($tmp)"
-    fi
-
-    popd
-}
-
 function compile_yz_bench()
 {
-    pushd yokozuna/misc/bench
+    pushd riak_yz/deps/yokozuna/misc/bench
 
     info "compile yokozuna bench driver"
     if ! ../../rebar get-deps; then
@@ -140,14 +122,6 @@ function compile_yz_bench()
     if ! ../../rebar compile; then
         error "failed to compile yokozuna/misc/bench"
     fi
-
-    pushd deps/basho_bench
-
-    info "build basho_bench"
-    if ! make; then
-        error "failed to build yokozuna/misc/bench/deps/basho_bench"
-    fi
-    popd
 
     popd
 }
@@ -160,9 +134,19 @@ function build_riak_yokozuna()
     info "build riak_yz"
 
     mkdir deps
-    pushd deps
-    maybe_clone yokozuna $YZ_SRC $YZ_BRANCH
-    popd
+    pushd deps                  # in deps
+
+    if [ $YZ_BRANCH = "_using_local_" ]; then
+        info "using local working copy of Yokozuna"
+        rm -rf yokozuna
+        maybe_clone yokozuna $YZ_SRC $YZ_BRANCH
+    elif [ $YZ_BRANCH != "develop" ]; then
+        info "using branch $YZ_BRANCH of Yokozuna"
+        cd yokozuna
+        git checkout $YZ_BRANCH
+    fi
+
+    popd                        # out deps
 
     if ! make; then
         error "failed to make riak_yz"
@@ -204,7 +188,7 @@ function setup_rt_dir()
 
 function run_riak_test_tests()
 {
-    pushd yokozuna
+    pushd riak_yz/deps/yokozuna
 
     info "compile yokozuna riak_test tests"
     if ! make compile-riak-test; then
@@ -217,7 +201,6 @@ function run_riak_test_tests()
     fi
 
     info "run yokozuna riak_test tests"
-    export YZ_BENCH_DIR=$(pwd)/misc/bench
     if ! $WORK_DIR/riak_test/riak_test -c yz_verify -d riak_test/ebin; then
         error "yokozuna riak_test tests failed"
     fi
@@ -232,16 +215,21 @@ function run_riak_test_tests()
 sanity_check
 
 YZ_SRC=git://github.com/basho/yokozuna.git
-YZ_BRANCH=master
+YZ_BRANCH=develop
 RIAK_SRC=git://github.com/basho/riak.git
-RIAK_BRANCH=rz-yz-merge-1.4.0
+RIAK_BRANCH=develop
 TEST_ONLY=
 
 while [ $# -gt 0 ]
 do
     case $1 in
+        -h | --help)
+            usage
+            exit 0
+            ;;
         --yz-source)
             YZ_SRC=$2
+            YZ_BRANCH=_using_local_
             shift
             ;;
         --yz-branch)
@@ -270,11 +258,13 @@ do
     shift
 done
 
-if [ $# != 1 ]; then
-    echo "ERROR: incorrect number of arguments: $#"
+if [ $# != 2 ]; then
+    echo "ERROR: incorrect number of arguments"
     usage
     exit 1
 fi
+
+PREV_DIR=$1; shift
 
 WORK_DIR=$1; shift
 mkdir $WORK_DIR
@@ -285,9 +275,10 @@ cd $WORK_DIR
 # This will make WORK_DIR absolute if it isn't already
 WORK_DIR=$(pwd)
 
-verify_yokozuna
-compile_yz_bench
+ln -s $PREV_DIR $(basename $PREV_DIR)
+
 build_riak_yokozuna
+compile_yz_bench
 build_riak_test
 setup_rt_dir
 run_riak_test_tests

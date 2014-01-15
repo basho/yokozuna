@@ -58,7 +58,7 @@ insert(async, Id, BKey, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
 insert(sync, Id, BKey, Hash, Tree, Options) ->
-    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, 1000).
+    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity).
 
 %% @doc Delete the `BKey' from `Tree'.  The id will be determined from
 %%      `BKey'.  The result of the sync call should be ignored since
@@ -68,21 +68,16 @@ delete(async, Id, BKey, Tree) ->
     gen_server:cast(Tree, {delete, Id, BKey});
 
 delete(sync, Id, BKey, Tree) ->
-    catch gen_server:call(Tree, {delete, Id, BKey}, 1000).
+    catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
 
 -spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
     gen_server:call(Tree, {update_tree, Id}, infinity).
 
--spec compare({p(),n()}, hashtree:remote_fun(), tree()) ->
-                     [hashtree:keydiff()].
-compare(Id, Remote, Tree) ->
-    compare(Id, Remote, undefined, Tree).
-
 -spec compare({p(),n()}, hashtree:remote_fun(),
-              undefined | hashtree:acc_fun(T), tree()) -> T.
-compare(Id, Remote, AccFun, Tree) ->
-    gen_server:call(Tree, {compare, Id, Remote, AccFun}, infinity).
+              undefined | hashtree:acc_fun(T), term(), tree()) -> T.
+compare(Id, Remote, AccFun, Acc, Tree) ->
+    gen_server:call(Tree, {compare, Id, Remote, AccFun, Acc}, infinity).
 
 get_index(Tree) ->
     gen_server:call(Tree, get_index, infinity).
@@ -179,8 +174,8 @@ handle_call({update_tree, Id}, From, S) ->
                end,
                S);
 
-handle_call({compare, Id, Remote, AccFun}, From, S) ->
-    do_compare(Id, Remote, AccFun, From, S),
+handle_call({compare, Id, Remote, AccFun, Acc}, From, S) ->
+    do_compare(Id, Remote, AccFun, Acc, From, S),
     {noreply, S};
 
 handle_call(destroy, _From, S) ->
@@ -279,7 +274,6 @@ fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
     Indexes = yz_index:get_indexes_from_ring(yz_misc:get_ring(transformed)),
-    Indexes2 = [{?YZ_DEFAULT_INDEX, ignored}|Indexes],
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -287,7 +281,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes2],
+    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes],
     ok.
 
 -spec do_new_tree({p(),n()}, state()) -> state().
@@ -433,8 +427,7 @@ tree_id({Index, N}) ->
 tree_id(_) ->
     erlang:error(badarg).
 
-%% TODO: handle non-existent tree
-do_compare(Id, Remote, AccFun, From, S) ->
+do_compare(Id, Remote, AccFun, Acc, From, S) ->
     case orddict:find(Id, S#state.trees) of
         error ->
             %% This case shouldn't happen, but might as well safely handle it.
@@ -444,12 +437,7 @@ do_compare(Id, Remote, AccFun, From, S) ->
         {ok, Tree} ->
             spawn_link(
               fun() ->
-                      Result = case AccFun of
-                                   undefined ->
-                                       hashtree:compare(Tree, Remote);
-                                   _ ->
-                                       hashtree:compare(Tree, Remote, AccFun)
-                               end,
+                      Result = hashtree:compare(Tree, Remote, AccFun, Acc),
                       gen_server:reply(From, Result)
               end)
     end,
