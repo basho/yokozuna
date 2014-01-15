@@ -57,7 +57,7 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
             CompressedSchema = yz_misc:compress(RawSchema),
-            riak_core_metadata:put({yokozuna, schemas}, Name, ["CompressedSchema"]),
+            riak_core_metadata:put({yokozuna, schemas}, Name, CompressedSchema),
             ok;
         {error, _} = Err ->
             Err
