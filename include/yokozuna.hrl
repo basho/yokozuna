@@ -305,8 +305,6 @@
 -type raw_schema() :: binary().
 -type schema() :: xmerl_scan:document().
 -type schema_name() :: binary().
--type compressed_schema() :: binary().
--type schemas() :: orddict(schema_name(), compressed_schema()).
 
 %%%===================================================================
 %%% Solr Fields

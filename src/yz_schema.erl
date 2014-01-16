@@ -47,10 +47,6 @@ get(Name) ->
             {ok, iolist_to_binary(yz_misc:decompress(R))}
     end.
 
--spec add_schema(schemas(), {schema_name(), compressed_schema()}) -> schemas().
-add_schema(Schemas, {Name, CompressedSchema}) ->
-    orddict:store(Name, CompressedSchema, Schemas).
-
 %% @doc Store the `RawSchema' with `Name'.
 -spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
 store(Name, RawSchema) when is_binary(RawSchema) ->

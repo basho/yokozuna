@@ -331,8 +331,8 @@ confirm_bad_schema(Cluster) ->
         end,
     yz_rt:wait_until(Cluster, F).
 
-%% @doc Confirm that creating a new shema gets added to the Ring
-%%      metadata as a compressed blob, and is retrievable
+%% @doc Confirm that creating a new shema gets added to the
+%%      cluster metadata as a compressed blob, and is retrievable
 %%      as its original raw text
 confirm_compressed_metadata(Cluster, Name, RawSchema) ->
     Node = select_random(Cluster),
