@@ -11,6 +11,7 @@ basic_schema_test() ->
                "../priv/yokozuna.schema", [], context()),
 
     cuttlefish_unit:assert_config(Config, "yokozuna.enabled", false),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solr_startup_wait", 30),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_port", 12345),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_jmx_port", 54321),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_jvm_opts",
@@ -26,9 +27,10 @@ override_schema_test() ->
     %% conf_parse module
     Conf = [
             {["search"], on},
-            {["search", "solr_port"], 5678},
-            {["search", "solr_jmx_port"], 8765},
-            {["search", "solr_jvm_opts"], "-Xmx10G"},
+            {["search", "solr", "start_timeout"], "1m"},
+            {["search", "solr", "port"], 5678},
+            {["search", "solr", "jmx_port"], 8765},
+            {["search", "solr", "jvm_options"], "-Xmx10G"},
             {["search", "anti_entropy", "data_dir"], "/data/aae/search"},
             {["search", "root_dir"], "/some/other/volume"}
     ],
@@ -36,6 +38,7 @@ override_schema_test() ->
                "../priv/yokozuna.schema", Conf, context()),
 
     cuttlefish_unit:assert_config(Config, "yokozuna.enabled", true),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solr_startup_wait", 60),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_port", 5678),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_jmx_port", 8765),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_jvm_opts", "-Xmx10G"),

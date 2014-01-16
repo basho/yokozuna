@@ -1,58 +1,51 @@
 %% -*- erlang -*-
 %% @doc To enable Search set this 'on'.
-%% @datatype enum on, off
 {mapping, "search", "yokozuna.enabled", [
   {default, off},
-  {datatype, {enum, [on, off]}}
+  {datatype, flag}
 ]}.
 
-{ translation,
-  "yokozuna.enabled",
-  fun(Conf) ->
-          Setting = cuttlefish:conf_get("search", Conf),
-          case Setting of
-              on -> true;
-              off -> false;
-              _Default -> false
-          end
-  end}.
-
-
-%% @doc The startup wait time, in seconds, Riak will wait for Solr to
-%% start. The start sequence will be tried twice. If both timeout
-%% then the node will be shutdown. This may need to be increased as
-%% more data is indexed and Solr takes longer to start.
-{mapping, "search.solr_startup_wait", "yokozuna.solr_startup_wait", [
-  {default, 30},
-  {datatype, integer}
+%% @doc How long Riak will wait for Solr to start. The start sequence
+%% will be tried twice. If both attempts timeout, then the Riak node
+%% will be shutdown. This may need to be increased as more data is
+%% indexed and Solr takes longer to start. Values lower than 1s will
+%% be rounded up to the minimum 1s.
+{mapping, "search.solr.start_timeout", "yokozuna.solr_startup_wait", [
+  {default, "30s"},
+  {datatype, {duration, s}}
 ]}.
 
 %% @doc The port number which Solr binds to.
-{mapping, "search.solr_port", "yokozuna.solr_port", [
+%%   NOTE: Binds on every interface.
+{mapping, "search.solr.port", "yokozuna.solr_port", [
   {default, {{yz_solr_port}} },
   {datatype, integer}
 ]}.
 
 %% @doc The port number which Solr JMX binds to.
-{mapping, "search.solr_jmx_port", "yokozuna.solr_jmx_port", [
+%%   NOTE: Binds on every interface.
+{mapping, "search.solr.jmx_port", "yokozuna.solr_jmx_port", [
   {default, {{yz_solr_jmx_port}} },
   {datatype, integer}
 ]}.
 
-%% @doc The options to pass to the Solr JVM.  Non-standard
-%% options, i.e. -XX, may not be portable across JVM
-%% implementations.  E.g. -XX:+UseCompressedStrings.
-{mapping, "search.solr_jvm_opts", "yokozuna.solr_jvm_opts", [
+%% @doc The options to pass to the Solr JVM.  Non-standard options,
+%% i.e. -XX, may not be portable across JVM implementations.
+%% E.g. -XX:+UseCompressedStrings.
+{mapping, "search.solr.jvm_options", "yokozuna.solr_jvm_opts", [
   {default, "-Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
 ]}.
 
-%% @doc The directory where AAE data files are stored
+%% @doc The directory where Search's Active Anti-Entropy data files
+%% are stored
 {mapping, "search.anti_entropy.data_dir", "yokozuna.anti_entropy_data_dir", [
-  {default, "{{platform_data_dir}}/yz_anti_entropy" }
+  {default, "{{platform_data_dir}}/yz_anti_entropy"},
+  {datatype, directory}
 ]}.
 
-%% @doc The root directory for Yokozuna, under which index data and
+%% @doc The root directory for Search, under which index data and
 %% configuration is stored.
 {mapping, "search.root_dir", "yokozuna.root_dir", [
-  {default, "{{platform_data_dir}}/yz" }
+  {default, "{{platform_data_dir}}/yz"},
+  {datatype, directory}
 ]}.

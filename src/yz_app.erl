@@ -34,6 +34,7 @@
 %%%===================================================================
 
 start(_StartType, _StartArgs) ->
+    initialize_atoms(),
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
         {ok, Pid} ->
@@ -46,6 +47,21 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
     ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
+    ok.
+
+%% @private
+%%
+%% @doc Initialize atoms required outside of Yokozuna. E.g. the KV
+%% bucket properties use the `list_to_existing_atom/1' call. If a user
+%% sets the `search_index' property then this atom needs to
+%% exist. These atoms should always be initialized since the user can
+%% set these properties regardless if Yokozuna is enabled.
+-spec initialize_atoms() -> ok.
+initialize_atoms() ->
+    %% I had to run `list_to_existing_atom' so compiler wouldn't
+    %% optimize out `list_to_atom'.
+    list_to_atom("search_index"),
+    search_index = list_to_existing_atom("search_index"),
     ok.
 
 maybe_setup(false) ->
