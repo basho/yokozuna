@@ -218,7 +218,7 @@ repair(Partition, {_Reason, KeyBin}) ->
     %% match. In either case the object must be re-indexed.
     Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
-    Index = yz_kv:get_index(BKey, Ring),
+    Index = yz_kv:get_index(BKey),
     ShortPL = riak_kv_util:get_index_n(BKey),
     %% Can assume here that Yokozua is enabled and current
     %% node is owner.
