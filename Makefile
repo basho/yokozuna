@@ -27,6 +27,7 @@ distclean: clean
 ##
 DIALYZER_APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
 	xmerl webtool snmp public_key mnesia eunit syntax_tools compiler
+DIALYZER_FLAGS = -Wno_return
 TEST_PLT = .yokozuna_test_dialyzer_plt
 
 include tools.mk
