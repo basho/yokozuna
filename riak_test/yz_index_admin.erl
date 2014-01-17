@@ -272,6 +272,7 @@ confirm_field_add(Cluster, Index) ->
 
     lager:info("upload schema ~s with new field [~p]", [Index, HP]),
     {ok, Status3, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELD_ADDED),
+    yz_rt:wait_for_schema(Cluster, Index, ?SCHEMA_FIELD_ADDED),
     ?assertEqual("204", Status3),
 
     lager:info("reload index ~s [~p]", [Index, Node]),
