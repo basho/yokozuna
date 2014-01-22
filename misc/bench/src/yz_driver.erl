@@ -21,7 +21,7 @@
          {?M10, "pumpkin rollinia soncoya toyon yew wampee ugni tamarind"},
          {?M1, "blueberry apricot guava feijoa jackfruit jambul limequat pulasan"},
          {?K100, "apple grape orange pineapple strawberry kiwi huito lychee"},
-         {?K10, "avocado raspberry persimmon blackberry cherry tomato huckleberry elderberry"},
+         {?K10, "avocado raspberry persimmon blackberry cherry tomato huckleberry muscadine"},
          {?K1, "clementine lime lemon melon plum pear gooseberry honeydew"},
          {100, "marang nutmeg olive pecan peanut tangerine barbadine duku"},
          {10, "nunga nance mulberry langsat karonda kumquat bacupari bael"},
