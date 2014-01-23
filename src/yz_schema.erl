@@ -37,15 +37,14 @@ filename(SchemaName) ->
 %% @doc Retrieve the raw schema from Riak.
 -spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
-    C = yz_kv:client(),
-    R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
+    R = riak_core_metadata:get(?YZ_META_SCHEMAS, Name),
     case {Name, R} of
-        {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
-            {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
-        {_, {error, Reason}} ->
-            {error, Reason};
-        {_, {value, RawSchema}} ->
-            {ok, RawSchema}
+        {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
+            {ok, _} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
+        {_, undefined} ->
+            {error, notfound};
+        {_, R} ->
+            {ok, iolist_to_binary(yz_misc:decompress(R))}
     end.
 
 %% @doc Store the `RawSchema' with `Name'.
@@ -53,8 +52,9 @@ get(Name) ->
 store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
-            C = yz_kv:client(),
-            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
+            CompressedSchema = yz_misc:compress(RawSchema),
+            riak_core_metadata:put(?YZ_META_SCHEMAS, Name, CompressedSchema),
+            ok;
         {error, _} = Err ->
             Err
     end.

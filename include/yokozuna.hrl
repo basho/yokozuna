@@ -153,6 +153,7 @@
 -define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_META_INDEXES, yokozuna_indexes).
+-define(YZ_META_SCHEMAS, {yokozuna, schemas}).
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
