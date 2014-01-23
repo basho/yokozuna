@@ -505,8 +505,8 @@ start_exchange(Index, Preflist, Ring, S) ->
 
     %% NOTE: The riak_kv version of this function wraps this is a
     %% try/catch to guard against the case where a ring size change
-    %% makes the index go way. I disagree with the use of try/catch as
-    %% it could fail for other reaons. I believe this can be solved by
+    %% makes the index go away. I disagree with the use of try/catch as
+    %% it could fail for other reasons. I believe this can be solved by
     %% checking if the index exists in the `maybe_exchange'
     %% function. But first would like to actually test Yokozuna AAE +
     %% ring resizing to see what happens.
