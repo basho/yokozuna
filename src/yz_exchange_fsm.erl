@@ -216,7 +216,6 @@ repair(Partition, {remote_missing, KeyBin}) ->
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
-    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
     ShortPL = riak_kv_util:get_index_n(BKey),
@@ -226,6 +225,7 @@ repair(Partition, {_Reason, KeyBin}) ->
         {ok, Obj} ->
             case yz_kv:should_index(Index) of
                 true ->
+                    Ring = yz_misc:get_ring(transformed),
                     yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
                     full_repair;
                 false ->
