@@ -2,6 +2,7 @@
 -module(yz_schema_admin).
 -compile(export_all).
 -import(yz_rt, [host_entries/1, select_random/1]).
+-include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
@@ -190,6 +191,7 @@
 confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
+    confirm_compressed_metadata(Cluster, <<"some_schema">>, ?TEST_SCHEMA),
     confirm_create_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_get_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_not_found(Cluster, <<"not_a_schema">>),
@@ -328,6 +330,18 @@ confirm_bad_schema(Cluster) ->
                 rpc:call(Node2, yz_solr, ping, [Name])
         end,
     yz_rt:wait_until(Cluster, F).
+
+%% @doc Confirm that creating a new shema gets added to the
+%%      cluster metadata as a compressed blob, and is retrievable
+%%      as its original raw text
+confirm_compressed_metadata(Cluster, Name, RawSchema) ->
+    Node = select_random(Cluster),
+    lager:info("confirm_compressed_metadata ~s [~p]", [Name, Node]),
+    ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]),
+    R = rpc:call(Node, riak_core_metadata, get, [?YZ_META_SCHEMAS, Name]),
+    ?assertEqual(RawSchema, iolist_to_binary(yz_misc:decompress(R))),
+    {ok, RawSchema2} = rpc:call(Node, yz_schema, get, [Name]),
+    ?assertEqual(RawSchema, RawSchema2).
 
 
 %%%===================================================================

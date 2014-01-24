@@ -67,9 +67,7 @@ confirm() ->
     verify_repair_count(Cluster, RepairCountBefore + ExpectedNumRepairs),
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
-    %% Add 3 repairs for the fruit schema which is written to a
-    %% non-indexed bucket and will cause 3 instances of tree_repair.
-    ?assertEqual(ExpectedNumRepairs + 3, Count),
+    ?assertEqual(ExpectedNumRepairs, Count),
     %% Verify that there is no indefinite repair.  The have been
     %% several bugs in the past where Yokozuna AAE would indefinitely
     %% repair.
@@ -102,6 +100,7 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?INDEX, RawSchema),
+    yz_rt:wait_for_schema(Cluster, ?INDEX, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
     ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
     yz_rt:wait_for_index(Cluster, ?INDEX).

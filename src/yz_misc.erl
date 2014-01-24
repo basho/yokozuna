@@ -271,6 +271,24 @@ set_ring_meta(Name, Default, Fun, Arg) ->
       fun set_ring_trans/2,
       {Name, Default, Fun, Arg}).
 
+-spec compress(iodata()) -> iolist().
+compress(Data) ->
+    Z = zlib:open(),
+    ok = zlib:deflateInit(Z),
+    Compressed = zlib:deflate(Z, Data, finish),
+    ok = zlib:deflateEnd(Z),
+    zlib:close(Z),
+    Compressed.
+
+-spec decompress(iodata()) -> iolist().
+decompress(Data) ->
+    Z = zlib:open(),
+    zlib:inflateInit(Z),
+    Decompressed = zlib:inflate(Z, Data),
+    zlib:inflateEnd(Z),
+    zlib:close(Z),
+    Decompressed.
+
 %%%===================================================================
 %%% Private
 %%%===================================================================

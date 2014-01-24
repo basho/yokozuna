@@ -150,19 +150,18 @@ get_index({Bucket, _}) ->
 %% check that.
 -spec should_handoff({term(), {p(), node()}}) -> boolean().
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
-    BucketTypesPrefix = {core, bucket_types},
-    Server = {riak_core_metadata_hashtree, TargetNode},
-    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
-    %% TODO Even though next call is local should also add 1s timeout
-    %% since this call blocks vnode.  Or see above.
-    LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
-    case LocalHash == RemoteHash of
+    case ?YZ_ENABLED andalso is_service_up(?YZ_SVC_NAME, TargetNode) of
         true ->
-            true;
+            case is_metadata_consistent(TargetNode) of
+                true ->
+                    true;
+                false ->
+                    ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false
+            end;
         false ->
-            ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
-                  [node(), TargetNode]),
-            false
+            true
     end.
 
 index(Obj, Reason, P) ->
@@ -408,12 +407,33 @@ get_and_set_tree(Partition) ->
 
 %% @private
 %%
+%% @doc Determine if the local node and remote node have the same
+%% metadata.
+-spec is_metadata_consistent(node()) -> boolean().
+is_metadata_consistent(RemoteNode) ->
+    BucketTypesPrefix = {core, bucket_types},
+    Server = {riak_core_metadata_hashtree, RemoteNode},
+    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
+    %% TODO Even though next call is local should also add 1s timeout
+    %% since this call blocks vnode.  Or see above.
+    LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
+    LocalHash == RemoteHash.
+
+%% @private
+%%
 %% @doc Determine if the `Node' is the current owner or next owner of
 %%      partition `P'.
 -spec is_owner_or_future_owner(p(), node(), ring()) -> boolean().
 is_owner_or_future_owner(P, Node, Ring) ->
     OwnedAndNext = yz_misc:owned_and_next_partitions(Node, Ring),
     ordsets:is_element(P, OwnedAndNext).
+
+%% @private
+%%
+%% @doc Determine if service is up on node.
+-spec is_service_up(atom(), node()) -> boolean().
+is_service_up(Service, Node) ->
+    lists:member(Service, riak_core_node_watcher:services(Node)).
 
 %% @private
 %%

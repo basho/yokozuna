@@ -272,6 +272,7 @@ confirm_field_add(Cluster, Index) ->
 
     lager:info("upload schema ~s with new field [~p]", [Index, HP]),
     {ok, Status3, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELD_ADDED),
+    yz_rt:wait_for_schema(Cluster, Index, ?SCHEMA_FIELD_ADDED),
     ?assertEqual("204", Status3),
 
     lager:info("reload index ~s [~p]", [Index, Node]),
@@ -303,7 +304,7 @@ field_exists(Index, Field, ConnInfo) ->
     fun(Node) ->
             HP = yz_rt:solr_http(proplists:get_value(Node, ConnInfo)),
             URL = field_url(HP, Index, Field),
-            lager:info("verify ~s added ~s", [URL]),
+            lager:info("verify ~s added ~s", [Index, URL]),
             {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
             Status == "200"
     end.
