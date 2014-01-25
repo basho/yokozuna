@@ -44,7 +44,7 @@ confirm() ->
     code:add_path(filename:join([YZBenchDir, "ebin"])),
     random:seed(now()),
     Nodes = rt:deploy_nodes(4, ?CFG),
-    Cluster = join_three(Nodes),
+    Cluster = join(Nodes, 2),
     PBConns = yz_rt:open_pb_conns(Cluster),
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
@@ -190,13 +190,13 @@ async_query(Cluster, YZBenchDir) ->
     lager:info("Run async query against cluster ~p", [Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
     Concurrent = length(Hosts),
-    Apple = {search,"apple","id",?NUM_KEYS},
+    Operations = [{{random_fruit_search, <<"_yz_id">>, 3, ?NUM_KEYS}, 1}],
     Cfg = [{mode, {rate,8}},
            {duration, 2},
            {concurrent, Concurrent},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},
-           {operations, [{Apple,1}]},
+           {operations, Operations},
            {http_conns, Hosts},
            {pb_conns, []},
            {bucket, ?BUCKET},
@@ -223,8 +223,9 @@ delete_some_data(Cluster, ReapSleep) ->
     timer:sleep(timer:seconds(ReapSleep)),
     Keys.
 
-join_three(Nodes) ->
-    [NodeA|Others] = All = lists:sublist(Nodes, 3),
+-spec join([node()], pos_integer()) -> [node()].
+join(Nodes, Num) ->
+    [NodeA|Others] = All = lists:sublist(Nodes, Num),
     [rt:join(Node, NodeA) || Node <- Others],
     All.
 
