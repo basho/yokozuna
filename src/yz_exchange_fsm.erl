@@ -200,7 +200,7 @@ repair(Partition, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
     Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
-    Index = yz_kv:get_index(BKey, Ring),
+    Index = yz_kv:get_index(BKey),
     ShortPL = riak_kv_util:get_index_n(BKey),
     FakeObj = fake_kv_object(BKey),
     %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
