@@ -1,5 +1,6 @@
 -module(aae_test).
 -compile(export_all).
+-include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 10000).
 -define(BUCKET, {<<"fruit_aae">>, <<"fruit">>}).
@@ -68,13 +69,49 @@ confirm() ->
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(ExpectedNumRepairs, Count),
+
+    _ = verify_removal_of_orphan_postings(Cluster, random:uniform(100)),
+
     %% Verify that there is no indefinite repair.  The have been
     %% several bugs in the past where Yokozuna AAE would indefinitely
     %% repair.
     lager:info("Verify no indefinite repair"),
     verify_no_repair(Cluster),
+
     yz_rt:close_pb_conns(PBConns),
     pass.
+
+
+%% @doc Create a tuple containing a riak object and the first
+%% partition and owner for that object.
+-spec create_obj_node_partition_tuple([node()], {bucket(), binary()}) ->
+                                             {obj(), node(), p()}.
+create_obj_node_partition_tuple(Cluster, BKey={Bucket, Key}) ->
+    Obj = riak_object:new(Bucket, Key, <<"orphan index">>, "text/plain"),
+    Ring = rpc:call(hd(Cluster), yz_misc, get_ring, [transformed]),
+    BProps = rpc:call(hd(Cluster), riak_core_bucket, get_bucket, [?BUCKET]),
+    N = riak_core_bucket:n_val(BProps),
+    PL = rpc:call(hd(Cluster), yz_misc, primary_preflist, [BKey, Ring, N]),
+    {P, Node} = hd(PL),
+    {Obj, Node, P}.
+
+%% @doc Create postings for the given keys without storing
+%% corresponding KV objects. This is used to simulate scenario where
+%% Solr has postings for objects which no longer exist in Riak. Such a
+%% scenario would happen if the KV object was deleted but the
+%% corresponding delete operation for Solr failed to complete.
+%%
+%% NOTE: This is only creating 1 replica for each posting, not
+%% N. There is no reason to create N replicas for each posting to
+%% verify to correctness of AAE in this scenario.
+-spec create_orphan_postings([node()], [pos_integer()]) -> ok.
+create_orphan_postings(Cluster, Keys) ->
+    Keys2 = [{?BUCKET, ?INT_TO_BIN(K)} || K <- Keys],
+    lager:info("Create orphan postings with keys ~p", [Keys]),
+    ObjNodePs = [create_obj_node_partition_tuple(Cluster, Key) || Key <- Keys2],
+    [ok = rpc:call(Node, yz_kv, index, [Obj, put, P])
+     || {Obj, Node, P} <- ObjNodePs],
+    ok.
 
 delete_key_in_solr(Cluster, Index, Key) ->
     [begin
@@ -104,6 +141,19 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
     ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
     yz_rt:wait_for_index(Cluster, ?INDEX).
+
+%% @doc Verify that Yokozuna deletes postings which have no
+%% corresponding KV object.
+-spec verify_removal_of_orphan_postings([node()], pos_integer()) -> ok.
+verify_removal_of_orphan_postings(Cluster, Num) ->
+    lager:info("verify removal of ~p orphan postings", [Num]),
+    yz_rt:count_calls(Cluster, ?REPAIR_MFA),
+    Keys = lists:seq(?NUM_KEYS + 1, ?NUM_KEYS + Num),
+    ok = create_orphan_postings(Cluster, Keys),
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+    ok = yz_rt:stop_tracing(),
+    ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+    ok.
 
 %% @doc Verify that no repair has happened since `TS'.
 verify_no_repair(Cluster) ->
