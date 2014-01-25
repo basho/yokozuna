@@ -60,7 +60,7 @@ stop(_State) ->
 initialize_atoms() ->
     %% I had to run `list_to_existing_atom' so compiler wouldn't
     %% optimize out `list_to_atom'.
-    list_to_atom("search_index"),
+    _ = list_to_atom("search_index"),
     search_index = list_to_existing_atom("search_index"),
     ok.
 
