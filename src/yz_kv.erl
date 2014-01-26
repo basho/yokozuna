@@ -179,7 +179,7 @@ index(Obj, Reason, P) ->
                             true ->
                                 index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
                             false ->
-                                dont_index(Obj, Reason, P, ShortPL, BKey)
+                                dont_index(Obj, Reason, P, BKey, ShortPL)
                         end,
                         yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
                     catch _:Err ->
