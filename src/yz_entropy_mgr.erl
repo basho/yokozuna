@@ -500,7 +500,7 @@ do_exchange_status(_Pid, Index, {StartIdx, N}, Status, S) ->
 
 -spec start_exchange(p(), {p(),n()}, ring(), state()) -> {any(), state()}.
 start_exchange(Index, Preflist, Ring, S) ->
-    IsOwner = riak_core_ring:index_owner(Ring, Index) == node(),
+    IsOwner = yz_misc:index_owner(Ring, Index) == node(),
     PendingChange = is_pending_change(Ring, Index),
 
     case {IsOwner, PendingChange} of

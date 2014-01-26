@@ -156,7 +156,9 @@ key_exchange(timeout, S=#state{index=Index,
     Remote = fun(get_bucket, {L, B}) ->
                      exchange_bucket_kv(KVTree, IndexN, L, B);
                 (key_hashes, Segment) ->
-                     exchange_segment_kv(KVTree, IndexN, Segment)
+                     exchange_segment_kv(KVTree, IndexN, Segment);
+                (_, _) ->
+                     ok
              end,
 
     AccFun = fun(KeyDiff, Count) ->
@@ -198,8 +200,8 @@ repair(Partition, {remote_missing, KeyBin}) ->
     %% Yokozuna has it but KV doesn't
     Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
-    Index = yz_kv:get_index(BKey, Ring),
-    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    Index = yz_kv:get_index(BKey),
+    ShortPL = riak_kv_util:get_index_n(BKey),
     FakeObj = fake_kv_object(BKey),
     %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
     %% assume that Yokozuna is enabled and current node is owner.
@@ -214,16 +216,16 @@ repair(Partition, {remote_missing, KeyBin}) ->
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
-    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
-    Index = yz_kv:get_index(BKey, Ring),
-    ShortPL = yz_kv:get_short_preflist(BKey, Ring),
+    Index = yz_kv:get_index(BKey),
+    ShortPL = riak_kv_util:get_index_n(BKey),
     %% Can assume here that Yokozua is enabled and current
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
             case yz_kv:should_index(Index) of
                 true ->
+                    Ring = yz_misc:get_ring(transformed),
                     yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
                     full_repair;
                 false ->

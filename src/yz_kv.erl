@@ -132,20 +132,10 @@ get_md_entry(MD, Key) ->
 
 %% @doc Extract the index name from the `Bucket'. Return the tombstone
 %% value if there is none.
--spec get_index(bkey(), ring()) -> index_name().
-get_index({Bucket, _}, Ring) ->
-    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
+-spec get_index(bkey()) -> index_name().
+get_index({Bucket, _}) ->
+    BProps = riak_core_bucket:get_bucket(Bucket),
     proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
-
-%% @doc Determine the "short" preference list given the `BKey' and
-%% `Ring'.  A short preflist is one that defines the preflist by
-%% partition number and N value.
--spec get_short_preflist(bkey(), ring()) -> short_preflist().
-get_short_preflist({Bucket, _} = BKey, Ring) ->
-    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    NVal = riak_core_bucket:n_val(BProps),
-    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-    {first_partition(PrimaryPL), NVal}.
 
 %% @doc Called by KV vnode to determine if handoff should start or
 %% not.  Yokozuna needs to make sure that the bucket types have been
@@ -183,8 +173,8 @@ index(Obj, Reason, P) ->
                     T1 = os:timestamp(),
                     BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
                     try
-                        Index = get_index(BKey, Ring),
-                        ShortPL = get_short_preflist(BKey, Ring),
+                        Index = get_index(BKey),
+                        ShortPL = riak_kv_util:get_index_n(BKey),
                         case should_index(Index) of
                             true ->
                                 index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
@@ -347,9 +337,8 @@ max_hashtree_tokens() ->
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
 put(Client, Bucket, Key, Value, ContentType) ->
     O = riak_object:new(Bucket, Key, Value, ContentType),
-    Ring = yz_misc:get_ring(transformed),
-    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    N = proplists:get_value(n_val, BucketProps),
+    BucketProps = riak_core_bucket:get_bucket(Bucket),
+    N = riak_core_bucket:n_val(BucketProps),
     Client:put(O, [{pw,N},{w,N},{dw,N}]).
 
 %%%===================================================================

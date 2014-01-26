@@ -168,6 +168,15 @@ group_by_1(Transform) ->
             orddict:update(K, Cons, [V], Acc)
     end.
 
+%% @doc Determine the owner of the index (riak partition).
+-spec index_owner(ring(), p()) -> node() | no_owner.
+index_owner(Ring, Index) ->
+    try
+        riak_core_ring:index_owner(Ring, Index)
+    catch error:{badmatch,_} ->
+            no_owner
+    end.
+
 %% @doc Create the `Dir' if it doesn't already exist.
 -spec make_dir(string()) -> ok.
 make_dir(Dir) ->

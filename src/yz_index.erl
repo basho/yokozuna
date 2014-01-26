@@ -36,7 +36,7 @@ associated_buckets(Index, Ring) ->
     Assoc = [riak_core_bucket:name(BProps)
              || BProps <- AllProps,
                 proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE) == Index],
-    case is_default_type_indexed(Index, Ring) of
+    case is_default_type_indexed(Index) of
         true -> [Index|Assoc];
         false -> Assoc
     end.
@@ -96,7 +96,6 @@ exists(Name) ->
     OnDisk = lists:member(Name, DiskIndexNames),
     case yz_solr:is_up() of
         true ->
-            Ping = yz_solr:ping(Name),
             InRing andalso OnDisk andalso yz_solr:ping(Name);
         false ->
             InRing andalso OnDisk
@@ -345,12 +344,12 @@ index_dir(Name) ->
 %% @private
 %%
 %% @doc Determine if the bucket named `Index' under the default
-%% bucket-type has `search' property set to `true'. If so41 this is a
+%% bucket-type has `search' property set to `true'. If so this is a
 %% legacy Riak Search bucket/index which is associated with a Yokozuna
 %% index of the same name.
--spec is_default_type_indexed(index_name(), ring()) -> boolean().
-is_default_type_indexed(Index, Ring) ->
-    Props = riak_core_bucket:get_bucket(Index, Ring),
+-spec is_default_type_indexed(index_name()) -> boolean().
+is_default_type_indexed(Index) ->
+    Props = riak_core_bucket:get_bucket(Index),
     %% Check against `true' atom in case the value is <<"true">> or
     %% "true" which, hopefully, it should not be.
     true == proplists:get_value(search, Props, false).

@@ -77,8 +77,10 @@ count_calls(Cluster, MFA={M,F,A}) when is_list(Cluster) ->
     dbg:p(all, call),
     dbg:tpl(M, F, A, [{'_', [], [{return_trace}]}]).
 
+-spec stop_tracing() -> ok.
 stop_tracing() ->
-    dbg:stop_clear().
+    dbg:stop_clear(),
+    ok.
 
 trace_count({trace, _Pid, call, {_M, _F, _A}}, Acc) ->
     Acc;

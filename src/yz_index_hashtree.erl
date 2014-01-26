@@ -437,7 +437,9 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
         {ok, Tree} ->
             spawn_link(
               fun() ->
+                      Remote(init, self()),
                       Result = hashtree:compare(Tree, Remote, AccFun, Acc),
+                      Remote(final, self()),
                       gen_server:reply(From, Result)
               end)
     end,
@@ -446,14 +448,7 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
 %% TODO: OMG cache this with entry in proc dict, use `_yz_fp` as Index
 %%       and keep an orddict(Bucket,N) in proc dict
 get_index_n(BKey) ->
-    get_index_n(BKey, yz_misc:get_ring(transformed)).
-
-get_index_n({Bucket, Key}, Ring) ->
-    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    N = proplists:get_value(n_val, BucketProps),
-    ChashKey = riak_core_util:chash_key({Bucket, Key}),
-    Index = riak_core_ring:responsible_index(ChashKey, Ring),
-    {Index, N}.
+    riak_kv_util:get_index_n(BKey).
 
 do_poke(S) ->
     maybe_build(maybe_clear(S)).

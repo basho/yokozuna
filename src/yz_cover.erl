@@ -122,7 +122,7 @@ cache_plan(Index) ->
 calc_plan(Index) ->
     Ring = yz_misc:get_ring(transformed),
     Q = riak_core_ring:num_partitions(Ring),
-    BProps = riak_core_bucket:get_bucket(Index, Ring),
+    BProps = riak_core_bucket:get_bucket(Index),
     Selector = all,
     NVal = riak_core_bucket:n_val(BProps),
     NumPrimaries = 1,
