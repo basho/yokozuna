@@ -69,16 +69,21 @@ get_call_count(Cluster, MFA) when is_list(Cluster) ->
             0
     end.
 
+-spec count_calls([node()], {atom(), atom(), non_neg_integer()}) -> ok.
 count_calls(Cluster, MFA={M,F,A}) when is_list(Cluster) ->
+    lager:info("count all calls to MFA ~p across the cluster ~p",
+               [MFA, Cluster]),
     RiakTestNode = node(),
     maybe_create_ets(),
     dbg:tracer(process, {fun trace_count/2, {RiakTestNode, MFA, 0}}),
     [{ok,Node} = dbg:n(Node) || Node <- Cluster],
     dbg:p(all, call),
-    dbg:tpl(M, F, A, [{'_', [], [{return_trace}]}]).
+    dbg:tpl(M, F, A, [{'_', [], [{return_trace}]}]),
+    ok.
 
 -spec stop_tracing() -> ok.
 stop_tracing() ->
+    lager:info("stop all dbg tracing"),
     dbg:stop_clear(),
     ok.
 
@@ -283,6 +288,7 @@ wait_for_bucket_type(Cluster, BucketType) ->
 %% `Timestamp'.
 -spec wait_for_full_exchange_round([node()], os:now()) -> ok.
 wait_for_full_exchange_round(Cluster, Timestamp) ->
+    lager:info("wait for full AAE exchange round on cluster ~p", [Cluster]),
     MoreRecent =
         fun({_Idx, _, undefined, _RepairStats}) ->
                 false;
@@ -335,14 +341,15 @@ verify_count(Expected, Resp) ->
     lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
     Expected == get_count(Resp).
 
--spec wait_for_index(list(), index_name()) -> term().
+-spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
     IsIndexUp =
         fun(Node) ->
                 lager:info("Waiting for index ~s to be avaiable on node ~p", [Index, Node]),
                 rpc:call(Node, yz_solr, ping, [Index])
         end,
-    [?assertEqual(ok, rt:wait_until(Node, IsIndexUp)) || Node <- Cluster].
+    [?assertEqual(ok, rt:wait_until(Node, IsIndexUp)) || Node <- Cluster],
+    ok.
 
 join_all(Nodes) ->
     [NodeA|Others] = Nodes,

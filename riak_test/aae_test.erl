@@ -3,8 +3,9 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 10000).
--define(BUCKET, {<<"fruit_aae">>, <<"fruit">>}).
+-define(BUCKET_TYPE, <<"data">>).
 -define(INDEX, <<"fruit_aae">>).
+-define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(CFG,
         [{riak_core,
@@ -70,7 +71,7 @@ confirm() ->
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(ExpectedNumRepairs, Count),
 
-    _ = verify_removal_of_orphan_postings(Cluster, random:uniform(100)),
+    _ = verify_removal_of_orphan_postings(Cluster),
 
     %% Verify that there is no indefinite repair.  The have been
     %% several bugs in the past where Yokozuna AAE would indefinitely
@@ -78,9 +79,10 @@ confirm() ->
     lager:info("Verify no indefinite repair"),
     verify_no_repair(Cluster),
 
+    _ = verify_no_repair_for_non_indexed_data(Cluster, PBConns),
+
     yz_rt:close_pb_conns(PBConns),
     pass.
-
 
 %% @doc Create a tuple containing a riak object and the first
 %% partition and owner for that object.
@@ -136,16 +138,18 @@ read_schema(YZBenchDir) ->
 setup_index(Cluster, PBConn, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
-    yz_rt:store_schema(PBConn, ?INDEX, RawSchema),
-    yz_rt:wait_for_schema(Cluster, ?INDEX, RawSchema),
+    ok = yz_rt:store_schema(PBConn, ?INDEX, RawSchema),
+    ok = yz_rt:wait_for_schema(Cluster, ?INDEX, RawSchema),
+    ok = yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
-    ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
-    yz_rt:wait_for_index(Cluster, ?INDEX).
+    ok = yz_rt:set_index(Node, ?BUCKET, ?INDEX),
+    ok = yz_rt:wait_for_index(Cluster, ?INDEX).
 
 %% @doc Verify that Yokozuna deletes postings which have no
 %% corresponding KV object.
--spec verify_removal_of_orphan_postings([node()], pos_integer()) -> ok.
-verify_removal_of_orphan_postings(Cluster, Num) ->
+-spec verify_removal_of_orphan_postings([node()]) -> ok.
+verify_removal_of_orphan_postings(Cluster) ->
+    Num = random:uniform(100),
     lager:info("verify removal of ~p orphan postings", [Num]),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     Keys = lists:seq(?NUM_KEYS + 1, ?NUM_KEYS + Num),
@@ -163,6 +167,42 @@ verify_no_repair(Cluster) ->
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(0, Count).
+
+%% @doc Verify that KV data written to a bucket with no associated
+%% index is not repaired by AAE. When Yokozuna sees an incoming KV
+%% write which has no associated index it, obviously, shouldn't index
+%% the data but it should update it's AAE trees so that future
+%% exchanges don't think a repair is in order. The only time when this
+%% shouldn't hold is when the trees are manually cleared or
+%% expired. In that case repair must happen but Yokozuna is smart
+%% enough to only repair its AAE tree on not actually index the
+%% data. However, in this test, the trees are not cleared and no
+%% repair should hapen.
+-spec verify_no_repair_for_non_indexed_data([node()], [pid()]) -> ok.
+verify_no_repair_for_non_indexed_data(Cluster, PBConns) ->
+    Bucket = {?BUCKET_TYPE, <<"non_indexed">>},
+
+    %% 1. write KV data to non-indexed bucket
+    Conn = yz_rt:select_random(PBConns),
+    lager:info("write 100 non-indexed objects to bucket ~p", [Bucket]),
+    Objs = [begin
+                Key = ?INT_TO_BIN(K),
+                riakc_obj:new(Bucket, Key, <<"non-indexed data">>, "text/plain")
+            end
+            || K <- lists:seq(1, 100)],
+    [ok = riakc_pb_socket:put(Conn, O) || O <- Objs],
+
+    %% 2. setup tracing to count repair calls
+    ok = yz_rt:count_calls(Cluster, ?REPAIR_MFA),
+
+    %% 3. wait for full exchange round
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+    ok = yz_rt:stop_tracing(),
+
+    %% 4. verify repair count is 0
+    lager:info("verify no repair occurred for non-indexed data"),
+    ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+    ok.
 
 verify_num_match(Cluster, Num) ->
     F = fun(Node) ->
