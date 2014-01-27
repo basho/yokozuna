@@ -8,7 +8,6 @@
 -type interface() :: {http, tuple()} | {pb, tuple()}.
 -type interfaces() :: [interface()].
 -type conn_info() :: [{node(), interfaces()}].
--type cluster() :: [node()].
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
