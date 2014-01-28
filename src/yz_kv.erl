@@ -25,11 +25,6 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 
--define(ONE_SECOND, 1000).
--define(WAIT_FLAG(Index), {wait_flag, Index}).
--define(MAX_WAIT_FOR_INDEX, app_helper:get_env(?YZ_APP_NAME, max_wait_for_index_seconds, 5)).
-
--type check() :: {module(), atom(), list()}.
 -type write_reason() :: delete | handoff | put | anti_entropy.
 
 
@@ -152,16 +147,32 @@ get_index({Bucket, _}) ->
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
     case ?YZ_ENABLED andalso is_service_up(?YZ_SVC_NAME, TargetNode) of
         true ->
-            case is_metadata_consistent(TargetNode) of
+            case is_metadata_consistent(TargetNode) andalso
+                 has_indexes(TargetNode) of
                 true ->
                     true;
                 false ->
-                    ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
+                    ?INFO("waiting for bucket types prefix and indexes to agree between ~p and ~p",
                           [node(), TargetNode]),
                     false
             end;
         false ->
             true
+    end.
+
+%% @doc Returns true if the RemoteNode's indexes
+%% match this node's indexes.
+-spec has_indexes(node()) -> boolean().
+has_indexes(RemoteNode) ->
+    RemoteIndexes = case rpc:call(RemoteNode, yz_solr, cores, [], 5000) of
+        {ok, Indexes} -> Indexes;
+        _ -> error
+    end,
+    case {RemoteIndexes, yz_solr:cores()} of
+        {error, _} -> false;
+        {RemoteIndexes, {ok, LocalIndexes}} ->
+            lists:sort(LocalIndexes) == lists:sort(RemoteIndexes);
+        _ -> false
     end.
 
 index(Obj, Reason, P) ->
@@ -229,10 +240,9 @@ index(_, delete, _, P, BKey, ShortPL, Index) ->
     ok = update_hashtree(delete, P, ShortPL, BKey),
     ok;
 
-index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
+index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
     LI = yz_cover:logical_index(Ring),
     {_, Key} = BKey,
-    ok = maybe_wait(Reason, Index),
     LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
     LP = yz_cover:logical_partition(LI, P),
     Hash = hash_object(Obj),
@@ -434,41 +444,3 @@ is_owner_or_future_owner(P, Node, Ring) ->
 -spec is_service_up(atom(), node()) -> boolean().
 is_service_up(Service, Node) ->
     lists:member(Service, riak_core_node_watcher:services(Node)).
-
-%% @private
-%%
-%% @doc Wait for index creation if hook was invoked for handoff write.
-%%
-%% NOTE: This function assumes it is running on a long-lived process.
--spec maybe_wait(write_reason(), index_name()) -> ok.
-maybe_wait(handoff, Index) ->
-    Flag = ?WAIT_FLAG(Index),
-    case check_flag(Flag) of
-        false ->
-            Seconds = ?MAX_WAIT_FOR_INDEX,
-            ok = wait_for({yz_solr, ping, [Index]}, Seconds),
-            ok = set_flag(Flag);
-        true ->
-            ok
-    end;
-maybe_wait(_, _) ->
-    ok.
-
-%% @doc Set the `Flag'.
--spec set_flag(term()) -> ok.
-set_flag(Flag) ->
-    erlang:put(Flag, true),
-    ok.
-
-%% @doc Wait for `Check' for the given number of `Seconds'.
--spec wait_for(check(), seconds()) -> ok.
-wait_for(_, 0) ->
-    ok;
-wait_for(Check={M,F,A}, Seconds) when Seconds > 0 ->
-    case M:F(A) of
-        true ->
-            ok;
-        false ->
-            timer:sleep(?ONE_SECOND),
-            wait_for(Check, Seconds - 1)
-    end.
