@@ -111,25 +111,19 @@ process(#rpbyokozunaindexputreq{
     case maybe_create_index(IndexName, SchemaName) of
         ok ->
             {reply, #rpbputresp{}, State};
-        {error, {rpc_fail, Claimant, _}} ->
-            Msg = "Cannot create index while claimant node " ++ atom_to_list(Claimant) ++" is down~n",
-            {error, Msg, State};
         {error, schema_not_found} ->
             {error, "Schema not found", State}
     end;
 
 process(rpbyokozunaindexgetreq, State) ->
-    Ring = yz_misc:get_ring(transformed),
-    Indexes = yz_index:get_indexes_from_ring(Ring),
-    Details = [index_details(Ring, IndexName)
-      || IndexName <- orddict:fetch_keys(Indexes)],
+    Indexes = yz_index:get_indexes_from_meta(),
+    Details = [index_details(IndexName) || IndexName <- Indexes],
     {reply, #rpbyokozunaindexgetresp{index=Details}, State};
 
 process(#rpbyokozunaindexgetreq{name = IndexName}, State) ->
-    Ring = yz_misc:get_ring(transformed),
     case yz_index:exists(IndexName) of
         true ->
-            Details = [index_details(Ring, IndexName)],
+            Details = [index_details(IndexName)],
             {reply, #rpbyokozunaindexgetresp{index=Details}, State};
          _ ->
             {error, "notfound", State}
@@ -144,21 +138,22 @@ process_stream(_,_,State) ->
 %% ---------------------------------
 
 -spec maybe_create_index(binary(), schema_name()) -> ok |
-                                                     {error, schema_not_found} |
-                                                     {error, {rpc_fail, node(), term()}}.
+                                                     {error, schema_not_found}.
 maybe_create_index(IndexName, _SchemaName = <<>>)->
     maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
 maybe_create_index(IndexName, _SchemaName = undefined)->
     maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
 maybe_create_index(IndexName, SchemaName)->
     case yz_index:exists(IndexName) of
-        true  -> ok;
+        true  ->
+            ok;
         false ->
             yz_index:create(IndexName, SchemaName)
     end.
 
-index_details(Ring, IndexName) ->
-    Info = yz_index:get_info_from_ring(Ring, IndexName),
+-spec index_details(index_name()) -> #rpbyokozunaindex{}.
+index_details(IndexName) ->
+    Info = yz_index:get_index_info(IndexName),
     #rpbyokozunaindex{
         name = IndexName,
         schema = yz_index:schema_name(Info)
