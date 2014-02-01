@@ -28,22 +28,12 @@
 %%% API
 %%%===================================================================
 
-%% @doc Extract the `Claimant' from the `Ring'.
--spec get_claimant(ring()) -> Claimant::node().
-get_claimant(Ring) ->
-    riak_core_ring:claimant(Ring).
-
 %% @doc Extract the hostname from `Node'.
 -spec hostname(node()) -> string().
 hostname(Node) ->
     S = atom_to_list(Node),
     [_, Host] = re:split(S, "@", [{return, list}]),
     Host.
-
-%% @doc Check if the given `Node' is the claimant according to `Ring'.
--spec is_claimant(ring(), node()) -> boolean().
-is_claimant(Ring, Node) ->
-    Node == get_claimant(Ring).
 
 %% @doc Add list of webmachine routes to the router.
 add_routes(Routes) ->

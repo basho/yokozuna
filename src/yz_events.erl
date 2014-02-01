@@ -36,9 +36,21 @@
 -include("yokozuna.hrl").
 
 -record(state, {
-          previous_ring :: ring()
+          %% The number of ticks since the last time this value was
+          %% reset to 0. This value along with
+          %% `get_full_check_after/0' is used to determine when a
+          %% "full check" should be performed. This is to prevent
+          %% expensive checks occurring on every tick.
+          num_ticks = 0                 :: non_neg_integer(),
+
+          %% The hash of the index cluster meta last time it was
+          %% checked.
+          prev_index_hash = undefined   :: term()
          }).
--define(PREV_RING(S), S#state.previous_ring).
+
+
+-define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
+-define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
 
 %%%===================================================================
 %%% API
@@ -52,41 +64,37 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    ok = watch_ring_events(),
-    ok = create_events_table(),
     ok = set_tick(),
-    {ok, #state{previous_ring=yz_misc:get_ring(raw)}}.
+    {ok, #state{}}.
 
-handle_cast({ring_event, Ring}, S) ->
-    PrevRing = ?PREV_RING(S),
-    S2 = S#state{previous_ring=Ring},
-
-    Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
-    Current = names(yz_index:get_indexes_from_ring(Ring)),
-    {Removed, Added, Same} = yz_misc:delta(Previous, Current),
-
-    ok = sync_indexes(Ring, Removed, Added, Same),
-
-    {noreply, S2}.
+handle_cast(Msg, _S) ->
+    ?WARN("unknown message ~p", [Msg]).
 
 handle_info(tick, S) ->
-    %% TODO: tick and ring_event should be merged, actions taken in
-    %% ring_event could fail and should be retried during tick, may
-    %% need to rely on something other than ring to determine when to
-    %% retry certain actions.  Make all actions in here idempotent.
+    PrevHash = S#state.prev_index_hash,
+    CurrHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
+    NumTicks = S#state.num_ticks,
+    FullCheck = NumTicks == 0,
 
-    %% Index creation may have failed during ring event.
-    PrevRing = ?PREV_RING(S),
-    Ring = yz_misc:get_ring(raw),
-    Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
-    Current = names(yz_index:get_indexes_from_ring(Ring)),
-    {Removed, Added, Same} = yz_misc:delta(Previous, Current),
-    ok = sync_indexes(Ring, Removed, Added, Same),
+    case yz_solr:is_up() of
+        true ->
+            case FullCheck orelse (PrevHash /= CurrHash) of
+                true -> ok = sync_indexes();
+                false -> ok
+            end;
+        false ->
+            ok
+    end,
 
-    remove_non_owned_data(),
+    case FullCheck of
+        true -> ok = remove_non_owned_data(yz_cover:get_ring_used());
+        false -> ok
+    end,
 
     ok = set_tick(),
-    {noreply, S}.
+
+    NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
+    {noreply, S#state{num_ticks=NumTicks2}}.
 
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
@@ -96,52 +104,65 @@ code_change(_, S, _) ->
     {ok, S}.
 
 terminate(_Reason, _S) ->
-    ok = destroy_events_table().
-
+    ok.
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
 
--spec add_index(ring(), index_name()) -> ok.
-add_index(Ring, Name) ->
+-spec add_index(index_name()) -> ok.
+add_index(Name) ->
     case yz_index:exists(Name) of
-        true ->
-            ok;
-        false ->
-            ok = yz_index:local_create(Ring, Name)
+        true -> ok;
+        false -> ok = yz_index:local_create(Name)
     end.
 
--spec add_indexes(ring(), index_set()) -> ok.
-add_indexes(Ring, Names) ->
-    [add_index(Ring, N) || N <- Names],
+-spec add_indexes(index_set()) -> ok.
+add_indexes(Names) ->
+    _ = [ok = add_index(N) || N <- Names],
     ok.
 
--spec create_events_table() -> ok.
-create_events_table() ->
-    Opts = [named_table, protected, {read_concurrency, true}],
-    ?YZ_EVENTS_TAB = ets:new(?YZ_EVENTS_TAB, Opts),
-    ok.
+%% @private
+%%
+%% @doc Get the number of ticks after which a full check is
+%% performed. If the tick interval is 1 second and this function
+%% returns 60 then a full check will be performed every 60 seconds.
+-spec get_full_check_after() -> non_neg_integer().
+get_full_check_after() ->
+    NumTicks = app_helper:get_env(?YZ_APP_NAME, events_full_check_after,
+                                  ?DEFAULT_EVENTS_FULL_CHECK_AFTER),
+    case is_integer(NumTicks) of
+        true -> NumTicks;
+        false -> 60
+    end.
 
--spec destroy_events_table() -> ok.
-destroy_events_table() ->
-    true = ets:delete(?YZ_EVENTS_TAB),
-    ok.
-
+%% @private
+%%
+%% @doc Return the tick interval specified in milliseconds.
+-spec get_tick_interval() -> ms().
 get_tick_interval() ->
-    app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
+    I = app_helper:get_env(?YZ_APP_NAME, events_tick_interval,
+                           ?DEFAULT_EVENTS_TICK_INTERVAL),
+    case is_integer(I) andalso I >= 1000 of
+        true -> I;
+        false -> 1000
+    end.
 
--spec is_unknown(tuple()) -> boolean().
-is_unknown({_, {_, unknown}}) -> true;
-is_unknown({_, {_, Port}}) when is_list(Port) -> false.
+%% @private
+%%
+%% @doc Increment the integer N unless it is equal to M then wrap
+%% around to 0.
+-spec incr_or_wrap(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
+incr_or_wrap(N, M) ->
+    case N == M of
+        true -> 0;
+        false -> N + 1
+    end.
 
 maybe_log({_, []}) ->
     ok;
 maybe_log({Index, Removed}) ->
     ?INFO("removed non-owned partitions ~p from index ~p", [Removed, Index]).
-
-names(Indexes) ->
-    [Name || {Name,_} <- Indexes].
 
 -spec remove_index(index_name()) -> ok.
 remove_index(Name) ->
@@ -152,18 +173,23 @@ remove_index(Name) ->
 
 -spec remove_indexes(index_set()) -> ok.
 remove_indexes(Names) ->
-    [ok = remove_index(N) || N <- Names],
+    _ = [ok = remove_index(N) || N <- Names],
     ok.
 
 %% @private
 %%
 %% @doc Remove documents for any data not owned by this node.
--spec remove_non_owned_data() -> ok.
-remove_non_owned_data() ->
+-spec remove_non_owned_data(ring() | unkown) -> ok.
+remove_non_owned_data(unknown) ->
+    %% The ring used to calculate the current coverage plan could not
+    %% be determined. In this case do nothing to prevent removing data
+    %% that the current coverage plan is using.
+    ok;
+remove_non_owned_data(Ring) ->
     case yz_solr:cores() of
         {ok, Cores} ->
             Indexes = ordsets:to_list(Cores),
-            Removed = [{Index, yz_index:remove_non_owned_data(Index)}
+            Removed = [{Index, yz_index:remove_non_owned_data(Index, Ring)}
                        || Index <- Indexes],
             [maybe_log(R) || R <- Removed];
         _ ->
@@ -171,17 +197,35 @@ remove_non_owned_data() ->
     end,
     ok.
 
-send_ring_event(Ring) ->
-    gen_server:cast(?MODULE, {ring_event, Ring}).
-
 set_tick() ->
     Interval = get_tick_interval(),
     erlang:send_after(Interval, ?MODULE, tick),
     ok.
 
-sync_indexes(Ring, Removed, Added, Same) ->
-    ok = remove_indexes(Removed),
-    ok = add_indexes(Ring, Added ++ Same).
+%% @private
+%%
+%% @doc Synchronize the Solr indexes with the official list stored in
+%% memory.
+-spec sync_indexes() -> ok.
+sync_indexes() ->
+    case yz_solr:cores() of
+        {ok, IndexesFromSolr} ->
+            IndexSetFromSolr = ordsets:from_list(IndexesFromSolr),
+            IndexSetFromMeta = ordsets:from_list(yz_index:get_indexes_from_meta()),
+            {Removed, Added, Same} = yz_misc:delta(IndexSetFromSolr, IndexSetFromMeta),
+            ok = sync_indexes(Removed, Added, Same);
+        {error, _Reason} ->
+            ok
+    end.
 
-watch_ring_events() ->
-    riak_core_ring_events:add_sup_callback(fun send_ring_event/1).
+%% @private
+%%
+%% @doc Synchronize Solr indexes by removing the indexes in the
+%% `Removed' set and creating, if they don't already exist, those
+%% indexes in the `Added' and `Same' set.
+%%
+%% @see sync_indexes/0
+-spec sync_indexes(index_set(), index_set(), index_set()) -> ok.
+sync_indexes(Removed, Added, Same) ->
+    ok = remove_indexes(Removed),
+    ok = add_indexes(Added ++ Same).

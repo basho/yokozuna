@@ -186,34 +186,23 @@ create_index(RD, S) ->
     case maybe_create_index(IndexName, SchemaName) of
         ok ->
             {<<>>, RD, S};
-        {error, {rpc_fail, Claimant, _}} ->
-            Msg = "Cannot create index while claimant node ~p is down~n",
-            text_response({halt, 500}, Msg, [Claimant], RD, S)
+        {error, schema_not_found} ->
+            Msg = "Cannot create index because schema ~s was not found~n",
+            text_response({halt, 500}, Msg, [SchemaName], RD, S)
     end.
 
 
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
 read_index(RD, S) ->
-    Ring = S#ctx.ring,
     case S#ctx.index_name of
         undefined  ->
-            Indexes = yz_index:get_indexes_from_ring(Ring),
-            Details = [index_body(Ring, IndexName)
-              || IndexName <- orddict:fetch_keys(Indexes)];
+            Indexes = yz_index:get_indexes_from_meta(),
+            Details = [index_body(IndexName) || IndexName <- Indexes];
         IndexName ->
-            Details = index_body(Ring, IndexName)
+            Details = index_body(IndexName)
     end,
     {mochijson2:encode(Details), RD, S}.
-
-index_body(Ring, IndexName) ->
-    Info = yz_index:get_info_from_ring(Ring, IndexName),
-    SchemaName = yz_index:schema_name(Info),
-    {struct, [
-        {"name", IndexName},
-        {"schema", SchemaName}
-    ]}.
-
 
 text_response(Result, Message, Data, RD, S) ->
     RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
@@ -288,9 +277,18 @@ exists(undefined) ->
 exists(IndexName) ->
     yz_index:exists(IndexName).
 
+%% @private
+-spec index_body(index_name()) -> {struct, [{string(), binary()}]}.
+index_body(IndexName) ->
+    Info = yz_index:get_index_info(IndexName),
+    SchemaName = yz_index:schema_name(Info),
+    {struct, [
+        {"name", IndexName},
+        {"schema", SchemaName}
+    ]}.
+
 -spec maybe_create_index(index_name(), schema_name()) -> ok |
-                                                         {error, schema_not_found} |
-                                                         {error, {rpc_fail, node(), term()}}.
+                                                         {error, schema_not_found}.
 maybe_create_index(IndexName, SchemaName)->
     case exists(IndexName) of
         true  ->

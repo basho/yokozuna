@@ -29,12 +29,32 @@
          terminate/2]).
 -include("yokozuna.hrl").
 
+-record(state, {
+          %% The ring used to calculate the current cached plan.
+          ring_used :: ring()
+         }).
+
 %% @doc This module contains functionality related to creating
 %%      coverage information for distributed search queries.
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+%% @doc Retrieve the ring used for the current plan. In rare cases the
+%% ring cannot be determined and `unknown' will be returned. It is up
+%% to the caller how to interpret this.
+-spec get_ring_used() -> ring() | unknown.
+get_ring_used() ->
+    try gen_server:call(?MODULE, get_ring_used, 5000) of
+        undefined -> unknown;
+        Ring -> Ring
+    catch
+        _:_ ->
+            %% If the call failed then not sure what ring is
+            %% being used.
+            unknown
+    end.
 
 -spec logical_partitions(ring(), ordset(p())) -> ordset(lp()).
 logical_partitions(Ring, Partitions) ->
@@ -45,7 +65,7 @@ logical_partitions(Ring, Partitions) ->
 -spec plan(index_name()) -> {ok, plan()} | {error, term()}.
 plan(Index) ->
     case mochiglobal:get(?BIN_TO_ATOM(Index), undefined) of
-        undefined -> calc_plan(Index);
+        undefined -> calc_plan(Index, yz_misc:get_ring(transformed));
         Plan -> Plan
     end.
 
@@ -63,21 +83,26 @@ start_link() ->
 
 init([]) ->
     schedule_tick(),
-    {ok, none}.
+    {ok, #state{ring_used=undefined}}.
 
 handle_cast(update_all_plans, S) ->
-    update_all_plans(),
-    {noreply, S}.
+    Ring = yz_misc:get_ring(transformed),
+    ok = update_all_plans(Ring),
+    {noreply, S#state{ring_used=Ring}}.
 
 handle_info(tick, S) ->
-    update_all_plans(),
+    Ring = yz_misc:get_ring(transformed),
+    ok = update_all_plans(Ring),
     schedule_tick(),
-    {noreply, S};
+    {noreply, S#state{ring_used=Ring}};
 
 handle_info(Req, S) ->
     lager:warning("Unexpected request ~p", [Req]),
     {noreply, S}.
 
+handle_call(get_ring_used, _, S) ->
+    Ring = S#state.ring_used,
+    {reply, Ring, S};
 handle_call(Req, _, S) ->
     lager:warning("Unexpected request ~p", [Req]),
     {noreply, S}.
@@ -104,10 +129,10 @@ add_filtering(N, Q, LPI, PS) ->
 %% @private
 %%
 %% @doc Calculate a plan for the `Index' and then store an entry in
-%%      the plan-cache.
--spec cache_plan(index_name()) -> ok.
-cache_plan(Index) ->
-    case calc_plan(Index) of
+%%      the plan cache.
+-spec cache_plan(index_name(), ring()) -> ok.
+cache_plan(Index, Ring) ->
+    case calc_plan(Index, Ring) of
         {error, _} ->
             mochiglobal:put(?BIN_TO_ATOM(Index), undefined);
         {ok, Plan} ->
@@ -118,9 +143,8 @@ cache_plan(Index) ->
 %% @private
 %%
 %% @doc Calculate a plan for the `Index'.
--spec calc_plan(index_name()) -> {ok, plan()} | {error, term()}.
-calc_plan(Index) ->
-    Ring = yz_misc:get_ring(transformed),
+-spec calc_plan(index_name(), ring()) -> {ok, plan()} | {error, term()}.
+calc_plan(Index, Ring) ->
     Q = riak_core_ring:num_partitions(Ring),
     BProps = riak_core_bucket:get_bucket(Index),
     Selector = all,
@@ -240,9 +264,8 @@ schedule_tick() ->
 %%
 %% @doc Iterate through the list of indexes, calculate a new coverage
 %%      plan, and update the cache entry.
--spec update_all_plans() -> ok.
-update_all_plans() ->
-    Ring = yz_misc:get_ring(transformed),
-    Indexes = [Name || {Name,_} <- yz_index:get_indexes_from_ring(Ring)],
-    lists:foreach(fun ?MODULE:cache_plan/1, Indexes),
+-spec update_all_plans(ring()) -> ok.
+update_all_plans(Ring) ->
+    Indexes = yz_index:get_indexes_from_meta(),
+    _ = [ok = cache_plan(I, Ring) || I <- Indexes],
     ok.

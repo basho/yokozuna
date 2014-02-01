@@ -48,38 +48,19 @@ create(Name) ->
 %% @doc Create the index `Name' across the entire cluster using
 %%      `SchemaName' as the schema.
 %%
-%% `ok' - The schema was found and the create request was successfully
-%%        run on the claimant.
+%% `ok' - The schema was found and index added to the list.
 %%
-%% `schema_not_found' - The `SchemaName' could not be found in Riak.
-%%
-%% `rpc_fail' - The claimant could not be contacted.
-%%
-%% NOTE: All create requests are serialized through the claimant node
-%%       to avoid races between disjoint nodes.  If the claimant is
-%%       down no indexes may be created.
--spec create(index_name(), schema_name()) -> ok |
-                                             {error, schema_not_found} |
-                                             {error, {rpc_fail, node(), term()}}.
+%% `schema_not_found' - The `SchemaName' could not be found.
+-spec create(index_name(), schema_name()) ->
+                    ok |
+                    {error, schema_not_found}.
 create(Name, SchemaName) ->
     case yz_schema:exists(SchemaName) of
         false ->
             {error, schema_not_found};
         true  ->
-            Ring = yz_misc:get_ring(transformed),
-            case yz_misc:is_claimant(Ring, node()) of
-                true ->
-                    Info = make_info(Name, SchemaName),
-                    ok = add_to_ring(Name, Info);
-                false ->
-                    Claimant = yz_misc:get_claimant(Ring),
-                    case rpc:call(Claimant, ?MODULE, create, [Name, SchemaName]) of
-                        ok ->
-                            ok;
-                        {badrpc, Reason} ->
-                            {error, {rpc_fail, Claimant, Reason}}
-                    end
-            end
+            Info = make_info(SchemaName),
+            ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info)
     end.
 
 %% @doc Determine if an index exists. For an index to exist it must 1)
@@ -90,33 +71,20 @@ create(Name, SchemaName) ->
 %% shouldn't exist in Solr.
 -spec exists(index_name()) -> boolean().
 exists(Name) ->
-    RingIndexes = get_indexes_from_ring(yz_misc:get_ring(raw)),
+    InMeta = riak_core_metadata:get(?YZ_META_INDEXES, Name) /= undefined,
     DiskIndexNames = get_indexes_from_disk(?YZ_ROOT_DIR),
-    InRing = orddict:is_key(Name, RingIndexes),
     OnDisk = lists:member(Name, DiskIndexNames),
     case yz_solr:is_up() of
         true ->
-            InRing andalso OnDisk andalso yz_solr:ping(Name);
+            InMeta andalso OnDisk andalso yz_solr:ping(Name);
         false ->
-            InRing andalso OnDisk
+            InMeta andalso OnDisk
     end.
 
-%% @doc Removed the index `Name' from the entire cluster.
--spec remove(index_name()) -> ok | {error, badrpc}.
+%% @doc Removed the index `Name' from cluster meta.
+-spec remove(index_name()) -> ok.
 remove(Name) ->
-    Ring = yz_misc:get_ring(transformed),
-    case yz_misc:is_claimant(Ring, node()) of
-        true ->
-            ok = remove_from_ring(Name);
-        false ->
-            case rpc:call(yz_misc:get_claimant(Ring), ?MODULE, remove, [Name]) of
-                ok ->
-                    ok;
-                {badrpc, Reason} ->
-                    lager:warning("Failed to contact claimant node ~p", [Reason]),
-                    {error, badrpc}
-            end
-    end.
+    ok = riak_core_metadata:delete(?YZ_META_INDEXES, Name).
 
 %% @doc Determine list of indexes based on filesystem as opposed to
 %% the Riak ring or Solr HTTP resource.
@@ -134,17 +102,15 @@ get_indexes_from_disk(Dir) ->
         filelib:is_dir(F) andalso
             filelib:is_file(filename:join([F, "core.properties"]))].
 
--spec get_indexes_from_ring(ring()) -> indexes().
-get_indexes_from_ring(Ring) ->
-    case riak_core_ring:get_meta(?YZ_META_INDEXES, Ring) of
-        {ok, Indexes} -> Indexes;
-        undefined -> []
-    end.
+%% @doc Determine the list of indexes based on the cluster metadata.
+-spec get_indexes_from_meta() -> indexes().
+get_indexes_from_meta() ->
+    riak_core_metadata:fold(fun meta_index_list_acc/2,
+                            [], ?YZ_META_INDEXES, [{resolver, lww}]).
 
--spec get_info_from_ring(ring(), index_name()) -> index_info().
-get_info_from_ring(Ring, Name) ->
-    Indexes = get_indexes_from_ring(Ring),
-    orddict:fetch(Name, Indexes).
+-spec get_index_info(index_name()) -> undefined | index_info().
+get_index_info(Name) ->
+    riak_core_metadata:get(?YZ_META_INDEXES, Name).
 
 %% @doc Create the index `Name' locally.  Make best attempt to create
 %%      the index, log if a failure occurs.  Always return `ok'.
@@ -152,15 +118,13 @@ get_info_from_ring(Ring, Name) ->
 %% NOTE: This should typically be called by a the ring handler in
 %%       `yz_event'.  The `create/1' API should be used to create a
 %%       cluster-wide index.
--spec local_create(ring(), index_name()) -> ok.
-local_create(Ring, Name) ->
-    %% TODO: Allow data dir to be changed
+-spec local_create(index_name()) -> ok.
+local_create(Name) ->
     IndexDir = index_dir(Name),
     ConfDir = filename:join([IndexDir, "conf"]),
     ConfFiles = filelib:wildcard(filename:join([?YZ_PRIV, "conf", "*"])),
     DataDir = filename:join([IndexDir, "data"]),
-    Info = get_info_from_ring(Ring, Name),
-    SchemaName = schema_name(Info),
+    SchemaName = schema_name(get_index_info(Name)),
     case yz_schema:get(SchemaName) of
         {ok, RawSchema} ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
@@ -187,6 +151,8 @@ local_create(Ring, Name) ->
                         ],
             case yz_solr:core(create, CoreProps) of
                 {ok, _, _} ->
+                    lager:info("Created index ~s with schema ~s",
+                               [Name, SchemaName]),
                     ok;
                 {error, Err} ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
@@ -206,9 +172,6 @@ local_remove(Name) ->
                 ],
     {ok, _, _} = yz_solr:core(remove, CoreProps),
     ok.
-
-name(Info) ->
-    Info#index_info.name.
 
 %% @doc Reload the `Index' cluster-wide. By default this will also
 %% pull the latest version of the schema associated with the
@@ -243,9 +206,8 @@ reload(Index, Opts) ->
 
 %% @doc Remove documents in `Index' that are not owned by the local
 %%      node.  Return the list of non-owned partitions found.
--spec remove_non_owned_data(index_name()) -> [p()].
-remove_non_owned_data(Index) ->
-    Ring = yz_misc:get_ring(raw),
+-spec remove_non_owned_data(index_name(), ring()) -> [p()].
+remove_non_owned_data(Index, Ring) ->
     IndexPartitions = yz_cover:reify_partitions(Ring,
                                                 yokozuna:partition_list(Index)),
     OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
@@ -264,22 +226,16 @@ schema_name(Info) ->
 %%% Private
 %%%===================================================================
 
--spec add_index(indexes(), {index_name(), index_info()}) -> indexes().
-add_index(Indexes, {Name, Info}) ->
-    orddict:store(Name, Info, Indexes).
-
--spec add_to_ring(index_name(), index_info()) -> ok.
-add_to_ring(Name, Info) ->
-    %% checking return value, just to guard against surprises in
-    %% future API changes
-    case yz_misc:set_ring_meta(
-           ?YZ_META_INDEXES, [], fun add_index/2, {Name, Info}) of
-        {ok, _} ->
-            ok;
-        not_changed ->
-            %% index existed already
-            ok
-    end.
+%% @private
+%%
+%% @doc Used to accumulate list of indexes while folding over index
+%% metadata.
+-spec meta_index_list_acc({index_name(), '$deleted' | term()}, indexes()) ->
+                                 indexes().
+meta_index_list_acc({_,'$deleted'}, Acc) ->
+    Acc;
+meta_index_list_acc({Key,_}, Acc) ->
+    [Key|Acc].
 
 %% @private
 -spec reload_local(index_name(), reload_opts()) ->
@@ -310,32 +266,13 @@ reload_local(Index, Opts) ->
 reload_schema_local(Index) ->
     IndexDir = index_dir(Index),
     ConfDir = filename:join([IndexDir, "conf"]),
-    Ring = yz_misc:get_ring(transformed),
-    Info = get_info_from_ring(Ring, Index),
-    SchemaName = schema_name(Info),
+    SchemaName = schema_name(get_index_info(Index)),
     case yz_schema:get(SchemaName) of
         {ok, RawSchema} ->
             SchemaFile = filename:join([ConfDir, yz_schema:filename(SchemaName)]),
             file:write_file(SchemaFile, RawSchema);
         {error, Reason} ->
             {error, Reason}
-    end.
-
--spec remove_index(indexes(), index_name()) -> indexes().
-remove_index(Indexes, Name) ->
-    orddict:erase(Name, Indexes).
-
--spec remove_from_ring(index_name()) -> ok.
-remove_from_ring(Name) ->
-    %% checking return value, just to guard against surprises in
-    %% future API changes
-    case yz_misc:set_ring_meta(
-           ?YZ_META_INDEXES, [], fun remove_index/2, Name) of
-        {ok, _} ->
-            ok;
-        not_changed ->
-            %% index did not exist
-            ok
     end.
 
 index_dir(Name) ->
@@ -354,6 +291,6 @@ is_default_type_indexed(Index) ->
     %% "true" which, hopefully, it should not be.
     true == proplists:get_value(search, Props, false).
 
-make_info(IndexName, SchemaName) ->
-    #index_info{name=IndexName,
-                schema_name=SchemaName}.
+-spec make_info(binary()) -> index_info().
+make_info(SchemaName) ->
+    #index_info{schema_name=SchemaName}.
