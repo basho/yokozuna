@@ -48,6 +48,10 @@
           prev_index_hash = undefined   :: term()
          }).
 
+
+-define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
+-define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -125,7 +129,8 @@ add_indexes(Names) ->
 %% returns 60 then a full check will be performed every 60 seconds.
 -spec get_full_check_after() -> non_neg_integer().
 get_full_check_after() ->
-    NumTicks = app_helper:get_env(?YZ_APP_NAME, events_full_check_after, 60),
+    NumTicks = app_helper:get_env(?YZ_APP_NAME, events_full_check_after,
+                                  ?DEFAULT_EVENTS_FULL_CHECK_AFTER),
     case is_integer(NumTicks) of
         true -> NumTicks;
         false -> 60
@@ -136,7 +141,8 @@ get_full_check_after() ->
 %% @doc Return the tick interval specified in milliseconds.
 -spec get_tick_interval() -> ms().
 get_tick_interval() ->
-    I = app_helper:get_env(?YZ_APP_NAME, events_tick_interval, 1000),
+    I = app_helper:get_env(?YZ_APP_NAME, events_tick_interval,
+                           ?DEFAULT_EVENTS_TICK_INTERVAL),
     case is_integer(I) andalso I >= 1000 of
         true -> I;
         false -> 1000
