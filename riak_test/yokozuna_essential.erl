@@ -24,8 +24,8 @@
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
 -define(BUCKET_TYPE, <<"data">>).
--define(INDEX, <<"fruit">>).
--define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
+-define(INDEX, <<"fruit_index">>).
+-define(BUCKET, {?BUCKET_TYPE, <<"fruit">>}).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
 -define(CFG,
@@ -265,7 +265,7 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
 
     ok = create_index(Node, <<"unique">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- [<<"fruit">>, <<"tagging">>, <<"escaped">>, <<"unique">>]].
+     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]].
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),

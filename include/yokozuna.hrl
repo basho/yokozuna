@@ -266,13 +266,7 @@
 %%% Indexes
 %%%===================================================================
 
--record(index_info,
-        {
-          schema_name :: schema_name()
-        }).
-
 -type indexes() :: [index_name()].
--type index_info() :: #index_info{}.
 -type index_name() :: binary().
 
 -type reload_opt() :: {schema, boolean()} | {timeout, ms()}.
