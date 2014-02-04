@@ -103,6 +103,7 @@ confirm() ->
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
+    confirm_bad_n_val(Cluster),
     confirm_list(Cluster, [<<"test_index_1">>, <<"test_index_2">>, <<"test_index_409">>]),
     confirm_delete(Cluster, <<"test_index_1">>),
     confirm_get(Cluster, <<"test_index_2">>),
@@ -110,6 +111,25 @@ confirm() ->
     confirm_delete_409(Cluster, <<"delete_409">>),
     confirm_field_add(Cluster, <<"field_add">>),
     pass.
+
+%% @doc Verify that bad n_val is rejected.
+confirm_bad_n_val(Cluster) ->
+    Index = <<"bad_n_val">>,
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = index_url(HP, Index),
+    Headers = [{"content-type", "application/json"}],
+
+    lager:info("verify n_val \"not_an_int\" is not accepted [~p]", [HP]),
+    Body1 = <<"{\"n_val\":\"not_an_int\"}">>,
+    {ok, Status1, _, _} = http(put, URL, Headers, Body1),
+    ?assertEqual("400", Status1),
+
+    lager:info("verify n_val -3 is not accepted [~p]", [HP]),
+    Body2 = <<"{\"n_val\":-3}">>,
+    {ok, Status2, _, _} = http(put, URL, Headers, Body2),
+    ?assertEqual("400", Status2),
+
+    ok.
 
 %% @doc Test basic creation, no body.
 confirm_create_index_1(Cluster) ->
@@ -121,17 +141,22 @@ confirm_create_index_1(Cluster) ->
     ?assertEqual("204", Status),
     yz_rt:wait_for_index(Cluster, Index).
 
-%% @doc Test index creation when passing schema name.
+%% @doc Test index creation when passing schema name and n_val.
 confirm_create_index_2(Cluster) ->
     Index = <<"test_index_2">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_2 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
-    Body = <<"{\"schema\":\"_yz_default\"}">>,
+    Body = <<"{\"schema\":\"_yz_default\", \"n_val\":2}">>,
     {ok, Status, _, _} = http(put, URL, Headers, Body),
     ?assertEqual("204", Status),
-    yz_rt:wait_for_index(Cluster, Index).
+    yz_rt:wait_for_index(Cluster, Index),
+    {ok, GetStatus, _, GetBody} = http(get, URL, [], []),
+    ?assertEqual("200", GetStatus),
+    GetNVal = kvc:path([<<"n_val">>], mochijson2:decode(GetBody)),
+    ?assertEqual(2, GetNVal),
+    ok.
 
 confirm_409(Cluster) ->
     Index = <<"test_index_409">>,

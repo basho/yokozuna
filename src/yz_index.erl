@@ -74,7 +74,8 @@ create(Name, SchemaName) ->
 -spec create(index_name(), schema_name(), n()) ->
                     ok |
                     {error, schema_not_found}.
-create(Name, SchemaName, NVal) when is_integer(NVal) ->
+create(Name, SchemaName, NVal) when is_integer(NVal),
+                                    NVal > 0 ->
     case yz_schema:exists(SchemaName) of
         false ->
             {error, schema_not_found};

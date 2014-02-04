@@ -52,9 +52,10 @@
 %%   A PUT request requires this header:
 %%     Content-Type: application/json
 %%
-%%   A JSON body may be sent. It currently only accepts
+%%   A JSON body may be sent. It accepts the following:
 %%
-%%   { "schema" : SchemaName }
+%%   { "schema" : SchemaName,
+%%     "n_val" : N}
 %%
 %%   If no schema is given, it defaults to "_yz_default".
 %%
@@ -183,12 +184,16 @@ create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
-    case maybe_create_index(IndexName, SchemaName) of
+    NVal = proplists:get_value(<<"n_val">>, BodyProps, undefined),
+    case maybe_create_index(IndexName, SchemaName, NVal) of
         ok ->
             {<<>>, RD, S};
         {error, schema_not_found} ->
             Msg = "Cannot create index because schema ~s was not found~n",
-            text_response({halt, 500}, Msg, [SchemaName], RD, S)
+            text_response({halt, 500}, Msg, [SchemaName], RD, S);
+        {error, bad_n_val} ->
+            Msg = "Bad n_val given ~p~n",
+            text_response({halt, 400}, Msg, [NVal], RD, S)
     end.
 
 
@@ -282,17 +287,28 @@ exists(IndexName) ->
 index_body(IndexName) ->
     Info = yz_index:get_index_info(IndexName),
     SchemaName = yz_index:schema_name(Info),
+    NVal = yz_index:get_n_val(Info),
     {struct, [
-        {"name", IndexName},
-        {"schema", SchemaName}
+              {"name", IndexName},
+              {"n_val", NVal},
+              {"schema", SchemaName}
     ]}.
 
--spec maybe_create_index(index_name(), schema_name()) -> ok |
-                                                         {error, schema_not_found}.
-maybe_create_index(IndexName, SchemaName)->
+-spec maybe_create_index(index_name(), schema_name(), n()) ->
+                                ok |
+                                {error, schema_not_found} |
+                                {error, bad_n_val}.
+maybe_create_index(IndexName, SchemaName, NVal)->
     case exists(IndexName) of
         true  ->
             ok;
         false ->
-            yz_index:create(IndexName, SchemaName)
+            case NVal of
+                undefined ->
+                    yz_index:create(IndexName, SchemaName);
+                Int when is_integer(Int), Int > 0 ->
+                    yz_index:create(IndexName, SchemaName, NVal);
+                _ ->
+                    {error, bad_n_val}
+            end
     end.
