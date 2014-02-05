@@ -73,15 +73,13 @@ confirm() ->
 
     _ = verify_removal_of_orphan_postings(Cluster),
 
-    %% Verify that there is no indefinite repair.  The have been
-    %% several bugs in the past where Yokozuna AAE would indefinitely
-    %% repair.
-    lager:info("Verify no indefinite repair"),
     verify_no_repair(Cluster),
 
     _ = verify_no_repair_for_non_indexed_data(Cluster, PBConns),
-
     yz_rt:close_pb_conns(PBConns),
+
+    _ = verify_no_repair_after_restart(Cluster),
+
     pass.
 
 %% @doc Create a tuple containing a riak object and the first
@@ -121,9 +119,11 @@ delete_key_in_solr(Cluster, Index, Key) ->
          ok = rpc:call(Node, yz_solr, delete, [Index, [{key, list_to_binary(Key)}]])
      end || Node <- Cluster].
 
+-spec get_cluster_repair_count([node()]) -> non_neg_integer().
 get_cluster_repair_count(Cluster) ->
     lists:sum([get_total_repair_count(Node) || Node <- Cluster]).
 
+-spec get_total_repair_count(node()) -> non_neg_integer().
 get_total_repair_count(Node) ->
     Dump = rpc:call(Node, riak_kv_entropy_info, dump, []),
     YZInfo = [I || {{index,{yz,_}},_}=I <- Dump],
@@ -159,14 +159,43 @@ verify_removal_of_orphan_postings(Cluster) ->
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
     ok.
 
-%% @doc Verify that no repair has happened since `TS'.
+%% @doc Verify that there is no indefinite repair.  The have been
+%% several bugs in the past where Yokozuna AAE would indefinitely
+%% repair.
 verify_no_repair(Cluster) ->
+    lager:info("Verify no indefinite repair"),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     TS = erlang:now(),
     yz_rt:wait_for_full_exchange_round(Cluster, TS),
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(0, Count).
+
+%% @doc Verify that no repair occurrs after restart. In the past there
+%% have been times when Yokozuna would unnecessairly repair data after
+%% a node restart.
+-spec verify_no_repair_after_restart([node()]) -> ok.
+verify_no_repair_after_restart(Cluster) ->
+    lager:info("verify no repair after restart"),
+    _ = [ok = rt:stop(N) || N <- Cluster],
+    _ = [ok = rt:wait_until_unpingable(N) || N <- Cluster],
+
+    _ = [ok = rt:start_and_wait(N) || N <- Cluster],
+    ok = rt:wait_until_nodes_ready(Cluster),
+    ok = rt:wait_for_cluster_service(Cluster, yokozuna),
+
+    yz_rt:count_calls(Cluster, ?REPAIR_MFA),
+
+    TS2 = erlang:now(),
+    yz_rt:wait_for_full_exchange_round(Cluster, TS2),
+
+    ok = verify_repair_count(Cluster, 0),
+
+    yz_rt:stop_tracing(),
+    Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
+    ?assertEqual(0, Count),
+
+    ok.
 
 %% @doc Verify that KV data written to a bucket with no associated
 %% index is not repaired by AAE. When Yokozuna sees an incoming KV
@@ -180,6 +209,7 @@ verify_no_repair(Cluster) ->
 %% repair should hapen.
 -spec verify_no_repair_for_non_indexed_data([node()], [pid()]) -> ok.
 verify_no_repair_for_non_indexed_data(Cluster, PBConns) ->
+    lager:info("verify no repair occurred for non-indexed data"),
     Bucket = {?BUCKET_TYPE, <<"non_indexed">>},
 
     %% 1. write KV data to non-indexed bucket
@@ -200,7 +230,6 @@ verify_no_repair_for_non_indexed_data(Cluster, PBConns) ->
     ok = yz_rt:stop_tracing(),
 
     %% 4. verify repair count is 0
-    lager:info("verify no repair occurred for non-indexed data"),
     ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
     ok.
 
@@ -211,6 +240,10 @@ verify_num_match(Cluster, Num) ->
         end,
     yz_rt:wait_until(Cluster, F).
 
+%% @doc Verify the repair count stored in the AAE info server matches
+%% what is expected.
+-spec verify_repair_count([node()], non_neg_integer()) -> ok.
 verify_repair_count(Cluster, ExpectedNumRepairs) ->
     RepairCount = get_cluster_repair_count(Cluster),
-    ?assertEqual(ExpectedNumRepairs, RepairCount).
+    ?assertEqual(ExpectedNumRepairs, RepairCount),
+    ok.
