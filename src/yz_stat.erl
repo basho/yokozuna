@@ -31,6 +31,8 @@
 -define(SERVER, ?MODULE).
 -define(NOTIFY(A, B, Type, Arg),
         folsom_metrics:notify_existing_metric({?YZ_APP_NAME, A, B}, Arg, Type)).
+-define(APP, ?YZ_APP_NAME).
+-define(PFX, riak_core_stat:prefix()).
 
 %% -------------------------------------------------------------------
 %% API
@@ -42,6 +44,12 @@ start_link() ->
 %% @doc Register Yokozuna stats.
 -spec register_stats() -> ok.
 register_stats() ->
+    case riak_core_stat:stat_system() of
+        legacy   -> register_stats_legacy();
+        exoemter -> register_stats_exometer()
+    end.
+
+register_stats_legacy() ->
     [begin
          Name = stat_name(Path),
          (catch folsom_metrics:delete_metric(Name)),
@@ -50,13 +58,25 @@ register_stats() ->
     riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}),
     ok.
 
+register_stats_exometer() ->
+    riak_core_stat:register_stats(?APP, stats()).
+
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, term()}.
 get_stats() ->
+    case riak_core_stat:stat_system() of
+        legacy   -> get_stats_legacy();
+        exometer -> get_stats_exometer()
+    end.
+
+get_stats_legacy() ->
     case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
         {ok, Stats, _TS} -> Stats;
         Error -> Error
     end.
+
+get_stats_exometer() ->
+    riak_core_stat:get_stats(?APP).
 
 %% TODO: export stats() type from riak_core_stat_q.
 -spec produce_stats() -> {atom(), list()}.
@@ -147,6 +167,36 @@ register_stat(Name, spiral) ->
 register_stat(Name, counter) ->
     folsom_metrics:new_counter(Name).
 
+-spec update(StatUpdate::term()) -> ok.
+update(Arg) ->
+    case riak_core_stat:stat_system() of
+        legacy   -> update_legacy(Arg);
+        exometer -> update_exometer(Arg)
+    end.
+
+update_exometer({index_end, Time}) ->
+    exometer:update([?PFX, ?APP, index, latency], Time),
+    exometer:update([?PFX, ?APP, index, throughput], 1);
+update_exometer(index_fail) ->
+    exometer:update([?PFX, ?APP, fail], 1);
+update_exometer({search_end, Time}) ->
+    exometer:update([?PFX, ?APP, search, latency], Time),
+    exometer:update([?PFX, ?APP, search, throughput], 1);
+update_exometer(search_fail) ->
+    exometer:update([?PFX, ?APP, search, fail], 1).
+
+update_legacy(StatUpdate) ->
+    case erlang:module_loaded(yz_stat_sj) of
+        true -> yz_stat_worker:update(StatUpdate);
+        false -> notify(StatUpdate)
+    end,
+    ok.
+
+%% %% @private
+%% get_sample_type(Name) ->
+%%     SampleType0 = app_helper:get_env(riak_kv, stat_sample_type, {slide_uniform, {60, 1028}}),
+%%     app_helper:get_env(?APP, Name, SampleType0).
+
 %% @private
 -spec stats() -> [{riak_core_stat_q:path(), atom()}].
 stats() ->
@@ -163,15 +213,3 @@ stats() ->
 -spec stat_name(riak_core_stat_q:path()) -> riak_core_stat_q:stat_name().
 stat_name(Name) ->
     list_to_tuple([?YZ_APP_NAME|Name]).
-
-%% @private
-%%
-%% @doc Determine the correct channel through which to send the
-%% `StatUpdate'.
--spec update(term()) -> ok.
-update(StatUpdate) ->
-    case erlang:module_loaded(yz_stat_sj) of
-        true -> yz_stat_worker:update(StatUpdate);
-        false -> notify(StatUpdate)
-    end,
-    ok.
