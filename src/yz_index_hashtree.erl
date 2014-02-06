@@ -485,9 +485,23 @@ maybe_build(S) ->
     %% Already built or build in progress
     S.
 
+%% @private
+%%
+%% @doc Flush and close the trees if not closed already.
+-spec close_trees(#state{}) -> #state{}.
 close_trees(S=#state{trees=Trees, closed=false}) ->
-    Trees2 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees],
-    S#state{trees=Trees2, closed=true};
+    Trees2 = [begin
+                  NewTree =
+                      try
+                          hashtree:flush_buffer(Tree)
+                      catch _:_ ->
+                              lager:warning("Failed to flush trees during close"),
+                              Tree
+                      end,
+                  {IdxN, NewTree}
+              end || {IdxN, Tree} <- Trees],
+    Trees3 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees2],
+    S#state{trees=Trees3, closed=true};
 close_trees(S) ->
     S.
 
