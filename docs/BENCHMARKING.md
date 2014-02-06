@@ -191,6 +191,12 @@ for d in ~/yz-bench/riak-current/dev/dev{1,2,3,4,5}; do $d/bin/riak stop; done
 Run all thse steps again but this time for the version of
 Riak/Yokozuna that includes your change.
 
+```
+./basho_bench -d my-change -n after-load-fruit /root/yz-bench/load-fruit.config
+./basho_bench -d my-change -n after-query-lima /root/yz-bench/query-lima.config
+for d in ~/yz-bench/riak-current/dev/dev{1,2,3,4,5}; do $d/bin/riak stop; done
+```
+
 ### Calc Results ###
 
 In the `yokozuna/misc/bench/bin` dir there are some scripts to help
