@@ -159,7 +159,7 @@ verify_removal_of_orphan_postings(Cluster) ->
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
     ok.
 
-%% @doc Verify that there is no indefinite repair.  The have been
+%% @doc Verify that there is no indefinite repair.  There have been
 %% several bugs in the past where Yokozuna AAE would indefinitely
 %% repair.
 verify_no_repair(Cluster) ->
