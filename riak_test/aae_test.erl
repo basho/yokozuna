@@ -73,7 +73,7 @@ confirm() ->
 
     _ = verify_removal_of_orphan_postings(Cluster),
 
-    verify_no_repair(Cluster),
+    verify_no_indefinite_repair(Cluster),
 
     _ = verify_no_repair_for_non_indexed_data(Cluster, PBConns),
     yz_rt:close_pb_conns(PBConns),
@@ -162,7 +162,7 @@ verify_removal_of_orphan_postings(Cluster) ->
 %% @doc Verify that there is no indefinite repair.  There have been
 %% several bugs in the past where Yokozuna AAE would indefinitely
 %% repair.
-verify_no_repair(Cluster) ->
+verify_no_indefinite_repair(Cluster) ->
     lager:info("Verify no indefinite repair"),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     TS = erlang:now(),
