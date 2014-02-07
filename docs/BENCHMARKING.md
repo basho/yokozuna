@@ -2,7 +2,7 @@ Running Fruit Benchmark
 -----------------------
 
 This goes over high-level steps for running the "fruit" benchmark
-which is a syntehtic benchmark for Yokozuna. It's a useful
+which is a synthetic benchmark for Yokozuna. It's a useful
 microbenchmark to quickly verify that changes to Yokozuna have not
 caused any obvious regression in performance. There are different ways
 you could run this test but I'm going to go over the steps I usually
@@ -188,7 +188,7 @@ Stop the cluster
 for d in ~/yz-bench/riak-current/dev/dev{1,2,3,4,5}; do $d/bin/riak stop; done
 ```
 
-Run all thse steps again but this time for the version of
+Run all these steps again but this time for the version of
 Riak/Yokozuna that includes your change.
 
 ```
@@ -197,7 +197,7 @@ Riak/Yokozuna that includes your change.
 for d in ~/yz-bench/riak-current/dev/dev{1,2,3,4,5}; do $d/bin/riak stop; done
 ```
 
-### Calc Results ###
+### Calculate Results ###
 
 In the `yokozuna/misc/bench/bin` dir there are some scripts to help
 aggregate results.
