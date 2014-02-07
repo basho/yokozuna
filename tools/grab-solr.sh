@@ -37,7 +37,7 @@ get_solr()
                 ln -s $TMP_FILE $FILENAME
             else
                 echo "Pulling Solr from S3"
-                wget --no-check-certificate --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$FILENAME
+                wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/solr/$FILENAME
                 if [ -d $TMP_DIR ]; then
                     cp $FILENAME $TMP_DIR
                 else
