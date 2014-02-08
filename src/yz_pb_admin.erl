@@ -107,8 +107,10 @@ process(#rpbyokozunaindexdeletereq{name = IndexName}, State) ->
 
 process(#rpbyokozunaindexputreq{
             index = #rpbyokozunaindex{
-                name = IndexName, schema = SchemaName}}, State) ->
-    case maybe_create_index(IndexName, SchemaName) of
+                name = IndexName,
+                schema = SchemaName,
+                n_val = Nval}}, State) ->
+    case maybe_create_index(IndexName, SchemaName, Nval) of
         ok ->
             {reply, #rpbputresp{}, State};
         {error, schema_not_found} ->
@@ -137,18 +139,23 @@ process_stream(_,_,State) ->
 %% Internal functions
 %% ---------------------------------
 
--spec maybe_create_index(binary(), schema_name()) -> ok |
+-spec maybe_create_index(binary(), schema_name(), n()) -> ok |
                                                      {error, schema_not_found}.
-maybe_create_index(IndexName, _SchemaName = <<>>)->
-    maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
-maybe_create_index(IndexName, _SchemaName = undefined)->
-    maybe_create_index(IndexName, ?YZ_DEFAULT_SCHEMA_NAME);
-maybe_create_index(IndexName, SchemaName)->
+maybe_create_index(IndexName, SchemaName, Nval)->
     case yz_index:exists(IndexName) of
         true  ->
             ok;
         false ->
-            yz_index:create(IndexName, SchemaName)
+            Schema = case SchemaName of
+                <<>> ->      ?YZ_DEFAULT_SCHEMA_NAME;
+                undefined -> ?YZ_DEFAULT_SCHEMA_NAME;
+                _ ->         SchemaName
+            end,
+            Nval1 = case Nval of
+                <<>> -> undefined;
+                _ ->    Nval
+            end,
+            yz_index:create(IndexName, Schema, Nval1)
     end.
 
 -spec index_details(index_name()) -> #rpbyokozunaindex{}.
@@ -156,5 +163,6 @@ index_details(IndexName) ->
     Info = yz_index:get_index_info(IndexName),
     #rpbyokozunaindex{
         name = IndexName,
-        schema = yz_index:schema_name(Info)
+        schema = yz_index:schema_name(Info),
+        n_val = yz_index:get_n_val(Info)
     }.
