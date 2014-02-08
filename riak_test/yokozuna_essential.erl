@@ -1,7 +1,6 @@
 -module(yokozuna_essential).
 -compile(export_all).
--import(yz_rt, [create_index/2, create_index/3,
-                host_entries/1,
+-import(yz_rt, [host_entries/1,
                 run_bb/2,
                 search_expect/5, search_expect/6,
                 verify_count/2,
@@ -24,18 +23,33 @@
 
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
 -define(BUCKET_TYPE, <<"data">>).
--define(INDEX, <<"fruit">>).
--define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
+-define(INDEX, <<"fruit_index">>).
+-define(INDEX_N_VAL, 4).
+-define(BUCKET, {?BUCKET_TYPE, <<"fruit">>}).
 -define(NUM_KEYS, 10000).
 -define(SUCCESS, 0).
 -define(CFG,
         [{riak_core,
           [
-           {ring_creation_size, 16}
+           %% Allow handoff to happen more quickly.
+           {handoff_concurrency, 3},
+
+           %% Use smaller ring size so that test runs faster.
+           {ring_creation_size, 16},
+
+           %% Reduce the tick so that ownership handoff will happen
+           %% more quickly.
+           {vnode_management_timer, 1000}
           ]},
          {yokozuna,
           [
-	   {enabled, true}
+	   {enabled, true},
+
+           %% Perform a full check every second so that non-owned
+           %% postings are deleted promptly. This makes sure that
+           %% postings are removed concurrent to async query during
+           %% join.
+           {events_full_check_after, 2}
           ]}
         ]).
 
@@ -254,18 +268,20 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
-    ok = create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME),
+    ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
     yz_rt:set_index(Node, ?BUCKET, ?INDEX),
+    ok = rpc:call(Node, riak_core_bucket, set_bucket,
+                  [?BUCKET, [{n_val, ?INDEX_N_VAL}]]),
 
-    ok = create_index(Node, <<"tagging">>),
+    ok = yz_rt:create_index(Node, <<"tagging">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
 
-    ok = create_index(Node, <<"escaped">>),
+    ok = yz_rt:create_index(Node, <<"escaped">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>),
 
-    ok = create_index(Node, <<"unique">>),
+    ok = yz_rt:create_index(Node, <<"unique">>),
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- [<<"fruit">>, <<"tagging">>, <<"escaped">>, <<"unique">>]].
+     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]].
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),

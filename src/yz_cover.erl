@@ -146,9 +146,8 @@ cache_plan(Index, Ring) ->
 -spec calc_plan(index_name(), ring()) -> {ok, plan()} | {error, term()}.
 calc_plan(Index, Ring) ->
     Q = riak_core_ring:num_partitions(Ring),
-    BProps = riak_core_bucket:get_bucket(Index),
     Selector = all,
-    NVal = riak_core_bucket:n_val(BProps),
+    NVal = yz_index:get_n_val(yz_index:get_index_info(Index)),
     NumPrimaries = 1,
     ReqId = erlang:phash2(erlang:now()),
 

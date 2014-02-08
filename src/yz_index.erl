@@ -22,6 +22,19 @@
 -include("yokozuna.hrl").
 -compile(export_all).
 
+-record(index_info,
+        {
+          %% Each index has it's own N value. This is needed so that
+          %% the query plan can be calculated. It is up to the user to
+          %% make sure that all buckets associated with an index use
+          %% the same N value as the index.
+          n_val :: n(),
+
+          %% The name of the schema this index is using.
+          schema_name :: schema_name()
+        }).
+-type index_info() :: #index_info{}.
+
 %% @doc This module contains functionaity for using and administrating
 %%      indexes.  In this case an index is an instance of a Solr Core.
 
@@ -41,25 +54,33 @@ associated_buckets(Index, Ring) ->
         false -> Assoc
     end.
 
+%% @see create/2
 -spec create(index_name()) -> ok.
 create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
 
+%% @see create/3
+-spec create(index_name(), schema_name()) -> ok | {error, schema_not_found}.
+create(Name, SchemaName) ->
+    DefaultNVal = riak_core_bucket:default_object_nval(),
+    create(Name, SchemaName, DefaultNVal).
+
 %% @doc Create the index `Name' across the entire cluster using
-%%      `SchemaName' as the schema.
+%%      `SchemaName' as the schema and `NVal' as the N value.
 %%
 %% `ok' - The schema was found and index added to the list.
 %%
 %% `schema_not_found' - The `SchemaName' could not be found.
--spec create(index_name(), schema_name()) ->
+-spec create(index_name(), schema_name(), n()) ->
                     ok |
                     {error, schema_not_found}.
-create(Name, SchemaName) ->
+create(Name, SchemaName, NVal) when is_integer(NVal),
+                                    NVal > 0 ->
     case yz_schema:exists(SchemaName) of
         false ->
             {error, schema_not_found};
         true  ->
-            Info = make_info(SchemaName),
+            Info = make_info(SchemaName, NVal),
             ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info)
     end.
 
@@ -111,6 +132,11 @@ get_indexes_from_meta() ->
 -spec get_index_info(index_name()) -> undefined | index_info().
 get_index_info(Name) ->
     riak_core_metadata:get(?YZ_META_INDEXES, Name).
+
+%% @doc Get the N value from the index info.
+-spec get_n_val(index_info()) -> n().
+get_n_val(IndexInfo) ->
+    IndexInfo#index_info.n_val.
 
 %% @doc Create the index `Name' locally.  Make best attempt to create
 %%      the index, log if a failure occurs.  Always return `ok'.
@@ -291,6 +317,7 @@ is_default_type_indexed(Index) ->
     %% "true" which, hopefully, it should not be.
     true == proplists:get_value(search, Props, false).
 
--spec make_info(binary()) -> index_info().
-make_info(SchemaName) ->
-    #index_info{schema_name=SchemaName}.
+-spec make_info(binary(), n()) -> index_info().
+make_info(SchemaName, NVal) ->
+    #index_info{n_val=NVal,
+                schema_name=SchemaName}.

@@ -45,10 +45,17 @@ create_index(Node, Index) ->
     lager:info("Creating index ~s [~p]", [Index, Node]),
     ok = rpc:call(Node, yz_index, create, [Index]).
 
+-spec create_index(node(), index_name(), schema_name()) -> ok.
 create_index(Node, Index, SchemaName) ->
-    lager:info("Creating index ~s using schema ~s [~p]",
+    lager:info("Creating index ~s with schema ~s [~p]",
                [Index, SchemaName, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName]).
+
+-spec create_index(node(), index_name(), schema_name(), n()) -> ok.
+create_index(Node, Index, SchemaName, NVal) ->
+    lager:info("Creating index ~s with schema ~s and n_val: ~p [~p]",
+               [Index, SchemaName, NVal, Node]),
+    ok = rpc:call(Node, yz_index, create, [Index, SchemaName, NVal]).
 
 maybe_create_ets() ->
     case ets:info(?YZ_RT_ETS) of
