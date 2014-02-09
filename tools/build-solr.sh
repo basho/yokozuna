@@ -8,7 +8,7 @@
 #>
 #> Example:
 #>
-#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.2.0-yz http://www.motorlogy.com/apache/lucene/solr/4.2.0/solr-4.2.0-src.tgz | tee build-solr.out
+#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.6.1-yz http://www.motorlogy.com/apache/lucene/solr/4.6.1/solr-4.6.1-src.tgz | tee build-solr.out
 
 set -e
 

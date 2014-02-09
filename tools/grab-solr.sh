@@ -15,7 +15,7 @@ fi
 
 SOLR_DIR=../priv/solr
 BUILD_DIR=../build
-VSN=solr-4.6.0-yz1
+VSN=solr-4.6.1-yz
 FILENAME=$VSN.tgz
 TMP_DIR=/var/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
@@ -37,7 +37,7 @@ get_solr()
                 ln -s $TMP_FILE $FILENAME
             else
                 echo "Pulling Solr from S3"
-                wget --no-check-certificate --progress=dot:mega https://s3.amazonaws.com/yzami/pkgs/$FILENAME
+                wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/solr/$FILENAME
                 if [ -d $TMP_DIR ]; then
                     cp $FILENAME $TMP_DIR
                 else
