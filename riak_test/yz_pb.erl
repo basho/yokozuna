@@ -66,19 +66,25 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 create_index(Cluster, BucketType, Index) ->
+    create_index(Cluster, BucketType, Index, 3).
+
+create_index(Cluster, BucketType, Index, Nval) ->
     Node = select_random(Cluster),
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("create_index ~s for bucket type ~s [~p]", [Index, BucketType, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    SchemaName = ?YZ_DEFAULT_SCHEMA_NAME,
+    NvalT = {n_val, Nval},
     %% set index in props with the same name as the bucket
-    ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid, Index)),
+    ?assertEqual(ok,
+        riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT])),
     % Add the index to the bucket props
     yz_rt:set_bucket_type_index(Node, BucketType, Index),
     yz_rt:wait_for_bucket_type(Cluster, BucketType),
     yz_rt:wait_for_index(Cluster, Index),
     %% Check that the index exists
     {ok, IndexData} = riakc_pb_socket:get_search_index(Pid, Index),
-    ?assertEqual([{index,Index},{schema,?YZ_DEFAULT_SCHEMA_NAME}], IndexData),
+    ?assertEqual([{index, Index}, {schema, SchemaName}, NvalT], IndexData),
     riakc_pb_socket:stop(Pid),
     ok.
 
@@ -126,7 +132,7 @@ confirm_admin_schema(Cluster) ->
 
 confirm_admin_index(Cluster) ->
     Index = <<"index">>,
-    create_index(Cluster, Index, Index),
+    create_index(Cluster, Index, Index, 4),
     Node = select_random(Cluster),
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),

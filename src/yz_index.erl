@@ -71,9 +71,13 @@ create(Name, SchemaName) ->
 %% `ok' - The schema was found and index added to the list.
 %%
 %% `schema_not_found' - The `SchemaName' could not be found.
--spec create(index_name(), schema_name(), n()) ->
+-spec create(index_name(), schema_name(), n() | undefined) ->
                     ok |
                     {error, schema_not_found}.
+create(Name, SchemaName, undefined) ->
+    DefaultNVal = riak_core_bucket:default_object_nval(),
+    create(Name, SchemaName, DefaultNVal);
+
 create(Name, SchemaName, NVal) when is_integer(NVal),
                                     NVal > 0 ->
     case yz_schema:exists(SchemaName) of
