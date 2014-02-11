@@ -266,7 +266,7 @@ rolling_upgrade(Cluster, Vsn) ->
                 {yokozuna, [{anti_entropy, {on, [debug]}},
                             {anti_entropy_concurrency, 12},
                             {anti_entropy_build_limit, {6,500}},
-                            {entropy_tick, 1000},
+                            {anti_entropy_tick, 1000},
                             {enabled, true},
 			    {solr_port, SolrPort}]}],
 	 rt:upgrade(Node, Vsn, Cfg),
