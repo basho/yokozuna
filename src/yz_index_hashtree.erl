@@ -142,6 +142,15 @@ init([Index, RPs]) ->
                        built=false,
                        path=Path},
             S2 = init_trees(RPs, S),
+
+            %% If no indexes exist then mark tree as built
+            %% immediately. This allows exchange to start immediately
+            %% rather than waiting a potentially long time for a build.
+            BuiltImmediately = ([] == yz_index:get_indexes_from_meta()),
+            _ = case BuiltImmediately of
+                    true -> gen_server:cast(self(), build_finished);
+                    false -> ok
+                end,
             {ok, S2}
     end.
 
