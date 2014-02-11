@@ -40,12 +40,14 @@
 %% are stored
 {mapping, "search.anti_entropy.data_dir", "yokozuna.anti_entropy_data_dir", [
   {default, "#(platform_data_dir)/yz_anti_entropy"},
-  {datatype, directory}
+  {datatype, directory},
+  {level, advanced}
 ]}.
 
 %% @doc The root directory for Search, under which index data and
 %% configuration is stored.
 {mapping, "search.root_dir", "yokozuna.root_dir", [
   {default, "#(platform_data_dir)/yz"},
-  {datatype, directory}
+  {datatype, directory},
+  {level, advanced}
 ]}.
