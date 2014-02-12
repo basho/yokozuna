@@ -177,9 +177,15 @@ handle_call(disable, _From, S) ->
     [yz_index_hashtree:stop(T) || {_,T} <- S#state.trees],
     {reply, ok, S};
 
-handle_call({set_mode, Mode}, _From, S) ->
-    S2 = S#state{mode=Mode},
-    {reply, ok, S2};
+handle_call({set_mode, NewMode}, _From, S=#state{mode=CurrentMode}) ->
+    S2 = case {CurrentMode, NewMode} of
+             {automatic, manual} ->
+                 S#state{exchange_queue=[]};
+             _ ->
+                 S
+         end,
+    S3 = S2#state{mode=NewMode},
+    {reply, ok, S3};
 
 handle_call(Request, From, S) ->
     lager:warning("Unexpected call: ~p from ~p", [Request, From]),
