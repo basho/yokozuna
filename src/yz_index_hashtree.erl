@@ -464,7 +464,8 @@ do_poke(S) ->
 
 maybe_clear(S=#state{lock=undefined, built=true}) ->
     Diff = timer:now_diff(os:timestamp(), S#state.build_time),
-    case Diff > (?YZ_ENTROPY_EXPIRE * 1000)  of
+    Expire = ?YZ_ENTROPY_EXPIRE,
+    case (Expire /= never) andalso (Diff > (Expire * 1000))  of
         true -> clear_tree(S);
         false -> S
     end;
