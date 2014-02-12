@@ -46,7 +46,7 @@ Approximately every month a release is cut. Thus, Yokozuna development
 can outpace official Riak releases. The source package provides an
 easy method for building the latest release and thus testing the
 newest features and bug fixes. The source package should always pass
-all Searh 2 integration tests and be stable as possible. It should
+all Search 2 integration tests and be stable as possible. It should
 not be deployed in production, however. These releases are more like
 previews and compatibility could break between them. Use official
 packages for production.
