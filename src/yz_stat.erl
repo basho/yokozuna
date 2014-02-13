@@ -220,15 +220,11 @@ format_query_latency({max, Value}) ->
     {search_query_latency_max, Value};
 format_query_latency({median, Value}) ->
     {search_query_latency_median, Value};
-format_query_latency({variance, Value}) ->
-    {search_query_latency_variance, Value};
 format_query_latency({percentile, PList}) ->
     [ format_query_latency_percentile(P) || P <- PList];
 format_query_latency({_, _}) ->
     [].
 
-format_query_latency_percentile({50, Value}) ->
-    {search_query_latency_percentile_50, Value};
 format_query_latency_percentile({95, Value}) ->
     {search_query_latency_percentile_95, Value};
 format_query_latency_percentile({99, Value}) ->
@@ -241,15 +237,11 @@ format_index_latency({max, Value}) ->
     {search_index_latency_max, Value};
 format_index_latency({median, Value}) ->
     {search_index_latency_median, Value};
-format_index_latency({variance, Value}) ->
-    {search_index_latency_variance, Value};
 format_index_latency({percentile, PList}) ->
     [ format_index_latency_percentile(P) || P <- PList];
 format_index_latency({_, _}) ->
     [].
 
-format_index_latency_percentile({50, Value}) ->
-    {search_index_latency_percentile_50, Value};
 format_index_latency_percentile({95, Value}) ->
     {search_index_latency_percentile_95, Value};
 format_index_latency_percentile({99, Value}) ->
