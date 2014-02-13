@@ -173,11 +173,11 @@
 %% Directory to store the hashtrees.
 -define(YZ_AAE_DIR,
         application:get_env(?YZ_APP_NAME, anti_entropy_data_dir)).
-%% How often to check for entropy, in milliseconds.  Defaults to 1
-%% minute.
+%% How often to check for entropy, in milliseconds.  Defaults to 15
+%% seconds.
 -define(YZ_ENTROPY_TICK,
-        app_helper:get_env(?YZ_APP_NAME, entropy_tick,
-            app_helper:get_env(riak_kv, anti_entropy_tick, 60000)
+        app_helper:get_env(?YZ_APP_NAME, anti_entropy_tick,
+            app_helper:get_env(riak_kv, anti_entropy_tick, 15000)
         )).
 %% The length of time a tree is considered valid, in milliseconds.  If
 %% a tree is older than it is considered expired and must be rebuilt

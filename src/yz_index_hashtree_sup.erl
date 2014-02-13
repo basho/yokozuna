@@ -14,7 +14,6 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init(_Args) ->
-    %% TODO: should shutdown be longer to account for leveldb?
     Spec = {ignored,
             {yz_index_hashtree, start_link, []},
             temporary, 5000, worker, [yz_index_hashtree]},
