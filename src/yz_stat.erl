@@ -58,6 +58,12 @@ get_stats() ->
         Error -> Error
     end.
 
+%% @doc Return formatted stats
+-spec get_formatted_stats() -> [term()].
+get_formatted_stats() ->
+    Stats = ?MODULE:get_stats(),
+    format_stats(Stats).
+
 %% TODO: export stats() type from riak_core_stat_q.
 -spec produce_stats() -> {atom(), list()}.
 produce_stats() ->
@@ -175,3 +181,71 @@ update(StatUpdate) ->
         false -> notify(StatUpdate)
     end,
     ok.
+
+%% @private
+%%
+%% @doc Format stats for legacy stats blob
+-spec format_stats([term()]) -> [term()].
+format_stats(Stats) ->
+    lists:flatten([format(Stat) || Stat <- Stats]).
+
+format({{_, search, fail},[{count, Count}, {one, One}]}) ->
+    [{yokozuna_search_fail_count, Count},
+     {yokozuna_search_fail_one, One}];
+format({{_, search, throughput},[{count, Count}, {one, One}]}) ->
+    [{yokozuna_search_throughput_count, Count},
+     {yokozuna_search_throughput_one, One}];
+format({{_, index, fail},[{count, Count}, {one, One}]}) ->
+    [{yokozuna_index_fail_count, Count},
+     {yokozuna_index_fail_one, One}];
+format({{_, index, throughput},[{count, Count}, {one, One}]}) ->
+    [{yokozuna_index_fail_count, Count},
+     {yokozuna_index_fail_one, One}];
+format({{_, search, latency}, ValueList}) ->
+    [format_search_latency(V) || V <- ValueList];
+format({{_, index, latency}, ValueList}) ->
+    [format_index_latency(V) || V <- ValueList];
+format(T) -> T.
+
+format_search_latency({min, Value}) ->
+    {yokozuna_search_latency_min, Value};
+format_search_latency({max, Value}) ->
+    {yokozuna_search_latency_max, Value};
+format_search_latency({median, Value}) ->
+    {yokozuna_search_latency_median, Value};
+format_search_latency({variance, Value}) ->
+    {yokozuna_search_latency_variance, Value};
+format_search_latency({percentile, PList}) ->
+    [ format_search_latency_percentile(P) || P <- PList];
+format_search_latency({_, _}) ->
+    [].
+
+format_search_latency_percentile({50, Value}) ->
+    {yokozuna_search_latency_percentile_50, Value};
+format_search_latency_percentile({95, Value}) ->
+    {yokozuna_search_latency_percentile_95, Value};
+format_search_latency_percentile({99, Value}) ->
+    {yokozuna_search_latency_percentile_99, Value};
+format_search_latency_percentile(_) -> [].
+
+format_index_latency({min, Value}) ->
+    {yokozuna_index_latency_min, Value};
+format_index_latency({max, Value}) ->
+    {yokozuna_index_latency_max, Value};
+format_index_latency({median, Value}) ->
+    {yokozuna_index_latency_median, Value};
+format_index_latency({variance, Value}) ->
+    {yokozuna_index_latency_variance, Value};
+format_index_latency({percentile, PList}) ->
+    [ format_index_latency_percentile(P) || P <- PList];
+format_index_latency({_, _}) ->
+    [].
+
+format_index_latency_percentile({50, Value}) ->
+    {yokozuna_index_latency_percentile_50, Value};
+format_index_latency_percentile({95, Value}) ->
+    {yokozuna_index_latency_percentile_95, Value};
+format_index_latency_percentile({99, Value}) ->
+    {yokozuna_index_latency_percentile_99, Value};
+format_index_latency_percentile(_) -> [].
+
