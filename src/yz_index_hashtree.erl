@@ -28,6 +28,7 @@
 
 -record(state, {index,
                 built,
+                expired :: boolean(),
                 lock :: undefined | reference(),
                 path,
                 build_time,
@@ -106,6 +107,10 @@ poke(Tree) ->
 clear(Tree) ->
     gen_server:cast(Tree, clear).
 
+%% @doc Expire the tree.
+expire(Tree) ->
+    gen_server:call(Tree, expire, infinity).
+
 %% @doc Terminate the `Tree'.
 stop(Tree) ->
     gen_server:cast(Tree, stop).
@@ -140,6 +145,7 @@ init([Index, RPs]) ->
             S = #state{index=Index,
                        trees=orddict:new(),
                        built=false,
+                       expired=false,
                        path=Path},
             S2 = init_trees(RPs, S),
 
@@ -190,6 +196,10 @@ handle_call({compare, Id, Remote, AccFun, Acc}, From, S) ->
 handle_call(destroy, _From, S) ->
     S2 = destroy_trees(S),
     {stop, normal, ok, S2};
+
+handle_call(expire, _From, S) ->
+    S2 = S#state{expired=true},
+    {reply, ok, S2};
 
 handle_call(_Request, _From, S) ->
     Reply = ok,
@@ -268,7 +278,7 @@ init_trees(RPs, S) ->
     S2 = lists:foldl(fun(Id, SAcc) ->
                                  do_new_tree(Id, SAcc)
                          end, S, RPs),
-    S2#state{built=false, closed=false}.
+    S2#state{built=false, closed=false, expired=false}.
 
 -spec load_built(state()) -> boolean().
 load_built(#state{trees=Trees}) ->
@@ -361,7 +371,7 @@ do_build_finished(S=#state{index=Index, built=_Pid}) ->
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
     hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
     yz_kv:update_aae_tree_stats(Index, BuildTime),
-    S#state{built=true, build_time=BuildTime}.
+    S#state{built=true, build_time=BuildTime, expired=false}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
@@ -459,26 +469,31 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
 get_index_n(BKey) ->
     riak_kv_util:get_index_n(BKey).
 
+-spec do_poke(state()) -> state().
 do_poke(S) ->
-    maybe_build(maybe_clear(S)).
+    S1 = maybe_rebuild(maybe_expire(S)),
+    S2 = maybe_build(S1),
+    S2.
 
-maybe_clear(S=#state{lock=undefined, built=true}) ->
+-spec maybe_expire(state()) -> state().
+maybe_expire(S=#state{lock=undefined, built=true}) ->
     Diff = timer:now_diff(os:timestamp(), S#state.build_time),
     Expire = ?YZ_ENTROPY_EXPIRE,
     case (Expire /= never) andalso (Diff > (Expire * 1000))  of
-        true -> clear_tree(S);
+        true ->  S#state{expired=true};
         false -> S
     end;
 
-maybe_clear(S) ->
+maybe_expire(S) ->
     S.
 
+-spec clear_tree(state()) -> state().
 clear_tree(S=#state{index=Index}) ->
     lager:debug("Clearing tree ~p", [S#state.index]),
     S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
     S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
-    S3#state{built=false}.
+    S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->
     S2 = close_trees(S),
@@ -515,23 +530,62 @@ close_trees(S=#state{trees=Trees, closed=false}) ->
 close_trees(S) ->
     S.
 
-build_or_rehash(Self, S=#state{index=Index, trees=Trees}) ->
+-spec build_or_rehash(pid(), state()) -> ok.
+build_or_rehash(Tree, S) ->
     Type = case load_built(S) of
                false -> build;
                true  -> rehash
            end,
-    Lock = yz_entropy_mgr:get_lock(Type),
-    case {Lock, Type} of
-        {ok, build} ->
+    Locked = get_all_locks(Type, self()),
+    build_or_rehash(Tree, Locked, Type, S).
+
+-spec build_or_rehash(pid(), boolean(), build | rehash, state()) -> ok.
+build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
+    case {Locked, Type} of
+        {true, build} ->
             lager:debug("Starting build: ~p", [Index]),
-            fold_keys(Index, Self),
+            fold_keys(Index, Tree),
             lager:debug("Finished build: ~p", [Index]),
-            gen_server:cast(Self, build_finished);
-        {ok, rehash} ->
+            gen_server:cast(Tree, build_finished);
+        {true, rehash} ->
             lager:debug("Starting rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
             lager:debug("Finished rehash: ~p", [Index]),
-            gen_server:cast(Self, build_finished);
-        {_Error, _} ->
-            gen_server:cast(Self, build_failed)
+            gen_server:cast(Tree, build_finished);
+        {_, _} ->
+            gen_server:cast(Tree, build_failed)
     end.
+
+maybe_rebuild(S=#state{lock=undefined, built=true, expired=true}) ->
+    Tree = self(),
+    Pid = spawn_link(fun() ->
+                             receive
+                                 {lock, Locked, S2} ->
+                                     build_or_rehash(Tree, Locked, build, S2);
+                                 stop ->
+                                     ok
+                             end
+                     end),
+    Locked = get_all_locks(build, Pid),
+    case Locked of
+        true ->
+            S2 = clear_tree(S),
+            Pid ! {lock, Locked, S2},
+            S2#state{built=Pid};
+        _ ->
+            Pid ! stop,
+            S
+    end;
+maybe_rebuild(S) ->
+    S.
+
+-spec get_all_locks(build | rehash, pid()) -> boolean().
+get_all_locks(Type, Pid) ->
+    %% NOTE: Yokozuna diverges from KV here. KV has notion of vnode
+    %% fold to make sure handoff/aae don't fight each other. Yokozuna
+    %% has no vnodes. It would probably be a good idea to adda lock
+    %% around Solr so that mutliple tree builds don't fight for the
+    %% file page cache but the bg manager stuff is kind of convoluted
+    %% and there isn't time to figure this all out for 2.0. Thus,
+    %% Yokozuna will not bother with the Solr lock for now.
+    ok == yz_entropy_mgr:get_lock(Type, Pid).
