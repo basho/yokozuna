@@ -239,6 +239,11 @@ set_index(Node, Bucket, Index) ->
     Props = [{?YZ_INDEX, Index}],
     ok = rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
 
+-spec set_index(node(), bucket(), index_name(), n()) -> ok.
+set_index(Node, Bucket, Index, NVal) ->
+    Props = [{?YZ_INDEX, Index}, {n_val, NVal}],
+    ok = rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
+
 -spec remove_index(node(), binary()) -> ok.
 remove_index(Node, BucketType) ->
     lager:info("Remove index from bucket type ~s [~p]", [BucketType, Node]),
@@ -251,6 +256,10 @@ set_bucket_type_index(Node, BucketType) ->
 set_bucket_type_index(Node, BucketType, Index) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
     create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]).
+
+set_bucket_type_index(Node, BucketType, Index, NVal) ->
+    lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
+    create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index},{n_val,NVal}]).
 
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);

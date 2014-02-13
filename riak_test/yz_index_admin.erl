@@ -235,12 +235,12 @@ confirm_delete_409(Cluster, Index) ->
     lager:info("Verify that index ~s cannot be deleted b/c of associated buckets [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, "204", _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    yz_rt:wait_for_index(Cluster, Index),
     H = [{"content-type", "application/json"}],
     B = <<"{\"props\":{\"search_index\":\"delete_409\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B),
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B),
 
-    yz_rt:wait_for_index(Cluster, Index),
     %% Sleeping for bprops (TODO: convert to `wait_for_bprops')
     timer:sleep(4000),
 

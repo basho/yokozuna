@@ -110,5 +110,5 @@ create_index(Cluster, HP, Index) ->
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     {ok, "204", _, _} = http(put, URL, Headers, ?NO_BODY),
-    ok = yz_rt:set_bucket_type_index(hd(Cluster), Index),
-    yz_rt:wait_for_index(Cluster, Index).
+    yz_rt:wait_for_index(Cluster, Index),
+    ok = yz_rt:set_bucket_type_index(hd(Cluster), Index).
