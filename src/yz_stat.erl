@@ -61,8 +61,13 @@ get_stats() ->
 %% @doc Return formatted stats
 -spec get_formatted_stats() -> [term()].
 get_formatted_stats() ->
-    Stats = ?MODULE:get_stats(),
-    format_stats(Stats).
+    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
+        false -> 
+            [];
+        true -> 
+            Stats = ?MODULE:get_stats(),
+            format_stats(Stats)
+    end.
 
 %% TODO: export stats() type from riak_core_stat_q.
 -spec produce_stats() -> {atom(), list()}.
