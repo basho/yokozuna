@@ -8,7 +8,7 @@ basic_schema_test() ->
      %% The defaults are defined in ../priv/yokozuna.schema. it is the
      %% file under test.
     Config = cuttlefish_unit:generate_templated_config(
-               "../priv/yokozuna.schema", [], context()),
+               "../priv/yokozuna.schema", [], context(), predefined_schema()),
 
     cuttlefish_unit:assert_config(Config, "yokozuna.enabled", false),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_startup_wait", 30),
@@ -35,7 +35,7 @@ override_schema_test() ->
             {["search", "root_dir"], "/some/other/volume"}
     ],
     Config = cuttlefish_unit:generate_templated_config(
-               "../priv/yokozuna.schema", Conf, context()),
+               "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
 
     cuttlefish_unit:assert_config(Config, "yokozuna.enabled", true),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_startup_wait", 60),
@@ -56,6 +56,16 @@ override_schema_test() ->
 context() ->
     [
         {yz_solr_port, 12345}, %% The port an idiot would open on their luggage
-        {yz_solr_jmx_port, 54321},
-        {platform_data_dir, "./data/yolo"}
+        {yz_solr_jmx_port, 54321}
     ].
+
+%% This predefined schema covers riak_kv's dependency on
+%% platform_data_dir
+predefined_schema() ->
+    Mapping = cuttlefish_mapping:parse({mapping,
+                                        "platform_data_dir",
+                                        "riak_core.platform_data_dir", [
+                                            {default, "./data/yolo"},
+                                            {datatype, directory}
+                                       ]}),
+    {[], [Mapping], []}.

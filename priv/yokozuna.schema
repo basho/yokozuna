@@ -39,13 +39,15 @@
 %% @doc The directory where Search's Active Anti-Entropy data files
 %% are stored
 {mapping, "search.anti_entropy.data_dir", "yokozuna.anti_entropy_data_dir", [
-  {default, "{{platform_data_dir}}/yz_anti_entropy"},
-  {datatype, directory}
+  {default, "#(platform_data_dir)/yz_anti_entropy"},
+  {datatype, directory},
+  hidden
 ]}.
 
 %% @doc The root directory for Search, under which index data and
 %% configuration is stored.
 {mapping, "search.root_dir", "yokozuna.root_dir", [
-  {default, "{{platform_data_dir}}/yz"},
-  {datatype, directory}
+  {default, "#(platform_data_dir)/yz"},
+  {datatype, directory},
+  hidden
 ]}.
