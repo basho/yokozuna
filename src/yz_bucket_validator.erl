@@ -31,8 +31,8 @@
 -type errors() :: [error()].
 
 %% @doc Performs two validations. The first is validating that an index
-%% exists before a bucket type can be associated to it by setting search_index.
-%% The second checks that the bucket type has the same n_val as the associated
+%% exists before a bucket-type/bucket can be associated to it by setting search_index.
+%% The second checks that the bucket-type/bucket has the same n_val as the associated
 %% index's n_val.
 -spec validate(create | update,
                {riak_core_bucket_type:bucket_type(), undefined | binary()} | binary(),
@@ -45,14 +45,13 @@ validate(_CreateOrUpdate, _Bucket, ExistingProps, BucketProps) ->
         {ExistingProps, undefined} ->
             ExistingProps;
         {ExistingProps, BucketProps} ->
-            riak_core_bucket_props:merge(ExistingProps, BucketProps)
+            riak_core_bucket_props:merge(BucketProps, ExistingProps)
     end,
     case get_search_index_info(Props) of
         {error, no_search_index} ->
             {BucketProps, []};
         {error, Msg} ->
-            {proplists:delete(search_index, BucketProps),
-                [{search_index, Msg}]};
+            {proplists:delete(search_index,BucketProps), [{search_index,Msg}]};
         {Index, INVal} ->
             BNVal = proplists:get_value(n_val, Props),
             validate_n_val(Index, INVal, BNVal, BucketProps)
@@ -60,7 +59,6 @@ validate(_CreateOrUpdate, _Bucket, ExistingProps, BucketProps) ->
 
 %% @private
 %%
-
 -spec validate_n_val(index_name(), n(), n(), props()) -> {props(), errors()}.
 validate_n_val(Index, INVal, BNVal, BucketProps) ->
     case INVal of
@@ -68,14 +66,13 @@ validate_n_val(Index, INVal, BNVal, BucketProps) ->
             {BucketProps, []};
         _ ->
             Error = ?FMT("Bucket type n_val ~p must match the associated "
-                         "search_index ~s n_val ~p ", [BNVal,Index,INVal]),
-            %% Removing search_index from valid props,
-            %% since we cannot remove n_val
-            {proplists:delete(search_index, BucketProps),
-                [{search_index, Error}]}
+                         "search_index ~s n_val ~p", [BNVal,Index,INVal]),
+            {proplists:delete(n_val, BucketProps), [{n_val, Error}]}
     end.
 
--spec get_search_index_info(props()) -> {error,binary()} | {index_name(),n()}.
+%% @private
+%%
+-spec get_search_index_info(props()) -> {error, atom()} | {index_name(), n()}.
 get_search_index_info(Props) ->
     case proplists:get_value(search_index, Props) of
         undefined ->
@@ -91,8 +88,9 @@ get_search_index_info(Props) ->
             end
     end.
 
+%% @private
+%%
 %% @doc Get search_index from the bucket props, and return the
 %%      index's n_val. If it doesn't exist, return undefined.
-% index_n_val(Props) ->
 index_n_val(Index) ->
     yz_index:get_n_val(yz_index:get_index_info(Index)).

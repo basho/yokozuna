@@ -276,8 +276,6 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     [yz_rt:wait_for_index(Cluster, I)
      || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]],
 
-    ok = rpc:call(Node, riak_core_bucket, set_bucket,
-                  [?BUCKET, [{n_val, ?INDEX_N_VAL}]]),
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).

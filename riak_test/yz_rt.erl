@@ -13,6 +13,8 @@
 -type interface() :: {http, tuple()} | {pb, tuple()}.
 -type interfaces() :: [interface()].
 -type conn_info() :: [{node(), interfaces()}].
+-type prop() :: {atom(), any()}.
+-type props() :: [prop()].
 
 -type cluster() :: [node()].
 
@@ -237,12 +239,16 @@ select_random(List) ->
 -spec set_index(node(), bucket(), index_name()) -> ok.
 set_index(Node, Bucket, Index) ->
     Props = [{?YZ_INDEX, Index}],
-    ok = rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
+    set_bucket_props(Node, Bucket, Props).
 
 -spec set_index(node(), bucket(), index_name(), n()) -> ok.
 set_index(Node, Bucket, Index, NVal) ->
     Props = [{?YZ_INDEX, Index}, {n_val, NVal}],
-    ok = rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
+    set_bucket_props(Node, Bucket, Props).
+
+-spec set_bucket_props(node(), bucket(), props()) -> ok.
+set_bucket_props(Node, Bucket, Props) ->
+    rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
 
 -spec remove_index(node(), binary()) -> ok.
 remove_index(Node, BucketType) ->
