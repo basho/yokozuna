@@ -125,6 +125,16 @@ cancel_exchanges() ->
 clear_trees() ->
     gen_server:cast(?MODULE, clear_trees).
 
+%% @doc Expire all the trees. Expired trees can still be exchanged up
+%% until the point they are rebult versus clearing trees which
+%% destroys them and prevents exchange from occurring until the tree
+%% is rebuilt which can take a long time.
+%%
+%% @see clear_trees/0
+-spec expire_trees() -> ok.
+expire_trees() ->
+    gen_server:cast(?MODULE, expire_trees).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -204,6 +214,10 @@ handle_cast(clear_trees, S) ->
     clear_all_trees(S#state.trees),
     {noreply, S};
 
+handle_cast(expire_trees, S) ->
+    ok = expire_all_trees(S#state.trees),
+    {noreply, S};
+
 handle_cast(_Msg, S) ->
     lager:warning("Unexpected cast: ~p", [_Msg]),
     {noreply, S}.
@@ -269,6 +283,11 @@ clear_all_exchanges(Exchanges) ->
 
 clear_all_trees(Trees) ->
     [yz_index_hashtree:clear(TPid) || {_, TPid} <- Trees].
+
+-spec expire_all_trees(trees()) -> ok.
+expire_all_trees(Trees) ->
+    _ = [yz_index_hashtree:expire(TPid) || {_, TPid} <- Trees],
+    ok.
 
 schedule_reset_build_tokens() ->
     {_, Reset} = ?YZ_ENTROPY_BUILD_LIMIT,
