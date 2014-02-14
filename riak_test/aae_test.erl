@@ -80,6 +80,8 @@ confirm() ->
 
     _ = verify_no_repair_after_restart(Cluster),
 
+    _ = verify_exchange_after_expire(Cluster),
+
     pass.
 
 %% @doc Create a tuple containing a riak object and the first
@@ -144,6 +146,29 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
     ok = yz_rt:set_index(Node, ?BUCKET, ?INDEX),
     ok = yz_rt:wait_for_index(Cluster, ?INDEX).
+
+%% @doc Verify that expired trees do not prevent exchange from
+%% occurring (like clearing trees does).
+-spec verify_exchange_after_expire([node()]) -> ok.
+verify_exchange_after_expire(Cluster) ->
+    lager:info("Expire all trees and verify exchange still happens"),
+    lager:info("Set anti_entropy_build_limit to 0 so that trees can't be built"),
+    _ = [ok = rpc:call(Node, application, set_env, [riak_kv, anti_entropy_build_limit, {0, 1000}])
+         || Node <- Cluster],
+
+    lager:info("Expire all trees"),
+    _ = [ok = rpc:call(Node, yz_entropy_mgr, expire_trees, [])
+         || Node <- Cluster],
+
+    %% The expire is done very cast so just give it a moment
+    timer:sleep(100),
+
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+
+    lager:info("Set anti_entropy_build_limit to 100 so trees can build again"),
+    _ = [ok = rpc:call(Node, application, set_env, [riak_kv, anti_entropy_build_limit, {100, 1000}])
+         || Node <- Cluster],
+    ok.
 
 %% @doc Verify that Yokozuna deletes postings which have no
 %% corresponding KV object.
