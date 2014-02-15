@@ -65,7 +65,7 @@ validate_n_val(Index, INVal, BNVal, BucketProps) ->
         INVal when INVal == BNVal ->
             {BucketProps, []};
         _ ->
-            Error = ?FMT("Bucket type n_val ~p must match the associated "
+            Error = ?FMT("Bucket n_val ~p must match the associated "
                          "search_index ~s n_val ~p", [BNVal,Index,INVal]),
             {proplists:delete(n_val, BucketProps), [{n_val, Error}]}
     end.

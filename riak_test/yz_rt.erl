@@ -236,17 +236,17 @@ select_random(List) ->
 
 %% @doc Associate the `Index' with the `Bucket', sending the request
 %% to `Node'.
--spec set_index(node(), bucket(), index_name()) -> ok.
+-spec set_index(node(), bucket(), index_name()) -> ok | {error, any()}.
 set_index(Node, Bucket, Index) ->
     Props = [{?YZ_INDEX, Index}],
     set_bucket_props(Node, Bucket, Props).
 
--spec set_index(node(), bucket(), index_name(), n()) -> ok.
+-spec set_index(node(), bucket(), index_name(), n()) -> ok | {error, any()}.
 set_index(Node, Bucket, Index, NVal) ->
     Props = [{?YZ_INDEX, Index}, {n_val, NVal}],
     set_bucket_props(Node, Bucket, Props).
 
--spec set_bucket_props(node(), bucket(), props()) -> ok.
+-spec set_bucket_props(node(), bucket(), props()) -> ok | {error, any()}.
 set_bucket_props(Node, Bucket, Props) ->
     rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
 
