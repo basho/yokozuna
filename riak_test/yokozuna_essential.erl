@@ -269,19 +269,16 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
-    yz_rt:set_index(Node, ?BUCKET, ?INDEX),
-    ok = rpc:call(Node, riak_core_bucket, set_bucket,
-                  [?BUCKET, [{n_val, ?INDEX_N_VAL}]]),
-
     ok = yz_rt:create_index(Node, <<"tagging">>),
-    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
-
     ok = yz_rt:create_index(Node, <<"escaped">>),
-    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>),
-
     ok = yz_rt:create_index(Node, <<"unique">>),
+
     [yz_rt:wait_for_index(Cluster, I)
-     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]].
+     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]],
+
+    yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
     NumDeleted = length(KeysDeleted),

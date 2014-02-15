@@ -30,8 +30,8 @@ prepare_cluster(NumNodes) ->
 
 create_indexed_bucket(Pid, Cluster, Index) ->
     ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid, Index)),
-    yz_rt:set_bucket_type_index(hd(Cluster), Index),
     yz_rt:wait_for_index(Cluster, Index),
+    yz_rt:set_bucket_type_index(hd(Cluster), Index),
     ok.
 
 %% populate random plain text values

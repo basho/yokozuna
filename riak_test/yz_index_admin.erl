@@ -110,6 +110,7 @@ confirm() ->
     confirm_404(Cluster, <<"not_an_index">>),
     confirm_delete_409(Cluster, <<"delete_409">>),
     confirm_field_add(Cluster, <<"field_add">>),
+    confirm_bad_bucket_associations(Cluster),
     pass.
 
 %% @doc Verify that bad n_val is rejected.
@@ -235,12 +236,12 @@ confirm_delete_409(Cluster, Index) ->
     lager:info("Verify that index ~s cannot be deleted b/c of associated buckets [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, "204", _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    yz_rt:wait_for_index(Cluster, Index),
     H = [{"content-type", "application/json"}],
     B = <<"{\"props\":{\"search_index\":\"delete_409\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B),
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B),
 
-    yz_rt:wait_for_index(Cluster, Index),
     %% Sleeping for bprops (TODO: convert to `wait_for_bprops')
     timer:sleep(4000),
 
@@ -254,14 +255,19 @@ confirm_delete_409(Cluster, Index) ->
     %% Can't be deleted because of associated buckets
     {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 
-    B2 = <<"{\"props\":{\"search_index\":\"_yz_default\"}}">>,
-    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B2),
+    %% Associate bucket with new index
+    NewIndex = <<"new_index">>,
+    ok = yz_rt:create_index(Node, NewIndex),
+    yz_rt:wait_for_index(Cluster, NewIndex),
 
-    %% Still can't delete because of associated bucket
+    B2 = <<"{\"props\":{\"search_index\":\"",NewIndex/binary,"\"}}">>,
+    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B2),
+
+    %% Still can't delete because of one associated bucket
     {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 
-    B2 = <<"{\"props\":{\"search_index\":\"_yz_default\"}}">>,
-    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B2),
+    %% Associate second bucket with new index
+    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B2),
 
     %% TODO: wait_for_index_delete?
     {ok, "204", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY).
@@ -303,6 +309,19 @@ confirm_field_add(Cluster, Index) ->
     {ok, _} = rpc:call(Node, yz_index, reload, [Index]),
 
     yz_rt:wait_until(Cluster, field_exists(Index, "my_new_field", CI)).
+
+confirm_bad_bucket_associations(Cluster) ->
+    Node = yz_rt:select_random(Cluster),
+    Index = <<"diff_n_val_index">>,
+    Bucket = <<"diff_n_val">>,
+    %% attempt to associate bucket with nonexistant index
+    {error, [{search_index,_}]} = yz_rt:set_index(Node, Bucket, Index, 2),
+    ok = yz_rt:create_index(Node, Index, ?YZ_DEFAULT_SCHEMA_NAME, 4),
+    yz_rt:wait_for_index(Cluster, Index),
+    %% attempt to associate bucket with incongruent n_val
+    {error, [{n_val,_}]} = yz_rt:set_index(Node, Bucket, Index, 2),
+    %% sucessfully associate bucket with matchin n_val
+    ok = yz_rt:set_index(Node, Bucket, Index, 4).
 
 %%%===================================================================
 %%% Helpers
