@@ -94,7 +94,9 @@ handle_info(tick, S) ->
     ok = set_tick(),
 
     NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
-    {noreply, S#state{num_ticks=NumTicks2}}.
+    S2 = S#state{num_ticks=NumTicks2,
+                 prev_index_hash=CurrHash},
+    {noreply, S2}.
 
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
