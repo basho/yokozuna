@@ -76,22 +76,14 @@ handle_info(tick, S) ->
     PrevHash = S#state.prev_index_hash,
     CurrHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
     NumTicks = S#state.num_ticks,
-    FullCheck = (NumTicks == ?NUM_TICKS_START),
+    IsFullCheck = (NumTicks == ?NUM_TICKS_START),
+    DidHashChange = PrevHash /= CurrHash,
 
-    case yz_solr:is_up() of
-        true ->
-            case FullCheck orelse (PrevHash /= CurrHash) of
-                true -> ok = sync_indexes();
-                false -> ok
-            end;
-        false ->
-            ok
-    end,
+    ok = ?MAYBE(yz_solr:is_up() andalso (IsFullCheck orelse DidHashChange),
+                sync_indexes()),
 
-    case FullCheck of
-        true -> ok = remove_non_owned_data(yz_cover:get_ring_used());
-        false -> ok
-    end,
+    ok = ?MAYBE(IsFullCheck,
+                remove_non_owned_data(yz_cover:get_ring_used())),
 
     ok = set_tick(),
 
