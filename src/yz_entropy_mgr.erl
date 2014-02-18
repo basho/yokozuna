@@ -126,7 +126,7 @@ clear_trees() ->
     gen_server:cast(?MODULE, clear_trees).
 
 %% @doc Expire all the trees. Expired trees can still be exchanged up
-%% until the point they are rebult versus clearing trees which
+%% until the point they are rebuilt versus clearing trees which
 %% destroys them and prevents exchange from occurring until the tree
 %% is rebuilt which can take a long time.
 %%

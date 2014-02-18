@@ -160,7 +160,7 @@ verify_exchange_after_expire(Cluster) ->
     _ = [ok = rpc:call(Node, yz_entropy_mgr, expire_trees, [])
          || Node <- Cluster],
 
-    %% The expire is done very cast so just give it a moment
+    %% The expire is async so just give it a moment
     timer:sleep(100),
 
     ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
