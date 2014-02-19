@@ -66,7 +66,7 @@ confirm() ->
 
     create_index(Cluster, riak_search),
     load_data(Cluster, YZBenchDir, 1000),
-    query_data(Cluster, YZBenchDir, 1000, 1),
+    query_data(Cluster, YZBenchDir, 1000, 1, <<"value">>),
 
     %% In real scenarios the cluster will likely have incoming index
     %% and search operations during upgrade.  I'm avoiding them in
@@ -75,7 +75,7 @@ confirm() ->
     rolling_upgrade(Cluster, current),
 
     load_data(Cluster, YZBenchDir, 5000),
-    query_data(Cluster, YZBenchDir, 5000, 1),
+    query_data(Cluster, YZBenchDir, 5000, 1, <<"value">>),
 
     check_for_errors(Cluster),
 
@@ -90,11 +90,12 @@ confirm() ->
     timer:sleep(1100),
 
     switch_to_yokozuna(Cluster),
-    query_data(Cluster, YZBenchDir, 5000, 1),
+    query_data(Cluster, YZBenchDir, 5000, 1, <<"text">>),
 
     %% TODO: use BB to check PB
     PB = create_pb_conn(hd(Cluster)),
-    {ok,{search_results,R,_Score,Found}} = riakc_pb_socket:search(PB, ?FRUIT_BUCKET, <<"apple">>),
+    {ok,{search_results,R,_Score,Found}} =
+        riakc_pb_socket:search(PB, ?FRUIT_BUCKET, <<"text:apple">>),
     lager:info("PB R: ~p", [R]),
     ?assertEqual(5000, Found),
     close_pb_conn(PB),
@@ -115,7 +116,7 @@ confirm() ->
     check_for_errors(Cluster),
 
     load_data(Cluster, YZBenchDir, 10000),
-    query_data(Cluster, YZBenchDir, 10000, 1),
+    query_data(Cluster, YZBenchDir, 10000, 1, <<"text">>),
     check_for_errors(Cluster),
 
     pass.
@@ -219,7 +220,7 @@ load_data(Cluster, YZBenchDir, NumKeys) ->
     %% Sleep for soft-commit.
     timer:sleep(1100).
 
-query_data(Cluster, YZBenchDir, NumKeys, Time) ->
+query_data(Cluster, YZBenchDir, NumKeys, Time, DefaultField) ->
     lager:info("Run query against cluster ~p", [Cluster]),
     Idx = binary_to_list(?FRUIT_BUCKET),
     Hosts = yz_rt:host_entries(rt:connection_info(Cluster)),
@@ -234,6 +235,7 @@ query_data(Cluster, YZBenchDir, NumKeys, Time) ->
            {operations, [{Op,1}]},
            {http_conns, Hosts},
            {pb_conns, []},
+           {default_field, DefaultField},
            {search_path, "/solr/" ++ Idx ++ "/select"},
            {shutdown_on_error, true}],
     File = "bb-query-fruit-" ++ Idx,
