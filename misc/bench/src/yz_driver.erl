@@ -7,7 +7,7 @@
 -compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {fruits, pb_conns, index, bucket, iurls, surls}).
+-record(state, {default_field, fruits, pb_conns, index, bucket, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
 
 -define(M100,   100000000).
@@ -72,6 +72,7 @@ new(_Id) ->
     Index = basho_bench_config:get(index, bucket_type(Bucket)),
     HTTP = basho_bench_config:get(http_conns, [{"127.0.0.1", 8098}]),
     PB = basho_bench_config:get(pb_conns, [{"127.0.0.1", 8087}]),
+    DefaultField = basho_bench_config:get(default_field, <<"text">>),
     BPath = basho_bench_config:get(bucket_path, bucket_path(Bucket)),
     SPath = basho_bench_config:get(search_path, search_path(Index)),
     IURLs = array:from_list(lists:map(make_url(BPath), HTTP)),
@@ -82,15 +83,16 @@ new(_Id) ->
 
     {ok, #state{pb_conns={Conns, {0,M}},
                 bucket=Bucket,
+                default_field=DefaultField,
                 index=Index,
                 iurls={IURLs, {0,N}},
                 surls={SURLs, {0,N}}}}.
 
-run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
+run(search, _KeyGen, ValGen, S=#state{default_field=DF, surls=URLs}) ->
     Base = get_base(URLs),
     {Field, [Term]} = ValGen(search),
     Qry = ?FMT("~s:~s", [Field, Term]),
-    Params = mochiweb_util:urlencode([{<<"q">>, Qry}]),
+    Params = mochiweb_util:urlencode([{<<"q">>, Qry}, {df, DF}]),
     URL = ?FMT("~s?~s", [Base, Params]),
     S2 = S#state{surls=wrap(URLs)},
     case http_get(URL) of
@@ -101,9 +103,12 @@ run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
 run({search, Qry, FL}, KG, VG, S) ->
     run({search, Qry, FL, ?DONT_VERIFY}, KG, VG, S);
 
-run({search, Qry, FL, Expected}, _, _, S=#state{surls=URLs}) ->
+run({search, Qry, FL, Expected}, _, _, S=#state{default_field=DF, surls=URLs}) ->
     Base = get_base(URLs),
-    Params = mochiweb_util:urlencode([{q, Qry}, {wt, <<"json">>}, {fl, FL}]),
+    Params = mochiweb_util:urlencode([{q, Qry},
+                                      {wt, <<"json">>},
+                                      {fl, FL},
+                                      {df, DF}]),
     URL = ?FMT("~s?~s", [Base, Params]),
     S2 = S#state{surls=wrap(URLs)},
     case {Expected, http_get(URL)} of
