@@ -30,7 +30,7 @@
 %% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
 -define(NOTIFY(A, B, Type, Arg),
-        folsom_metrics:notify_existing_metric({?YZ_APP_NAME, A, B}, Arg, Type)).
+        folsom_metrics:notify_existing_metric({search, A, B}, Arg, Type)).
 
 %% -------------------------------------------------------------------
 %% API
@@ -51,22 +51,17 @@ register_stats() ->
     ok.
 
 %% @doc Return current aggregation of all stats.
--spec get_stats() -> proplists:proplist() | {error, term()}.
+-spec get_stats() -> proplists:proplist() | [].
 get_stats() ->
+    get_stats(?YZ_ENABLED).
+
+%% @doc Return current aggregation of all stats.
+-spec get_stats(false | true) -> proplists:proplist() | [].
+get_stats(false) -> [];
+get_stats(true) ->
     case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
         {ok, Stats, _TS} -> Stats;
         Error -> Error
-    end.
-
-%% @doc Return formatted stats
--spec get_formatted_stats() -> [term()].
-get_formatted_stats() ->
-    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
-        false -> 
-            [];
-        true -> 
-            Stats = ?MODULE:get_stats(),
-            format_stats(Stats)
     end.
 
 %% TODO: export stats() type from riak_core_stat_q.
@@ -95,6 +90,40 @@ search_fail() ->
 -spec search_end(integer()) -> ok.
 search_end(ElapsedTime) ->
     update({search_end, ElapsedTime}).
+
+%% @doc Optionally produce stats map based on ?YZ_ENABLED
+%% 
+-spec stats_map() -> [{term()}].
+stats_map() ->
+     stats_map(?YZ_ENABLED).
+
+%% @doc Map to format stats for legacy "blob" if YZ_ENABLED,
+%% else []
+%% 
+stats_map(false) -> [];
+stats_map(true) ->
+     [
+      %% Query stats
+      {search_query_throughput_count, {{search, 'query', throughput}, count}, spiral},
+      {search_query_throughput_one, {{search, 'query', throughput}, one}, spiral},
+      {search_query_latency_min, {{search, 'query', latency}, min}, histogram},
+      {search_query_latency_max, {{search, 'query', latency}, max}, histogram},
+      {search_query_latency_median, {{search, 'query', latency}, median}, histogram},
+      {search_query_latency_95, {{search, 'query', latency}, 95}, histogram_percentile},
+      {search_query_latency_99, {{search, 'query', latency}, 99}, histogram_percentile},
+      {search_query_latency_999, {{search, 'query', latency}, 999}, histogram_percentile},
+
+      %% Index stats
+      {search_index_throughput_count, {{search, index, throughput}, count}, spiral},
+      {search_index_throughtput_one, {{search, index, throughput}, one}, spiral},
+      {search_index_fail_count, {{search, index, fail}, count}, spiral},
+      {search_index_fail_one, {{search, index, fail}, one}, spiral},
+      {search_index_latency_min, {{search, index, latency}, min}, histogram},
+      {search_index_latency_max, {{search, index, latency}, max}, histogram},
+      {search_index_latency_median, {{search, index, latency}, median}, histogram},
+      {search_index_latency_95, {{search, index, latency}, 95}, histogram_percentile},
+      {search_index_latency_99, {{search, index, latency}, 99}, histogram_percentile},
+      {search_index_latency_999, {{search, index, latency}, 999}, histogram_percentile}].
 
 %% -------------------------------------------------------------------
 %% Callbacks
@@ -137,10 +166,10 @@ notify({index_end, Time}) ->
 notify(index_fail) ->
     ?NOTIFY(index, fail, spiral, 1);
 notify({search_end, Time}) ->
-    ?NOTIFY(search, latency, histogram, Time),
-    ?NOTIFY(search, throughput, spiral, 1);
+    ?NOTIFY('query', latency, histogram, Time),
+    ?NOTIFY('query', throughput, spiral, 1);
 notify(search_fail) ->
-    ?NOTIFY(search, fail, spiral, 1).
+    ?NOTIFY('query', fail, spiral, 1).
 
 %% @private
 get_sample_type(Name) ->
@@ -165,15 +194,15 @@ stats() ->
      {[index, fail], spiral},
      {[index, latency], histogram},
      {[index, throughput], spiral},
-     {[search, fail], spiral},
-     {[search, latency], histogram},
-     {[search, throughput], spiral}
+     {['query', fail], spiral},
+     {['query', latency], histogram},
+     {['query', throughput], spiral}
     ].
 
 %% @private
 -spec stat_name(riak_core_stat_q:path()) -> riak_core_stat_q:stat_name().
 stat_name(Name) ->
-    list_to_tuple([?YZ_APP_NAME|Name]).
+    list_to_tuple([search|Name]).
 
 %% @private
 %%
@@ -186,65 +215,3 @@ update(StatUpdate) ->
         false -> notify(StatUpdate)
     end,
     ok.
-
-%% @private
-%%
-%% @doc Format stats for legacy stats blob
--spec format_stats([term()]) -> [term()].
-format_stats(Stats) ->
-    lists:flatten([format(Stat) || Stat <- Stats]).
-
-format({{_, search, fail},[{count, Count}, {one, One}]}) ->
-    [{search_query_fail_count, Count},
-     {search_query_fail_one, One}];
-format({{_, search, throughput},[{count, Count}, {one, One}]}) ->
-    [{search_query_throughput_count, Count},
-     {search_query_throughput_one, One}];
-format({{_, index, fail},[{count, Count}, {one, One}]}) ->
-    [{search_index_fail_count, Count},
-     {search_index_fail_one, One}];
-format({{_, index, throughput},[{count, Count}, {one, One}]}) ->
-    [{search_index_throughput_count, Count},
-     {search_index_throughput_one, One}];
-format({{_, search, latency}, ValueList}) ->
-    [format_query_latency(V) || V <- ValueList];
-format({{_, index, latency}, ValueList}) ->
-    [format_index_latency(V) || V <- ValueList];
-format({yokozuna_stat_ts, TS}) ->
-    [{search_stat_ts, TS}];
-format(T) -> T.
-
-format_query_latency({min, Value}) ->
-    {search_query_latency_min, Value};
-format_query_latency({max, Value}) ->
-    {search_query_latency_max, Value};
-format_query_latency({median, Value}) ->
-    {search_query_latency_median, Value};
-format_query_latency({percentile, PList}) ->
-    [ format_query_latency_percentile(P) || P <- PList];
-format_query_latency({_, _}) ->
-    [].
-
-format_query_latency_percentile({95, Value}) ->
-    {search_query_latency_percentile_95, Value};
-format_query_latency_percentile({99, Value}) ->
-    {search_query_latency_percentile_99, Value};
-format_query_latency_percentile(_) -> [].
-
-format_index_latency({min, Value}) ->
-    {search_index_latency_min, Value};
-format_index_latency({max, Value}) ->
-    {search_index_latency_max, Value};
-format_index_latency({median, Value}) ->
-    {search_index_latency_median, Value};
-format_index_latency({percentile, PList}) ->
-    [ format_index_latency_percentile(P) || P <- PList];
-format_index_latency({_, _}) ->
-    [].
-
-format_index_latency_percentile({95, Value}) ->
-    {search_index_latency_percentile_95, Value};
-format_index_latency_percentile({99, Value}) ->
-    {search_index_latency_percentile_99, Value};
-format_index_latency_percentile(_) -> [].
-
