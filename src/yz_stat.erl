@@ -100,6 +100,7 @@ stats_map() ->
 %% @doc Map to format stats for legacy "blob" if YZ_ENABLED,
 %% else []
 %% 
+-spec stats_map(true | false) -> [] | proplists:proplist().
 stats_map(false) -> [];
 stats_map(true) ->
      [
