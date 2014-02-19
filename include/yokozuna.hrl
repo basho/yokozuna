@@ -127,6 +127,16 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+
+-define(MAYBE(Check, Expression, Default),
+        case Check of
+            true -> Expression;
+            false -> Default
+        end).
+
+-define(MAYBE(Check, Expression),
+        ?MAYBE(Check, Expression, ok)).
+
 %% Core security requires `{BucketType, Bucket}'. Technically, these
 %% arent so strict, and so we refer to them as `{Resource,
 %% SubResource}' where `Resource' is a resource like index or schema

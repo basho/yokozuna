@@ -35,13 +35,15 @@
          terminate/2]).
 -include("yokozuna.hrl").
 
+-define(NUM_TICKS_START, 1).
+
 -record(state, {
           %% The number of ticks since the last time this value was
-          %% reset to 0. This value along with
+          %% reset to 1. This value along with
           %% `get_full_check_after/0' is used to determine when a
           %% "full check" should be performed. This is to prevent
           %% expensive checks occurring on every tick.
-          num_ticks = 0                 :: non_neg_integer(),
+          num_ticks = ?NUM_TICKS_START  :: non_neg_integer(),
 
           %% The hash of the index cluster meta last time it was
           %% checked.
@@ -74,27 +76,21 @@ handle_info(tick, S) ->
     PrevHash = S#state.prev_index_hash,
     CurrHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
     NumTicks = S#state.num_ticks,
-    FullCheck = NumTicks == 0,
+    IsFullCheck = (NumTicks == ?NUM_TICKS_START),
+    DidHashChange = PrevHash /= CurrHash,
 
-    case yz_solr:is_up() of
-        true ->
-            case FullCheck orelse (PrevHash /= CurrHash) of
-                true -> ok = sync_indexes();
-                false -> ok
-            end;
-        false ->
-            ok
-    end,
+    ok = ?MAYBE(yz_solr:is_up() andalso (IsFullCheck orelse DidHashChange),
+                sync_indexes()),
 
-    case FullCheck of
-        true -> ok = remove_non_owned_data(yz_cover:get_ring_used());
-        false -> ok
-    end,
+    ok = ?MAYBE(IsFullCheck,
+                remove_non_owned_data(yz_cover:get_ring_used())),
 
     ok = set_tick(),
 
     NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
-    {noreply, S#state{num_ticks=NumTicks2}}.
+    S2 = S#state{num_ticks=NumTicks2,
+                 prev_index_hash=CurrHash},
+    {noreply, S2}.
 
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
@@ -155,7 +151,7 @@ get_tick_interval() ->
 -spec incr_or_wrap(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
 incr_or_wrap(N, M) ->
     case N == M of
-        true -> 0;
+        true -> ?NUM_TICKS_START;
         false -> N + 1
     end.
 
