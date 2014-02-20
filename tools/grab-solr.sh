@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Script to grab Solr and embed in priv dir.
+# Script to grab Solr and embed in priv dir. This script assumes it is
+# being called from root dir or tools dir.
 #
 # Usage:
 #     ./grab-solr.sh
@@ -54,39 +55,64 @@ get_solr()
         tar zxf $FILENAME
 }
 
-if check_for_solr
+if ! check_for_solr
 then
-    echo "Solr already exists, exiting"
-    exit 0
+
+    echo "Create dir $BUILD_DIR"
+    if [ ! -e $BUILD_DIR ]; then
+        mkdir $BUILD_DIR
+    fi
+
+    cd $BUILD_DIR
+
+    if [ ! -e $SRC_DIR ]
+    then
+        get_solr
+    fi
+
+    echo "Creating Solr dir $SOLR_DIR"
+
+    # Explicitly copy files needed rather than copying everything and
+    # removing which requires using cp -rn (since $SOLR_DIR/etc has files
+    # which shouldn't be overwritten).  For whatever reason, cp -n causes
+    # non-zero exit code when files that would have been overwritten are
+    # detected.
+    cp -r $EXAMPLE_DIR/contexts $SOLR_DIR
+    cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
+    cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
+    cp -r $EXAMPLE_DIR/lib $SOLR_DIR
+    # TODO: does resources need to be copied?
+    cp -r $EXAMPLE_DIR/resources $SOLR_DIR
+    cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
+    cp -r $EXAMPLE_DIR/start.jar $SOLR_DIR
+    cp -r $EXAMPLE_DIR/webapps $SOLR_DIR
+
+    echo "Solr dir created successfully"
 fi
 
-echo "Create dir $BUILD_DIR"
-if [ ! -e $BUILD_DIR ]; then
-    mkdir $BUILD_DIR
-fi
+JAVA_LIB=../priv/java_lib
+YZ_JAR_VSN=1
+YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
 
-cd $BUILD_DIR
-
-if [ ! -e $SRC_DIR ]
+if [ ! -e $JAVA_LIB/$YZ_JAR_NAME ]
 then
-    get_solr
+    if [ ! -d $JAVA_LIB ]
+    then
+        mkdir $JAVA_LIB
+    fi
+
+    echo "Downloading $YZ_JAR_NAME"
+    wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/yokozuna/$YZ_JAR_NAME
+    mv $YZ_JAR_NAME $JAVA_LIB/$YZ_JAR_NAME
 fi
 
-echo "Creating Solr dir $SOLR_DIR"
+EXT_LIB=../priv/solr/lib/ext
+MON_JAR_VSN=1
+MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
 
-# Explicitly copy files needed rather than copying everything and
-# removing which requires using cp -rn (since $SOLR_DIR/etc has files
-# which shouldn't be overwritten).  For whatever reason, cp -n causes
-# non-zero exit code when files that would have been overwritten are
-# detected.
-cp -r $EXAMPLE_DIR/contexts $SOLR_DIR
-cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
-cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
-cp -r $EXAMPLE_DIR/lib $SOLR_DIR
-# TODO: does resources need to be copied?
-cp -r $EXAMPLE_DIR/resources $SOLR_DIR
-cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
-cp -r $EXAMPLE_DIR/start.jar $SOLR_DIR
-cp -r $EXAMPLE_DIR/webapps $SOLR_DIR
-
-echo "Solr dir created successfully"
+if [ ! -e $EXT_LIB/$MON_JAR_NAME ]
+then
+    echo "Downloading $MON_JAR_NAME"
+    wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/yokozuna/$MON_JAR_NAME
+    mv $MON_JAR_NAME $EXT_LIB/$MON_JAR_NAME
+fi
