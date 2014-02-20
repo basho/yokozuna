@@ -93,7 +93,7 @@ search_end(ElapsedTime) ->
 
 %% @doc Optionally produce stats map based on ?YZ_ENABLED
 %% 
--spec stats_map() -> [{term()}].
+-spec stats_map() -> [] | proplists:proplist().
 stats_map() ->
      stats_map(?YZ_ENABLED).
 
