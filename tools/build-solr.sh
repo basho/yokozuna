@@ -70,6 +70,12 @@ WORK_DIR=$1; shift
 NAME=$1; shift
 URL=$1; shift
 
+if ! javac -version 2>&1 | egrep "1\.6\.[0-9_.]+"
+then
+    echo "JDK 1.6 must be used to compile Solr"
+    exit 1
+fi
+
 if [ ! -x "`which ant`" ]; then
   echo "Couldn't find ant, which is needed to compile Solr."
   exit 1

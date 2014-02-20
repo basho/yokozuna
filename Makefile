@@ -17,7 +17,7 @@ clean:
 	$(REBAR) clean
 	rm -rf riak_test/ebin
 	rm -rf build
-	git clean -dfx priv/solr
+	git clean -dfx priv/
 
 distclean: clean
 	$(REBAR) delete-deps
