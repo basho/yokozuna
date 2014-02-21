@@ -52,7 +52,7 @@ register_stats() ->
 
 %% @doc Transform the yz stats to a format consistent
 %% with "legacy" stats and rename them
--spec  search_stats() -> proplists:proplist().
+-spec search_stats() -> proplists:proplist().
 search_stats() ->
     {Legacy, _Calculated} = lists:foldl(fun({Old, New, Type}, {Acc, Cache}) ->
                                                 riak_kv_stat_bc:bc_stat({Old, New, Type}, Acc, Cache) end,
