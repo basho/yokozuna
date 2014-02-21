@@ -102,14 +102,12 @@ search_end(ElapsedTime) ->
     update({search_end, ElapsedTime}).
 
 %% @doc Optionally produce stats map based on ?YZ_ENABLED
-%% 
 -spec stats_map() -> [] | proplists:proplist().
 stats_map() ->
      stats_map(?YZ_ENABLED).
 
 %% @doc Map to format stats for legacy "blob" if YZ_ENABLED,
-%% else []
-%% 
+%% else [].
 -spec stats_map(true | false) -> [] | proplists:proplist().
 stats_map(false) -> [];
 stats_map(true) ->
