@@ -30,7 +30,7 @@
 %% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
 -define(NOTIFY(A, B, Type, Arg),
-        folsom_metrics:notify_existing_metric({search, A, B}, Arg, Type)).
+        folsom_metrics:notify_existing_metric({?YZ_APP_NAME, A, B}, Arg, Type)).
 
 %% -------------------------------------------------------------------
 %% API
@@ -50,13 +50,23 @@ register_stats() ->
     riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}),
     ok.
 
+%% @doc Transform the yz stats to a format consistent
+%% with "legacy" stats and rename them
+-spec  search_stats() -> proplists:proplist().
+search_stats() ->
+    {Legacy, _Calculated} = lists:foldl(fun({Old, New, Type}, {Acc, Cache}) ->
+                                                riak_kv_stat_bc:bc_stat({Old, New, Type}, Acc, Cache) end,
+                                        {[], []},
+                                        stats_map()),
+    lists:reverse(Legacy).
+
 %% @doc Return current aggregation of all stats.
--spec get_stats() -> proplists:proplist() | [].
+-spec get_stats() -> proplists:proplist().
 get_stats() ->
     get_stats(?YZ_ENABLED).
 
 %% @doc Return current aggregation of all stats.
--spec get_stats(false | true) -> proplists:proplist() | [].
+-spec get_stats(false | true) -> proplists:proplist().
 get_stats(false) -> [];
 get_stats(true) ->
     case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
@@ -105,26 +115,26 @@ stats_map(false) -> [];
 stats_map(true) ->
      [
       %% Query stats
-      {search_query_throughput_count, {{search, 'query', throughput}, count}, spiral},
-      {search_query_throughput_one, {{search, 'query', throughput}, one}, spiral},
-      {search_query_latency_min, {{search, 'query', latency}, min}, histogram},
-      {search_query_latency_max, {{search, 'query', latency}, max}, histogram},
-      {search_query_latency_median, {{search, 'query', latency}, median}, histogram},
-      {search_query_latency_95, {{search, 'query', latency}, 95}, histogram_percentile},
-      {search_query_latency_99, {{search, 'query', latency}, 99}, histogram_percentile},
-      {search_query_latency_999, {{search, 'query', latency}, 999}, histogram_percentile},
+      {search_query_throughput_count, {{?YZ_APP_NAME, 'query', throughput}, count}, spiral},
+      {search_query_throughput_one, {{?YZ_APP_NAME, 'query', throughput}, one}, spiral},
+      {search_query_latency_min, {{?YZ_APP_NAME, 'query', latency}, min}, histogram},
+      {search_query_latency_max, {{?YZ_APP_NAME, 'query', latency}, max}, histogram},
+      {search_query_latency_median, {{?YZ_APP_NAME, 'query', latency}, median}, histogram},
+      {search_query_latency_95, {{?YZ_APP_NAME, 'query', latency}, 95}, histogram_percentile},
+      {search_query_latency_99, {{?YZ_APP_NAME, 'query', latency}, 99}, histogram_percentile},
+      {search_query_latency_999, {{?YZ_APP_NAME, 'query', latency}, 999}, histogram_percentile},
 
       %% Index stats
-      {search_index_throughput_count, {{search, index, throughput}, count}, spiral},
-      {search_index_throughtput_one, {{search, index, throughput}, one}, spiral},
-      {search_index_fail_count, {{search, index, fail}, count}, spiral},
-      {search_index_fail_one, {{search, index, fail}, one}, spiral},
-      {search_index_latency_min, {{search, index, latency}, min}, histogram},
-      {search_index_latency_max, {{search, index, latency}, max}, histogram},
-      {search_index_latency_median, {{search, index, latency}, median}, histogram},
-      {search_index_latency_95, {{search, index, latency}, 95}, histogram_percentile},
-      {search_index_latency_99, {{search, index, latency}, 99}, histogram_percentile},
-      {search_index_latency_999, {{search, index, latency}, 999}, histogram_percentile}].
+      {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
+      {search_index_throughtput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
+      {search_index_fail_count, {{?YZ_APP_NAME, index, fail}, count}, spiral},
+      {search_index_fail_one, {{?YZ_APP_NAME, index, fail}, one}, spiral},
+      {search_index_latency_min, {{?YZ_APP_NAME, index, latency}, min}, histogram},
+      {search_index_latency_max, {{?YZ_APP_NAME, index, latency}, max}, histogram},
+      {search_index_latency_median, {{?YZ_APP_NAME, index, latency}, median}, histogram},
+      {search_index_latency_95, {{?YZ_APP_NAME, index, latency}, 95}, histogram_percentile},
+      {search_index_latency_99, {{?YZ_APP_NAME, index, latency}, 99}, histogram_percentile},
+      {search_index_latency_999, {{?YZ_APP_NAME, index, latency}, 999}, histogram_percentile}].
 
 %% -------------------------------------------------------------------
 %% Callbacks
@@ -203,7 +213,7 @@ stats() ->
 %% @private
 -spec stat_name(riak_core_stat_q:path()) -> riak_core_stat_q:stat_name().
 stat_name(Name) ->
-    list_to_tuple([search|Name]).
+    list_to_tuple([?YZ_APP_NAME|Name]).
 
 %% @private
 %%
