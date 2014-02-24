@@ -116,6 +116,8 @@ stats_map(true) ->
       %% Query stats
       {search_query_throughput_count, {{?YZ_APP_NAME, 'query', throughput}, count}, spiral},
       {search_query_throughput_one, {{?YZ_APP_NAME, 'query', throughput}, one}, spiral},
+      {search_query_fail_count, {{?YZ_APP_NAME, 'query', fail}, count}, spiral},
+      {search_query_fail_one, {{?YZ_APP_NAME, 'query', fail}, one}, spiral},
       {search_query_latency_min, {{?YZ_APP_NAME, 'query', latency}, min}, histogram},
       {search_query_latency_max, {{?YZ_APP_NAME, 'query', latency}, max}, histogram},
       {search_query_latency_median, {{?YZ_APP_NAME, 'query', latency}, median}, histogram},
