@@ -18,16 +18,14 @@ provided below.
 Official Packages
 ----------
 
-**WARNING**: The 2.0.0pre5 preview is very out of date as of the
-  0.13.0 release and thus the latest documentation will lead you
-  astray. It is recommended to use the source package for now until a
-  more up-to-date official package is cut.
+**WARNING**: The 2.0.0pre11 Riak release is a month older than the
+  0.14.0 Yokozuna source release. The latest documentation may be
+  incompatible with 2.0.0pre11.
 
-The current Riak 2.0 preview (riak-2.0.0pre5) comes bundled with
-Yokozuna. It is the same as the 0.11.0 release minus the new security
-feature.
+The current Riak 2.0 preview (riak-2.0.0pre11) comes bundled with
+Yokozuna 0.13.0 along with some additional commits.
 
-http://docs.basho.com/riak/2.0.0pre5/downloads/
+http://docs.basho.com/riak/2.0.0pre11/downloads/
 
 One you have the package you can follow the [install instructions][ii]
 on the official Riak documentation site.
@@ -35,9 +33,8 @@ on the official Riak documentation site.
 If you are a developer and want to build a local dev cluster then you
 can follow the instructions for the [five minute install][fmi].
 
-[ii]: http://docs.basho.com/riak/2.0.0pre5/ops/building/installing/
-[fmi]: http://docs.basho.com/riak/2.0.0pre5/quickstart/
-[riak20-pre5]: http://docs.basho.com/riak/2.0.0pre5/downloads/
+[ii]: http://docs.basho.com/riak/2.0.0pre11/ops/building/installing/
+[fmi]: http://docs.basho.com/riak/2.0.0pre11/quickstart/
 
 Source Package
 --------------
@@ -46,10 +43,10 @@ Approximately every month a release is cut. Thus, Yokozuna development
 can outpace official Riak releases. The source package provides an
 easy method for building the latest release and thus testing the
 newest features and bug fixes. The source package should always pass
-all Search 2 integration tests and be stable as possible. It should
-not be deployed in production, however. These releases are more like
-previews and compatibility could break between them. Use official
-packages for production.
+all integration tests and be stable as possible. It should not be
+deployed in production, however. These releases are more like previews
+and compatibility could break between them. Use official packages for
+production.
 
 ### Requirements ###
 
@@ -66,26 +63,26 @@ packages for production.
 Download the source package and corresponding md5 from one of the
 following locations.
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.13.0-src.tar.gz
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.14.0-src.tar.gz
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.13.0-src.tar.gz.sha1
+* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.14.0-src.tar.gz.sha1
 
 Download using wget.
 
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.13.0-src.tar.gz
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.13.0-src.tar.gz.sha1
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.14.0-src.tar.gz
+	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.14.0-src.tar.gz.sha1
 
 Verify the sha1 (might need to use `sha1sum`).
 
-    shasum -a1 -c riak-yokozuna-0.13.0-src.tar.gz.sha1 riak-yokozuna-0.13.0-src.tar.gz
+    shasum -a1 -c riak-yokozuna-0.14.0-src.tar.gz.sha1 riak-yokozuna-0.14.0-src.tar.gz
 
 Unpack the archive.
 
-    tar zxvf riak-yokozuna-0.13.0-src.tar.gz
+    tar zxvf riak-yokozuna-0.14.0-src.tar.gz
 
 Compile.
 
-	cd riak-yokozuna-0.13.0-src
+	cd riak-yokozuna-0.14.0-src
 	make
 
 To deploy Riak-Yokozuna in a production configuration then you'll want
