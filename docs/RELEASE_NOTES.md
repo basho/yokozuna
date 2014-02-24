@@ -1,6 +1,155 @@
 Yokozuna Release Notes
 ==========
 
+0.14.0
+------
+
+### Features ###
+
+* [288][], [294][] - Upgrade to Solr 4.6.1.
+
+### Bug Fixes/Misc ###
+
+* [234][], [278][] - Store schemas in cluster metadata instead of
+  KV. This is a breaking change.
+
+* [249][], [274][] - Fix `econnrefused` at startup by making a more
+  robust "index exists" check.
+
+* [293][] - Flush hashtrees during shutdown. Add test to verify to
+  unnecessary AAE repair after cluster restart.
+
+* [301][] - Mark hashtrees as built immediately after start if no data
+  has been indexed. This allows exchange to begin immediately rather
+  than waiting hours for trees to build.
+
+* [308][] - Various AAE ports. Allow use of `never` to mark trees as
+  never expired. Clear pending exchanges when switching to manual
+  exchange mode. Don't clear trees until the lock has been grabbed to
+  perform a rebuild; this allows exchange to happen all the way up
+  until tree rebuild. Add ability to programmatically expire all trees
+  on a node.
+
+* [258][], [275][] - Fixed handoff hook in mixed cluster (1.4/2.0)
+  scenario.
+
+* [273][], [277][] - Create `search_index` atom during application
+  start. This prevents crashes when Yokozuna is disabled.
+
+* [276][] - Create a `solr` namespace for the Solr related
+  configurations. This is a breaking change.
+
+* [281][] - Add standardized test and dialyzer targets via `tools.mk`
+  file.
+
+* [282][] - Port various changes make to riak_kv in the 1.4.x release
+  series such as new ring and bucket interfaces.
+
+* [289][] - Move the index list from the ring to cluster
+  metadata. This is a breaking change.
+
+* [283][] - Better essential test: use random test queries and
+  transition from 2 to 4 nodes to make sure cluster sizes less than
+  `n_val` still produce correct results.
+
+* [284][] - Treat compiler warnings as errors.
+
+* [285][] - Fix argument order of calls to `yz_kv:dont_index` which is
+  important for AAE to function optimally.
+
+* [286][] - Add `xref` target to Makefile.
+
+* [233][], [287][] - Replace hacky `maybe_wait` with check in handoff
+  hook to wait for indexes to be created on joining nodes before
+  starting ownership handoff.
+
+* [295][] - Add notion of `n_val` to indexes. This decouples Yokozuna
+  Indexes from KV Buckets and fixes a bug in query plan
+  calculation. This is a breaking change.
+
+* [303][] - Add a bucket property validation hook to make sure that
+  buckets are associated with indexes that exist and have the same
+  `n_val`.
+
+* [311][] - Update previous hash on even tick to prevent syncing the
+  index list too often.
+
+* [313][] - Don't require the `text` field. Change the Solr ping
+  handler to use `_yz_id` field. Change Solr select handler to not
+  provide a default field. This is a breaking change for some users.
+
+* [314][], [315][] - Build custom Yokozuna Solr plugins as a process
+  separate from the main build and upload them to s3. This way the
+  `javac` version can be more easily controlled and the main build can
+  simply download jar files.
+
+### Breaking Changes ###
+
+#### Configuration ([276][]) ####
+
+A solr sub-namespace was added to the Solr related configuration
+options.
+
+* `search.solr_port` -> `search.solr.port`
+* `search.solr_jmx_port` -> `searchs.solr.jmx_port`
+* `search.solr_jvm_opts` -> `search.solr.jvm_options`
+
+#### Internal Index Changes ([289][], [295][]) ####
+
+Both the internal datastructures and storage mechanism for indexes
+have changed. As Yokozuna is not 1.0 yet there is no upgrade path from
+previous releases. A rolling upgrade from an early release such as
+Riak-pre11 may encounter failures.
+
+#### Schema Storage ([278][]) ####
+
+Schema storage has moved from KV Buckets to Cluster Metadata. Schemas
+are now also stored gzip compressed. As Yokozuna is not 1.0 yet there
+is no upgrade path from old schema storage to new. A rolling upgrade
+from an early release such as Riak-pre11 may encounter failures.
+
+#### Removal of df ([313][]) ####
+
+The select handler, which services queries, no longer sets an implicit
+`df=text`. Previously, if one sent a query with just terms and no
+fields then the select handler would use a default field of
+`text`. Anyone relying on this behavior would require a `text` field
+in their schema. Rather than require everyone to add a `text` field to
+their schema the implicit parameter was removed. If a user wishes to
+set a default field they may do so by passing `df` with the request.
+
+[233]: https://github.com/basho/yokozuna/issues/233
+[234]: https://github.com/basho/yokozuna/pull/234
+[249]: https://github.com/basho/yokozuna/issues/249
+[253]: https://github.com/basho/yokozuna/issues/253
+[258]: https://github.com/basho/yokozuna/issues/258
+[273]: https://github.com/basho/yokozuna/issues/273
+[274]: https://github.com/basho/yokozuna/pull/274
+[275]: https://github.com/basho/yokozuna/pull/275
+[276]: https://github.com/basho/yokozuna/pull/276
+[277]: https://github.com/basho/yokozuna/pull/277
+[278]: https://github.com/basho/yokozuna/pull/278
+[281]: https://github.com/basho/yokozuna/pull/281
+[282]: https://github.com/basho/yokozuna/pull/282
+[283]: https://github.com/basho/yokozuna/pull/283
+[284]: https://github.com/basho/yokozuna/pull/284
+[285]: https://github.com/basho/yokozuna/pull/285
+[286]: https://github.com/basho/yokozuna/pull/286
+[287]: https://github.com/basho/yokozuna/pull/287
+[288]: https://github.com/basho/yokozuna/issues/288
+[289]: https://github.com/basho/yokozuna/pull/289
+[293]: https://github.com/basho/yokozuna/pull/293
+[294]: https://github.com/basho/yokozuna/pull/294
+[295]: https://github.com/basho/yokozuna/pull/295
+[301]: https://github.com/basho/yokozuna/pull/301
+[303]: https://github.com/basho/yokozuna/pull/303
+[308]: https://github.com/basho/yokozuna/pull/308
+[311]: https://github.com/basho/yokozuna/pull/311
+[313]: https://github.com/basho/yokozuna/pull/313
+[314]: https://github.com/basho/yokozuna/issues/314
+[315]: https://github.com/basho/yokozuna/pull/315
+
+
 0.13.0
 ------
 
