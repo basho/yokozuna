@@ -50,9 +50,25 @@ register_stats() ->
     riak_core_stat_cache:register_app(?YZ_APP_NAME, {?MODULE, produce_stats, []}),
     ok.
 
+%% @doc Transform the yz stats to a format consistent
+%% with "legacy" stats and rename them
+-spec search_stats() -> proplists:proplist().
+search_stats() ->
+    {Legacy, _Calculated} = lists:foldl(fun({Old, New, Type}, {Acc, Cache}) ->
+                                                riak_kv_stat_bc:bc_stat({Old, New, Type}, Acc, Cache) end,
+                                        {[], []},
+                                        stats_map()),
+    lists:reverse(Legacy).
+
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, term()}.
 get_stats() ->
+    get_stats(?YZ_ENABLED).
+
+%% @doc Return current aggregation of all stats.
+-spec get_stats(false | true) -> proplists:proplist().
+get_stats(false) -> [];
+get_stats(true) ->
     case riak_core_stat_cache:get_stats(?YZ_APP_NAME) of
         {ok, Stats, _TS} -> Stats;
         Error -> Error
@@ -84,6 +100,42 @@ search_fail() ->
 -spec search_end(integer()) -> ok.
 search_end(ElapsedTime) ->
     update({search_end, ElapsedTime}).
+
+
+%% @doc Optionally produce stats map based on ?YZ_ENABLED
+-spec stats_map() -> [] | proplists:proplist().
+stats_map() ->
+     stats_map(?YZ_ENABLED).
+
+%% @doc Map to format stats for legacy "blob" if YZ_ENABLED,
+%% else [].
+-spec stats_map(true | false) -> [] | proplists:proplist().
+stats_map(false) -> [];
+stats_map(true) ->
+     [
+      %% Query stats
+      {search_query_throughput_count, {{?YZ_APP_NAME, 'query', throughput}, count}, spiral},
+      {search_query_throughput_one, {{?YZ_APP_NAME, 'query', throughput}, one}, spiral},
+      {search_query_fail_count, {{?YZ_APP_NAME, 'query', fail}, count}, spiral},
+      {search_query_fail_one, {{?YZ_APP_NAME, 'query', fail}, one}, spiral},
+      {search_query_latency_min, {{?YZ_APP_NAME, 'query', latency}, min}, histogram},
+      {search_query_latency_max, {{?YZ_APP_NAME, 'query', latency}, max}, histogram},
+      {search_query_latency_median, {{?YZ_APP_NAME, 'query', latency}, median}, histogram},
+      {search_query_latency_95, {{?YZ_APP_NAME, 'query', latency}, 95}, histogram_percentile},
+      {search_query_latency_99, {{?YZ_APP_NAME, 'query', latency}, 99}, histogram_percentile},
+      {search_query_latency_999, {{?YZ_APP_NAME, 'query', latency}, 999}, histogram_percentile},
+
+      %% Index stats
+      {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
+      {search_index_throughtput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
+      {search_index_fail_count, {{?YZ_APP_NAME, index, fail}, count}, spiral},
+      {search_index_fail_one, {{?YZ_APP_NAME, index, fail}, one}, spiral},
+      {search_index_latency_min, {{?YZ_APP_NAME, index, latency}, min}, histogram},
+      {search_index_latency_max, {{?YZ_APP_NAME, index, latency}, max}, histogram},
+      {search_index_latency_median, {{?YZ_APP_NAME, index, latency}, median}, histogram},
+      {search_index_latency_95, {{?YZ_APP_NAME, index, latency}, 95}, histogram_percentile},
+      {search_index_latency_99, {{?YZ_APP_NAME, index, latency}, 99}, histogram_percentile},
+      {search_index_latency_999, {{?YZ_APP_NAME, index, latency}, 999}, histogram_percentile}].
 
 %% -------------------------------------------------------------------
 %% Callbacks
@@ -126,10 +178,10 @@ notify({index_end, Time}) ->
 notify(index_fail) ->
     ?NOTIFY(index, fail, spiral, 1);
 notify({search_end, Time}) ->
-    ?NOTIFY(search, latency, histogram, Time),
-    ?NOTIFY(search, throughput, spiral, 1);
+    ?NOTIFY('query', latency, histogram, Time),
+    ?NOTIFY('query', throughput, spiral, 1);
 notify(search_fail) ->
-    ?NOTIFY(search, fail, spiral, 1).
+    ?NOTIFY('query', fail, spiral, 1).
 
 %% @private
 get_sample_type(Name) ->
@@ -154,9 +206,9 @@ stats() ->
      {[index, fail], spiral},
      {[index, latency], histogram},
      {[index, throughput], spiral},
-     {[search, fail], spiral},
-     {[search, latency], histogram},
-     {[search, throughput], spiral}
+     {['query', fail], spiral},
+     {['query', latency], histogram},
+     {['query', throughput], spiral}
     ].
 
 %% @private
