@@ -102,7 +102,7 @@ check_stat_values(Node) ->
     IThruCount = proplists:get_value(count, IThroughput),
     IThruOne = proplists:get_value(one, IThroughput),
 
-    SThroughput = proplists:get_value(?STAT_NAME([search, throughput]), Stats),
+    SThroughput = proplists:get_value(?STAT_NAME(['query', throughput]), Stats),
     SThruCount = proplists:get_value(count, SThroughput),
     SThruOne = proplists:get_value(one, SThroughput),
 
@@ -114,8 +114,8 @@ check_stat_values(Node) ->
              {index_latency_max, ILatencyMax, '>', 0},
              {index_throughput_count, IThruCount, '>', 0},
              {index_throughput_one, IThruOne, '>', 0},
-             {search_throughput_count, SThruCount, '>', 0},
-             {search_throughput_cone, SThruOne, '>', 0},
+             {query_throughput_count, SThruCount, '>', 0},
+             {query_throughput_cone, SThruOne, '>', 0},
              {index_fail_count, IFailCount, '>', 0},
              {index_fail_one, IFailOne, '>', 0}],
     lager:info("Stats: ~p", [Pairs]),
