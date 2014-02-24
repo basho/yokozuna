@@ -191,6 +191,10 @@ function run_riak_test_tests()
     pushd riak_yz/deps/yokozuna
 
     info "compile yokozuna riak_test tests"
+    if ! make deps; then
+        error "failed to get deps"
+    fi
+
     if ! make compile-riak-test; then
         error "failed to make Yokozuna's riak_test tests"
     fi
