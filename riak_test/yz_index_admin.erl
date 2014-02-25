@@ -9,7 +9,6 @@
 -type interfaces() :: [interface()].
 -type conn_info() :: [{node(), interfaces()}].
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
 -define(CFG,

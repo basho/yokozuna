@@ -31,7 +31,6 @@
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {struct, [{'query', Str}]}).
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 
 %% @doc This module provides the interface for making calls to Solr.
 %%      All interaction with Solr should go through this API.

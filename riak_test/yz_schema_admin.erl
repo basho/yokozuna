@@ -5,7 +5,6 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
@@ -283,8 +282,8 @@ confirm_truncated(Cluster, Name, RawSchema) ->
     lager:info("confirm_truncated ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
-    ?assertEqual("400", Status),
+    {ok, "400", _, Body} = http(put, URL, Headers, RawSchema),
+    %% ?assertEqual("400", Status),
     %% assert the body contains some kind of msg as to why the schema
     %% failed to parse
     ?assert(size(Body) > 0).

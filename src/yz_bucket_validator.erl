@@ -23,8 +23,6 @@
 -export([validate/4]).
 -include("yokozuna.hrl").
 
--define(FMT(S, Args), list_to_binary(lists:flatten(io_lib:format(S, Args)))).
-
 -type prop() :: {PropName::atom(), PropValue::any()}.
 -type error() :: {PropName::atom(), ErrorReason::atom()}.
 -type props() :: [prop()].
@@ -67,7 +65,7 @@ validate_n_val(Index, INVal, BNVal, BucketProps) ->
         _ ->
             Error = ?FMT("Bucket n_val ~p must match the associated "
                          "search_index ~s n_val ~p", [BNVal,Index,INVal]),
-            {proplists:delete(n_val, BucketProps), [{n_val, Error}]}
+            {proplists:delete(n_val, BucketProps), [{n_val, list_to_binary(Error)}]}
     end.
 
 %% @private
@@ -82,7 +80,7 @@ get_search_index_info(Props) ->
         Index ->
             case yz_index:exists(Index) of
                 false ->
-                    {error, ?FMT("~s does not exist", [Index])};
+                    {error, list_to_binary(?FMT("~s does not exist", [Index]))};
                 true ->
                     {Index, index_n_val(Index)}
             end

@@ -2,7 +2,6 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 
