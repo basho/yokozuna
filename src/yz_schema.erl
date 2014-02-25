@@ -23,6 +23,8 @@
 -include_lib("xmerl/include/xmerl.hrl").
 -compile(export_all).
 
+-define(SCHEMA_VSN, "1.5").
+
 %% @doc Administration of schemas.
 
 %%%===================================================================
@@ -83,6 +85,7 @@ setup_schema_bucket() ->
 -spec parse_and_verify(raw_schema()) -> {ok, raw_schema()} | {error, term()}.
 parse_and_verify(RawSchema) ->
     try
+        %% TODO: should this use unicode?
         {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), []),
         case verify(Schema) of
             {ok, _} ->
@@ -98,7 +101,22 @@ parse_and_verify(RawSchema) ->
 %%      Yokozuna to function properly.
 -spec verify(schema()) -> {ok, schema()} | {error, term()}.
 verify(Schema) ->
-    verify_fts(verify_fields(verify_uk(Schema))).
+    verify_fts(verify_fields(verify_vsn(verify_uk(Schema)))).
+
+%% @private
+%%
+%% @doc Verify the the schema 'version' attribute is set to correct
+%% value.
+-spec verify_vsn({ok, schema()} | {error, term()}) -> {ok, schema()} | {error, term()}.
+verify_vsn({ok, Schema}) ->
+    case xmerl_xpath:string("string(/schema/@version)", Schema) of
+        {xmlObj, string, ?SCHEMA_VSN} ->
+            {ok, Schema};
+        _ ->
+            {error, "schema 'version' attribute must be " ++ ?SCHEMA_VSN}
+    end;
+verify_vsn({error, _}=Err) ->
+    Err.
 
 %% @private
 %%
