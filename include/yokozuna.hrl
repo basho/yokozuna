@@ -19,6 +19,12 @@
 %% -------------------------------------------------------------------
 
 %%%===================================================================
+%%% Includes
+%%%===================================================================
+
+-include_lib("xmerl/include/xmerl.hrl").
+
+%%%===================================================================
 %%% Types
 %%%===================================================================
 
@@ -303,7 +309,12 @@
 -define(YZ_SCHEMA_BUCKET, <<"_yz_schema">>).
 
 -type raw_schema() :: binary().
--type schema() :: xmerl_scan:document().
+%% xmerl does not export these types,
+%% so we just define them to be equal
+%% to their records
+-type xmlElement() :: #xmlElement{}.
+-type xmlDocument() :: #xmlDocument{}.
+-type schema() :: xmlElement() | xmlDocument().
 -type schema_name() :: binary().
 
 %%%===================================================================
