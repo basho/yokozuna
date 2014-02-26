@@ -63,14 +63,13 @@ production.
 Download the source package and corresponding md5 from one of the
 following locations.
 
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.14.0-src.tar.gz
-
-* https://s3.amazonaws.com/yzami/pkgs/src/riak-yokozuna-0.14.0-src.tar.gz.sha1
+* http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz
+* http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz.sha1
 
 Download using wget.
 
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.14.0-src.tar.gz
-	wget http://data.riakcs.net:8080/yokozuna/riak-yokozuna-0.14.0-src.tar.gz.sha1
+    wget http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz
+    wget http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz.sha1
 
 Verify the sha1 (might need to use `sha1sum`).
 
