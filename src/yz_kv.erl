@@ -85,7 +85,7 @@ get(C, Bucket, Key) ->
 -spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
     Vclock = riak_object:vclock(Obj),
-    Obj2 = riak_object:set_vclock(Obj, vclock:sort(Vclock)),
+    Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
     Hash = erlang:phash2(term_to_binary(Obj2)),
     term_to_binary(Hash).
 
