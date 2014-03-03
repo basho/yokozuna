@@ -39,8 +39,12 @@ dialyzer: ${PLT} ${LOCAL_PLT}
 		PLTS=$(PLT); \
 	fi; \
 	if [ -f dialyzer.ignore-warnings ]; then \
+		if [ $$(grep -cvE '[^[:space:]]' dialyzer.ignore-warnings) -ne 0 ]; then \
+			echo "ERROR: dialyzer.ignore-warnings contains a blank/empty line, this will match all messages!"; \
+			exit 1; \
+		fi; \
 		dialyzer $(DIALYZER_FLAGS) --plts $${PLTS} -c ebin > dialyzer_warnings ; \
-		egrep -v "^\s*(done|Checking|Proceeding)" dialyzer_warnings | grep -F -f dialyzer.ignore-warnings -v > dialyzer_unhandled_warnings ; \
+		egrep -v "^\s*(done|Checking|Proceeding|Compiling)" dialyzer_warnings | grep -F -f dialyzer.ignore-warnings -v > dialyzer_unhandled_warnings ; \
 		cat dialyzer_unhandled_warnings ; \
 		[ $$(cat dialyzer_unhandled_warnings | wc -l) -eq 0 ] ; \
 	else \
