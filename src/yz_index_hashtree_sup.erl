@@ -5,7 +5,7 @@
 -export([init/1]).
 
 %% @doc Get the list of trees.
--spec trees() -> trees().
+-spec trees() -> ['restarting' | 'undefined' | pid()].
 trees() ->
     Children = supervisor:which_children(?MODULE),
     [Pid || {_,Pid,_,_} <- Children].

@@ -14,3 +14,5 @@ log
 bb-*-fruit*
 .local_dialyzer_plt
 .yokozuna_test_dialyzer_plt
+dialyzer_warnings
+dialyzer_unhandled_warnings

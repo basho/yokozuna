@@ -19,12 +19,17 @@
 %% -------------------------------------------------------------------
 
 %%%===================================================================
+%%% Includes
+%%%===================================================================
+
+-include_lib("xmerl/include/xmerl.hrl").
+
+%%%===================================================================
 %%% Types
 %%%===================================================================
 
 %% Shorthand for existing types
 -type datetime() :: calendar:datetime().
--type orddict(K,V) :: orddict:orddict(K,V).
 -type od() :: orddict:orddict().
 -type ordset(T) :: ordsets:ordset(T).
 -type proplist() :: proplists:proplist().
@@ -219,7 +224,7 @@
 -type exchange() :: {p(), {p(), n()}}.
 -type exchange_mode() :: automatic | manual.
 -type tree() :: pid().
--type trees() :: orddict(p(), tree()).
+-type trees() :: [{p(), tree()}].
 -type ed_filter() :: [{before, iso8601()} |
                       {continuation, ed_continuation()} |
                       {partition, lp()} |
@@ -258,7 +263,7 @@
 -type mime_type() :: binary() | string() | default.
 -type extractor_name() :: atom().
 -type extractor_def() :: extractor_name() | {extractor_name(), proplist()}.
--type extractor_map() :: orddict(mime_type(), extractor_def()).
+-type extractor_map() :: [{mime_type(), extractor_def()}].
 
 -define(NO_OPTIONS, []).
 
@@ -304,7 +309,12 @@
 -define(YZ_SCHEMA_BUCKET, <<"_yz_schema">>).
 
 -type raw_schema() :: binary().
--type schema() :: xmerl_scan:document().
+%% xmerl does not export these types,
+%% so we just define them to be equal
+%% to their records
+-type xmlElement() :: #xmlElement{}.
+-type xmlDocument() :: #xmlDocument{}.
+-type schema() :: xmlElement() | xmlDocument().
 -type schema_name() :: binary().
 
 %%%===================================================================

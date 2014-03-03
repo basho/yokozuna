@@ -20,7 +20,6 @@
 
 -module(yz_schema).
 -include("yokozuna.hrl").
--include_lib("xmerl/include/xmerl.hrl").
 -compile(export_all).
 
 %% @doc Administration of schemas.

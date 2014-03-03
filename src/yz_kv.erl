@@ -81,7 +81,8 @@ get(C, Bucket, Key) ->
             Other
     end.
 
--spec hash_object(obj()) -> hash().
+%% @doc calculates the hash of a riak object, returns binary 
+-spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
     Vclock = riak_object:vclock(Obj),
     Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
@@ -110,7 +111,7 @@ get_obj_value(Obj) ->
     riak_object:get_value(Obj).
 
 %% @doc Get the build time of the tree.
--spec get_tree_build_time(tree()) -> timestamp().
+-spec get_tree_build_time(hashtree:hashtree()) -> any().
 get_tree_build_time(Tree) ->
     riak_kv_index_hashtree:get_build_time(Tree).
 
