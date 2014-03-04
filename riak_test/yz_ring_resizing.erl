@@ -8,19 +8,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 
-%% @doc Test essential behavior of Yokozuna.
+%% @doc Test ring resizing while indexing and querying 
 %%
-%% NOTE: If you start the cluster after running this test you will
-%%       notice some AAE repairs shortly after starting.  Eventually
-%%       these repairs will converge the data and stop.  The reason
-%%       this happens is because the test is setup to constantly
-%%       expire/rebuild KV/YZ AAE trees.  When stopping the cluster
-%%       hashtree builds will get cut-off part-way through.  On
-%%       startup this means the YZ and KV trees will be divergent and
-%%       cause repairs to occur.  To prove this fact you can delete
-%%       both the KV and YZ AAE anti_entropy dirs before starting the
-%%       cluster and you will see zero repairs occur.
-
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
 -define(BUCKET_TYPE, <<"data">>).
 -define(INDEX, <<"fruit_index">>).
