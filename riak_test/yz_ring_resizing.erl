@@ -52,8 +52,8 @@
            {events_full_check_after, 2}
           ]}
         ]).
--define(EXPAND1_SIZE, 32).
--define(EXPAND2_SIZE, 64).
+-define(SHRINK_SIZE, 32).
+-define(EXPAND_SIZE, 64).
 
 confirm() ->
      YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
@@ -73,11 +73,11 @@ confirm() ->
 
     %% Start a query
     Ref1 = async_query(Cluster, YZBenchDir),
-    lager:info("resizing ring to ~p", [?EXPAND1_SIZE]),
 
     %% Resize the ring -- size up, and make sure it completes
-%    submit_resize(?EXPAND_SIZE, ANode),
-%    ensure_ring_resized(Cluster),
+    lager:info("resizing ring to ~p", [?EXPAND_SIZE]),
+    submit_resize(?EXPAND_SIZE, ANode),
+    ensure_ring_resized(Cluster),
     check_status(wait_for(Ref1)),
 
     %% start another query
@@ -85,7 +85,8 @@ confirm() ->
     timer:sleep(10000),
 
     %% ring resize -- size down, and check it and query complete
-    submit_resize(?EXPAND2_SIZE, ANode),
+    lager:info("resizing ring to ~p", [?SHRINK_SIZE]),
+    submit_resize(?SHRINK_SIZE, ANode),
     check_status(wait_for(Ref2)),
     ensure_ring_resized(Cluster),
     yz_rt:close_pb_conns(PBConns),
