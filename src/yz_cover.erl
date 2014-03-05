@@ -145,59 +145,61 @@ cache_plan(Index, Ring) ->
 %% @doc Calculate a plan for the `Index'.
 -spec calc_plan(index_name(), ring()) -> {ok, plan()} | {error, term()}.
 calc_plan(Index, Ring) ->
-    [NumPartitions, NVal, Result] = create_plan(Index, Ring),
-    handle_plan(Result, Ring, NVal, NumPartitions).
+    NumPartitions = riak_core_ring:num_partitions(Ring),
+    NVal = yz_index:get_n_val(yz_index:get_index_info(Index)),
+    CoveragePlan = create_coverage_plan(NVal),
+    maybe_filter_plan(CoveragePlan, Ring, NVal, NumPartitions).
 
 %% @private
 %%
-%% @doc Handle the result of create plan, for return to caller
--spec handle_plan(term(), ring(), integer(), integer()) ->  {ok, plan()} | {error, term()}.
-handle_plan({error, Error}, _, _, _) ->
+%% @doc Filter plan or error
+-spec maybe_filter_plan(term(), ring(), integer(), integer()) ->  {ok, plan()} | {error, term()}.
+maybe_filter_plan({error, Error}, _, _, _) ->
     Error;
-handle_plan({CoverSet, _}, Ring, NVal, NumPartitions) ->
-    [UniqNodes, LogicalCoverSet] = calc_plan_add_filtering(CoverSet, Ring, NVal, NumPartitions),
+maybe_filter_plan({CoverSet, _}, Ring, NVal, NumPartitions) ->
+    LogicalCoverSet = calc_plan_add_filtering(CoverSet, Ring, NVal, NumPartitions),
+    UniqNodes = get_uniq_nodes(CoverSet),
     Mapping = yz_solr:build_mapping(UniqNodes),
-    calc_result(length(Mapping) == length(UniqNodes), UniqNodes, LogicalCoverSet, Mapping).
+    calc_plan_return(length(Mapping) == length(UniqNodes), UniqNodes, LogicalCoverSet, Mapping).
 
 %% @private
 %%
 %% @doc handle the result of the calculation result with the 
 %%      result of filtering
--spec calc_result(true | false, list(), logical_cover_set(), list()) ->  {ok, plan()} | {error, term()}.
-calc_result(false, _, _, _) ->
+-spec calc_plan_return(true | false, list(), logical_cover_set(), list()) ->  {ok, plan()} | {error, term()}.
+calc_plan_return(false, _, _, _) ->
     {error, "Failed to determine Solr port for all nodes in search plan"};
-calc_result(true, UniqNodes, LogicalCoverSet, Mapping) ->
+calc_plan_return(true, UniqNodes, LogicalCoverSet, Mapping) ->
     {ok, {UniqNodes, LogicalCoverSet, Mapping}}.
+
+%% @private
+%%
+%% @doc return unique list of nodes
+-spec get_uniq_nodes(logical_cover_set()) -> list().
+get_uniq_nodes(CoverSet) ->
+    {_Partitions, Nodes} = lists:unzip(CoverSet),
+    lists:usort(Nodes).
 
 %% @private
 %%
 %%  @doc add filtering with the NVal, NumPartitionsand CoverSet and return
 %% 
--spec calc_plan_add_filtering(logical_cover_set(), ring(), integer(), integer()) -> list().
+-spec calc_plan_add_filtering(logical_cover_set(), ring(), integer(), integer()) -> logical_cover_set().
 calc_plan_add_filtering(CoverSet, Ring, NVal, NumPartitions) ->
-    {_Partitions, Nodes} = lists:unzip(CoverSet),
-    UniqNodes = lists:usort(Nodes),
     LPI = logical_index(Ring),
-    LogicalCoverSet = add_filtering(NVal, NumPartitions, LPI, CoverSet),
-    [UniqNodes, LogicalCoverSet].
+    add_filtering(NVal, NumPartitions, LPI, CoverSet).
     
 %% @private
 %%
 %% @doc create coverage plan
--spec create_plan(index_name(), ring()) -> list().
-create_plan(Index, Ring) ->
-    NumPartitions = riak_core_ring:num_partitions(Ring),
-    Selector = all,
-    NVal = yz_index:get_n_val(yz_index:get_index_info(Index)),
-    NumPrimaries = 1,
+-spec create_coverage_plan(integer()) -> term().
+create_coverage_plan(NVal) ->
     ReqId = erlang:phash2(erlang:now()),
-
-    Result = riak_core_coverage_plan:create_plan(Selector,
-                                                 NVal,
-                                                 NumPrimaries,
-                                                 ReqId,
-                                                 ?YZ_SVC_NAME),
-    [NumPartitions, NVal, Result].
+    riak_core_coverage_plan:create_plan(all,
+                                        NVal,
+                                        1,
+                                        ReqId,
+                                        ?YZ_SVC_NAME).
 
 %% @doc Get the distance between the logical partition `LPB' and
 %%      `LPA'.
