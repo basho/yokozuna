@@ -5,7 +5,6 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(CFG,
 	[
 	 {riak_core,

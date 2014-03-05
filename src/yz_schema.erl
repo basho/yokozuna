@@ -22,6 +22,9 @@
 -include("yokozuna.hrl").
 -compile(export_all).
 
+-define(SCHEMA_VSN, "1.5").
+-type schema_err() :: {error, string()}.
+
 %% @doc Administration of schemas.
 
 %%%===================================================================
@@ -47,7 +50,7 @@ get(Name) ->
     end.
 
 %% @doc Store the `RawSchema' with `Name'.
--spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
+-spec store(schema_name(), raw_schema()) -> ok | schema_err().
 store(Name, RawSchema) when is_binary(RawSchema) ->
     case parse_and_verify(RawSchema) of
         {ok, RawSchema} ->
@@ -79,9 +82,10 @@ setup_schema_bucket() ->
 %% @private
 %%
 %% @doc Parse the schema and verify it contains necessary elements.
--spec parse_and_verify(raw_schema()) -> {ok, raw_schema()} | {error, term()}.
+-spec parse_and_verify(raw_schema()) -> {ok, raw_schema()} | schema_err().
 parse_and_verify(RawSchema) ->
     try
+        %% TODO: should this use unicode?
         {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), []),
         case verify(Schema) of
             {ok, _} ->
@@ -90,19 +94,35 @@ parse_and_verify(RawSchema) ->
                 Err
         end
     catch exit:Reason ->
-            {error, Reason}
+            Msg = ?FMT("failed to parse ~p", [Reason]),
+            {error, Msg}
     end.
 
 %% @doc Verify the `Schema' contains all necessary configuration for
 %%      Yokozuna to function properly.
--spec verify(schema()) -> {ok, schema()} | {error, term()}.
+-spec verify(schema()) -> {ok, schema()} | schema_err().
 verify(Schema) ->
-    verify_fts(verify_fields(verify_uk(Schema))).
+    verify_fts(verify_fields(verify_vsn(verify_uk(Schema)))).
+
+%% @private
+%%
+%% @doc Verify the the schema 'version' attribute is set to correct
+%% value.
+-spec verify_vsn({ok, schema()} | schema_err()) -> {ok, schema()} | schema_err().
+verify_vsn({ok, Schema}) ->
+    case xmerl_xpath:string("string(/schema/@version)", Schema) of
+        {xmlObj, string, ?SCHEMA_VSN} ->
+            {ok, Schema};
+        _ ->
+            {error, "schema 'version' attribute must be " ++ ?SCHEMA_VSN}
+    end;
+verify_vsn({error, _}=Err) ->
+    Err.
 
 %% @private
 %%
 %% @doc Verify the `uniqueKey' element is correct.
--spec verify_uk(schema()) -> {ok, schema()} | {error, term()}.
+-spec verify_uk(schema()) -> {ok, schema()} | schema_err().
 verify_uk(Schema) ->
     case xmerl_xpath:string("/schema/uniqueKey/text()", Schema) of
         [#xmlText{value="_yz_id"}] ->
@@ -114,8 +134,8 @@ verify_uk(Schema) ->
 %% @private
 %%
 %% @doc Verify the necessary fields are present with correct attributes.
--spec verify_fields({ok, schema()} | {error, term()}) ->
-                           {ok, schema()} | {error, term()}.
+-spec verify_fields({ok, schema()} | schema_err()) ->
+                           {ok, schema()} | schema_err().
 verify_fields({ok, Schema}) ->
     Fields = [?YZ_ID_FIELD_XPATH,
               ?YZ_ED_FIELD_XPATH,
@@ -132,17 +152,18 @@ verify_fields({ok, Schema}) ->
         [] ->
             {ok, Schema};
         Errs ->
-            {error, {missing_fields, Errs}}
+            ErrMsg = string:join([Msg || {error, Msg} <- Errs], "\n"),
+            {error, ErrMsg}
     end;
 verify_fields({error, _}=Err) ->
     Err.
 
 %% @private
--spec verify_field(string(), schema()) -> ok | {error, term()}.
+-spec verify_field(string(), schema()) -> ok | {error, string()}.
 verify_field(Path, Schema) ->
     case xmerl_xpath:string(Path, Schema) of
         [] ->
-            {error, {missing_field, Path}};
+            {error, "missing field " ++ Path};
         _ ->
             ok
     end.
@@ -151,12 +172,12 @@ verify_field(Path, Schema) ->
 %%
 %% @doc Verify the necessary field types are present with correct
 %%      attributes.
--spec verify_fts({ok, schema()} | {error, term()}) ->
-                        {ok, schema()} | {error, term()}.
+-spec verify_fts({ok, schema()} | schema_err()) ->
+                        {ok, schema()} | schema_err().
 verify_fts({ok, Schema}) ->
     case xmerl_xpath:string(?YZ_STR_FT_XPATH, Schema) of
         [] ->
-            {error, {missing_field_type, ?YZ_STR_FT_XPATH}};
+            {error, "missing field type " ++ ?YZ_STR_FT_XPATH};
         _ ->
             {ok, Schema}
     end;

@@ -115,6 +115,8 @@
 %%% Macros
 %%%===================================================================
 
+-define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
+
 -define(IF(Expression, Action),
         if Expression -> Action, ok;
            true -> ok

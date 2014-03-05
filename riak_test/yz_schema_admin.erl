@@ -5,7 +5,6 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
@@ -187,6 +186,42 @@
 </types>
 </schema>">>).
 
+-define(BAD_VSN_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.0\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
 
 confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
@@ -202,6 +237,7 @@ confirm() ->
     confirm_bad_yz_field(Cluster, <<"bad_yz_field">>, ?BAD_YZ_FIELD_SCHEMA),
     confirm_default_schema(Cluster, <<"default">>, default_schema(Cluster)),
     confirm_bad_schema(Cluster),
+    confirm_bad_vsn(Cluster, <<"bad_vsn_attr">>, ?BAD_VSN_SCHEMA),
     pass.
 
 %% @doc Confirm a custom schema may be added.
@@ -246,8 +282,8 @@ confirm_truncated(Cluster, Name, RawSchema) ->
     lager:info("confirm_truncated ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
-    ?assertEqual("400", Status),
+    {ok, "400", _, Body} = http(put, URL, Headers, RawSchema),
+    %% ?assertEqual("400", Status),
     %% assert the body contains some kind of msg as to why the schema
     %% failed to parse
     ?assert(size(Body) > 0).
@@ -276,6 +312,16 @@ confirm_bad_uk(Cluster, Name, RawSchema) ->
 confirm_bad_yz_field(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_bad_yz_field ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm a bad version attribute returns 400.
+confirm_bad_vsn(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm bad version attribute is rejected ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
     {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),

@@ -75,7 +75,7 @@ process(#rpbyokozunaschemaputreq{
         ok  ->
             {reply, #rpbputresp{}, State};
         {error, Reason} ->
-            Msg = io_lib:format("Error storing schema ~p~n", [Reason]),
+            Msg = io_lib:format("Error storing schema ~s~n", [Reason]),
             {error, Msg, State}
     end;
 

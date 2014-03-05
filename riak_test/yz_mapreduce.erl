@@ -9,7 +9,6 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 
 -type host() :: string().
 -type portnum() :: integer().

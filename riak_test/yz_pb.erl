@@ -6,7 +6,6 @@
 -include_lib("riak_pb/include/riak_yokozuna_pb.hrl").
 -include("yokozuna.hrl").
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
