@@ -16,7 +16,7 @@ fi
 
 SOLR_DIR=../priv/solr
 BUILD_DIR=../build
-VSN=solr-4.6.1-yz
+VSN=solr-4.7.0-yz-1
 FILENAME=$VSN.tgz
 TMP_DIR=/var/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
