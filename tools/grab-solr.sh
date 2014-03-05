@@ -85,6 +85,10 @@ then
     cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
     cp -r $EXAMPLE_DIR/lib $SOLR_DIR
     cp -r $COL1_DIR/conf/lang $CONF_DIR
+    cp $COL1_DIR/conf/protwords.txt $CONF_DIR
+    cp $COL1_DIR/conf/stopwords.txt $CONF_DIR
+    cp $COL1_DIR/conf/synonyms.txt $CONF_DIR
+    cp $COL1_DIR/conf/mapping-* $CONF_DIR
     # TODO: does resources need to be copied?
     cp -r $EXAMPLE_DIR/resources $SOLR_DIR
     cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
