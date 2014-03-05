@@ -1,4 +1,4 @@
-From 7f09bcb1e795e58a6f1fe525a20526e5a2430bc6 Mon Sep 17 00:00:00 2001
+From a2e77eaa262bd24c8bf3250d85fa0b3cab7d33e7 Mon Sep 17 00:00:00 2001
 From: Ryan Zezeski <rzezeski@gmail.com>
 Date: Tue, 12 Feb 2013 11:54:21 -0500
 Subject: [PATCH] Disable stale check and nagle
@@ -17,18 +17,18 @@ Subject: [PATCH] Disable stale check and nagle
  2 files changed, 16 insertions(+)
 
 diff --git a/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java b/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
-index d55e01f..cc59731 100644
+index 3f91f17..e8b018e 100644
 --- a/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
 +++ b/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
-@@ -29,6 +29,7 @@ import java.util.concurrent.SynchronousQueue;
- import java.util.concurrent.ThreadPoolExecutor;
- import java.util.concurrent.TimeUnit;
+@@ -17,6 +17,7 @@ package org.apache.solr.handler.component;
+  */
  
+ import org.apache.commons.lang.StringUtils;
 +import org.apache.http.params.HttpConnectionParams;
  import org.apache.http.client.HttpClient;
  import org.apache.solr.client.solrj.SolrServerException;
  import org.apache.solr.client.solrj.impl.HttpClientUtil;
-@@ -150,6 +151,8 @@ public class HttpShardHandlerFactory extends ShardHandlerFactory implements org.
+@@ -153,6 +154,8 @@ public class HttpShardHandlerFactory extends ShardHandlerFactory implements org.
      clientParams.set(HttpClientUtil.PROP_CONNECTION_TIMEOUT, connectionTimeout);
      clientParams.set(HttpClientUtil.PROP_USE_RETRY, false);
      this.defaultClient = HttpClientUtil.createClient(clientParams);
@@ -38,7 +38,7 @@ index d55e01f..cc59731 100644
    }
  
 diff --git a/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java b/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
-index 3887302..4649138 100644
+index b7c0680..8ca13f3 100644
 --- a/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
 +++ b/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
 @@ -18,6 +18,9 @@ package org.apache.solr.client.solrj.impl;
@@ -51,9 +51,9 @@ index 3887302..4649138 100644
  import java.util.zip.GZIPInputStream;
  import java.util.zip.InflaterInputStream;
  
-@@ -102,6 +105,16 @@ public class HttpClientUtil {
-     final ModifiableSolrParams config = new ModifiableSolrParams(params);
-     logger.info("Creating new http client, config:" + config);
+@@ -110,6 +113,16 @@ public class HttpClientUtil {
+       logger.debug("Creating new http client, config:" + config);
+     }
      final DefaultHttpClient httpClient = new SystemDefaultHttpClient();
 +    final org.apache.http.conn.ClientConnectionManager mgr = httpClient.getConnectionManager();
 +
@@ -69,5 +69,5 @@ index 3887302..4649138 100644
      return httpClient;
    }
 -- 
-1.8.1.2
+1.9.0
 
