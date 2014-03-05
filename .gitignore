@@ -3,6 +3,7 @@ deps
 ebin
 priv/java_lib
 priv/solr*
+priv/conf/lang
 build/
 *.class
 *.tgz
