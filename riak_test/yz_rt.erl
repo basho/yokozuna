@@ -2,20 +2,9 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
+-include("yz_rt.hrl").
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
-
--type host() :: string().
--type portnum() :: integer().
-
-%% Copied from rt.erl, would be nice if there was a rt.hrl
--type interface() :: {http, tuple()} | {pb, tuple()}.
--type interfaces() :: [interface()].
--type conn_info() :: [{node(), interfaces()}].
--type prop() :: {atom(), any()}.
--type props() :: [prop()].
-
--type cluster() :: [node()].
 
 %% @doc Given a list of protobuff connections, close each one.
 %%
@@ -114,7 +103,13 @@ get_yz_conn_info(Node) ->
 
 -spec host_entries(conn_info()) -> [{host(), portnum()}].
 host_entries(ClusterConnInfo) ->
-    [riak_http(I) || {_,I} <- ClusterConnInfo].
+    host_entries(http, ClusterConnInfo).
+
+-spec host_entries(http | pb, conn_info()) -> [{host(), portnum()}].
+host_entries(http, ClusterConnInfo) ->
+    [riak_http(CI) || CI <- ClusterConnInfo];
+host_entries(pb, ClusterConnInfo) ->
+    [riak_pb(CI) || CI <- ClusterConnInfo].
 
 -spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
@@ -192,8 +187,11 @@ riak_pb({_Node, ConnInfo}) ->
 riak_pb(ConnInfo) ->
     proplists:get_value(pb, ConnInfo).
 
-run_bb(Method, File) ->
-    Fun = case Method of
+-spec run_bb(mode(), string()) -> {Status :: integer(), Output::list()} |
+                                  timeout |
+                                  port().
+run_bb(Mode, File) ->
+    Fun = case Mode of
               sync -> cmd;
               async -> spawn_cmd
           end,

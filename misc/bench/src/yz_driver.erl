@@ -182,10 +182,11 @@ run({random_fruit_search_pb, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruit
     Query = list_to_binary(string:join(TermList, " AND ")),
     run({search_pb, Query, FL, ExpectedNumFound}, K, V, S);
 
-run({search_pb, Query, FL, Expected}, _, _, S=#state{index=Index, pb_conns=Conns}) ->
+run({search_pb, Query, FL, Expected}, _, _,
+    S=#state{default_field=DF, index=Index, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
     S2 = S#state{pb_conns=wrap(Conns)},
-    case {Expected, search_pb(Conn, Index, Query, [{fl,FL}])} of
+    case {Expected, search_pb(Conn, Index, Query, [{fl,FL}, {df,DF}])} of
         {?DONT_VERIFY, {ok, _, _, _}} ->
             {ok, S2};
         {_, {ok, _, _, NumFound}} ->
@@ -200,11 +201,12 @@ run({search_pb, Query, FL, Expected}, _, _, S=#state{index=Index, pb_conns=Conns
             {error, Reason, S2}
     end;
 
-run(search_pb, _, QueryGen, S=#state{index=Index, pb_conns=Conns}) ->
+run(search_pb, _, QueryGen,
+    S=#state{default_field=DF, index=Index, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
     Query = QueryGen(),
     S2 = S#state{pb_conns=wrap(Conns)},
-    case search_pb(Conn, Index, Query) of
+    case search_pb(Conn, Index, Query, [{df,DF}]) of
         {ok, _, _, _} -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
     end;
