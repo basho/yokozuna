@@ -32,7 +32,7 @@
            %% Perform a full check every second so that non-owned
            %% postings are deleted promptly. This makes sure that
            %% postings are removed concurrent to async query during
-           %% join.
+           %% resize.
            {events_full_check_after, 2}
           ]}
         ]).
@@ -110,12 +110,6 @@ read_schema(YZBenchDir) ->
     {ok, RawSchema} = file:read_file(Path),
     RawSchema.
 
-reap_sleep() ->
-    %% NOTE: This is hardcoded to 5s now but if this test ever allows
-    %%       configuation of deletion policy then this should be
-    %%       calculated.
-    10.
-
 setup_indexing(Cluster, PBConns, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     PBConn = yz_rt:select_random(PBConns),
@@ -144,5 +138,5 @@ ensure_ring_resized(Cluster) ->
                 Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
                 rpc:call(Node, riak_core_ring, is_resize_complete, [Ring])
         end,
-    [?assertEqual(ok, rt:wait_until(Node, IsResizeComplete)) || Node <- Cluster],
+    [?assertEqual(ok, yz_rt:wait_until(Node, IsResizeComplete)) || Node <- Cluster],
     ok.
