@@ -1,5 +1,3 @@
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
-
 -type cluster() :: [node()].
 -type conns() :: [pid()].
 -type cluster_and_conns() :: {cluster(), conns()}.

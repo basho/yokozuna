@@ -30,19 +30,45 @@ confirm() ->
     YZRTEbin = rt_config:get(yz_dir) ++ "/riak_test/ebin",
     code:add_path(YZRTEbin),
     NumKeys = 1000,
-    Cluster = rt:build_cluster(4, ?CFG),
-    _ = rt:wait_for_cluster_service(Cluster, yokozuna),
-    PBConns = yz_rt:open_pb_conns(Cluster),
-    ClusterAndConns = {Cluster, PBConns},
+    PrevCluster = rt:build_cluster(4, {previous, ?CFG}),
+    _ = rt:wait_for_cluster_service(PrevCluster, yokozuna),
+    PrevPBConns = yz_rt:open_pb_conns(PrevCluster),
+    PrevClusterAndConns = {PrevCluster, PrevPBConns},
 
-    ok = upload_schema(ClusterAndConns, YZBenchDir),
-    ok = setup_index(ClusterAndConns),
+    ok = upload_schema(PrevClusterAndConns, YZBenchDir),
+    ok = setup_index(PrevClusterAndConns),
 
-    {0, _} = load_data(Cluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
+    {0, _} = load_data(PrevCluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
     %% wait for soft commit
     timer:sleep(1100),
 
-    {0, _} = query_data(Cluster, YZBenchDir, NumKeys, max, 32, sync),
+    {0, _} = query_data(PrevCluster, YZBenchDir, NumKeys, max, 32, sync),
+
+    stop_cluster(PrevClusterAndConns),
+
+    %% Current
+    CurrCluster = rt:build_cluster(4, {current, ?CFG}),
+    _ = rt:wait_for_cluster_service(CurrCluster, yokozuna),
+    CurrPBConns = yz_rt:open_pb_conns(CurrCluster),
+    CurrClusterAndConns = {CurrCluster, CurrPBConns},
+
+    ok = upload_schema(CurrClusterAndConns, YZBenchDir),
+    ok = setup_index(CurrClusterAndConns),
+
+    {0, _} = load_data(CurrCluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
+    %% wait for soft commit
+    timer:sleep(1100),
+
+    {0, _} = query_data(CurrCluster, YZBenchDir, NumKeys, max, 32, sync),
+
+    stop_cluster(CurrClusterAndConns),
+
+    ok.
+
+-spec stop_cluster(cluster()) -> ok.
+stop_cluster({Cluster, PBConns}) ->
+    ok = yz_rt:close_pb_conns(PBConns),
+    _ = [rt:stop_and_wait(Node) || Node <- Cluster],
     ok.
 
 -spec upload_schema(cluster_and_conns(), string()) -> ok.
@@ -83,7 +109,7 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys, Rate, Concurrent, Mode) ->
            {http_conns, []},
            {pb_conns, Conns},
            {key_generator, KeyGen},
-           {operations, [{load_fruit, 1}]},
+           {operations, [{load_fruit_pb, 1}]},
            {shutdown_on_error, true}],
     File = "load-data",
     yz_rt:write_terms(File, Cfg),
@@ -94,10 +120,11 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys, Rate, Concurrent, Mode) ->
                         {Status :: integer(), Output :: list()} |
                         timeout |
                         port().
-query_data(Cluster, YZBenchDir, NumKeys, Rate, Concurrent, Mode) ->
+query_data(Cluster, YZBenchDir, _NumKeys, Rate, Concurrent, Mode) ->
     lager:info("Run ~s query against cluster ~p", [Mode, Cluster]),
     Conns = yz_rt:host_entries(pb, rt:connection_info(Cluster)),
-    Operations = [{{random_fruit_search_pb, <<"_yz_id">>, 3, NumKeys}, 1}],
+    %% Operations = [{{random_fruit_search_pb, <<"_yz_id">>, 3, NumKeys}, 1}],
+    Operations = [{{search_pb, "korlan", <<"_yz_id">>, 1}, 1}],
     Cfg = [{mode, Rate},
            {duration, 5},
            {concurrent, Concurrent},
