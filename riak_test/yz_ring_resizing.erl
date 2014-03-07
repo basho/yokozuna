@@ -1,10 +1,5 @@
 -module(yz_ring_resizing).
 -compile(export_all).
--import(yz_rt, [host_entries/1,
-                run_bb/2,
-                search_expect/5, search_expect/6,
-                verify_count/2,
-                wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 
@@ -50,7 +45,7 @@ confirm() ->
     random:seed(now()),
 
     %% build the 4 node cluster
-    [ANode, _BNode, _CNode, _DNode] = Cluster = rt:build_cluster(4, ?CFG),
+    [ANode|_] = Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     PBConns = yz_rt:open_pb_conns(Cluster),
 
@@ -89,7 +84,7 @@ confirm() ->
 
 async_query(Cluster, YZBenchDir) ->
     lager:info("Run async query against cluster ~p", [Cluster]),
-    Hosts = host_entries(rt:connection_info(Cluster)),
+    Hosts = yz_rt:host_entries(rt:connection_info(Cluster)),
     Concurrent = length(Hosts),
     Operations = [{{random_fruit_search, <<"_yz_id">>, 3, ?NUM_KEYS}, 1}],
     Cfg = [{mode, {rate,8}},
@@ -104,8 +99,8 @@ async_query(Cluster, YZBenchDir) ->
            {index, ?INDEX},
            {shutdown_on_error, true}],
     File = "bb-query-fruit",
-    write_terms(File, Cfg),
-    run_bb(async, File).
+    yz_rt:write_terms(File, Cfg),
+    yz_rt:run_bb(async, File).
 
 check_status({Status,_}) ->
     ?assertEqual(?SUCCESS, Status).
@@ -131,16 +126,8 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
-    ok = yz_rt:create_index(Node, <<"tagging">>),
-    ok = yz_rt:create_index(Node, <<"escaped">>),
-    ok = yz_rt:create_index(Node, <<"unique">>),
-
-    [yz_rt:wait_for_index(Cluster, I)
-     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]],
-
-    yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
-    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
-    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).
+    yz_rt:wait_for_index(Cluster, ?INDEX),
+    yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL).
 
 wait_for(Ref) ->
     rt:wait_for_cmd(Ref).
