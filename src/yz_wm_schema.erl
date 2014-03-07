@@ -65,7 +65,7 @@ service_available(RD, Ctx=#ctx{}) ->
         RD,
         Ctx#ctx{
             method=wrq:method(RD),
-            schema_name=wrq:path_info(schema, RD)}
+            schema_name=mochiweb_util:unquote(wrq:path_info(schema, RD))}
     }.
 
 allowed_methods(RD, S) ->

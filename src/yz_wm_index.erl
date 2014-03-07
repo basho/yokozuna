@@ -99,7 +99,7 @@ init(_Props) ->
 service_available(RD, Ctx=#ctx{}) ->
     IndexName = case wrq:path_info(index, RD) of
                     undefined -> undefined;
-                    V -> list_to_binary(V)
+                    V -> list_to_binary(mochiweb_util:unquote(V))
                 end,
     {true,
      RD,
@@ -193,7 +193,10 @@ create_index(RD, S) ->
             text_response({halt, 500}, Msg, [SchemaName], RD, S);
         {error, bad_n_val} ->
             Msg = "Bad n_val given ~p~n",
-            text_response({halt, 400}, Msg, [NVal], RD, S)
+            text_response({halt, 400}, Msg, [NVal], RD, S);
+        {error, invalid_name} ->
+            Msg = "Invalid character '/' in index name ~s~n",
+            text_response({halt, 400}, Msg, [IndexName], RD, S)
     end.
 
 
@@ -297,7 +300,8 @@ index_body(IndexName) ->
 -spec maybe_create_index(index_name(), schema_name(), n()) ->
                                 ok |
                                 {error, schema_not_found} |
-                                {error, bad_n_val}.
+                                {error, bad_n_val} |
+                                {error, invalid_name}.
 maybe_create_index(IndexName, SchemaName, NVal)->
     case exists(IndexName) of
         true  ->

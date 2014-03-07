@@ -52,7 +52,7 @@ get(Name) ->
 %% @doc Store the `RawSchema' with `Name'.
 -spec store(schema_name(), raw_schema()) -> ok | schema_err().
 store(Name, RawSchema) when is_binary(RawSchema) ->
-    case parse_and_verify(RawSchema) of
+    case parse_and_verify(Name, RawSchema) of
         {ok, RawSchema} ->
             CompressedSchema = yz_misc:compress(RawSchema),
             riak_core_metadata:put(?YZ_META_SCHEMAS, Name, CompressedSchema),
@@ -82,14 +82,19 @@ setup_schema_bucket() ->
 %% @private
 %%
 %% @doc Parse the schema and verify it contains necessary elements.
--spec parse_and_verify(raw_schema()) -> {ok, raw_schema()} | schema_err().
-parse_and_verify(RawSchema) ->
+-spec parse_and_verify(schema_name(), raw_schema()) -> {ok, raw_schema()} | schema_err().
+parse_and_verify(Name, RawSchema) ->
     try
         %% TODO: should this use unicode?
         {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), []),
         case verify(Schema) of
             {ok, _} ->
-                {ok, RawSchema};
+                case verify_name(Name) of
+                    {ok, Name} ->
+                        {ok, RawSchema};
+                    {error, _} = NameErr ->
+                        NameErr
+                end;
             {error, _} = Err ->
                 Err
         end
@@ -103,6 +108,15 @@ parse_and_verify(RawSchema) ->
 -spec verify(schema()) -> {ok, schema()} | schema_err().
 verify(Schema) ->
     verify_fts(verify_fields(verify_vsn(verify_uk(Schema)))).
+
+%% @doc Verify that the schema is a name that Solr can use. Some chars
+%%      are invalid, namely "/".
+-spec verify_name(schema_name()) -> {ok, schema_name()} | schema_err().
+verify_name(Name) ->
+    case re:run(Name, "/", []) of
+        nomatch ->   {ok, Name};
+        {match,_} -> {error, "Invalid character '/' in schema name"}
+    end.
 
 %% @private
 %%

@@ -35,7 +35,9 @@ confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_admin_schema(Cluster),
+    confirm_admin_bad_schema_name(Cluster, <<"bad/name">>),
     confirm_admin_index(Cluster),
+    confirm_admin_bad_index_name(Cluster, <<"bad/name">>),
     confirm_basic_search(Cluster),
     confirm_encoded_search(Cluster),
     confirm_multivalued_field(Cluster),
@@ -129,6 +131,16 @@ confirm_admin_schema(Cluster) ->
     riakc_pb_socket:stop(Pid),
     ok.
 
+confirm_admin_bad_schema_name(Cluster, Name) ->
+    Name = <<"bad/name">>,
+    Node = select_random(Cluster),
+    {Host, Port} = yz_rt:riak_pb(hd(rt:connection_info([Node]))),
+    lager:info("confirm_admin_bad_schema_name ~s [~p]", [Name, {Host, Port}]),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, Port),
+    {error,_} = riakc_pb_socket:create_search_schema(Pid, Name, ?SCHEMA_CONTENT),
+    riakc_pb_socket:stop(Pid),
+    ok.
+
 confirm_admin_index(Cluster) ->
     Index = <<"index">>,
     create_index(Cluster, Index, Index, 4),
@@ -145,6 +157,15 @@ confirm_admin_index(Cluster) ->
                 end
     end,
     yz_rt:wait_until(Cluster, F),
+    riakc_pb_socket:stop(Pid),
+    ok.
+
+confirm_admin_bad_index_name(Cluster, Name) ->
+    Node = select_random(Cluster),
+    [{Host, Port}] = host_entries(rt:connection_info([Node])),
+    lager:info("confirm_admin_bad_index_name ~s [~p]", [Name, {Host, Port}]),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    {error,_} = riakc_pb_socket:create_search_index(Pid, Name),
     riakc_pb_socket:stop(Pid),
     ok.
 
