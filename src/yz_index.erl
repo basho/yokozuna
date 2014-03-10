@@ -60,7 +60,10 @@ create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
 
 %% @see create/3
--spec create(index_name(), schema_name()) -> ok | {error, schema_not_found}.
+-spec create(index_name(), schema_name()) -> 
+                    ok |
+                    {error, schema_not_found} |
+                    {error, invalid_name}.
 create(Name, SchemaName) ->
     DefaultNVal = riak_core_bucket:default_object_nval(),
     create(Name, SchemaName, DefaultNVal).
@@ -73,19 +76,25 @@ create(Name, SchemaName) ->
 %% `schema_not_found' - The `SchemaName' could not be found.
 -spec create(index_name(), schema_name(), n() | undefined) ->
                     ok |
-                    {error, schema_not_found}.
+                    {error, schema_not_found} |
+                    {error, invalid_name}.
 create(Name, SchemaName, undefined) ->
     DefaultNVal = riak_core_bucket:default_object_nval(),
     create(Name, SchemaName, DefaultNVal);
 
 create(Name, SchemaName, NVal) when is_integer(NVal),
                                     NVal > 0 ->
-    case yz_schema:exists(SchemaName) of
-        false ->
-            {error, schema_not_found};
-        true  ->
-            Info = make_info(SchemaName, NVal),
-            ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info)
+    case verify_name(Name) of
+        {ok, Name} ->
+            case yz_schema:exists(SchemaName) of
+                false ->
+                    {error, schema_not_found};
+                true  ->
+                    Info = make_info(SchemaName, NVal),
+                    ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info)
+            end;
+        {error, _} = Err ->
+            Err
     end.
 
 %% @doc Determine if an index exists. For an index to exist it must 1)
@@ -251,6 +260,15 @@ remove_non_owned_data(Index, Ring) ->
 -spec schema_name(index_info()) -> schema_name().
 schema_name(Info) ->
     Info#index_info.schema_name.
+
+%% @doc Verify that the index is a name that Solr can use. Some chars
+%%      are invalid, namely "/".
+-spec verify_name(index_name()) -> {ok, index_name()} | {error, invalid_name}.
+verify_name(Name) ->
+    case re:run(Name, "/", []) of
+        nomatch ->   {ok, Name};
+        {match,_} -> {error, invalid_name}
+    end.
 
 %%%===================================================================
 %%% Private

@@ -102,6 +102,7 @@ confirm() ->
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
+    confirm_bad_name(Cluster),
     confirm_bad_n_val(Cluster),
     confirm_list(Cluster, [<<"test_index_1">>, <<"test_index_2">>, <<"test_index_409">>]),
     confirm_delete(Cluster, <<"test_index_1">>),
@@ -129,6 +130,17 @@ confirm_bad_n_val(Cluster) ->
     {ok, Status2, _, _} = http(put, URL, Headers, Body2),
     ?assertEqual("400", Status2),
 
+    ok.
+
+%% @doc Verify that a bad index name is rejected.
+confirm_bad_name(Cluster) ->
+    Index = <<"bad%2Fname">>,
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = index_url(HP, Index),
+    Headers = [{"content-type", "application/json"}],
+    lager:info("verify name \"bad/name\" is not accepted [~p]", [HP]),
+    {ok, Status1, _, _} = http(put, URL, Headers, <<"{}">>),
+    ?assertEqual("400", Status1),
     ok.
 
 %% @doc Test basic creation, no body.

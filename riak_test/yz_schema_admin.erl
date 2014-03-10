@@ -238,6 +238,7 @@ confirm() ->
     confirm_default_schema(Cluster, <<"default">>, default_schema(Cluster)),
     confirm_bad_schema(Cluster),
     confirm_bad_vsn(Cluster, <<"bad_vsn_attr">>, ?BAD_VSN_SCHEMA),
+    confirm_bad_name(Cluster, <<"bad%2Fname">>, ?TEST_SCHEMA),
     pass.
 
 %% @doc Confirm a custom schema may be added.
@@ -322,6 +323,16 @@ confirm_bad_yz_field(Cluster, Name, RawSchema) ->
 confirm_bad_vsn(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm bad version attribute is rejected ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm a bad schema name returns 400.
+confirm_bad_name(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm schema name is rejected ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
     {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),

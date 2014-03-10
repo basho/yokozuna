@@ -114,7 +114,9 @@ process(#rpbyokozunaindexputreq{
         ok ->
             {reply, #rpbputresp{}, State};
         {error, schema_not_found} ->
-            {error, "Schema not found", State}
+            {error, "Schema not found", State};
+        {error, invalid_name} ->
+            {error, "Invalid character '/' in index name", State}
     end;
 
 process(rpbyokozunaindexgetreq, State) ->
@@ -140,7 +142,8 @@ process_stream(_,_,State) ->
 %% ---------------------------------
 
 -spec maybe_create_index(binary(), schema_name(), n()) -> ok |
-                                                     {error, schema_not_found}.
+                                                    {error, invalid_name} |
+                                                    {error, schema_not_found}.
 maybe_create_index(IndexName, SchemaName, Nval)->
     case yz_index:exists(IndexName) of
         true  ->
