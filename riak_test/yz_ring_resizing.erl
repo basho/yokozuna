@@ -134,9 +134,8 @@ submit_resize(NewSize, Node) ->
 ensure_ring_resized(Cluster) ->
     IsResizeComplete =
         fun(Node) ->
-                lager:debug("Waiting for is_resize_complete on node ~p", [Node]),
-                Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
-                rpc:call(Node, riak_core_ring, is_resize_complete, [Ring])
+            lager:debug("Waiting for is_resize_complete on node ~p", [Node]),
+            Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
+            rpc:call(Node, riak_core_ring, is_resize_complete, [Ring])
         end,
-    [?assertEqual(ok, yz_rt:wait_until(Node, IsResizeComplete)) || Node <- Cluster],
-    ok.
+    ?assertEqual(ok, yz_rt:wait_until(Cluster, IsResizeComplete)).
