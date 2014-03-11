@@ -7,7 +7,8 @@
 -compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {default_field, fruits, pb_conns, index, bucket, iurls, surls}).
+-type cardinality() :: pos_integer().
+-record(state, {add_2i, default_field, fruits, pb_conns, index, bucket, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
 
 -define(M100,   100000000).
@@ -75,13 +76,15 @@ new(_Id) ->
     DefaultField = basho_bench_config:get(default_field, <<"text">>),
     BPath = basho_bench_config:get(bucket_path, bucket_path(Bucket)),
     SPath = basho_bench_config:get(search_path, search_path(Index)),
+    Add2i = basho_bench_config:get(add_2i, false),
     IURLs = array:from_list(lists:map(make_url(BPath), HTTP)),
     SURLs = array:from_list(lists:map(make_url(SPath), HTTP)),
     Conns = array:from_list(lists:map(make_conn(Secure, User, Password, Cert), PB)),
     N = length(HTTP),
     M = length(PB),
 
-    {ok, #state{pb_conns={Conns, {0,M}},
+    {ok, #state{add_2i=Add2i,
+                pb_conns={Conns, {0,M}},
                 bucket=Bucket,
                 default_field=DefaultField,
                 index=Index,
@@ -124,7 +127,7 @@ run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=u
     %% NOTE: This clause only runs once and then caches the state. All
     %% subsequent calls use the cached state. Performing expensive
     %% operations in this function is okay.
-    S2 = S#state{fruits=gen_fruits(MaxCardinality)},
+    S2 = S#state{fruits=gen_fruits(MaxCardinality, MaxCardinality)},
     run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
 
 run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
@@ -159,34 +162,44 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
-run(load_fruit_pb, KeyValGen, _, S=#state{bucket=Bucket, pb_conns=Conns}) ->
+run(load_fruit_pb, KeyValGen, _, S=#state{bucket=Bucket, pb_conns=Conns, add_2i=Add2i}) ->
     Conn = get_conn(Conns),
     {Key, Val} = KeyValGen(),
     Obj = riakc_obj:new(Bucket, ?INT_TO_BIN(Key), list_to_binary(Val), "text/plain"),
+    Obj2 = case Add2i of
+               true ->
+                   MD1 = riakc_obj:get_update_metadata(Obj),
+                   Idx = {{integer_index, "field1_int"}, [Key]},
+                   MD2 = riakc_obj:set_secondary_index(MD1, Idx),
+                   riakc_obj:update_metadata(Obj, MD2);
+               false ->
+                   Obj
+           end,
     S2 = S#state{pb_conns=wrap(Conns)},
-    case riakc_pb_socket:put(Conn, Obj) of
+    case riakc_pb_socket:put(Conn, Obj2) of
         ok -> {ok, S2};
         Err -> {error, Err, S2}
     end;
 
-run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=undefined}) ->
-    S2 = S#state{fruits=gen_fruits(MaxCardinality)},
-    run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S2);
+run({random_fruit_search_pb, Params, MaxTerms, Cs={MinCardinality, MaxCardinality}},
+    K, V, S=#state{fruits=undefined}) ->
+    S2 = S#state{fruits=gen_fruits(MinCardinality, MaxCardinality)},
+    run({random_fruit_search_pb, Params, MaxTerms, Cs}, K, V, S2);
 
-run({random_fruit_search_pb, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
+run({random_fruit_search_pb, Params, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
     NumTerms = random:uniform(MaxTerms),
     Offset = random:uniform(Len),
     TermList = lists:sublist(Fruits, Offset, NumTerms),
     CardList = lists:sublist(Cards, Offset, NumTerms),
     ExpectedNumFound = lists:min(CardList),
     Query = list_to_binary(string:join(TermList, " AND ")),
-    run({search_pb, Query, FL, ExpectedNumFound}, K, V, S);
+    run({search_pb, Query, Params, ExpectedNumFound}, K, V, S);
 
-run({search_pb, Query, FL, Expected}, _, _,
+run({search_pb, Query, Params, Expected}, _, _,
     S=#state{default_field=DF, index=Index, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
     S2 = S#state{pb_conns=wrap(Conns)},
-    case {Expected, search_pb(Conn, Index, Query, [{fl,FL}, {df,DF}])} of
+    case {Expected, search_pb(Conn, Index, Query, [{df,DF}|Params])} of
         {?DONT_VERIFY, {ok, _, _, _}} ->
             {ok, S2};
         {_, {ok, _, _, NumFound}} ->
@@ -321,16 +334,16 @@ combine(Fruits, N) ->
 
 %% @private
 %%
-%% @doc Filter a set of pairs by it's cardnality.
+%% @doc Filter a set of pairs by it's cardinality.
 %%
 %% L = [{1, "apple pear"}, {10, "orange kiwi"}, {100, "banana peach"}].
 %% filter_by_cardinality(L, 10).
 %%
 %% => [{1, "apple pear"}, {10, "orange kiwi"}]
--spec filter_by_cardinality([{integer(), list()}], integer()) ->
-                                   [{integer(), list()}].
-filter_by_cardinality(Pairs, MaxCardinality) ->
-    [P || {C,_}=P <- Pairs, C =< MaxCardinality].
+-spec filter_by_cardinality([{cardinality(), list()}], cardinality(), cardinality()) ->
+                                   [{cardinality(), list()}].
+filter_by_cardinality(Pairs, MinCardinality, MaxCardinality) ->
+    [P || {C,_}=P <- Pairs, C >= MinCardinality andalso C =< MaxCardinality].
 
 first_large_enough(K, [{Count, Str}|Fruits]) ->
     if Count >= K -> Str;
@@ -341,10 +354,11 @@ get_base({URLs, {I,_}}) -> array:get(I, URLs).
 
 get_conn({Conns, {I,_}}) -> array:get(I, Conns).
 
--spec gen_fruits(integer()) -> {integer(), [string()], [integer()]}.
-gen_fruits(MaxCardinality) ->
+-spec gen_fruits(cardinality(), cardinality()) ->
+                        {pos_integer(), [string()], [cardinality()]}.
+gen_fruits(MinCardinality, MaxCardinality) ->
     %% Make a list of shuffled fruits to use for qurying
-    Fruits = tokenize(filter_by_cardinality(?FRUITS, MaxCardinality)),
+    Fruits = tokenize(filter_by_cardinality(?FRUITS, MinCardinality, MaxCardinality)),
     ShuffledFruits0 = shuffle(Fruits),
     Len = length(ShuffledFruits0),
     %% Double it to fake wrap-around (for Offset + NumTerms > length(Fruits))

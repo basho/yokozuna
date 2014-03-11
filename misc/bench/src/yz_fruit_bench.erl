@@ -20,14 +20,6 @@
           ]}
         ]).
 
-%% TODO: Add previous/current support so that two versions may be
-%% compared.
-%%
-%% TODO: pull NumKeys from user
-%%
-%% TODO: pull cluster size from user
-%%
-%% TODO: ring size from user
 confirm() ->
     YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
     YZRTEbin = rt_config:get(yz_dir) ++ "/riak_test/ebin",
@@ -130,8 +122,8 @@ load_data(ResultsDir, Name, Cluster, Bucket, YZBenchDir, NumKeys, Rate, Concurre
 query_data(ResultsDir, Name, Cluster, YZBenchDir, _NumKeys, Rate, Concurrent, Mode) ->
     lager:info("Run ~s query against cluster ~p", [Mode, Cluster]),
     Conns = yz_rt:host_entries(pb, rt:connection_info(Cluster)),
-    %% Operations = [{{random_fruit_search_pb, <<"_yz_id">>, 3, NumKeys}, 1}],
-    Operations = [{{search_pb, "korlan", <<"_yz_id">>, 1}, 1}],
+    Params = [{fl, <<"_yz_id">>}],
+    Operations = [{{search_pb, "korlan", Params, 1}, 1}],
     Cfg = [{mode, Rate},
            {duration, 5},
            {concurrent, Concurrent},
