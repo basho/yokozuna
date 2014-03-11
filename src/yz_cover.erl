@@ -177,7 +177,6 @@ get_distance(_Q, {LPA,_}, {LPB,_}) ->
 
 %% @private
 %%
-%% @doc This function converts CovertSet into logical partitions and adds filtering information.
 -spec get_uniq_nodes(logical_cover_set()) -> [node()].
 get_uniq_nodes(CoverSet) ->
     {_Partitions, Nodes} = lists:unzip(CoverSet),
@@ -239,7 +238,7 @@ make_cover_pair(N, Q, {{LP, Node}, Dist}) ->
 make_cover_set(N, Q, Cover) ->
     [make_cover_pair(N, Q, DP) || DP <- Cover].
 
-%% @doc Convert the partition set to use logical partitions.
+%% @doc This function converts CovertSet into logical partitions and adds filtering information.
 -spec make_logical(logical_idx(), p_set()) -> [lp_node()].
 make_logical(LogicalIndex, PSet) ->
     [{logical_partition(LogicalIndex, P), Node} || {P, Node} <- PSet].
@@ -247,7 +246,7 @@ make_logical(LogicalIndex, PSet) ->
 %% @private
 %%
 %% @doc Add filtering to the cover set and return a logical cover set.
--spec make_logical_and_filter(logical_cover_set(), ring(), integer(), integer()) -> logical_cover_set().
+-spec make_logical_and_filter(logical_cover_set(), ring(), n(), pos_integer()) -> logical_cover_set().
 make_logical_and_filter(CoverSet, Ring, NVal, NumPartitions) ->
     LPI = logical_index(Ring),
     add_filtering(NVal, NumPartitions, LPI, CoverSet).
@@ -272,7 +271,7 @@ partition(LogicalIndex, LP) ->
 
 %% @private
 %%
-%% @doc Handle the result of the calculation result with the result of filtering.
+%% @doc Return the plan only if there exists a Solr host-port mapping for each node in the plan.
 -spec plan_return(boolean(), [node()], logical_cover_set(), list()) ->  {ok, plan()} | {error, term()}.
 plan_return(false, _, _, _) ->
     {error, "Failed to determine Solr port for all nodes in search plan"};
