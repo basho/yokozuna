@@ -145,33 +145,24 @@ cache_plan(Index, Ring) ->
 %% @doc Calculate a plan for the `Index'.
 -spec calc_plan(index_name(), ring()) -> {ok, plan()} | {error, term()}.
 calc_plan(Index, Ring) ->
-    Q = riak_core_ring:num_partitions(Ring),
-    Selector = all,
+    NumPartitions = riak_core_ring:num_partitions(Ring),
     NVal = yz_index:get_n_val(yz_index:get_index_info(Index)),
-    NumPrimaries = 1,
+    CoveragePlan = create_coverage_plan(NVal),
+    maybe_filter_plan(CoveragePlan, Ring, NVal, NumPartitions).
+    
+%% @private
+%%
+%% @doc Create a Riak core coverage plan.
+-spec create_coverage_plan(n()) -> term().
+create_coverage_plan(NVal) ->
     ReqId = erlang:phash2(erlang:now()),
-
-    Result = riak_core_coverage_plan:create_plan(Selector,
-                                                 NVal,
-                                                 NumPrimaries,
-                                                 ReqId,
-                                                 ?YZ_SVC_NAME),
-    case Result of
-        {error, _} = Err ->
-            Err;
-        {CoverSet, _} ->
-            {_Partitions, Nodes} = lists:unzip(CoverSet),
-            UniqNodes = lists:usort(Nodes),
-            LPI = logical_index(Ring),
-            LogicalCoverSet = add_filtering(NVal, Q, LPI, CoverSet),
-            Mapping = yz_solr:build_mapping(UniqNodes),
-            case length(Mapping) == length(UniqNodes) of
-                true ->
-                    {ok, {UniqNodes, LogicalCoverSet, Mapping}};
-                false ->
-                    {error, "Failed to determine Solr port for all nodes in search plan"}
-            end
-    end.
+    NumPrimaries = 1,
+    Selector=all,
+    riak_core_coverage_plan:create_plan(Selector,
+                                        NVal,
+                                        NumPrimaries,
+                                        ReqId,
+                                        ?YZ_SVC_NAME).
 
 %% @doc Get the distance between the logical partition `LPB' and
 %%      `LPA'.
@@ -183,6 +174,13 @@ get_distance(Q, {LPA,_}, {LPB,_}) when LPB < LPA ->
     BottomDiff + TopDiff + 1;
 get_distance(_Q, {LPA,_}, {LPB,_}) ->
     LPB - LPA.
+
+%% @private
+%%
+-spec get_uniq_nodes(logical_cover_set()) -> [node()].
+get_uniq_nodes(CoverSet) ->
+    {_Partitions, Nodes} = lists:unzip(CoverSet),
+    lists:usort(Nodes).
 
 %% @doc Create a mapping from logical to actual partition.
 -spec logical_index(riak_core_ring:riak_core_ring()) -> logical_idx().
@@ -240,16 +238,45 @@ make_cover_pair(N, Q, {{LP, Node}, Dist}) ->
 make_cover_set(N, Q, Cover) ->
     [make_cover_pair(N, Q, DP) || DP <- Cover].
 
-%% @doc Convert the partition set to use logical partitions.
+%% @doc This function converts CovertSet into logical partitions and adds filtering information.
 -spec make_logical(logical_idx(), p_set()) -> [lp_node()].
 make_logical(LogicalIndex, PSet) ->
     [{logical_partition(LogicalIndex, P), Node} || {P, Node} <- PSet].
+
+%% @private
+%%
+%% @doc Add filtering to the cover set and return a logical cover set.
+-spec make_logical_and_filter(logical_cover_set(), ring(), n(), pos_integer()) -> logical_cover_set().
+make_logical_and_filter(CoverSet, Ring, NVal, NumPartitions) ->
+    LPI = logical_index(Ring),
+    add_filtering(NVal, NumPartitions, LPI, CoverSet).
+
+%% @private
+%%
+%% @doc Filter plan or return error.
+-spec maybe_filter_plan(term(), ring(), n(), pos_integer()) ->  {ok, plan()} | {error, term()}.
+maybe_filter_plan({error, Error}, _, _, _) ->
+    {error, Error};
+maybe_filter_plan({CoverSet, _}, Ring, NVal, NumPartitions) ->
+    LogicalCoverSet = make_logical_and_filter(CoverSet, Ring, NVal, NumPartitions),
+    UniqNodes = get_uniq_nodes(CoverSet),
+    Mapping = yz_solr:build_mapping(UniqNodes),
+    plan_return(length(Mapping) == length(UniqNodes), UniqNodes, LogicalCoverSet, Mapping).
 
 %% @doc Map `LP' to actual partition.
 -spec partition(logical_idx(), lp()) -> p().
 partition(LogicalIndex, LP) ->
     {_, P} = lists:keyfind(LP, 1, LogicalIndex),
     P.
+
+%% @private
+%%
+%% @doc Return the plan only if there exists a Solr host-port mapping for each node in the plan.
+-spec plan_return(boolean(), [node()], logical_cover_set(), list()) ->  {ok, plan()} | {error, term()}.
+plan_return(false, _, _, _) ->
+    {error, "Failed to determine Solr port for all nodes in search plan"};
+plan_return(true, UniqNodes, LogicalCoverSet, Mapping) ->
+    {ok, {UniqNodes, LogicalCoverSet, Mapping}}.
 
 %% @private
 %%
