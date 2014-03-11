@@ -187,16 +187,33 @@ riak_pb({_Node, ConnInfo}) ->
 riak_pb(ConnInfo) ->
     proplists:get_value(pb, ConnInfo).
 
--spec run_bb(mode(), string()) -> {Status :: integer(), Output::list()} |
-                                  timeout |
-                                  port().
+-type bb_opt() :: {results_dir, string()} | {bench_name, string()}.
+-type bb_opts() :: [bb_opt()].
+
 run_bb(Mode, File) ->
+    run_bb(Mode, File, []).
+
+-spec run_bb(mode(), string(), bb_opts()) ->
+                    {Status :: integer(), Output::list()} |
+                    timeout |
+                    port().
+run_bb(Mode, File, Opts) ->
     Fun = case Mode of
               sync -> cmd;
               async -> spawn_cmd
           end,
+
+    ResultsDir = case proplists:get_value(results_dir, Opts) of
+                     undefined -> "";
+                     _ResultsDir -> "-d " ++ _ResultsDir
+                 end,
+    BenchName = case proplists:get_value(bench_name, Opts) of
+                    undefined -> "";
+                    _BenchName -> "-n " ++ _BenchName
+                end,
+    BBOpts = string:join([ResultsDir, BenchName], " "),
     BB = filename:join([rt_config:get(basho_bench), "basho_bench"]),
-    Path = lists:flatten([BB, " ", File]),
+    Path = lists:flatten([BB, " ", BBOpts, " ", File]),
     rt:Fun(Path).
 
 search_expect(HP, Index, Name, Term, Expect) ->

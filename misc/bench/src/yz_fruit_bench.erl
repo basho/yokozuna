@@ -11,6 +11,9 @@
 -define(SCHEMA, <<"fruit">>).
 -define(CFG,
         [
+         {riak_kv,
+          [{anti_entropy, {off, []}}]
+         },
          {yokozuna,
           [
 	   {enabled, true}
@@ -28,9 +31,11 @@
 confirm() ->
     YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
     YZRTEbin = rt_config:get(yz_dir) ++ "/riak_test/ebin",
+    ResultsDir = "fruit-bench-" ++ gen_ts(),
     code:add_path(YZRTEbin),
-    NumKeys = 1000,
-    PrevCluster = rt:build_cluster(4, {previous, ?CFG}),
+    NumKeys = 1000000,
+
+    PrevCluster = rt:build_cluster(lists:duplicate(4, {previous, ?CFG})),
     _ = rt:wait_for_cluster_service(PrevCluster, yokozuna),
     PrevPBConns = yz_rt:open_pb_conns(PrevCluster),
     PrevClusterAndConns = {PrevCluster, PrevPBConns},
@@ -38,16 +43,16 @@ confirm() ->
     ok = upload_schema(PrevClusterAndConns, YZBenchDir),
     ok = setup_index(PrevClusterAndConns),
 
-    {0, _} = load_data(PrevCluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
+    {0, _} = load_data(ResultsDir, "previous", PrevCluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
     %% wait for soft commit
     timer:sleep(1100),
 
-    {0, _} = query_data(PrevCluster, YZBenchDir, NumKeys, max, 32, sync),
+    {0, _} = query_data(ResultsDir, "previous", PrevCluster, YZBenchDir, NumKeys, max, 32, sync),
 
     stop_cluster(PrevClusterAndConns),
 
     %% Current
-    CurrCluster = rt:build_cluster(4, {current, ?CFG}),
+    CurrCluster = rt:build_cluster(lists:duplicate(4, {current, ?CFG})),
     _ = rt:wait_for_cluster_service(CurrCluster, yokozuna),
     CurrPBConns = yz_rt:open_pb_conns(CurrCluster),
     CurrClusterAndConns = {CurrCluster, CurrPBConns},
@@ -55,11 +60,11 @@ confirm() ->
     ok = upload_schema(CurrClusterAndConns, YZBenchDir),
     ok = setup_index(CurrClusterAndConns),
 
-    {0, _} = load_data(CurrCluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
+    {0, _} = load_data(ResultsDir, "current", CurrCluster, ?BUCKET, YZBenchDir, NumKeys, max, 32, sync),
     %% wait for soft commit
     timer:sleep(1100),
 
-    {0, _} = query_data(CurrCluster, YZBenchDir, NumKeys, max, 32, sync),
+    {0, _} = query_data(ResultsDir, "current", CurrCluster, YZBenchDir, NumKeys, max, 32, sync),
 
     stop_cluster(CurrClusterAndConns),
 
@@ -90,12 +95,12 @@ setup_index({Cluster,_}) ->
     ok = yz_rt:set_index(Node, ?BUCKET, ?INDEX),
     ok.
 
--spec load_data(cluster(), bucket(), string(), pos_integer(),
+-spec load_data(string(), string(), cluster(), bucket(), string(), pos_integer(),
                 max | {rate, pos_integer()}, pos_integer(), mode()) ->
                        timeout |
                        {Status :: integer(), Output :: binary()} |
                        port().
-load_data(Cluster, Bucket, YZBenchDir, NumKeys, Rate, Concurrent, Mode) ->
+load_data(ResultsDir, Name, Cluster, Bucket, YZBenchDir, NumKeys, Rate, Concurrent, Mode) ->
     lager:info("Run ~s data load into bucket ~p onto cluster ~p",
                [Mode, Bucket, Cluster]),
     Conns = yz_rt:host_entries(pb, rt:connection_info(Cluster)),
@@ -113,14 +118,16 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys, Rate, Concurrent, Mode) ->
            {shutdown_on_error, true}],
     File = "load-data",
     yz_rt:write_terms(File, Cfg),
-    yz_rt:run_bb(Mode, File).
+    Opts = [{results_dir, ResultsDir},
+            {bench_name, Name ++ "-load-fruit"}],
+    yz_rt:run_bb(Mode, File, Opts).
 
--spec query_data(cluster(), string(), pos_integer(), max | {rate, pos_integer()},
+-spec query_data(string(), string(), cluster(), string(), pos_integer(), max | {rate, pos_integer()},
                  pos_integer(), mode()) ->
                         {Status :: integer(), Output :: list()} |
                         timeout |
                         port().
-query_data(Cluster, YZBenchDir, _NumKeys, Rate, Concurrent, Mode) ->
+query_data(ResultsDir, Name, Cluster, YZBenchDir, _NumKeys, Rate, Concurrent, Mode) ->
     lager:info("Run ~s query against cluster ~p", [Mode, Cluster]),
     Conns = yz_rt:host_entries(pb, rt:connection_info(Cluster)),
     %% Operations = [{{random_fruit_search_pb, <<"_yz_id">>, 3, NumKeys}, 1}],
@@ -138,4 +145,12 @@ query_data(Cluster, YZBenchDir, _NumKeys, Rate, Concurrent, Mode) ->
            {shutdown_on_error, true}],
     File = "bb-query-fruit-random",
     yz_rt:write_terms(File, Cfg),
-    yz_rt:run_bb(Mode, File).
+    Opts = [{results_dir, ResultsDir},
+            {bench_name, Name ++ "-query-fruit"}],
+    yz_rt:run_bb(Mode, File, Opts).
+
+gen_ts() ->
+    {{Year, Month, Day},
+     {Hour, Min, Sec}} = calendar:now_to_universal_time(erlang:now()),
+    lists:flatten(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
+                                [Year,Month,Day,Hour,Min,Sec])).

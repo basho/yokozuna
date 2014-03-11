@@ -1,6 +1,10 @@
 #! /bin/sh
 #
 # This script contains common functions used by other scripts.
+#
+# TODO: divide into API/helper section
+#
+# TODO: alphabetize
 
 
 # This function produces a date-time stamp.
@@ -99,12 +103,41 @@ function is_git()
     fi
 }
 
-# This function builds a copy of riak with the specified 
-function build_riak_yokozuna()
+# SYNOPSIS
+#
+# build_riak <dir> <riak_src> [-l|--dep-mod-local <dep_name>=<local_dep_path>] [-r|--dep-mod-rev <dep_name>=<branch_name>]
+#
+# DESCRIPTION
+#
+# Build a version of Riak in <dir> based on <riak_src> with an
+# optional list of depedency modifications.
+#
+# <dir> - The name of the root directory for the Riak tree.
+#
+# <riak_src> - The source from which to build Riak. This may be a git
+# url with optional branch/tag/sha, or a link to a source tar.gz.
+#
+# <dep_versions> - A pipe ('|') separated list of "<dep_name>
+#
+# EXAMPLES
+#
+# Build the latest Riak development version:
+#
+#     build_riak riak_yz_dev https://github.com/basho/riak.git
+#
+# Build the latest Riak development version with local working copy of
+# Yokozuna:
+#
+#     build_riak riak_yz_dev https://github.com/basho/riak.git -l yokozuna=~/work/yokozuna
+#
+# Build the latest Riak development version with local working copy of
+# Yokozuna and branch 'foo' of riak_kv:
+#
+#     build_riak riak_yz_dev https://github.com/basho/riak.git -l yokozuna=~/work/yokozuna -r riak_kv=foo
+function build_riak()
 {
     dir=$1; shift
     riak_src=$1; shift
-    yz_src=$1; shift
 
     if [ ! -e $dir/dev/dev1 ]; then
         maybe_clone $dir $riak_src
@@ -115,19 +148,43 @@ function build_riak_yokozuna()
             error "failed to get deps"
         fi
 
-        mkdir deps
         pushd deps                  # in deps
 
-        if is_git $yz_src; then
-            yz_branch=$(get_branch $yz_src)
-            info "using branch $yz_branch of Yokozuna"
-            cd yokozuna
-            git checkout $yz_branch
-        else
-            info "using local working copy of Yokozuna at $dir"
-            rm -rf yokozuna
-            maybe_clone yokozuna $yz_src
-        fi
+        while [ $# -gt 0 ]; do
+            case $1 in
+                --dep-mod-local | -l)
+                    if [ -z $2 ]; then
+                        error "must pass <dep_name>=<path> to -l option"
+                    fi
+                    name=${2%%=*}
+                    path=${2##*=}
+                    info "linking $name to $path"
+                    rm -rf $name
+                    ln -s $path $name
+                    shift
+                    ;;
+                --dep-mod-rev | -r)
+                    if [ -z $2 ]; then
+                        error "must pass <dep_name>=<rev> to -r option"
+                    fi
+                    name=${2%%=*}
+                    rev=${2##*=}
+                    info "checking out revision $rev in $name"
+                    pushd $name
+                    if ! git checkout $rev; then
+                        error "failed to checkout revision '$rev'"
+                    fi
+                    popd
+                    shift
+                    ;;
+                -*)
+                    error "unknown option '$1' to build_riak"
+                    ;;
+                *)
+                    error "unknown argument '$1' to build_riak"
+            esac
+            shift
+        done
 
         popd                        # out deps
 
@@ -165,4 +222,44 @@ function setup_rt_dir()
     else
         info "rtdev already setup at $RT_DEST_DIR"
     fi
+}
+
+function generate_bench_rt_cfg()
+{
+    yz_dir=$1; shift
+    rt_bench_root=$1; shift
+    previous=$rt_bench_root/$1; shift
+    current=$rt_bench_root/$1; shift
+
+    # 1 hour
+    rt_max_wait_time=$((60 * 60 * 1000))
+
+    cat <<EOF
+
+{default,
+ [
+  {rt_max_wait_time, $rt_max_wait_time},
+  {rt_retry_delay, 1000},
+  {rt_harness, rtdev},
+  {rt_scratch_dir, "/tmp/riak_test_scratch"},
+  {basho_bench, "/root/work/basho_bench"},
+  {lager_level, info},
+  {rt_cookie, riak}
+ ]
+}.
+
+{yz_bench,
+ [
+  {rt_project, "riak"},
+  {yz_dir, "$yz_dir"},
+
+  {rtdev_path,
+   [
+    {root, "$rt_bench_root"},
+    {previous, "$previous"},
+    {current, "$current"}
+   ]}
+]}.
+
+EOF
 }
