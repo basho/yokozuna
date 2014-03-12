@@ -16,7 +16,8 @@
          },
          {yokozuna,
           [
-	   {enabled, true}
+	   {enabled, true},
+           {solr_jvm_opts, "-d64 -Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops -XX:+UseCompressedStrings"}
           ]}
         ]).
 
@@ -40,10 +41,13 @@ confirm() ->
     timer:sleep(1100),
 
     [{0, _} = query_2i(ResultsDir, Cluster, NumKeys, NumMatch, max, 32)
-     || NumMatch <- [1, 10, 100]],
+     || NumMatch <- [1, 10, 100, 1000]],
 
     [{0, _} = query_yz(ResultsDir, Cluster, YZBenchDir, NumKeys, NumMatch, max, 32)
      || NumMatch <- [1, 10, 100]],
+
+    [{0, _} = query_yz_cursor(ResultsDir, Cluster, YZBenchDir, NumKeys, NumMatch, 100, max, 32)
+     || NumMatch <- [1000]],
 
     ok.
 
@@ -136,6 +140,30 @@ query_yz(ResultsDir, Cluster, YZBenchDir, _NumKeys, NumMatch, Rate, Concurrent) 
             {bench_name, "query-yz-" ++ integer_to_list(NumMatch) }],
     yz_rt:run_bb(sync, File, Opts).
 
+query_yz_cursor(ResultsDir, Cluster, YZBenchDir, _NumKeys, NumMatch, Rows, Rate, Concurrent) ->
+    lager:info("Running yokozuna cursor query to match ~B keys", [NumMatch]),
+    Conns = yz_rt:host_entries(http, rt:connection_info(Cluster)),
+    Params = [{fl, <<"_yz_rt,_yz_rb,_yz_rk">>},
+              {sort, <<"score desc,_yz_id asc">>},
+              {rows, Rows}],
+    QOpts = [{paginate, cursor}],
+    Operations = [{{random_fruit_search, Params, 1, {NumMatch, NumMatch}, QOpts}, 1}],
+    Cfg = [{mode, Rate},
+           {duration, 2},
+           {concurrent, Concurrent},
+           {code_paths, [YZBenchDir]},
+           {driver, yz_driver},
+           {operations, Operations},
+           {http_conns, Conns},
+           {pb_conns, []},
+           {bucket, ?BUCKET},
+           {index, ?INDEX},
+           {shutdown_on_error, true}],
+    File = "query-yz-cursor-" ++ integer_to_list(NumMatch),
+    yz_rt:write_terms(File, Cfg),
+    Opts = [{results_dir, ResultsDir},
+            {bench_name, "query-yz-cursor-" ++ integer_to_list(NumMatch) }],
+    yz_rt:run_bb(sync, File, Opts).
 
 %% -spec query_data(string(), string(), cluster(), string(), pos_integer(), max | {rate, pos_integer()},
 %%                  pos_integer(), mode()) ->

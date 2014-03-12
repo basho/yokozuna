@@ -103,34 +103,42 @@ run(search, _KeyGen, ValGen, S=#state{default_field=DF, surls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
-run({search, Qry, FL}, KG, VG, S) ->
-    run({search, Qry, FL, ?DONT_VERIFY}, KG, VG, S);
+run({search, Qry, Params, Opts}, KG, VG, S) ->
+    run({search, Qry, Params, ?DONT_VERIFY, Opts}, KG, VG, S);
 
-run({search, Qry, FL, Expected}, _, _, S=#state{default_field=DF, surls=URLs}) ->
-    Base = get_base(URLs),
-    Params = mochiweb_util:urlencode([{q, Qry},
-                                      {wt, <<"json">>},
-                                      {fl, FL},
-                                      {df, DF}]),
-    URL = ?FMT("~s?~s", [Base, Params]),
-    S2 = S#state{surls=wrap(URLs)},
-    case {Expected, http_get(URL)} of
-        {?DONT_VERIFY, {ok,_}} ->
-            {ok, S2};
-        {_, {ok, Body}} ->
-            check_numfound(Qry, Body, Expected, S2);
-        {_, {error, Reason}} ->
-            {error, Reason, S2}
+run({search, Qry, Params, Expected, Opts}, _, _, S=#state{default_field=DF, surls=URLs}) ->
+    case proplists:get_value(paginate, Opts) of
+        undefined ->
+            Base = get_base(URLs),
+            Params2 = mochiweb_util:urlencode([{q, Qry},
+                                               {wt, <<"json">>},
+                                               {df, DF}|Params]),
+            URL = ?FMT("~s?~s", [Base, Params2]),
+            S2 = S#state{surls=wrap(URLs)},
+            case {Expected, http_get(URL)} of
+                {?DONT_VERIFY, {ok,_}} ->
+                    {ok, S2};
+                {_, {ok, Body}} ->
+                    check_numfound(Qry, Body, Expected, S2);
+                {_, {error, Reason}} ->
+                    {error, Reason, S2}
+            end;
+        cursor ->
+            paginate_via_cursor(Qry, Params, Expected, S);
+        start_and_rows ->
+            paginate_via_start_and_rows(Qry, Params, Expected, S)
     end;
 
-run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=undefined}) ->
+run({random_fruit_search, Params, MaxTerms, Cs={MinCardinality, MaxCardinality}, Opts},
+    K, V, S=#state{fruits=undefined}) ->
     %% NOTE: This clause only runs once and then caches the state. All
     %% subsequent calls use the cached state. Performing expensive
     %% operations in this function is okay.
-    S2 = S#state{fruits=gen_fruits(MaxCardinality, MaxCardinality)},
-    run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
+    S2 = S#state{fruits=gen_fruits(MinCardinality, MaxCardinality)},
+    run({random_fruit_search, Params, MaxTerms, Cs, Opts}, K, V, S2);
 
-run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
+run({random_fruit_search, Params, MaxTerms, _, Opts},
+    K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
     %% Select a random number of terms, NumTerms, from the shuffled
     %% Fruits list.
     NumTerms = random:uniform(MaxTerms),
@@ -139,7 +147,7 @@ run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, 
     CardList = lists:sublist(Cards, Offset, NumTerms),
     ExpectedNumFound = lists:min(CardList),
     Query = string:join(TermList, " AND "),
-    run({search, Query, FL, ExpectedNumFound}, K, V, S);
+    run({search, Query, Params, ExpectedNumFound, Opts}, K, V, S);
 
 run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
@@ -412,6 +420,91 @@ make_conn(Secure, User, Password, Cert) ->
                     {ok, Conn} = riakc_pb_socket:start_link(IP, Port),
                     Conn
             end
+    end.
+
+%% @private
+-spec paginate_via_cursor(string(), [{atom(), binary()}],
+                          non_neg_integer(), #state{}) ->
+                                 {ok, #state{}} |
+                                 {error, term(), #state{}}.
+paginate_via_cursor(Query, Params, ExpectedNumFound, S) ->
+    DF=S#state.default_field,
+    Params2 = [{q, Query},
+               {df, DF},
+               {wt, <<"json">>}|Params],
+    case paginate_via_cursor_(Query, Params2, S, {<<"*">>, 0}) of
+        {ok, Seen} ->
+            case true of
+                true ->
+                    {ok, S};
+                false ->
+                    ?ERROR("Query '~s' expected ~B but got ~B",
+                           [Query, ExpectedNumFound, Seen]),
+                    {error, {num_found, ExpectedNumFound, Seen}, S}
+            end;
+        Err ->
+            Err
+    end.
+
+paginate_via_cursor_(Query, Params, S, {Cursor, NumSeen}) ->
+    URLs=S#state.surls,
+    Base = get_base(URLs),
+    Params2 = lists:keystore(cursorMark, 1, Params, {cursorMark,Cursor}),
+    URL = ?FMT("~s?~s", [Base, mochiweb_util:urlencode(Params2)]),
+    case http_get(URL) of
+        {ok, Body} ->
+            Struct = mochijson2:decode(Body),
+            Docs = length(get_path(Struct, [<<"response">>, <<"docs">>])),
+            NewCursor =  get_path(Struct, [<<"nextCursorMark">>]),
+            NewNumSeen = NumSeen + Docs,
+            case NewCursor /= Cursor of
+                true ->
+                    paginate_via_cursor_(Query, Params2, S, {NewCursor, NewNumSeen});
+                false ->
+                    {ok, NewNumSeen}
+            end;
+        {error, Reason} ->
+            {error, Reason, S}
+    end.
+
+paginate_via_start_and_rows(Query, Params, ExpectedNumFound, S) ->
+    DF = S#state.default_field,
+    Params2 = [{q, Query},
+               {df, DF},
+               {wt, <<"json">>}|Params],
+    case paginate_via_start_and_rows_(Query, Params2, S, {0, 0}) of
+        {ok, Seen} ->
+            case ExpectedNumFound == Seen of
+                true ->
+                    {ok, S};
+                false ->
+                    ?ERROR("Query '~s' expected ~B but got ~B",
+                           [Query, ExpectedNumFound, Seen]),
+                    {error, {num_found, ExpectedNumFound, Seen}, S}
+            end;
+        Err ->
+            Err
+    end.
+
+paginate_via_start_and_rows_(Query, Params, S, {Start, NumSeen}) ->
+    URLs=S#state.surls,
+    Base = get_base(URLs),
+    Params2 = lists:keystore(start, 1, Params, {start, Start}),
+    Rows = proplists:get_value(rows, Params, 10),
+    URL = ?FMT("~s?~s", [Base, mochiweb_util:urlencode(Params2)]),
+    case http_get(URL) of
+        {ok, Body} ->
+            Struct = mochijson2:decode(Body),
+            Docs = length(get_path(Struct, [<<"response">>, <<"docs">>])),
+            NewNumSeen = NumSeen + Docs,
+            case Docs > 0 of
+                true ->
+                    paginate_via_start_and_rows_(Query, Params2, S, {Start + Rows, NewNumSeen});
+                false ->
+                    {ok, NewNumSeen}
+            end;
+        {error, Reason} ->
+            {error, Reason, S}
     end.
 
 %% @private
