@@ -45,6 +45,7 @@
                         solr_port=_SolrPort,
                         solr_jmx_port=_SolrJMXPort}).
 -define(S_PORT(S), S#state.port).
+-define(YZ_DEFAULT_SOLR_JVM_OPTS, "").
 
 %% @doc This module/process is responsible for administrating the
 %%      external Solr/JVM OS process.
@@ -197,7 +198,7 @@ build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
     end,
 
     Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
-        ++ string:tokens(solr_jvm_args(), " ") ++ JMX ++ [Class],
+        ++ string:tokens(solr_jvm_opts(), " ") ++ JMX ++ [Class],
     {JavaPath, Args}.
 
 %% @private
@@ -262,8 +263,8 @@ solr_startup_wait() ->
                        ?YZ_DEFAULT_SOLR_STARTUP_WAIT).
 
 %% @private
--spec solr_jvm_args() -> string().
-solr_jvm_args() ->
+-spec solr_jvm_opts() -> string().
+solr_jvm_opts() ->
     app_helper:get_env(?YZ_APP_NAME,
-                       solr_jvm_args,
-                       ?YZ_DEFAULT_SOLR_JVM_ARGS).
+                       solr_jvm_opts,
+                       ?YZ_DEFAULT_SOLR_JVM_OPTS).
