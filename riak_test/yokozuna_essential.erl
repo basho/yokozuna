@@ -63,6 +63,7 @@ confirm() ->
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     setup_indexing(Cluster, PBConns, YZBenchDir),
+    verify_non_existent_index(Cluster, "froot"),
     {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
     %% wait for soft-commit
     timer:sleep(1000),
@@ -86,6 +87,14 @@ confirm() ->
 %% node it should delete indexes for the partitions it no longer owns.
 verify_non_owned_data_deleted(Cluster, Index) ->
     yz_rt:wait_until(Cluster, is_non_owned_data_deleted(Index)).
+
+%% @doc Verify that a non-existent index returns a 404 error.
+verify_non_existent_index(Cluster, BadIndex) ->
+    {Host, Port} = hd(host_entries(rt:connection_info(Cluster))),
+    URL = lists:flatten(io_lib:format("http://~s:~s/solr/~s",
+                                      [Host, integer_to_list(Port), BadIndex])),
+    Headers = [{"accept", "text/plain"}],
+    {ok, "404", _, _} = ibrowse:send_req(URL, Headers, get, [], []).
 
 %% @doc Predicate to determine if the node's indexes for non-owned
 %% data have been deleted.

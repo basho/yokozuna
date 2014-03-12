@@ -156,18 +156,10 @@ fprof_analyse(FileName) ->
 
 -spec resource_exists(term(), term()) -> {boolean(), term(), term()}.
 resource_exists(RD, Context) ->
-    IndexInfo = list_to_binary(wrq:path_info(index, RD)),
-    index_resource_response(yz_index:get_index_info(IndexInfo), RD, Context).
+    IndexName = list_to_binary(wrq:path_info(index, RD)),
+    IndexInfo = yz_index:get_index_info(IndexName),
+    {undefined /= IndexInfo, RD, Context}.
 
 %% ====================================================================
 %% Private
 %% ====================================================================
-
-%% @private
-%%
-%% @doc Return response to WM callback resource_exists/2 based on IndexInfo return.
--spec index_resource_response(undefined | term(), term(), term()) -> {boolean(), term(), term()}.
-index_resource_response(undefined, RD, Context) ->
-    {false, RD, Context};
-index_resource_response(_IndexInfo, RD, Context) ->
-    {true, RD, Context}.
