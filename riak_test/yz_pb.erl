@@ -212,13 +212,14 @@ confirm_multivalued_field(Cluster) ->
     riakc_pb_socket:stop(Pid).
 
 confirm_search_non_existent_index(Cluster) ->
-    BadIndex = <<"does not exist">>,
+    BadIndex = <<"does_not_exist">>,
     Search = <<"name_ss:nobody">>,
     {Host, Port} = select_random(host_entries(rt:connection_info(Cluster))),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     lager:info("Confirm searching for non-existent index:~p", [BadIndex]),
     {error, Err} = riakc_pb_socket:search(Pid, BadIndex, Search, []),
-    ?assertEqual(<<"No index <<\"does not exist\">> found.">>, Err).
+    ?assertEqual(<<"No index <<\"does_not_exist\">> found.">>, Err),
+    riakc_pb_socket:stop(Pid).
     
 confirm_stored_fields(Cluster) ->
     Index = <<"stored_fields">>,
