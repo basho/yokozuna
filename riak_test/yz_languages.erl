@@ -1,3 +1,4 @@
+%% -*- coding: utf-8 -*-
 %% @doc Test the index adminstration API in various ways.
 -module(yz_languages).
 -compile(export_all).

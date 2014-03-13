@@ -1,3 +1,4 @@
+%% -*- coding: utf-8 -*-
 -module(yz_xml_extractor_tests).
 -compile(export_all).
 -include_lib("yz_test.hrl").
