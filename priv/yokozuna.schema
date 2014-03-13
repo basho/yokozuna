@@ -31,9 +31,9 @@
 
 %% @doc The options to pass to the Solr JVM.  Non-standard options,
 %% i.e. -XX, may not be portable across JVM implementations.
-%% E.g. -XX:+UseCompressedStrings.
+%% E.g. -XX:+UseCompressedStrings
 {mapping, "search.solr.jvm_options", "yokozuna.solr_jvm_opts", [
-  {default, "-Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
+  {default, "-d64 -Xms1g -Xmx1g -XX:+UseStringCache -XX:+UseCompressedOops"}
 ]}.
 
 %% @doc The directory where Search's Active Anti-Entropy data files
