@@ -63,6 +63,7 @@ confirm() ->
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     setup_indexing(Cluster, PBConns, YZBenchDir),
+    verify_non_existent_index(Cluster, <<"froot">>),
     {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
     %% wait for soft-commit
     timer:sleep(1000),
@@ -86,6 +87,11 @@ confirm() ->
 %% node it should delete indexes for the partitions it no longer owns.
 verify_non_owned_data_deleted(Cluster, Index) ->
     yz_rt:wait_until(Cluster, is_non_owned_data_deleted(Index)).
+
+%% @doc Verify that a non-existent index returns a 404 error.
+verify_non_existent_index(Cluster, BadIndex) ->
+    HP = hd(host_entries(rt:connection_info(Cluster))),
+    {ok, "404", _, _} = yz_rt:search(HP, BadIndex, <<"field">>, <<"term">>).
 
 %% @doc Predicate to determine if the node's indexes for non-owned
 %% data have been deleted.

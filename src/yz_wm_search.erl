@@ -128,14 +128,6 @@ search(Req, S) ->
                 {Body, Req2, S}
         end
     catch
-        throw:not_found ->
-            yz_stat:search_fail(),
-            ErrReq = wrq:append_to_response_body(
-                io_lib:format(?YZ_ERR_INDEX_NOT_FOUND ++ "\n", [Index]),
-                Req),
-            ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
-                                        ErrReq),
-            {{halt, 404}, ErrReq2, S};
         throw:{solr_error, {Code, _URL, Err}} ->
             yz_stat:search_fail(),
             ErrReq = wrq:append_to_response_body(Err, Req),
@@ -161,6 +153,12 @@ fprof_analyse(FileName) ->
     fprof:trace(stop),
     fprof:profile(file, FileName),
     fprof:analyse([{dest, FileName ++ ".analysis"}, {cols, 120}]).
+
+-spec resource_exists(term(), term()) -> {boolean(), term(), term()}.
+resource_exists(RD, Context) ->
+    IndexName = list_to_binary(wrq:path_info(index, RD)),
+    IndexInfo = yz_index:get_index_info(IndexName),
+    {undefined /= IndexInfo, RD, Context}.
 
 %% ====================================================================
 %% Private

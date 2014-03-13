@@ -68,31 +68,35 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
         {ok, Params} ->
             T1 = os:timestamp(),
             try
-                Result = yz_solr:dist_search(Index, Params),
-                case Result of
-                    {error, insufficient_vnodes_available} ->
+                IndexInfo = yz_index:get_index_info(Index),
+                case undefined == IndexInfo of
+                    true ->
                         yz_stat:search_fail(),
-                        {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
-                    {_Headers, Body} ->
-                        R = mochijson2:decode(Body),
-                        Resp = yz_solr:get_response(R),
-                        Pairs = yz_solr:get_doc_pairs(Resp),
-                        MaxScore = kvc:path([<<"maxScore">>], Resp),
-                        NumFound = kvc:path([<<"numFound">>], Resp),
+                        ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
+                        {error, ErrMsg, State};
+                    false ->
+			Result = yz_solr:dist_search(Index, Params),
+			case Result of
+			    {error, insufficient_vnodes_available} ->
+				yz_stat:search_fail(),
+				{error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
+			    {_Headers, Body} ->
+				R = mochijson2:decode(Body),
+				Resp = yz_solr:get_response(R),
+				Pairs = yz_solr:get_doc_pairs(Resp),
+				MaxScore = kvc:path([<<"maxScore">>], Resp),
+				NumFound = kvc:path([<<"numFound">>], Resp),
 
-                        RPBResp = #rpbsearchqueryresp{
-                            docs = [encode_doc(Doc) || Doc <- Pairs],
-                            max_score = MaxScore,
-                            num_found = NumFound
-                        },
-                        yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
-                        {reply, RPBResp, State}
+				RPBResp = #rpbsearchqueryresp{
+				  docs = [encode_doc(Doc) || Doc <- Pairs],
+				  max_score = MaxScore,
+				  num_found = NumFound
+				 },
+				yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
+				{reply, RPBResp, State}
+			end
                 end
             catch
-                throw:not_found ->
-                    yz_stat:search_fail(),
-                    ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
-                    {error, ErrMsg, State};
                 throw:{Message, URL, Err} ->
                     yz_stat:search_fail(),
                     ?INFO("~p ~p ~p~n", [Message, URL, Err]),

@@ -42,6 +42,7 @@ confirm() ->
     confirm_encoded_search(Cluster),
     confirm_multivalued_field(Cluster),
     confirm_stored_fields(Cluster),
+    confirm_search_non_existent_index(Cluster),
     pass.
 
 select_random(List) ->
@@ -210,10 +211,20 @@ confirm_multivalued_field(Cluster) ->
     ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)),
     riakc_pb_socket:stop(Pid).
 
+confirm_search_non_existent_index(Cluster) ->
+    BadIndex = <<"does_not_exist">>,
+    Search = <<"name_ss:nobody">>,
+    {Host, Port} = select_random(host_entries(rt:connection_info(Cluster))),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    lager:info("Confirm searching for non-existent index:~p", [BadIndex]),
+    {error, Err} = riakc_pb_socket:search(Pid, BadIndex, Search, []),
+    ?assertEqual(<<"No index <<\"does_not_exist\">> found.">>, Err),
+    riakc_pb_socket:stop(Pid).
+    
 confirm_stored_fields(Cluster) ->
     Index = <<"stored_fields">>,
     Bucket = {Index, <<"b1">>},
-    lager:info("Confrim stored fields"),
+    lager:info("Confirm stored fields"),
     create_index(Cluster, Index, Index),
     Body = <<"{\"bool_b\":true, \"float_tf\":3.14}">>,
     Params = [],
