@@ -68,7 +68,8 @@ store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
     %% Sleep for soft commit
     timer:sleep(1000),
-    {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
+    {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
+    ?assertEqual(Body, list_to_binary(ReturnedBody)),
     lager:info("Verify values are indexed"),
     ?assert(yz_rt:search_expect(HP, Index, Field, Term, 1)),
     ok.
@@ -77,22 +78,22 @@ confirm_body_search_encoding(Cluster) ->
     Index = <<"test_iso_8859_8">>,
     Bucket = {Index, <<"b">>},
     lager:info("confirm_iso_8859_8 ~s", [Index]),
-    Body = "א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ",
+    Body = <<"א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ"/utf8>>,
     store_and_search(Cluster, Bucket, Index, "text/plain", Body, "text", "בָּרָא").
 
 confirm_language_field_type(Cluster) ->
     Index = <<"test_shift_jis">>,
     Bucket = {Index, <<"b">>},
     lager:info("confirm_shift_jis ~s", [Index]),
-    Body = "{\"text_ja\" : \"私はハイビスカスを食べるのが 大好き\"}",
+    Body = <<"{\"text_ja\" : \"私はハイビスカスを食べるのが 大好き\"}"/utf8>>,
     store_and_search(Cluster, Bucket, Index, "application/json", Body, "text_ja", "大好き").
 
 confirm_tag_encoding(Cluster) ->
     Index = <<"test_iso_8859_6">>,
     Bucket = {Index, <<"b">>},
     lager:info("confirm_iso_8859_6 ~s", [Index]),
-    Body = "أردت أن أقرأ كتابا عن تاريخ المرأة في فرنسا",
+    Body = <<"أردت أن أقرأ كتابا عن تاريخ المرأة في فرنسا"/utf8>>,
     Headers = [{"Content-Type", "text/plain"},
                {"x-riak-meta-yz-tags", "x-riak-meta-arabic_s"},
-               {"x-riak-meta-arabic_s", "أقرأ"}],
+               {"x-riak-meta-arabic_s", <<"أقرأ"/utf8>>}],
     store_and_search(Cluster, Bucket, Index, Headers, "text/plain", Body, "arabic_s", "أقرأ").

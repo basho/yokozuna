@@ -215,8 +215,8 @@ search(Type, {Host, Port}, Index, Name, Term) when is_integer(Port) ->
     search(Type, {Host, integer_to_list(Port)}, Index, Name, Term);
 
 search(Type, {Host, Port}, Index, Name0, Term0) ->
-    Name = mochiweb_util:quote_plus(Name0),
-    Term = mochiweb_util:quote_plus(Term0),
+    Name = quote_unicode(Name0),
+    Term = quote_unicode(Term0),
     FmtStr = case Type of
                  solr ->
                      "http://~s:~s/solr/~s/select?q=~s:~s&wt=json";
@@ -227,6 +227,9 @@ search(Type, {Host, Port}, Index, Name0, Term0) ->
     lager:info("Run search ~s", [URL]),
     Opts = [{response_format, binary}],
     ibrowse:send_req(URL, [], get, [], Opts).
+
+quote_unicode(Value) ->
+    mochiweb_util:quote_plus(binary_to_list(unicode:characters_to_binary(Value))).
 
 select_random(List) ->
     Length = length(List),
