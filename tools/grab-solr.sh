@@ -14,14 +14,17 @@ then
     cd tools
 fi
 
-SOLR_DIR=../priv/solr
+PRIV_DIR=../priv
+CONF_DIR=$PRIV_DIR/conf
+SOLR_DIR=$PRIV_DIR/solr
 BUILD_DIR=../build
-VSN=solr-4.6.1-yz
+VSN=solr-4.7.0-yz-1
 FILENAME=$VSN.tgz
 TMP_DIR=/var/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
 SRC_DIR=$BUILD_DIR/$VSN
 EXAMPLE_DIR=$SRC_DIR/example
+COL1_DIR=$EXAMPLE_DIR/solr/collection1
 
 check_for_solr()
 {
@@ -81,6 +84,11 @@ then
     cp -r $EXAMPLE_DIR/etc/create-solrtest.keystore.sh $SOLR_DIR/etc
     cp -r $EXAMPLE_DIR/etc/webdefault.xml $SOLR_DIR/etc
     cp -r $EXAMPLE_DIR/lib $SOLR_DIR
+    cp -r $COL1_DIR/conf/lang $CONF_DIR
+    cp $COL1_DIR/conf/protwords.txt $CONF_DIR
+    cp $COL1_DIR/conf/stopwords.txt $CONF_DIR
+    cp $COL1_DIR/conf/synonyms.txt $CONF_DIR
+    cp $COL1_DIR/conf/mapping-* $CONF_DIR
     # TODO: does resources need to be copied?
     cp -r $EXAMPLE_DIR/resources $SOLR_DIR
     cp -r $EXAMPLE_DIR/solr-webapp $SOLR_DIR
