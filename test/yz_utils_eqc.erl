@@ -19,6 +19,7 @@
 -define(QC_OUT(P),
         eqc:on_output(fun(Str, Args) ->
                               io:format(user, Str, Args) end, P)).
+-define(Q_FUN_OUT, "testing").
 
 %%====================================================================
 %% Eunit tests
@@ -32,7 +33,9 @@ eqc_test_() ->
      {timeout, Time*4, ?_assertEqual(true,
                                      eqc:quickcheck(eqc:testing_time(Time,?QC_OUT(prop_hostname()))))},
      {timeout, Time*4, ?_assertEqual(true,
-                                     eqc:quickcheck(eqc:testing_time(Time,?QC_OUT(prop_dict()))))}
+                                     eqc:quickcheck(eqc:testing_time(Time,?QC_OUT(prop_dict()))))},
+     {timeout, Time*4, ?_assertEqual(true,
+                                     eqc:quickcheck(eqc:testing_time(Time,?QC_OUT(prop_queue()))))}
 
     ].
 
@@ -54,6 +57,20 @@ prop_dict() ->
             begin
                  NewDict = dict:store(Key, Val, Dict),
                  yz_misc:dict_get(Key, NewDict, <<>>) =:= Val
+            end).
+
+prop_queue() ->
+    ?FORALL(Queue, 
+            gen_queue(),
+            begin
+                F = queue_fun(),
+                {First, _Rest} = yz_misc:queue_pop(Queue, F),
+                case Queue of
+                    [] -> First == ?Q_FUN_OUT;
+		    _ ->
+                        [H|_T] = Queue,
+                        First == H
+                end
             end).
 
 %%====================================================================
@@ -81,5 +98,12 @@ gen_nodes() ->
 
 gen_dict() ->
     dict:new().
-    
+
+gen_queue() ->
+    list(binary()).
+
+queue_fun() ->
+    fun() ->
+        [?Q_FUN_OUT]
+    end.
 -endif.
