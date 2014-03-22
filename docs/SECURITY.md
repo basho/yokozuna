@@ -165,8 +165,6 @@ Applied permissions
 +----------+----------+----------------------------------------+
 ```
 
-Note that `ON` and `TO` must be capitalized.
-
 Next is `eric` who can admin everything but only query his personal
 index.
 
