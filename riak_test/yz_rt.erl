@@ -147,7 +147,7 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
     Hosts = host_entries(rt:connection_info(Cluster)),
     KeyGen = {function, yz_driver, fruit_key_val_gen, [NumKeys]},
     Cfg = [{mode,max},
-           {duration,5},
+           {duration,7},
            {concurrent, 3},
            {code_paths, [YZBenchDir]},
            {driver, yz_driver},

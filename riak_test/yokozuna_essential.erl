@@ -147,26 +147,28 @@ verify_unique_id(Cluster, PBConns) ->
     rt:wait_until_bucket_type_status(T2, active, Cluster),
 
     riakc_pb_socket:put(?RC(PBConns), O1),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 1),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 1))),
 
     riakc_pb_socket:put(?RC(PBConns), O2),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 2),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 2))),
 
     riakc_pb_socket:put(?RC(PBConns), O3),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 3),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 3))),
 
     riakc_pb_socket:put(?RC(PBConns), O4),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 4).
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 4))).
 
-query_all(PBConns, Index, Query, Expected) ->
+make_query_fun(PBConns, Index, Query, Expected) ->
+    fun() ->
+            QueryRes = query_all(PBConns, Index, Query),
+            lists:all(fun(X) -> X == Expected end, QueryRes)
+    end.
+
+query_all(PBConns, Index, Query) ->
     [begin
          Conn,
          {ok,{_, _, _, Found}} = riakc_pb_socket:search(?RC(Conn), Index, Query, []),
-         ?assertEqual(Expected, Found)
+         Found
      end || Conn <- PBConns].
 
 %% @doc Verify that the delete call made my `yz_kv:cleanup' can deal
