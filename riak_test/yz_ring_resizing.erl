@@ -3,7 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 
-%% @doc Test ring resizing while indexing and querying 
+%% @doc Test ring resizing while indexing and querying
 %%
 -define(FRUIT_SCHEMA_NAME, <<"fruit">>).
 -define(BUCKET_TYPE, <<"data">>).
@@ -27,7 +27,7 @@
           ]},
          {yokozuna,
           [
-	   {enabled, true},
+           {enabled, true},
 
            %% Perform a full check every second so that non-owned
            %% postings are deleted promptly. This makes sure that
@@ -40,31 +40,36 @@
 -define(EXPAND_SIZE, 64).
 
 confirm() ->
-     YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
-    random:seed(now()),
+    case yz_rt:bb_driver_setup() of
+        {ok, YZBenchDir} ->
+            random:seed(now()),
 
-    %% build the 4 node cluster
-    [ANode|_] = Cluster = rt:build_cluster(4, ?CFG),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    PBConns = yz_rt:open_pb_conns(Cluster),
+            %% build the 4 node cluster
+            [ANode|_] = Cluster = rt:build_cluster(4, ?CFG),
+            rt:wait_for_cluster_service(Cluster, yokozuna),
+            PBConns = yz_rt:open_pb_conns(Cluster),
 
-    %% Index and load data
-    setup_indexing(Cluster, PBConns, YZBenchDir),
-    {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
-    %% wait for soft-commit
-    timer:sleep(1000),
+            %% Index and load data
+            setup_indexing(Cluster, PBConns, YZBenchDir),
+            {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
+            %% wait for soft-commit
+            timer:sleep(1000),
 
-    %% Start a query and wait for it to start
-    Ref1 = async_query(Cluster, YZBenchDir),
-    timer:sleep(10000),
+            %% Start a query and wait for it to start
+            Ref1 = async_query(Cluster, YZBenchDir),
+            timer:sleep(30000),
 
-    %% Resize the ring -- size up, and make sure it completes
-    lager:info("Resizing ring to ~p", [?EXPAND_SIZE]),
-    submit_resize(?EXPAND_SIZE, ANode),
-    ensure_ring_resized(Cluster),
-    check_status(wait_for(Ref1)),
-    pass.
+            %% Resize the ring -- size up, and make sure it completes
+            lager:info("Resizing ring to ~p", [?EXPAND_SIZE]),
+            submit_resize(?EXPAND_SIZE, ANode),
+            ensure_ring_resized(Cluster),
+            check_status(wait_for(Ref1)),
+            pass;
+        {error, bb_driver_build_failed} ->
+            lager:info("Failed to build the yokozuna basho_bench driver"
+                       " required for this test"),
+            fail
+    end.
 
 %% The following section is commented out because ring-resizing downward currently
 %% presents an unresolved issue in YZ. There is still value in the test, however,
