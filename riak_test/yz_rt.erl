@@ -197,9 +197,39 @@ run_bb(Method, File) ->
               sync -> cmd;
               async -> spawn_cmd
           end,
+    AbsFile = filename:absname(File),
     BB = filename:join([rt_config:get(basho_bench), "basho_bench"]),
-    Path = lists:flatten([BB, " ", File]),
+    Path = lists:flatten([BB, " -d /tmp/yz-bb-results ", AbsFile]),
+    lager:debug("Executing b_b with the following command: ~p", [Path]),
     rt:Fun(Path).
+
+-spec bb_driver_setup() -> {ok, string()} | {error, atom()}.
+bb_driver_setup() ->
+    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
+    YZDriverSrc = filename:join([YZBenchDir, "src"]),
+    YZDriverEbin = filename:join([YZBenchDir, "ebin"]),
+    BBDir = rt_config:get(basho_bench),
+    clean_dir(YZDriverEbin),
+    case build_bb_driver(YZDriverSrc, BBDir, YZDriverEbin) of
+        true ->
+            {ok, YZBenchDir};
+        false ->
+            {error, bb_driver_build_failed}
+    end.
+
+-spec build_bb_driver(string(), string(), string()) -> boolean().
+build_bb_driver(SrcDir, BBDir, OutputDir) ->
+    Files = ["yz_driver.erl", "yz_file_terms.erl"],
+    Options = [{i, BBDir  ++ "/../"}, {outdir, OutputDir}],
+    BuildRes = [compile:file(SrcDir ++ "/" ++ File, Options)  || File <- Files],
+    lists:all(fun(X) -> case X of {ok, _} -> true; _ -> false end end, BuildRes).
+
+clean_dir("/") ->
+    lager:info("Sorry, this is a testing tool. Do your own dirty work!"),
+    ok;
+clean_dir(Dir) ->
+    os:cmd(io_lib:format("rm -rf ~s", [Dir])),
+    os:cmd(io_lib:format("mkdir -p ~s", [Dir])).
 
 search_expect(HP, Index, Name, Term, Expect) ->
     search_expect(yokozuna, HP, Index, Name, Term, Expect).
