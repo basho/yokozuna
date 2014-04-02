@@ -67,7 +67,7 @@ confirm() ->
     application:start(public_key),
     application:start(ssl),
     application:start(ibrowse),
-    PrivDir = rt_priv_dir(),
+    PrivDir = rt:priv_dir(),
     lager:info("r_t priv: ~p", [PrivDir]),
     CertDir = get_cert_dir(),
     make_certs:rootCA(CertDir, "rootCA"),
@@ -85,13 +85,6 @@ confirm() ->
     create_user(Node, ?HUSER),
     confirm_index_https(Node),
     pass.
-
-%% this is a similar duplicate riak_test fix as rt:priv_dir
-%% otherwise rt:priv_dir() will point to yz's priv
-rt_priv_dir() ->
-    re:replace(code:priv_dir(riak_test),
-        "riak_test(/riak_test)*", "riak_test", [{return, list}]).
-
 
 enable_https(Node) ->
     {Host, Port} = proplists:get_value(http, connection_info(Node)),
@@ -231,7 +224,9 @@ confirm_index_https(Node) ->
     {Host, Port} = proplists:get_value(https, connection_info(Node)),
 
     lager:info("verifying the peer certificate should work if the cert is valid"),
+
     Cacertfile = ?ROOT_CERT(get_cert_dir()),
+
     lager:info("Cacertfile: ~p", [Cacertfile]),
     Opts = [{is_ssl, true}, {ssl_options, [
              {cacertfile, Cacertfile},
