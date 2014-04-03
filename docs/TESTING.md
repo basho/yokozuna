@@ -6,8 +6,18 @@ Testing
 Riak Test is a tool for running integration tests against a Riak
 cluster.  See the [Riak Test README][rt_readme] for more details.
 
+Clone the riak_test repo with the following command:
+
+    git clone https://github.com/basho/riak_test
+
 Follow the instructions in the [Riak Test README][rt_readme] to build
 a `devrel` release and set it up for testing with riak_test.
+
+To successfully run all of the riak_test tests for yokozuna the
+basho_bench benchmarking tool is also required. Clone the basho_bench
+repo with the following command before running the tests:
+
+    git clone https://github.com/basho/basho_bench
 
 ### Add Yokozuna Config
 
