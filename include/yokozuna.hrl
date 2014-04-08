@@ -174,7 +174,7 @@
 -define(YZ_ERR_INDEX_NOT_FOUND,
         "No index ~p found.").
 -define(YZ_ERR_QUERY_FAILURE,
-        "Query unsuccessful check the logs.").
+        "Query unsuccessful: ~p.").
 
 %% Given the `StartTime' calculate the amount of time elapsed in
 %% microseconds.

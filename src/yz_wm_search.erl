@@ -112,28 +112,35 @@ search(Req, S) ->
     {FProf, FProfFile} = check_for_fprof(Req),
     ?IF(FProf, fprof:trace(start, FProfFile)),
     T1 = os:timestamp(),
-    Index = list_to_binary(wrq:path_info(index, Req)),
+    IndexStr = wrq:path_info(index, Req),
+    Index = unicode:characters_to_binary(IndexStr, utf8, utf8),
     Params = wrq:req_qs(Req),
     try
         Result = yz_solr:dist_search(Index, Params),
         case Result of
+            {ok, {RespHeaders, Body}} ->
+                yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
+                Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
+                {Body, Req2, S};
             {error, insufficient_vnodes_available} ->
                 yz_stat:search_fail(),
                 ER1 = wrq:set_resp_header("Content-Type", "text/plain", Req),
                 ER2 = wrq:set_resp_body(?YZ_ERR_NOT_ENOUGH_NODES ++ "\n", ER1),
                 {{halt, 503}, ER2, S};
-            {RespHeaders, Body} ->
-                yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
-                Req2 = wrq:set_resp_headers(scrub_headers(RespHeaders), Req),
-                {Body, Req2, S}
+            {error, {Code, Headers, Body}=Reason} ->
+                yz_stat:search_fail(),
+                ?DEBUG(?YZ_ERR_QUERY_FAILURE, [Reason]),
+                CT = proplists:get_value("Content-Type", Headers, "text/plain"),
+                ER1 = wrq:append_to_response_body(Body, Req),
+                ER2 = wrq:set_resp_header("Content-Type", CT, ER1),
+                {{halt, Code}, ER2, S};
+            {error, Reason} ->
+                yz_stat:search_fail(),
+                Msg = io_lib:format(?YZ_ERR_QUERY_FAILURE, [Reason]),
+                ER1 = wrq:append_to_response_body(Msg, Req),
+                ER2 = wrq:set_resp_header("Content-Type", "text/plain", ER1),
+                {{halt, 500}, ER2, S}
         end
-    catch
-        throw:{solr_error, {Code, _URL, Err}} ->
-            yz_stat:search_fail(),
-            ErrReq = wrq:append_to_response_body(Err, Req),
-            ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
-                                        ErrReq),
-            {{halt, Code}, ErrReq2, S}
     after
         ?IF(FProf, fprof_analyse(FProfFile))
     end.

@@ -31,7 +31,6 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 -type either(Term) :: Term | {error, Reason :: term()}.
--type either_t(Term) :: Term | {error, Reason :: term(), StackTrace :: term()}.
 
 %%%===================================================================
 %%% Types of Diagnostic Information
@@ -39,7 +38,7 @@
 
 -type component_status() :: [{component(), boolean()}].
 
--type error_doc_count() :: {index_name(), either_t(non_neg_integer())}.
+-type error_doc_count() :: {index_name(), either(non_neg_integer())}.
 -type error_doc_counts() :: [error_doc_count()].
 
 -type searcher_stat() :: {caching, boolean()} |
@@ -177,19 +176,14 @@ error_doc_counts(Indexes) ->
 %% @private
 -spec error_doc_counts_2(index_name()) -> error_doc_count().
 error_doc_counts_2(Index) ->
-    try
-        Params = [{q, <<?YZ_ERR_FIELD_S,":1">>},
-                  {fl, ?YZ_ID_FIELD_B},
-                  {wt, <<"json">>}],
-            case yz_solr:dist_search(Index, Params) of
-                {error, _} = Err ->
-                    {Index, Err};
-                {_Headers, Resp} ->
-                    Struct = mochijson2:decode(Resp),
-                    Count = kvc:path([<<"response">>, <<"numFound">>], Struct),
-                    {Index, Count}
-            end
-    catch
-        _:Reason ->
-            {Index, Reason}
+    Params = [{q, <<?YZ_ERR_FIELD_S,":1">>},
+              {fl, ?YZ_ID_FIELD_B},
+              {wt, <<"json">>}],
+    case yz_solr:dist_search(Index, Params) of
+        {ok, {_, Body}} ->
+            Struct = mochijson2:decode(Body),
+            Count = kvc:path([<<"response">>, <<"numFound">>], Struct),
+            {Index, Count};
+        {error, _} = Err ->
+            {Index, Err}
     end.

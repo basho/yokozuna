@@ -13,4 +13,4 @@ disable_search_test()->
     {Available, _, _} = yz_wm_search:service_available({},{}),
     ?assertEqual(Available, false),
     Resp = yz_pb_search:process(ignore, ignore),
-    ?assertEqual({error, "Search component disabled", ignore}, Resp).
+    ?assertEqual({error, "Search component disabled.", ignore}, Resp).

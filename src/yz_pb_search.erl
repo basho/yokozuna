@@ -67,52 +67,44 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
             T1 = os:timestamp(),
-            try
-                IndexInfo = yz_index:get_index_info(Index),
-                case undefined == IndexInfo of
-                    true ->
-                        yz_stat:search_fail(),
-                        ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
-                        {error, ErrMsg, State};
-                    false ->
-			Result = yz_solr:dist_search(Index, Params),
-			case Result of
-			    {error, insufficient_vnodes_available} ->
-				yz_stat:search_fail(),
-				{error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
-			    {_Headers, Body} ->
-				R = mochijson2:decode(Body),
-				Resp = yz_solr:get_response(R),
-				Pairs = yz_solr:get_doc_pairs(Resp),
-				MaxScore = kvc:path([<<"maxScore">>], Resp),
-				NumFound = kvc:path([<<"numFound">>], Resp),
+            IndexInfo = yz_index:get_index_info(Index),
+            case undefined == IndexInfo of
+                true ->
+                    yz_stat:search_fail(),
+                    ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
+                    {error, ErrMsg, State};
+                false ->
+                    Result = yz_solr:dist_search(Index, Params),
+                    case Result of
+                        {ok, {_, Body}} ->
+                            R = mochijson2:decode(Body),
+                            Resp = yz_solr:get_response(R),
+                            Pairs = yz_solr:get_doc_pairs(Resp),
+                            MaxScore = kvc:path([<<"maxScore">>], Resp),
+                            NumFound = kvc:path([<<"numFound">>], Resp),
 
-				RPBResp = #rpbsearchqueryresp{
-				  docs = [encode_doc(Doc) || Doc <- Pairs],
-				  max_score = MaxScore,
-				  num_found = NumFound
-				 },
-				yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
-				{reply, RPBResp, State}
-			end
-                end
-            catch
-                throw:{Message, URL, Err} ->
-                    yz_stat:search_fail(),
-                    ?INFO("~p ~p ~p~n", [Message, URL, Err]),
-                    {error, Message, State};
-                _:Reason ->
-                    yz_stat:search_fail(),
-                    Trace = erlang:get_stacktrace(),
-                    ?ERROR("~p ~p~n", [Reason, Trace]),
-                    {error, ?YZ_ERR_QUERY_FAILURE, State}
+                            RPBResp = #rpbsearchqueryresp{
+                                         docs = [encode_doc(Doc) || Doc <- Pairs],
+                                         max_score = MaxScore,
+                                         num_found = NumFound
+                                        },
+                            yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
+                            {reply, RPBResp, State};
+                        {error, insufficient_vnodes_available} ->
+                            yz_stat:search_fail(),
+                            {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
+                        {error, Reason} ->
+                            yz_stat:search_fail(),
+                            Fmt = {format, ?YZ_ERR_QUERY_FAILURE, [Reason]},
+                            ?DEBUG(?YZ_ERR_QUERY_FAILURE, [Reason]),
+                            {error, Fmt, State}
+                    end
             end;
         {error, missing_query} ->
-            {error, "Missing query", State}
+            {error, "Missing query.", State}
     end;
 maybe_process(false, _Msg, State) ->
-    {error, "Search component disabled", State}.
-
+    {error, "Search component disabled.", State}.
 
 %% @doc process_stream/3 callback. Ignored.
 process_stream(_,_,State) ->

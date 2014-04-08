@@ -22,6 +22,23 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 
+-type header() :: {Key :: atom() | string(), Val :: string()}.
+-type headers() :: [header()].
+
+-type param_key_or_value() :: atom() | integer() | float() | string() | binary().
+-type param() :: {param_key_or_value(), param_key_or_value()}.
+-type params() :: [param()].
+
+-type resp_code() :: string().
+-type resp_headers() :: [{string(), string()}].
+-type resp_body() :: binary().
+-type search_resp() ::
+        {ok, {resp_headers(), resp_body()}} |
+        {error, {resp_code(), resp_headers(), resp_body()}} |
+        {error, term()}.
+
+-type dist_search_resp() :: {error, term()} | search_resp().
+
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
                        {schema_file, schema},
@@ -230,36 +247,54 @@ port() ->
 jmx_port() ->
     app_helper:get_env(?YZ_APP_NAME, solr_jmx_port, undefined).
 
+%% @see dist_search/3
+-spec dist_search(index_name(), params()) -> dist_search_resp().
 dist_search(Core, Params) ->
     dist_search(Core, [], Params).
 
-dist_search(Core, Headers, Params) ->
-    Plan = yz_cover:plan(Core),
+%% @doc Perform a distributed search across a covering set of Solr
+%% nodes. This should be used to service user queries. It creates a
+%% distributed query plan on your behalf; passing the needed
+%% parameters to the `search' function. If you want to run a
+%% non-distributed search against the local node only the use `search'
+%% directly.
+%%
+%% @see search/3
+-spec dist_search(index_name(), headers(), params()) -> dist_search_resp().
+dist_search(Index, Headers, Params) ->
+    Plan = yz_cover:plan(Index),
     case Plan of
         {ok, {Nodes, FilterPairs, Mapping}} ->
             HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
-            ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
+            ShardFrags = [shard_frag(Index, HostPort) || HostPort <- HostPorts],
             ShardFrags2 = string:join(ShardFrags, ","),
             ShardFQs = build_shard_fq(FilterPairs, Mapping),
             Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
-            search(Core, Headers, Params2);
+            search(Index, Headers, Params2);
         {error, _} = Err ->
             Err
     end.
 
-search(Core, Headers, Params) ->
+%% @doc Send a search request to the local Solr node. This is mostly
+%% meant for internal use by Yokozuna or for operator debugging. To
+%% perform a distributed search use `dist_search'.
+%%
+%% @see dist_search/3
+-spec search(index_name(), headers(), params()) -> search_resp().
+search(Index, Headers, Params) ->
     Body = mochiweb_util:urlencode(Params),
-    URL = ?FMT("~s/~s/select", [base_url(), Core]),
+    URL = ?FMT("~s/~s/select", [base_url(), Index]),
     Headers2 = [{content_type, "application/x-www-form-urlencoded"}|Headers],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers2, post, Body, Opts) of
-        {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
-        {ok, CodeStr, _, Err} ->
+        {ok, "200", H, B} ->
+            {ok, {H, B}};
+        {ok, CodeStr, H, B} ->
             {Code, _} = string:to_integer(CodeStr),
-            throw({solr_error, {Code, URL, Err}});
-        Err -> throw({"Failed to search", URL, Err})
+            {error, {Code, H, B}};
+        {error, _} = Err ->
+            Err
     end.
-
 
 %%%===================================================================
 %%% Private
