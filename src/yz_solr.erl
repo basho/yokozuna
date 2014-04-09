@@ -31,6 +31,7 @@
 -define(DEFAULT_URL, "http://localhost:8983/solr").
 -define(DEFAULT_VCLOCK_N, 1000).
 -define(QUERY(Str), {struct, [{'query', Str}]}).
+-define(SOLR_TIMEOUT, 60000).
 
 %% @doc This module provides the interface for making calls to Solr.
 %%      All interaction with Solr should go through this API.
@@ -63,7 +64,7 @@ commit(Core) ->
     URL = ?FMT("~s/~s/update?~s", [base_url(), Core, Encoded]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to commit", Err})
     end.
@@ -72,7 +73,7 @@ commit(Core) ->
 -spec core(atom(), proplist()) -> {ok, list(), binary()} |
                                   {error, term()}.
 core(Action, Props) ->
-    core(Action, Props, 5000).
+    core(Action, Props, ?SOLR_TIMEOUT).
 
 -spec core(atom(), proplist(), ms()) -> {ok, list(), binary()} |
                                         {error, term()}.
@@ -110,7 +111,7 @@ delete(Index, Ops) ->
     URL = ?FMT("~s/~s/update", [base_url(), Index]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> {error, Err}
     end.
@@ -169,7 +170,7 @@ index(Core, Docs, DelOps) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to index docs", Ops, Err})
     end.
@@ -197,7 +198,7 @@ partition_list(Core) ->
     Encoded = mochiweb_util:urlencode(Params),
     URL = ?FMT("~s/~s/select?~s", [base_url(), Core, Encoded]),
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, [], get, [], Opts) of
+    case ibrowse:send_req(URL, [], get, [], Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, Resp} -> {ok, Resp};
         Err -> {error, Err}
     end.
@@ -240,7 +241,7 @@ search(Core, Headers, Params) ->
     URL = ?FMT("~s/~s/select", [base_url(), Core]),
     Headers2 = [{content_type, "application/x-www-form-urlencoded"}|Headers],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers2, post, Body, Opts) of
+    case ibrowse:send_req(URL, Headers2, post, Body, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
         {ok, CodeStr, _, Err} ->
             {Code, _} = string:to_integer(CodeStr),
@@ -320,10 +321,10 @@ encode_commit() ->
 %% @doc Encode a delete operation into a mochijson2 compatiable term.
 -spec encode_delete(delete_op()) -> term().
 encode_delete({key,Key}) ->
-    Query = ?YZ_RK_FIELD_S ++ ":" ++ ibrowse_lib:url_encode(binary_to_list(Key)),
+    Query = ?YZ_RK_FIELD_S ++ ":\"" ++ ibrowse_lib:url_encode(binary_to_list(Key)) ++ "\"",
     ?QUERY(list_to_binary(Query));
 encode_delete({siblings,Key}) ->
-    Query = ?YZ_RK_FIELD_S ++ ":" ++ ibrowse_lib:url_encode(binary_to_list(Key)) ++ " AND " ++ ?YZ_VTAG_FIELD_S ++ ":[* TO *]",
+    Query = ?YZ_RK_FIELD_S ++ ":\"" ++ ibrowse_lib:url_encode(binary_to_list(Key)) ++ "\" AND " ++ ?YZ_VTAG_FIELD_S ++ ":[* TO *]",
     ?QUERY(list_to_binary(Query));
 encode_delete({'query', Query}) ->
     ?QUERY(Query);

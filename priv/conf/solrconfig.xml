@@ -51,7 +51,7 @@
          If both ramBufferSizeMB and maxBufferedDocs is set, then
          Lucene will flush based on whichever limit is hit first.  -->
     <!-- Reduce disk flushes. If YZ loses data on crash, AAE will repair anyway -->
-    <ramBufferSizeMB>32</ramBufferSizeMB>
+    <!-- <ramBufferSizeMB>100</ramBufferSizeMB> -->
 
     <!-- Expert: Merge Policy
          The Merge Policy in Lucene controls how merging of segments is done.
@@ -324,7 +324,7 @@
 
     <fieldValueCache class="solr.FastLRUCache"
                      size="512"
-                     autowarmCount="128"
+                     autowarmCount="0"
                      showItems="32" />
   
 
@@ -387,7 +387,7 @@
          Recommend values of 1-2 for read-only slaves, higher for
          masters w/o cache warming.
       -->
-    <maxWarmingSearchers>2</maxWarmingSearchers>
+    <maxWarmingSearchers>4</maxWarmingSearchers>
 
   </query>
 

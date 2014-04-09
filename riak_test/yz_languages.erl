@@ -26,6 +26,7 @@ confirm() ->
     confirm_body_search_encoding(Cluster),
     confirm_language_field_type(Cluster),
     confirm_tag_encoding(Cluster),
+    confirm_reserved_word_safety(Cluster),
     pass.
 
 select_random(List) ->
@@ -61,9 +62,12 @@ store_and_search(Cluster, Bucket, Index, CT, Body, Field, Term) ->
     store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term).
 
 store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term) ->
+    store_and_search(Cluster, Bucket, Index, "test", Headers, CT, Body, Field, Term).
+
+store_and_search(Cluster, Bucket, Index, Key, Headers, CT, Body, Field, Term) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     create_index(Cluster, HP, Index),
-    URL = bucket_url(HP, Bucket, "test"),
+    URL = bucket_url(HP, Bucket, Key),
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
     %% Sleep for soft commit
@@ -97,3 +101,12 @@ confirm_tag_encoding(Cluster) ->
                {"x-riak-meta-yz-tags", "x-riak-meta-arabic_s"},
                {"x-riak-meta-arabic_s", <<"أقرأ"/utf8>>}],
     store_and_search(Cluster, Bucket, Index, Headers, "text/plain", Body, "arabic_s", "أقرأ").
+
+confirm_reserved_word_safety(Cluster) ->
+    Index = <<"reserved">>,
+    Bucket = {Index, <<"b">>},
+    lager:info("confirm_reserved_word_safety ~s", [Index]),
+    Body = <<"whatever">>,
+    Headers = [{"Content-Type", "text/plain"}],
+    RKey = "ON",
+    store_and_search(Cluster, Bucket, Index, RKey, Headers, "text/plain", Body, "text", "whatever").
