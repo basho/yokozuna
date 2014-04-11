@@ -387,7 +387,7 @@
          Recommend values of 1-2 for read-only slaves, higher for
          masters w/o cache warming.
       -->
-    <maxWarmingSearchers>4</maxWarmingSearchers>
+    <maxWarmingSearchers>2</maxWarmingSearchers>
 
   </query>
 
