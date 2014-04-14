@@ -97,8 +97,10 @@ else
     SOLR_FILE=$(basename $URL)
     SOLR_DIR=${SOLR_FILE%-src.tgz}
 
-    if test ! -e $SOLR_FILE; then
+    if which wget > /dev/null && test ! -e $SOLR_FILE; then
         wget $URL
+    elif which curl > /dev/null && test ! -e $SOLR_FILE; then
+        curl -O $URL
     fi
 
     if test ! -e $SOLR_DIR; then

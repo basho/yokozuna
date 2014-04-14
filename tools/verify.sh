@@ -96,8 +96,8 @@ function sanity_check()
         error "Apache Ant 1.8.2 or greater required"
     fi
 
-    if ! which wget > /dev/null; then
-        error "wget is required"
+    if ! which wget > /dev/null && ! which curl > /dev/null; then
+        error "wget or curl is required"
     fi
 
     if ! which make > /dev/null; then
