@@ -76,24 +76,47 @@ is_authorized(ReqData, Ctx) ->
                     "instead.">>, ReqData), Ctx}
     end.
 
+
+%%
+%% Written with the idea of using this from multiple modules
+check_permissions(RD, Ctx,
+                  _Permission, {_Bucket, undefined}) ->
+    {true, wrq:append_to_resp_body("Unknown index", RD), Ctx};
+check_permissions(RD, Ctx,
+                  _Permission, {_Bucket, N}) when is_integer(N) ->
+    {true, wrq:append_to_resp_body("Unknown index", RD), Ctx};
+check_permissions(RD, Ctx,
+                  Permission, {Bucket, Index}) ->
+    check_permissions_aux(RD, Ctx, Permission,
+                          {Bucket, mochiweb_util:unquote(Index)});
+check_permissions(RD, Ctx, Permission, Bucket) ->
+    check_permissions_aux(RD, Ctx, Permission, Bucket).
+
+check_permissions_aux(RD, Ctx=#ctx{security=Security},
+                      Permission, Resource) ->
+    Res = riak_core_security:check_permission(
+            {Permission, Resource}, Security
+           ),
+    case Res of
+        {false, Error, _} ->
+            {true, wrq:append_to_resp_body(Error, RD), Ctx};
+        {true, _} ->
+            {false, RD, Ctx}
+    end.
+
+
+
 %% Uses the riak_kv,secure_referer_check setting rather
 %% as opposed to a special yokozuna-specific config
 forbidden(RD, Ctx=#ctx{security=undefined}) ->
     {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
-forbidden(RD, Ctx=#ctx{security=Security}) ->
+forbidden(RD, Ctx) ->
     case riak_kv_wm_utils:is_forbidden(RD) of
         true ->
             {true, RD, Ctx};
         false ->
-            Index = wrq:path_info(index, RD),
-            PermAndResource = {?YZ_SECURITY_SEARCH_PERM, {?YZ_SECURITY_INDEX, Index}},
-            Res = riak_core_security:check_permission(PermAndResource, Security),
-            case Res of
-                {false, Error, _} ->
-                    {true, wrq:append_to_resp_body(Error, RD), Ctx};
-                {true, _} ->
-                    {false, RD, Ctx}
-            end
+            check_permissions(RD, Ctx, ?YZ_SECURITY_SEARCH_PERM,
+                              {?YZ_SECURITY_INDEX, wrq:path_info(index, RD)})
     end.
 
 %% Treat POST as GET in order to work with existing Solr clients.
