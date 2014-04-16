@@ -104,7 +104,7 @@
    <dynamicField name="*_set"      type="string"  indexed="true" stored="false" multiValued="true" />
 
    <!-- catch-all field -->
-   <dynamicField name="*" type="text_general" indexed="false" stored="false" multiValued="true" />
+   <dynamicField name="*" type="ignored" />
 
    <field name="_yz_id" type="_yz_str" indexed="true" stored="true" multiValued="false" required="true"/>
 
