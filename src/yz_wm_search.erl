@@ -77,25 +77,13 @@ is_authorized(ReqData, Ctx) ->
     end.
 
 
-%%
-%% Written with the idea of using this from multiple modules
-check_permissions(RD, Ctx,
-                  _Permission, {_Bucket, undefined}) ->
+resource_forbidden(RD, Ctx, _Perm, {_Resource, undefined}) ->
     {true, wrq:append_to_resp_body("Unknown index", RD), Ctx};
-check_permissions(RD, Ctx,
-                  _Permission, {_Bucket, N}) when is_integer(N) ->
-    {true, wrq:append_to_resp_body("Unknown index", RD), Ctx};
-check_permissions(RD, Ctx,
-                  Permission, {Bucket, Index}) ->
-    check_permissions_aux(RD, Ctx, Permission,
-                          {Bucket, mochiweb_util:unquote(Index)});
-check_permissions(RD, Ctx, Permission, Bucket) ->
-    check_permissions_aux(RD, Ctx, Permission, Bucket).
-
-check_permissions_aux(RD, Ctx=#ctx{security=Security},
-                      Permission, Resource) ->
+resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
+                   {Resource, Subresource}) ->
     Res = riak_core_security:check_permission(
-            {Permission, Resource}, Security
+            {Permission, {Resource, mochiweb_util:unquote(Subresource)}},
+            Security
            ),
     case Res of
         {false, Error, _} ->
@@ -115,8 +103,8 @@ forbidden(RD, Ctx) ->
         true ->
             {true, RD, Ctx};
         false ->
-            check_permissions(RD, Ctx, ?YZ_SECURITY_SEARCH_PERM,
-                              {?YZ_SECURITY_INDEX, wrq:path_info(index, RD)})
+            resource_forbidden(RD, Ctx, ?YZ_SECURITY_SEARCH_PERM,
+                               {?YZ_SECURITY_INDEX, wrq:path_info(index, RD)})
     end.
 
 %% Treat POST as GET in order to work with existing Solr clients.
