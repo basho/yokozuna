@@ -76,24 +76,35 @@ is_authorized(ReqData, Ctx) ->
                     "instead.">>, ReqData), Ctx}
     end.
 
+
+resource_forbidden(RD, Ctx, _Perm, {_Resource, undefined}) ->
+    {true, wrq:append_to_resp_body("Unknown index", RD), Ctx};
+resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
+                   {Resource, Subresource}) ->
+    Res = riak_core_security:check_permission(
+            {Permission, {Resource, mochiweb_util:unquote(Subresource)}},
+            Security
+           ),
+    case Res of
+        {false, Error, _} ->
+            {true, wrq:append_to_resp_body(Error, RD), Ctx};
+        {true, _} ->
+            {false, RD, Ctx}
+    end.
+
+
+
 %% Uses the riak_kv,secure_referer_check setting rather
 %% as opposed to a special yokozuna-specific config
 forbidden(RD, Ctx=#ctx{security=undefined}) ->
     {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
-forbidden(RD, Ctx=#ctx{security=Security}) ->
+forbidden(RD, Ctx) ->
     case riak_kv_wm_utils:is_forbidden(RD) of
         true ->
             {true, RD, Ctx};
         false ->
-            Index = list_to_binary(wrq:path_info(index, RD)),
-            PermAndResource = {?YZ_SECURITY_SEARCH_PERM, {?YZ_SECURITY_INDEX, Index}},
-            Res = riak_core_security:check_permission(PermAndResource, Security),
-            case Res of
-                {false, Error, _} ->
-                    {true, wrq:append_to_resp_body(list_to_binary(Error), RD), Ctx};
-                {true, _} ->
-                    {false, RD, Ctx}
-            end
+            resource_forbidden(RD, Ctx, ?YZ_SECURITY_SEARCH_PERM,
+                               {?YZ_SECURITY_INDEX, wrq:path_info(index, RD)})
     end.
 
 %% Treat POST as GET in order to work with existing Solr clients.
