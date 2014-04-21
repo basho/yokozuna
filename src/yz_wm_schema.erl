@@ -118,7 +118,7 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
             Res = riak_core_security:check_permission(PermAndResource, Security),
             case Res of
                 {false, Error, _} ->
-                    {true, wrq:append_to_resp_body(list_to_binary(Error), RD), Ctx};
+                    {true, wrq:append_to_resp_body(Error, RD), Ctx};
                 {true, _} ->
                     {false, RD, Ctx}
             end
