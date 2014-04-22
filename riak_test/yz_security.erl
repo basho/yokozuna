@@ -137,7 +137,7 @@ confirm_index_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","index","TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"on","index","to",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create an index"),
@@ -181,7 +181,7 @@ confirm_schema_permission_pb(Node) ->
     riakc_pb_socket:stop(Pid0),
 
     lager:info("Grant schema permission to user"),
-    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","schema","TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"on","schema","to",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create schema"),
@@ -201,7 +201,7 @@ confirm_search_pb(Node) ->
 
     lager:info("Grant search permission to user on ~s", [?INDEX]),
     IndexS = binary_to_list(?INDEX),
-    ok = ?GRANT(Node, [[?YZ_SECURITY_SEARCH_PERM,"ON","index",IndexS,"TO",?USER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_SEARCH_PERM,"on","index",IndexS,"to",?USER]]),
 
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can search granted on ~s", [?INDEX]),
@@ -243,7 +243,7 @@ confirm_index_https(Node) ->
     {ok, "403", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
 
     lager:info("Grant index permission to user"),
-    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"ON","index","TO",?HUSER]]),
+    ok = ?GRANT(Node, [[?YZ_SECURITY_ADMIN_PERM,"on","index","to",?HUSER]]),
 
     %% this should work now that this user has permission
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),

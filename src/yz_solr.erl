@@ -171,7 +171,7 @@ index(Core, Docs, DelOps) ->
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Ops, Err})
+        Err -> throw({"Failed to index docs", Err})
     end.
 
 %% @doc Determine if Solr is running.
