@@ -172,7 +172,7 @@ index(Core, Docs, DelOps) ->
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Ops, Err})
+        Err -> throw({"Failed to index docs", Err})
     end.
 
 %% @doc Determine if Solr is running.
@@ -181,6 +181,18 @@ is_up() ->
     case cores() of
         {ok, _} -> true;
         _ -> false
+    end.
+
+-spec mbeans_and_stats(index_name()) -> {ok, JSON :: binary()} |
+                                        {error, Reason :: term()}.
+mbeans_and_stats(Index) ->
+    Params = [{stats, <<"true">>},
+              {wt, <<"json">>}],
+    URL = ?FMT("~s/~s/admin/mbeans?~s", [base_url(), Index, mochiweb_util:urlencode(Params)]),
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _, Body} -> {ok, Body};
+        Err -> {error, Err}
     end.
 
 prepare_json(Docs) ->
