@@ -108,5 +108,5 @@ confirm_reserved_word_safety(Cluster) ->
     lager:info("confirm_reserved_word_safety ~s", [Index]),
     Body = <<"whatever">>,
     Headers = [{"Content-Type", "text/plain"}],
-    RKey = "ON",
+    RKey = "OR",
     store_and_search(Cluster, Bucket, Index, RKey, Headers, "text/plain", Body, "text", "whatever").
