@@ -82,7 +82,7 @@ resource_forbidden(RD, Ctx, _Perm, {_Resource, undefined}) ->
 resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
                    {Resource, Subresource}) ->
     Res = riak_core_security:check_permission(
-            {Permission, {Resource, mochiweb_util:unquote(Subresource)}},
+            {Permission, {Resource, list_to_binary(mochiweb_util:unquote(Subresource))}},
             Security
            ),
     case Res of
