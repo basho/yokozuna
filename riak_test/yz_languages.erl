@@ -26,6 +26,7 @@ confirm() ->
     confirm_body_search_encoding(Cluster),
     confirm_language_field_type(Cluster),
     confirm_tag_encoding(Cluster),
+    confirm_type_bucket_key_encoding(Cluster),
     pass.
 
 select_random(List) ->
@@ -61,14 +62,28 @@ store_and_search(Cluster, Bucket, Index, CT, Body, Field, Term) ->
     store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term).
 
 store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term) ->
+    store_and_search(Cluster,
+                     Bucket,
+                     "test",
+                     Index,
+                     Headers,
+                     CT,
+                     Body,
+                     Field,
+                     Term).
+
+store_and_search(Cluster, Bucket, Key, Index, Headers, CT, Body, Field, Term) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     create_index(Cluster, HP, Index),
-    URL = bucket_url(HP, Bucket, "test"),
+    URL = bucket_url(HP, Bucket, Key),
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
+    lager:info("Store request worked"),
     %% Sleep for soft commit
     timer:sleep(1000),
+    lager:info("Sending GET for ~s", [URL]),
     {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
+    lager:info("GET request worked"),
     ?assertEqual(Body, list_to_binary(ReturnedBody)),
     lager:info("Verify values are indexed"),
     ?assert(yz_rt:search_expect(HP, Index, Field, Term, 1)),
@@ -97,3 +112,76 @@ confirm_tag_encoding(Cluster) ->
                {"x-riak-meta-yz-tags", "x-riak-meta-arabic_s"},
                {"x-riak-meta-arabic_s", <<"أقرأ"/utf8>>}],
     store_and_search(Cluster, Bucket, Index, Headers, "text/plain", Body, "arabic_s", "أقرأ").
+
+confirm_type_bucket_key_encoding(Cluster) ->
+    [begin
+         lager:info("Testing ~p encoding", [L]),
+         Type = type(L),
+         store_and_search(Cluster,
+                          {Type, bucket(L)},
+                          key(L),
+                          Type,
+                          headers(L),
+                          content_type(L),
+                          body(L),
+                          field(L),
+                          term(L))
+     end || L <- [arabic, japanese, hebrew]].
+
+field(arabic) ->
+    "arabic_s";
+field(japanese) ->
+    "text_ja";
+field(hebrew) ->
+    "text".
+
+content_type(arabic) ->
+    "text/plain; charset=ISO-8859-6";
+content_type(japanese) ->
+    "application/json";
+content_type(hebrew) ->
+    "text/plain; charset=ISO-8859-8".
+%% content_type(_) ->
+%%     "text/plain".
+
+headers(arabic) ->
+    [{"Content-Type", "text/plain"},
+     {"x-riak-meta-yz-tags", "x-riak-meta-arabic_s"},
+     {"x-riak-meta-arabic_s", <<"أقرأ"/utf8>>}];
+headers(_) ->
+    [].
+
+type(arabic) ->
+    <<"نوع">>;
+type(japanese) ->
+    <<"タイプ">>;
+type(hebrew) ->
+    <<"סוג">>.
+
+bucket(arabic) ->
+    <<"دلو">>;
+bucket(japanese) ->
+    <<"バケット">>;
+bucket(hebrew) ->
+    <<"דלי">>.
+
+key(arabic) ->
+    <<"مفتاح">>;
+key(japanese) ->
+    <<"キー">>;
+key(hebrew) ->
+    <<"קָלִיד">>.
+
+body(arabic) ->
+    <<"أردت أن أقرأ كتابا عن تاريخ المرأة في فرنسا"/utf8>>;
+body(japanese) ->
+    <<"{\"text_ja\" : \"私はハイビスカスを食べるのが 大好き\"}"/utf8>>;
+body(hebrew) ->
+    <<"א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ"/utf8>>.
+
+term(arabic) ->
+    "أقرأ";
+term(japanese) ->
+    "大好き";
+term(hebrew) ->
+    "בָּרָא".
