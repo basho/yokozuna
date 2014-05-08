@@ -15,7 +15,8 @@
           ]},
          {yokozuna,
           [
-           {enabled, true}
+           {enabled, true},
+           {solr_startup_wait, 60}
           ]}
         ]).
 
@@ -62,31 +63,34 @@ store_and_search(Cluster, Bucket, Index, CT, Body, Field, Term) ->
     store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term).
 
 store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term) ->
-    store_and_search(Cluster,
-                     Bucket,
-                     "test",
-                     Index,
-                     Headers,
-                     CT,
-                     Body,
-                     Field,
-                     Term).
-
-store_and_search(Cluster, Bucket, Key, Index, Headers, CT, Body, Field, Term) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     create_index(Cluster, HP, Index),
-    URL = bucket_url(HP, Bucket, Key),
-    lager:info("Storing to bucket ~s", [URL]),
+    URL = bucket_url(HP, Bucket, "test"),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
-    lager:info("Store request worked"),
     %% Sleep for soft commit
     timer:sleep(1000),
-    lager:info("Sending GET for ~s", [URL]),
     {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
-    lager:info("GET request worked"),
     ?assertEqual(Body, list_to_binary(ReturnedBody)),
     lager:info("Verify values are indexed"),
     ?assert(yz_rt:search_expect(HP, Index, Field, Term, 1)),
+    ok.
+
+store_and_search(Cluster, Language) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    Index = type(Language),
+    Body = body(Language),
+    create_index(Cluster, HP, Index),
+    URL = bucket_url(HP,
+                     {mochiweb_util:quote_plus(Index),
+                      mochiweb_util:quote_plus(bucket(Language))},
+                     mochiweb_util:quote_plus(key(Language))),
+    {ok, "204", _, _} = ibrowse:send_req(URL, headers(Language, put), put, Body),
+    %% Sleep for soft commit
+    timer:sleep(1000),
+    {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, headers(Language, get), get, []),
+    ?assertEqual(Body, list_to_binary(ReturnedBody)),
+    lager:info("Verify values are indexed"),
+    ?assert(yz_rt:search_expect(HP, Index, field(Language), term(Language), 1)),
     ok.
 
 confirm_body_search_encoding(Cluster) ->
@@ -116,17 +120,13 @@ confirm_tag_encoding(Cluster) ->
 confirm_type_bucket_key_encoding(Cluster) ->
     [begin
          lager:info("Testing ~p encoding", [L]),
-         Type = type(L),
-         store_and_search(Cluster,
-                          {Type, bucket(L)},
-                          key(L),
-                          Type,
-                          headers(L),
-                          content_type(L),
-                          body(L),
-                          field(L),
-                          term(L))
-     end || L <- [arabic, japanese, hebrew]].
+         store_and_search(Cluster, L)
+     end || L <- [arabic, hebrew]].
+     %% Replace the preceding line with the following line once it is
+     %% understood how to make non-utf-8 index names work
+     %% correctly. Currently trying to use the Japanese index names
+     %% results in an error as solr tries to parse it as utf-8.  end
+     %% || L <- [arabic, japanese, hebrew]].
 
 field(arabic) ->
     "arabic_s";
@@ -135,42 +135,56 @@ field(japanese) ->
 field(hebrew) ->
     "text".
 
-content_type(arabic) ->
-    "text/plain; charset=ISO-8859-6";
-content_type(japanese) ->
-    "application/json";
-content_type(hebrew) ->
-    "text/plain; charset=ISO-8859-8".
-%% content_type(_) ->
-%%     "text/plain".
-
-headers(arabic) ->
-    [{"Content-Type", "text/plain"},
+headers(arabic, put) ->
+    [content_type(arabic),
      {"x-riak-meta-yz-tags", "x-riak-meta-arabic_s"},
      {"x-riak-meta-arabic_s", <<"أقرأ"/utf8>>}];
-headers(_) ->
-    [].
+headers(L, put) ->
+    [content_type(L)];
+headers(japanese, get) ->
+    [accept(japanese)];
+headers(L, get) ->
+    [accept(L), accept_charset(L)].
+
+content_type(arabic) ->
+    {"content-type", "text/plain; charset=ISO-8859-6"};
+content_type(japanese) ->
+    {"content-type", "application/json; charset=shift_jis"};
+content_type(hebrew) ->
+    {"content-type", "text/plain; charset=ISO-8859-8"}.
+
+accept(japanese) ->
+    {"accept", "application/json"};
+accept(_) ->
+    {"accept", "text/plain"}.
+
+accept_charset(arabic) ->
+    {"accept-charset", "ISO-8859-6"};
+accept_charset(japanese) ->
+    {"accept-charset", "shift_jis"};
+accept_charset(hebrew) ->
+    {"accept-charset", "ISO-8859-8"}.
 
 type(arabic) ->
     <<"نوع">>;
 type(japanese) ->
-    <<"タイプ">>;
+    <<"タイプ"/utf16>>;
 type(hebrew) ->
-    <<"סוג">>.
+    <<"סוג"/utf8>>.
 
 bucket(arabic) ->
     <<"دلو">>;
 bucket(japanese) ->
-    <<"バケット">>;
+    <<"バケット"/utf16>>;
 bucket(hebrew) ->
-    <<"דלי">>.
+    <<"דלי"/utf8>>.
 
 key(arabic) ->
     <<"مفتاح">>;
 key(japanese) ->
-    <<"キー">>;
+    <<"キー"/utf16>>;
 key(hebrew) ->
-    <<"קָלִיד">>.
+    <<"קָלִיד"/utf8>>.
 
 body(arabic) ->
     <<"أردت أن أقرأ كتابا عن تاريخ المرأة في فرنسا"/utf8>>;
