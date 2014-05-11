@@ -28,10 +28,15 @@
                        {delete_instance, deleteInstanceDir}]).
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit,n}]).
--define(DEFAULT_URL, "http://localhost:8983/solr").
--define(DEFAULT_VCLOCK_N, 1000).
--define(QUERY(Str), {struct, [{'query', Str}]}).
+-define(QUERY(Bin), {struct, [{'query', Bin}]}).
 -define(SOLR_TIMEOUT, 60000).
+
+-type delete_op() :: {id, binary()}
+                   | {key, binary()}
+                   | {siblings, binary()}
+                   | {'query', binary()}.
+
+-export_type([delete_op/0]).
 
 %% @doc This module provides the interface for making calls to Solr.
 %%      All interaction with Solr should go through this API.
@@ -105,6 +110,17 @@ cores() ->
     end.
 
 %% @doc Perform the delete `Ops' against the `Index'.
+%%
+%% There are several types of delete operations.
+%%
+%%   `{id, Id :: binary()}' - Delete the doc with matching unique id.
+%%
+%%   `{key, RK :: binary()}' - Delete the doc(s) with matching Riak Key.
+%%
+%%   `{siblings, RK :: binary()}' - Delete the doc(s) which are
+%%       siblings of the Riak Key.
+%%
+%%   `{'query', Q :: binary}' - Delete the doc(s) matching query `Q'.
 -spec delete(index_name(), [delete_op()]) -> ok | {error, term()}.
 delete(Index, Ops) ->
     JSON = mochijson2:encode({struct, [{delete, encode_delete(Op)} || Op <- Ops]}),
@@ -331,13 +347,15 @@ encode_commit() ->
 %% @private
 %%
 %% @doc Encode a delete operation into a mochijson2 compatiable term.
--spec encode_delete(delete_op()) -> term().
+-spec encode_delete(delete_op()) -> {struct, [{atom(), binary()}]}.
 encode_delete({key,Key}) ->
-    Query = ?YZ_RK_FIELD_S ++ ":\"" ++ ibrowse_lib:url_encode(binary_to_list(Key)) ++ "\"",
-    ?QUERY(list_to_binary(Query));
+    EscapedKey = escape_special_chars(Key),
+    Query = <<"_query_:\"{!term f=",?YZ_RK_FIELD_B/binary,"}",EscapedKey/binary,"\"">>,
+    ?QUERY(Query);
 encode_delete({siblings,Key}) ->
-    Query = ?YZ_RK_FIELD_S ++ ":\"" ++ ibrowse_lib:url_encode(binary_to_list(Key)) ++ "\" AND " ++ ?YZ_VTAG_FIELD_S ++ ":[* TO *]",
-    ?QUERY(list_to_binary(Query));
+    EscapedKey = escape_special_chars(Key),
+    Query = <<?YZ_VTAG_FIELD_B/binary,":[* TO *] AND _query_:\"{!term f=",?YZ_RK_FIELD_B/binary,"}",EscapedKey/binary,"\"">>,
+    ?QUERY(Query);
 encode_delete({'query', Query}) ->
     ?QUERY(Query);
 encode_delete({id, Id}) ->
@@ -353,6 +371,15 @@ encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};
 encode_field({Name,Value}) ->
     {Name, Value}.
+
+%% @private
+%%
+%% @doc Escape the backslash and double quote chars to prevent from
+%% being improperly interpreted by Solr's query parser.
+-spec escape_special_chars(binary()) ->binary().
+escape_special_chars(Bin) ->
+    Bin2 = binary:replace(Bin, <<"\\">>, <<"\\\\">>, [global]),
+    binary:replace(Bin2, <<"\"">>, <<"\\\"">>, [global]).
 
 %% @doc Get the continuation value if there is one.
 get_continuation(false, _R) ->

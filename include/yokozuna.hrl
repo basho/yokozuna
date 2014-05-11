@@ -89,11 +89,6 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
--type delete_op() :: {id, binary()}
-                   | {key, binary()}
-                   | {siblings, binary()}
-                   | {'query', binary()}.
-
 %% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is
 %%      disabled in a live, production cluster in order to isolate
