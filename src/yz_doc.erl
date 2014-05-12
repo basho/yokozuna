@@ -82,8 +82,8 @@ make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
      {?YZ_RB_FIELD, yz_kv:bucket_name(Bucket)}];
 
 make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
-    make_fields({DocId, BKey, FPN, Partition, none, EntropyData}) ++
-      [{?YZ_VTAG_FIELD, Vtag}].
+    Fields = make_fields({DocId, BKey, FPN, Partition, none, EntropyData}),
+    [{?YZ_VTAG_FIELD, Vtag}|Fields].
 
 %% @doc If this is a sibling, return its binary vtag
 get_vtag(O, MD) ->

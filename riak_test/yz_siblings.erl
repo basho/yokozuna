@@ -1,8 +1,7 @@
 %% @doc Ensure that sibling creations/searching workds.
 -module(yz_siblings).
 -compile(export_all).
--import(yz_rt, [host_entries/1,
-                run_bb/2, search_expect/5,
+-import(yz_rt, [run_bb/2, search_expect/5,
                 select_random/1, verify_count/2,
                 write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
@@ -19,22 +18,30 @@ confirm() ->
     ok = test_siblings(Cluster),
     pass.
 
+%% The crazy looking key verifies that keys may contain characters
+%% that are considered special in the Lucene query syntax.  It also
+%% contains a non-latin character for good measure.
+%%
+%% @see http://lucene.apache.org/core/2_9_4/queryparsersyntax.html#Escaping%20Special%20Characters
 test_siblings(Cluster) ->
     Index = <<"siblings">>,
     Bucket = {Index, <<"b1">>},
-    HP = hd(host_entries(rt:connection_info(Cluster))),
+    EncKey = mochiweb_util:quote_plus("test/λ/sibs{123}+-\\&&||!()[]^\"~*?:\\"),
+    HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
     create_index(Cluster, HP, Index),
     ok = allow_mult(Cluster, Index),
-    ok = write_sibs(HP, Bucket),
+    ok = write_sibs(HP, Bucket, EncKey),
     %% Verify 10 times because of non-determinism in coverage
     [ok = verify_sibs(HP, Index) || _ <- lists:seq(1,10)],
-    ok = reconcile_sibs(HP, Bucket),
+    ok = reconcile_sibs(HP, Bucket, EncKey),
     [ok = verify_reconcile(HP, Index) || _ <- lists:seq(1,10)],
+    ok = delete_key(HP, Bucket, EncKey),
+    [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
     ok.
 
-write_sibs({Host, Port}, Bucket) ->
+write_sibs({Host, Port}, Bucket, EncKey) ->
     lager:info("Write siblings"),
-    URL = bucket_url({Host, Port}, Bucket, "test"),
+    URL = bucket_url({Host, Port}, Bucket, EncKey),
     Opts = [],
     Headers = [{"content-type", "text/plain"}],
     Body1 = <<"This is value alpha">>,
@@ -49,22 +56,37 @@ write_sibs({Host, Port}, Bucket) ->
 
 verify_sibs(HP, Index) ->
     lager:info("Verify siblings are indexed"),
-    true = yz_rt:search_expect(HP, Index, "_yz_rk", "test", 4),
+    true = yz_rt:search_expect(HP, Index, "_yz_rk", "test*", 4),
     Values = ["alpha", "beta", "charlie", "delta"],
     [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
     ok.
 
-reconcile_sibs(HP, Bucket) ->
+reconcile_sibs(HP, Bucket, EncKey) ->
     lager:info("Reconcile the siblings"),
-    {VClock, _} = http_get(HP, Bucket, "test"),
+    {VClock, _} = http_get(HP, Bucket, EncKey),
     NewValue = <<"This is value alpha, beta, charlie, and delta">>,
-    ok = http_put(HP, Bucket, "test", VClock, NewValue),
+    ok = http_put(HP, Bucket, EncKey, VClock, NewValue),
     timer:sleep(1100),
+    ok.
+
+delete_key(HP, Bucket, EncKey) ->
+    lager:info("Delete the key"),
+    URL = bucket_url(HP, Bucket, EncKey),
+    {ok, "200", RH, _} = ibrowse:send_req(URL, [], get, [], []),
+    VClock = proplists:get_value("X-Riak-Vclock", RH),
+    Headers = [{"x-riak-vclock", VClock}],
+    {ok, "204", _, _} = ibrowse:send_req(URL, Headers, delete, [], []),
+    %% Wait for Riak delete timeout + Solr soft-commit
+    timer:sleep(4100),
+    ok.
+
+verify_deleted(HP, Index) ->
+    true = yz_rt:search_expect(HP, Index, "_yz_rk", "test*", 0),
     ok.
 
 verify_reconcile(HP, Index) ->
     lager:info("Verify sibling indexes were deleted after reconcile"),
-    true = yz_rt:search_expect(HP, Index, "_yz_rk", "test", 1),
+    true = yz_rt:search_expect(HP, Index, "_yz_rk", "test*", 1),
     ok.
 
 http_put({Host, Port}, {BType, BName}, Key, VClock, Value) ->
