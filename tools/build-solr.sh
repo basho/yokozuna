@@ -33,6 +33,15 @@ apply_patches()
     fi
 }
 
+download()
+{
+    if which wget > /dev/null; then
+        wget --no-check-certificate --progress=dot:mega $1
+    elif which curl > /dev/null; then
+        curl --insecure --progress-bar -O $1
+    fi
+}
+
 IS_GIT=0
 PATCH_DIR=""
 while test $# -gt 0
@@ -97,10 +106,8 @@ else
     SOLR_FILE=$(basename $URL)
     SOLR_DIR=${SOLR_FILE%-src.tgz}
 
-    if which wget > /dev/null && test ! -e $SOLR_FILE; then
-        wget $URL
-    elif which curl > /dev/null && test ! -e $SOLR_FILE; then
-        curl -O $URL
+    if test ! -e $SOLR_FILE; then
+        download $URL
     fi
 
     if test ! -e $SOLR_DIR; then
