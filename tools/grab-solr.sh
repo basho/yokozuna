@@ -32,6 +32,15 @@ check_for_solr()
     test -e $SOLR_DIR/start.jar
 }
 
+download()
+{
+    if which wget > /dev/null; then
+        wget --no-check-certificate --progress=dot:mega $1
+    elif which curl > /dev/null; then
+        curl --insecure --progress-bar -O $1
+    fi
+}
+
 get_solr()
 {
         if [[ -z ${SOLR_PKG_DIR+x} ]]
@@ -41,7 +50,7 @@ get_solr()
                 ln -s $TMP_FILE $FILENAME
             else
                 echo "Pulling Solr from S3"
-                wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/solr/$FILENAME
+                download "http://s3.amazonaws.com/files.basho.com/solr/$FILENAME"
                 if [ -d $TMP_DIR ]; then
                     cp $FILENAME $TMP_DIR
                 else
@@ -110,7 +119,7 @@ then
     fi
 
     echo "Downloading $YZ_JAR_NAME"
-    wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/yokozuna/$YZ_JAR_NAME
+    download "http://s3.amazonaws.com/files.basho.com/yokozuna/$YZ_JAR_NAME"
     mv $YZ_JAR_NAME $JAVA_LIB/$YZ_JAR_NAME
 fi
 
@@ -121,6 +130,6 @@ MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
 if [ ! -e $EXT_LIB/$MON_JAR_NAME ]
 then
     echo "Downloading $MON_JAR_NAME"
-    wget --no-check-certificate --progress=dot:mega http://s3.amazonaws.com/files.basho.com/yokozuna/$MON_JAR_NAME
+    download "http://s3.amazonaws.com/files.basho.com/yokozuna/$MON_JAR_NAME"
     mv $MON_JAR_NAME $EXT_LIB/$MON_JAR_NAME
 fi
