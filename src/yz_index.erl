@@ -262,7 +262,8 @@ schema_name(Info) ->
 %%      UTF-8 support is available
 -spec verify_name(index_name()) -> {ok, index_name()} | {error, invalid_name}.
 verify_name(Name) ->
-    case lists:dropwhile(fun(X) -> X < 128 end, Name) =:= "" of
+    case lists:dropwhile(fun(X) -> X < 128 end,
+                         binary_to_list(Name)) =:= "" of
         true ->
             case re:run(Name, "/", []) of
                 nomatch ->   {ok, Name};
