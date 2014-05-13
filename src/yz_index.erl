@@ -258,12 +258,18 @@ schema_name(Info) ->
     Info#index_info.schema_name.
 
 %% @doc Verify that the index is a name that Solr can use. Some chars
-%%      are invalid, namely "/".
+%%      are invalid, namely "/" or non-ascii characters until full
+%%      UTF-8 support is available
 -spec verify_name(index_name()) -> {ok, index_name()} | {error, invalid_name}.
 verify_name(Name) ->
-    case re:run(Name, "/", []) of
-        nomatch ->   {ok, Name};
-        {match,_} -> {error, invalid_name}
+    case lists:dropwhile(fun(X) -> X < 128 end, Name) =:= "" of
+        true ->
+            case re:run(Name, "/", []) of
+                nomatch ->   {ok, Name};
+                {match,_} -> {error, invalid_name}
+            end;
+        false ->
+            {error, invalid_name}
     end.
 
 %%%===================================================================
