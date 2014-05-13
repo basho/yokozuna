@@ -11,24 +11,22 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(ROOT_CERT, "certs/selfsigned/ca/rootcert.pem").
--define(CFG(PrivDir),
+-define(CERT_FILE(CertDir, CertName), CertDir ++ "/" ++ CertName ++ "/cert.pem").
+-define(KEY_FILE(CertDir, CertName), CertDir ++ "/" ++ CertName ++ "/key.pem").
+-define(ROOT_CERT(CertDir), ?CERT_FILE(CertDir, "rootCA")).
+-define(CFG(PrivDir, CertDir),
         [{riak_core, [
            {ring_creation_size, 16},
            {default_bucket_props, [{allow_mult, true}]},
            {ssl, [
-             {certfile, filename:join([PrivDir,
-                                       "certs/selfsigned/site3-cert.pem"])},
-             {keyfile, filename:join([PrivDir,
-                                       "certs/selfsigned/site3-key.pem"])}
-              ]}
+             {certfile, ?CERT_FILE(CertDir, "site3.basho.com")},
+             {keyfile, ?KEY_FILE(CertDir, "site3.basho.com")}
+           ]}
           ]},
          {riak_api, [
-             {certfile, filename:join([PrivDir,
-                                       "certs/selfsigned/site3-cert.pem"])},
-             {keyfile, filename:join([PrivDir,
-                                       "certs/selfsigned/site3-key.pem"])},
-             {cacertfile, filename:join([PrivDir, ?ROOT_CERT])}
+             {certfile, ?CERT_FILE(CertDir, "site3.basho.com")},
+             {keyfile, ?KEY_FILE(CertDir, "site3.basho.com")},
+             {cacertfile, ?ROOT_CERT(CertDir)}
           ]},
          {yokozuna, [
            {enabled, true}
@@ -71,7 +69,10 @@ confirm() ->
     application:start(ibrowse),
     PrivDir = rt_priv_dir(),
     lager:info("r_t priv: ~p", [PrivDir]),
-    Cluster = build_cluster(1, ?CFG(PrivDir)),
+    CertDir = get_cert_dir(),
+    make_certs:rootCA(CertDir, "rootCA"),
+    make_certs:endusers(CertDir, "rootCA", ["site3.basho.com"]),
+    Cluster = build_cluster(1, ?CFG(PrivDir, CertDir)),
     Node = hd(Cluster),
     %% enable security on the cluster
     ok = rpc:call(Node, riak_core_console, security_enable, [[]]),
@@ -97,8 +98,11 @@ enable_https(Node) ->
     rt:update_app_config(Node, [{riak_api, [{https, [{Host, Port+1000}]}]}]),
     ok.
 
+get_cert_dir() ->
+    rt_config:get(rt_scratch_dir) ++ "/certs".
+
 get_secure_pid(Host, Port) ->
-    Cacertfile = filename:join([rt_priv_dir(), ?ROOT_CERT]),
+    Cacertfile = ?ROOT_CERT(get_cert_dir()),
     {ok, Pid} = riakc_pb_socket:start(Host, Port,
                                       [{credentials, ?USER, ?PASSWORD},
                                        {cacertfile, Cacertfile}]),
@@ -227,7 +231,7 @@ confirm_index_https(Node) ->
     {Host, Port} = proplists:get_value(https, connection_info(Node)),
 
     lager:info("verifying the peer certificate should work if the cert is valid"),
-    Cacertfile = filename:join([rt_priv_dir(), ?ROOT_CERT]),
+    Cacertfile = ?ROOT_CERT(get_cert_dir()),
     lager:info("Cacertfile: ~p", [Cacertfile]),
     Opts = [{is_ssl, true}, {ssl_options, [
              {cacertfile, Cacertfile},
