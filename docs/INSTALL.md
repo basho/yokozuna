@@ -71,6 +71,11 @@ Download using wget.
     wget http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz
     wget http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz.sha1
 
+Download using curl.
+
+    curl -O http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz
+    curl -O http://s3.amazonaws.com/files.basho.com/yokozuna/pkgs/riak-yokozuna-0.14.0-src.tar.gz.sha1
+
 Verify the sha1 (might need to use `sha1sum`).
 
     shasum -a1 -c riak-yokozuna-0.14.0-src.tar.gz.sha1 riak-yokozuna-0.14.0-src.tar.gz
