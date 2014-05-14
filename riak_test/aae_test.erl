@@ -20,69 +20,75 @@
           ]},
          {yokozuna,
           [
-	   {enabled, true},
+           {enabled, true},
            {anti_entropy_tick, 1000}
           ]}
         ]).
 
 
 confirm() ->
-    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    random:seed(now()),
-    Cluster = rt:build_cluster(4, ?CFG),
-    PBConns = yz_rt:open_pb_conns(Cluster),
-    PBConn = yz_rt:select_random(PBConns),
-    setup_index(Cluster, PBConn, YZBenchDir),
-    {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
-    lager:info("Verify data was indexed"),
-    verify_num_match(Cluster, ?NUM_KEYS),
-    %% Wait for a full round of exchange and then get total repair
-    %% count.  Need to do this because setting AAE so agressive means
-    %% that the Solr soft-commit could race with AAE and thus repair
-    %% may happen while loading the data.  By getting the count before
-    %% deleting keys it can be subtracted from the total count later
-    %% to verify that the exact number of repairs was made given the
-    %% number of keys deleted.
-    TS1 = erlang:now(),
-    yz_rt:wait_for_full_exchange_round(Cluster, TS1),
-    RepairCountBefore = get_cluster_repair_count(Cluster),
-    yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-    Keys = yz_rt:random_keys(?NUM_KEYS),
-    {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
-    lager:info("Deleting ~p keys", [length(DelKeys)]),
-    [delete_key_in_solr(Cluster, ?INDEX, K) || K <- DelKeys],
-    lager:info("Verify Solr indexes missing"),
-    verify_num_match(Cluster, ?NUM_KEYS - length(DelKeys)),
-    lager:info("Clear trees so AAE will notice missing indexes"),
-    [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster],
-    lager:info("Wait for all trees to re-build"),
-    %% Before exchange of a partition can take place the KV and
-    %% Yokozuna hashtree must be built.  Wait for all trees before
-    %% checking that Solr indexes are repaired.
-    TS2 = erlang:now(),
-    yz_rt:wait_for_full_exchange_round(Cluster, TS2),
-    lager:info("Verify AAE repairs missing Solr documents"),
-    verify_num_match(Cluster, ?NUM_KEYS),
-    %% Multiply by 3 because of N value
-    ExpectedNumRepairs = length(DelKeys) * 3,
-    lager:info("Verify repair count = ~p", [ExpectedNumRepairs]),
-    verify_repair_count(Cluster, RepairCountBefore + ExpectedNumRepairs),
-    yz_rt:stop_tracing(),
-    Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
-    ?assertEqual(ExpectedNumRepairs, Count),
+    case yz_rt:bb_driver_setup() of
+        {ok, YZBenchDir} ->
+            random:seed(now()),
+            Cluster = rt:build_cluster(4, ?CFG),
+            PBConns = yz_rt:open_pb_conns(Cluster),
+            PBConn = yz_rt:select_random(PBConns),
+            setup_index(Cluster, PBConn, YZBenchDir),
+            {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
+            lager:info("Verify data was indexed"),
+            verify_num_match(Cluster, ?NUM_KEYS),
+            %% Wait for a full round of exchange and then get total repair
+            %% count.  Need to do this because setting AAE so agressive means
+            %% that the Solr soft-commit could race with AAE and thus repair
+            %% may happen while loading the data.  By getting the count before
+            %% deleting keys it can be subtracted from the total count later
+            %% to verify that the exact number of repairs was made given the
+            %% number of keys deleted.
+            TS1 = erlang:now(),
+            yz_rt:wait_for_full_exchange_round(Cluster, TS1),
+            RepairCountBefore = get_cluster_repair_count(Cluster),
+            yz_rt:count_calls(Cluster, ?REPAIR_MFA),
+            Keys = yz_rt:random_keys(?NUM_KEYS),
+            {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
+            lager:info("Deleting ~p keys", [length(DelKeys)]),
+            [delete_key_in_solr(Cluster, ?INDEX, K) || K <- DelKeys],
+            lager:info("Verify Solr indexes missing"),
+            verify_num_match(Cluster, ?NUM_KEYS - length(DelKeys)),
+            lager:info("Clear trees so AAE will notice missing indexes"),
+            [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster],
+            lager:info("Wait for all trees to re-build"),
+            %% Before exchange of a partition can take place the KV and
+            %% Yokozuna hashtree must be built.  Wait for all trees before
+            %% checking that Solr indexes are repaired.
+            TS2 = erlang:now(),
+            yz_rt:wait_for_full_exchange_round(Cluster, TS2),
+            lager:info("Verify AAE repairs missing Solr documents"),
+            verify_num_match(Cluster, ?NUM_KEYS),
+            %% Multiply by 3 because of N value
+            ExpectedNumRepairs = length(DelKeys) * 3,
+            lager:info("Verify repair count = ~p", [ExpectedNumRepairs]),
+            verify_repair_count(Cluster, RepairCountBefore + ExpectedNumRepairs),
+            yz_rt:stop_tracing(),
+            Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
+            ?assertEqual(ExpectedNumRepairs, Count),
 
-    _ = verify_removal_of_orphan_postings(Cluster),
+            _ = verify_removal_of_orphan_postings(Cluster),
 
-    verify_no_indefinite_repair(Cluster),
+            verify_no_indefinite_repair(Cluster),
 
-    _ = verify_no_repair_for_non_indexed_data(Cluster, PBConns),
-    yz_rt:close_pb_conns(PBConns),
+            _ = verify_no_repair_for_non_indexed_data(Cluster, PBConns),
+            yz_rt:close_pb_conns(PBConns),
 
-    _ = verify_no_repair_after_restart(Cluster),
+            _ = verify_no_repair_after_restart(Cluster),
 
-    _ = verify_exchange_after_expire(Cluster),
+            _ = verify_exchange_after_expire(Cluster),
 
-    pass.
+            pass;
+        {error, bb_driver_build_failed} ->
+            lager:info("Failed to build the yokozuna basho_bench driver"
+                       " required for this test"),
+            fail
+    end.
 
 %% @doc Create a tuple containing a riak object and the first
 %% partition and owner for that object.

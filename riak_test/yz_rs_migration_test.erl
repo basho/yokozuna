@@ -61,65 +61,68 @@
 %% TODO: migration by re-index command
 confirm() ->
     lager:info("ticktime: ~p", [net_kernel:get_net_ticktime()]),
-    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    Cluster = rt:build_cluster(lists:duplicate(3, {previous, ?CFG})),
+    case yz_rt:bb_driver_setup() of
+        {ok, YZBenchDir} ->
+            lager:info("YZBenchDir: ~p", [YZBenchDir]),
+            Cluster = rt:build_cluster(lists:duplicate(3, {previous, ?CFG})),
 
-    create_index(Cluster, riak_search),
-    load_data(Cluster, YZBenchDir, 1000),
-    query_data(Cluster, YZBenchDir, 1000, 1, <<"value">>),
+            create_index(Cluster, riak_search),
+            load_data(Cluster, YZBenchDir, 1000),
+            query_data(Cluster, YZBenchDir, 1000, 1, <<"value">>),
 
-    %% In real scenarios the cluster will likely have incoming index
-    %% and search operations during upgrade.  I'm avoiding them in
-    %% this test because Riak Search can fail on search while in a
-    %% mixed-cluster.
-    rolling_upgrade(Cluster, current),
+            %% In real scenarios the cluster will likely have incoming index
+            %% and search operations during upgrade.  I'm avoiding them in
+            %% this test because Riak Search can fail on search while in a
+            %% mixed-cluster.
+            rolling_upgrade(Cluster, current),
 
-    load_data(Cluster, YZBenchDir, 5000),
-    query_data(Cluster, YZBenchDir, 5000, 1, <<"value">>),
+            load_data(Cluster, YZBenchDir, 5000),
+            query_data(Cluster, YZBenchDir, 5000, 1, <<"value">>),
 
-    check_for_errors(Cluster),
+            check_for_errors(Cluster),
 
-    create_index(Cluster, yokozuna),
-    yz_rt:set_index(hd(Cluster), ?FRUIT_BUCKET, ?FRUIT_BUCKET),
+            create_index(Cluster, yokozuna),
+            yz_rt:set_index(hd(Cluster), ?FRUIT_BUCKET, ?FRUIT_BUCKET),
 
-    clear_aae_trees(Cluster),
-    timer:sleep(2000),
+            clear_aae_trees(Cluster),
+            wait_for_aae(Cluster),
 
-    wait_for_aae(Cluster),
-    %% Sleep for auto-commit
-    timer:sleep(1100),
+            switch_to_yokozuna(Cluster),
+            query_data(Cluster, YZBenchDir, 5000, 1, <<"text">>),
 
-    switch_to_yokozuna(Cluster),
-    query_data(Cluster, YZBenchDir, 5000, 1, <<"text">>),
+            %% TODO: use BB to check PB
+            PB = create_pb_conn(hd(Cluster)),
+            {ok,{search_results,R,_Score,Found}} =
+                riakc_pb_socket:search(PB, ?FRUIT_BUCKET, <<"text:apple">>),
+            lager:info("PB R: ~p", [R]),
+            ?assertEqual(5000, Found),
+            close_pb_conn(PB),
 
-    %% TODO: use BB to check PB
-    PB = create_pb_conn(hd(Cluster)),
-    {ok,{search_results,R,_Score,Found}} =
-        riakc_pb_socket:search(PB, ?FRUIT_BUCKET, <<"text:apple">>),
-    lager:info("PB R: ~p", [R]),
-    ?assertEqual(5000, Found),
-    close_pb_conn(PB),
+            set_search_false(Cluster, ?FRUIT_BUCKET),
+            disable_riak_search(),
+            stop_riak_search(Cluster),
+            check_for_errors(Cluster),
 
-    set_search_false(Cluster, ?FRUIT_BUCKET),
-    disable_riak_search(),
-    stop_riak_search(Cluster),
-    check_for_errors(Cluster),
+            %% TODO: need to verify that `riak_core:register' stuff is undone,
+            %%
+            %% need to make sure `riak_search' service is marked as down
+            remove_mi_data(Cluster),
+            %% TODO: what about removing the proxy objects under _rsid_<bucket>?
 
-    %% TODO: need to verify that `riak_core:register' stuff is undone,
-    %%
-    %% need to make sure `riak_search' service is marked as down
-    remove_mi_data(Cluster),
-    %% TODO: what about removing the proxy objects under _rsid_<bucket>?
+            lager:info("Verify missing merge_index dirs don't hurt anything"),
+            restart(Cluster),
+            check_for_errors(Cluster),
 
-    lager:info("Verify missing merge_index dirs don't hurt anything"),
-    restart(Cluster),
-    check_for_errors(Cluster),
+            load_data(Cluster, YZBenchDir, 10000),
+            query_data(Cluster, YZBenchDir, 10000, 1, <<"text">>),
+            check_for_errors(Cluster),
 
-    load_data(Cluster, YZBenchDir, 10000),
-    query_data(Cluster, YZBenchDir, 10000, 1, <<"text">>),
-    check_for_errors(Cluster),
-
-    pass.
+            pass;
+        {error, bb_driver_build_failed} ->
+            lager:info("Failed to build the yokozuna basho_bench driver"
+                       " required for this test"),
+            fail
+    end.
 
 clear_aae_trees(Cluster) ->
     lager:info("Clearing AAE trees across cluster"),
@@ -195,10 +198,10 @@ create_index([Node1|_]=Cluster, riak_search) ->
                 lager:info("Verify Riak Search index ~p [~p]", [?FRUIT_BUCKET, Node]),
                 PB = create_pb_conn(Node),
                 PBEnabled = pb_get_bucket_prop(PB, ?FRUIT_BUCKET, search, false),
-		close_pb_conn(PB),
+                close_pb_conn(PB),
                 Http = yz_rt:riak_http(element(2, hd(rt:connection_info([Node])))),
                 HTTPEnabled = http_get_bucket_prop(Http, ?FRUIT_BUCKET, <<"search">>, false),
-		PBEnabled or HTTPEnabled
+                PBEnabled or HTTPEnabled
         end,
     yz_rt:wait_until(Cluster, F);
 create_index(Cluster, yokozuna) ->
@@ -261,7 +264,7 @@ rolling_upgrade(Cluster, Vsn) ->
     SolrPorts = lists:seq(11000, 11000 + length(Cluster) - 1),
     Cluster2 = lists:zip(SolrPorts, Cluster),
     [begin
-	 Cfg = [{riak_kv, [{anti_entropy, {on, [debug]}},
+         Cfg = [{riak_kv, [{anti_entropy, {on, [debug]}},
                            {anti_entropy_concurrency, 12},
                            {anti_entropy_build_limit, {6,500}}
                           ]},
@@ -270,10 +273,9 @@ rolling_upgrade(Cluster, Vsn) ->
                             {anti_entropy_build_limit, {6,500}},
                             {anti_entropy_tick, 1000},
                             {enabled, true},
-			    {solr_port, SolrPort}]}],
-	 rt:upgrade(Node, Vsn, Cfg),
-	 rt:wait_for_service(Node, riak_kv),
-	 rt:wait_for_service(Node, riak_search),
-	 rt:wait_for_service(Node, yokozuna)
+                            {solr_port, SolrPort}]}],
+         rt:upgrade(Node, Vsn, Cfg),
+         rt:wait_for_service(Node, riak_kv),
+         rt:wait_for_service(Node, riak_search),
+         rt:wait_for_service(Node, yokozuna)
      end || {SolrPort, Node} <- Cluster2].
-
