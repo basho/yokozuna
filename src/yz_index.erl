@@ -56,7 +56,7 @@ create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
 
 %% @see create/3
--spec create(index_name(), schema_name()) -> 
+-spec create(index_name(), schema_name()) ->
                     ok |
                     {error, schema_not_found} |
                     {error, invalid_name}.
@@ -262,7 +262,7 @@ schema_name(Info) ->
 %%      UTF-8 support is available
 -spec verify_name(index_name()) -> {ok, index_name()} | {error, invalid_name}.
 verify_name(Name) ->
-    case lists:dropwhile(fun(X) -> X < 128 end,
+    case lists:dropwhile(fun(X) -> X < 128 andalso X > 31 end,
                          binary_to_list(Name)) =:= "" of
         true ->
             case re:run(Name, "/", []) of
