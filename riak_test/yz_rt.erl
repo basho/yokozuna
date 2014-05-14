@@ -173,11 +173,13 @@ open_pb_conns(Cluster) ->
          PBConn
      end || {_Node, CI} <- rt:connection_info(Cluster)].
 
+-spec random_keys(pos_integer()) -> [binary()].
 random_keys(MaxKey) ->
     random_keys(4 + random:uniform(100), MaxKey).
 
+-spec random_keys(pos_integer(), pos_integer()) -> [binary()].
 random_keys(Num, MaxKey) ->
-    lists:usort([integer_to_list(random:uniform(MaxKey))
+    lists:usort([?INT_TO_BIN(random:uniform(MaxKey))
                  || _ <- lists:seq(1, Num)]).
 
 -spec riak_http({node(), interfaces()} | interfaces()) -> {host(), portnum()}.
@@ -220,9 +222,18 @@ bb_driver_setup() ->
 -spec build_bb_driver(string(), string(), string()) -> boolean().
 build_bb_driver(SrcDir, BBDir, OutputDir) ->
     Files = ["yz_driver.erl", "yz_file_terms.erl"],
-    Options = [{i, BBDir  ++ "/../"}, {outdir, OutputDir}],
-    BuildRes = [compile:file(SrcDir ++ "/" ++ File, Options)  || File <- Files],
-    lists:all(fun(X) -> case X of {ok, _} -> true; _ -> false end end, BuildRes).
+    Options = [{i, BBDir  ++ "/../"}, {outdir, OutputDir}, debug_info,
+               return_errors, return_warnings,
+               {parse_transform, lager_transform}],
+    BuildRes = [case compile:file(SrcDir ++ "/" ++ File, Options) of
+                    {ok,_,_} ->
+                        true;
+                    Err ->
+                        lager:error("Error compiling file ~s ~p", [File, Err]),
+                        false
+                end
+                || File <- Files],
+    lists:all(fun(X) -> X end, BuildRes).
 
 clean_dir("/") ->
     lager:info("Sorry, this is a testing tool. Do your own dirty work!"),

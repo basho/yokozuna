@@ -20,6 +20,7 @@
 
 -module(yz_solr).
 -compile(export_all).
+-include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
 -define(CORE_ALIASES, [{index_dir, instanceDir},
@@ -32,8 +33,8 @@
 -define(SOLR_TIMEOUT, 60000).
 
 -type delete_op() :: {id, binary()}
-                   | {key, binary()}
-                   | {siblings, binary()}
+                   | {bkey, bkey()}
+                   | {siblings, bkey()}
                    | {'query', binary()}.
 
 -export_type([delete_op/0]).
@@ -115,9 +116,9 @@ cores() ->
 %%
 %%   `{id, Id :: binary()}' - Delete the doc with matching unique id.
 %%
-%%   `{key, RK :: binary()}' - Delete the doc(s) with matching Riak Key.
+%%   `{bkey, BK :: bkey()}' - Delete the doc(s) with matching Riak Key.
 %%
-%%   `{siblings, RK :: binary()}' - Delete the doc(s) which are
+%%   `{siblings, BK :: bkey()}' - Delete the doc(s) which are
 %%       siblings of the Riak Key.
 %%
 %%   `{'query', Q :: binary}' - Delete the doc(s) matching query `Q'.
@@ -348,14 +349,24 @@ encode_commit() ->
 %%
 %% @doc Encode a delete operation into a mochijson2 compatiable term.
 -spec encode_delete(delete_op()) -> {struct, [{atom(), binary()}]}.
-encode_delete({key,Key}) ->
-    EscapedKey = escape_special_chars(Key),
-    Query = <<"_query_:\"{!term f=",?YZ_RK_FIELD_B/binary,"}",EscapedKey/binary,"\"">>,
-    ?QUERY(Query);
-encode_delete({siblings,Key}) ->
-    EscapedKey = escape_special_chars(Key),
-    Query = <<?YZ_VTAG_FIELD_B/binary,":[* TO *] AND _query_:\"{!term f=",?YZ_RK_FIELD_B/binary,"}",EscapedKey/binary,"\"">>,
-    ?QUERY(Query);
+encode_delete({bkey,{{Type, Bucket},Key}}) ->
+    TypeQ = encode_nested_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
+    BucketQ = encode_nested_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
+    KeyQ = encode_nested_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
+    ?QUERY(<<TypeQ/binary," AND ",BucketQ/binary, " AND ",KeyQ/binary>>);
+encode_delete({bkey,{Bucket,Key}}) ->
+    %% Need to take legacy (pre 2.0.0) objects into account.
+    encode_delete({bkey,{{?DEFAULT_TYPE,Bucket},Key}});
+encode_delete({siblings,{{Type,Bucket},Key}}) ->
+    VTagQ = <<?YZ_VTAG_FIELD_B/binary,":[* TO *]">>,
+    TypeQ = encode_nested_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
+    BucketQ = encode_nested_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
+    KeyQ = encode_nested_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
+    ?QUERY(<<VTagQ/binary," AND ",TypeQ/binary," AND ",
+             BucketQ/binary," AND ",KeyQ/binary>>);
+encode_delete({siblings,{Bucket,Key}}) ->
+    %% Need to take legacy (pre 2.0.0) objects into account.
+    encode_delete({siblings,{{?DEFAULT_TYPE,Bucket},Key}});
 encode_delete({'query', Query}) ->
     ?QUERY(Query);
 encode_delete({id, Id}) ->
@@ -371,6 +382,14 @@ encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};
 encode_field({Name,Value}) ->
     {Name, Value}.
+
+%% @private
+%%
+%% @doc Encode a field and query into a Solr nested query using the
+%% term query parser.
+-spec encode_nested_query(binary(), binary()) -> binary().
+encode_nested_query(Field, Query) ->
+    <<"_query_:\"{!term f=",Field/binary,"}",Query/binary,"\"">>.
 
 %% @private
 %%
