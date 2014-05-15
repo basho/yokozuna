@@ -6,69 +6,54 @@ Testing
 Riak Test is a tool for running integration tests against a Riak
 cluster.  See the [Riak Test README][rt_readme] for more details.
 
-### Build a Riak/Yokozuna devrel
+Clone the riak_test repo with the following command:
 
-Make a directory to build the devrel.
+    git clone https://github.com/basho/riak_test
 
-    mkdir ~/testing
-    cd testing
+Follow the instructions in the [Riak Test README][rt_readme] to build
+a `devrel` release and set it up for testing with riak_test.
 
-The rest is like the [Yokozuna Getting Started][yz_gs] guide but
-checkout riak as `riak_yz`.  Don't start the cluster.  Just build the
-devrel.
+To successfully run all of the riak_test tests for yokozuna the
+basho_bench benchmarking tool is also required. Clone the basho_bench
+repo with the following command before running the tests:
 
-    git clone git://github.com/basho/riak.git riak_yz
-    cd riak_yz
-    make stagedevrel
+    git clone https://github.com/basho/basho_bench
 
-### Setup rtdev
+### Add Yokozuna Config
 
-This step will create `/tmp/rt` which is specifically setup for Riak
-Test.  It provides the ability to easily rollback the cluster to a
-fresh state.
+Open `~/.riak_test.config` and add the following to the configuration
+stanza to be used for yokozuna testing:
 
-    cd ~/testing
-    ./riak_yz/deps/riak_test/bin/rtdev-setup-releases.sh
+    {basho_bench, "<path-to-basho_bench-repo>"},
+    {yz_dir, "<path-to-yokozuna-repo>"},
 
-### Compile Yokozuna Riak Test
+This will result in a configuration stanza similar to the following:
+
+    {rtdev, [
+             {basho_bench, "<path-to-basho_bench-repo>"},
+             {yz_dir, "<path-to-yokozuna-repo>"},
+             {rt_project, "riak"},
+             {rt_harness, rtdev},
+             {rtdev_path, [{root,     "/home/you/rt/riak"},
+                           {current,  "/home/you/rt/riak/current"},
+                           {previous, "/home/you/rt/riak/riak-1.3.2"},
+                           {legacy,   "/home/you/rt/riak/riak-1.2.1"}
+                          ]}
+
+            ]}.
+
+### Compile Yokozuna Riak Test Files
 
     cd <path-to-yokozuna>
     make compile-riak-test
 
 At this point you should see `.beam` files in `riak_test/ebin`.
 
-### Compile Yokozuna Bench Files
-
-    cd <path-to-yokozuna>/misc/bench
-    ../../rebar get-deps
-    ../../rebar compile
-    (cd deps/basho_bench && make)
-
-### Add Yokozuna Config
-
-Open `~/.riak_test.config` and add the following to the end.
-
-
-    {yokozuna, [
-                {rt_project, "yokozuna"},
-                {rt_deps, ["<path-to-testing-dir>/riak_yz/deps"]},
-                {yz_dir, ["<path-to-testing-dir>/riak_yz/deps/yokozuna"]},
-                {rtdev_path, [{root, "/tmp/rt"},
-                              {current, "/tmp/rt/riak_yz"}]}
-               ]}.
-
 ### Run the Test
-
-The `YZ_BENCH_DIR` is needed so Riak Test can find the files to drive
-Basho Bench.
-
-    export YZ_BENCH_DIR=<path/to/yokozuna/home>/misc/bench
 
 Finally, run the test.
 
-    cd <path-to-yokozuna>
-    <path-to-riak-test>/riak_test -c yokozuna -d riak_test/ebin | tee rt.out
+    cd <path-to-riak_test-repo>
+    ./riak_test -c rtdev -d <path-to-yokozuna-repo>/riak_test/ebin/ | tee rt.out
 
 [rt_readme]: https://github.com/basho/riak_test/blob/master/README.md
-
-[yz_gs]: https://github.com/rzezeski/yokozuna#getting-started

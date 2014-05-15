@@ -43,7 +43,7 @@
           ]},
          {yokozuna,
           [
-	   {enabled, true},
+          {enabled, true},
 
            %% Perform a full check every second so that non-owned
            %% postings are deleted promptly. This makes sure that
@@ -54,33 +54,38 @@
         ]).
 
 confirm() ->
-    YZBenchDir = rt_config:get(yz_dir) ++ "/misc/bench",
-    code:add_path(filename:join([YZBenchDir, "ebin"])),
-    random:seed(now()),
-    Nodes = rt:deploy_nodes(4, ?CFG),
-    Cluster = join(Nodes, 2),
-    PBConns = yz_rt:open_pb_conns(Cluster),
-    wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    setup_indexing(Cluster, PBConns, YZBenchDir),
-    verify_non_existent_index(Cluster, <<"froot">>),
-    {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
-    %% wait for soft-commit
-    timer:sleep(1000),
-    Ref = async_query(Cluster, YZBenchDir),
-    %% Verify data exists before running join
-    timer:sleep(10000),
-    Cluster2 = join_rest(Cluster, Nodes),
-    rt:wait_for_cluster_service(Cluster2, yokozuna),
-    check_status(wait_for(Ref)),
-    verify_non_owned_data_deleted(Cluster, ?INDEX),
-    ok = test_tagging(Cluster),
-    KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
-    verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
-    ok = test_escaped_key(Cluster2),
-    verify_unique_id(Cluster2, PBConns),
-    yz_rt:close_pb_conns(PBConns),
-    pass.
+    case yz_rt:bb_driver_setup() of
+        {ok, YZBenchDir} ->
+            random:seed(now()),
+            Nodes = rt:deploy_nodes(4, ?CFG),
+            Cluster = join(Nodes, 2),
+            PBConns = yz_rt:open_pb_conns(Cluster),
+            wait_for_joins(Cluster),
+            rt:wait_for_cluster_service(Cluster, yokozuna),
+            setup_indexing(Cluster, PBConns, YZBenchDir),
+            verify_non_existent_index(Cluster, <<"froot">>),
+            {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
+            %% wait for soft-commit
+            timer:sleep(1000),
+            Ref = async_query(Cluster, YZBenchDir),
+            %% Verify data exists before running join
+            timer:sleep(30000),
+            Cluster2 = join_rest(Cluster, Nodes),
+            rt:wait_for_cluster_service(Cluster2, yokozuna),
+            check_status(wait_for(Ref)),
+            verify_non_owned_data_deleted(Cluster, ?INDEX),
+            ok = test_tagging(Cluster),
+            KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
+            verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
+            ok = test_escaped_key(Cluster2),
+            verify_unique_id(Cluster2, PBConns),
+            yz_rt:close_pb_conns(PBConns),
+            pass;
+        {error, bb_driver_build_failed} ->
+            lager:info("Failed to build the yokozuna basho_bench driver"
+                       " required for this test"),
+            fail
+    end.
 
 %% @doc Verify that indexes for non-owned data have been
 %% deleted. I.e. after a node performs ownership handoff to a joining
@@ -142,26 +147,28 @@ verify_unique_id(Cluster, PBConns) ->
     rt:wait_until_bucket_type_status(T2, active, Cluster),
 
     riakc_pb_socket:put(?RC(PBConns), O1),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 1),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 1))),
 
     riakc_pb_socket:put(?RC(PBConns), O2),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 2),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 2))),
 
     riakc_pb_socket:put(?RC(PBConns), O3),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 3),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 3))),
 
     riakc_pb_socket:put(?RC(PBConns), O4),
-    timer:sleep(1100),
-    query_all(PBConns, Index, Query, 4).
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 4))).
 
-query_all(PBConns, Index, Query, Expected) ->
+make_query_fun(PBConns, Index, Query, Expected) ->
+    fun() ->
+            QueryRes = query_all(PBConns, Index, Query),
+            lists:all(fun(X) -> X == Expected end, QueryRes)
+    end.
+
+query_all(PBConns, Index, Query) ->
     [begin
          Conn,
          {ok,{_, _, _, Found}} = riakc_pb_socket:search(?RC(Conn), Index, Query, []),
-         ?assertEqual(Expected, Found)
+         Found
      end || Conn <- PBConns].
 
 %% @doc Verify that the delete call made my `yz_kv:cleanup' can deal
