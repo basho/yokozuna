@@ -124,20 +124,32 @@ is_non_owned_data_deleted(Index) ->
 -define(RC(PCConns), yz_rt:select_random(PBConns)).
 verify_unique_id(Cluster, PBConns) ->
     Index = <<"unique">>,
-    T1 = <<"t1">>,
-    T2 = <<"t2">>,
-    B1 = {T1, <<"b1">>},
-    B2 = {T1, <<"b2">>},
-    B3 = {T2, <<"b1">>},
-    B4 = {T2, <<"b2">>},
+    T1 = <<"t1/λ/{1}+-&&||!()[]^\"~*?:\\">>,
+    T2 = <<"t2/λ/{1}+-&&||!()[]^\"~*?:\\">>,
+    B1 = {T1, <<"b1/λ/{1}+-&&||!()[]^\"~*?:\\">>},
+    B2 = {T1, <<"b2/λ/{1}+-&&||!()[]^\"~*?:\\">>},
+    B3 = {T2, <<"b1/λ/{1}+-&&||!()[]^\"~*?:\\">>},
+    B4 = {T2, <<"b2/λ/{1}+-&&||!()[]^\"~*?:\\">>},
+    B5 = {T2, <<"b3/λ/{1}+-&&||!()[]^\"~*?:\\">>},
     Key = <<"key">>,
     Val = <<"yokozuna">>,
     CT = "text/plain",
     Query = <<"text:yokozuna">>,
+
+    %% These are objects with distinct buckets but all share the same
+    %% key.  The point is to make sure that uniqueness is defined by
+    %% the combination of bucket (including the type) and key.
+    %%
+    %% The O4 & O5 objects contain siblings.  These are needed to
+    %% exercise the logic for deletion when an objects siblings are
+    %% resolved (`yz_kv:cleanup').
     O1 = riakc_obj:new(B1, Key, Val, CT),
     O2 = riakc_obj:new(B2, Key, Val, CT),
     O3 = riakc_obj:new(B3, Key, Val, CT),
     O4 = riakc_obj:new(B4, Key, Val, CT),
+    O4Sib = riakc_obj:new(B4, Key, Val, CT),
+    O5 = riakc_obj:new(B5, Key, Val, CT),
+    O5Sib = riakc_obj:new(B5, Key, Val, CT),
 
     %% Associate index with bucket-types
     Node = yz_rt:select_random(Cluster),
@@ -146,17 +158,61 @@ verify_unique_id(Cluster, PBConns) ->
     rt:wait_until_bucket_type_status(T1, active, Cluster),
     rt:wait_until_bucket_type_status(T2, active, Cluster),
 
-    riakc_pb_socket:put(?RC(PBConns), O1),
+    lager:info("Write 4 objects, verify query result"),
+    {ok, O1R} = riakc_pb_socket:put(?RC(PBConns), O1, [return_body]),
     ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 1))),
 
-    riakc_pb_socket:put(?RC(PBConns), O2),
+    {ok, O2R} = riakc_pb_socket:put(?RC(PBConns), O2, [return_body]),
     ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 2))),
 
-    riakc_pb_socket:put(?RC(PBConns), O3),
+    {ok, O3R} = riakc_pb_socket:put(?RC(PBConns), O3, [return_body]),
     ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 3))),
 
-    riakc_pb_socket:put(?RC(PBConns), O4),
-    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 4))).
+    {ok, _O4R} = riakc_pb_socket:put(?RC(PBConns), O4, [return_body]),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 4))),
+
+    lager:info("Create a sibling in object 4, verify query result"),
+    {ok, O4SibR} = riakc_pb_socket:put(?RC(PBConns), O4Sib, [return_body]),
+    2 = riakc_obj:value_count(O4SibR),
+    O4Sib2 = riakc_obj:select_sibling(1, O4SibR),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 5))),
+
+    lager:info("Create object 5, verify object 4 sibling indexes not deleted"),
+    {ok, _O5R} = riakc_pb_socket:put(?RC(PBConns), O5, [return_body]),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 6))),
+
+    lager:info("Create object 5 sibling, verify query result"),
+    {ok, O5SibR} = riakc_pb_socket:put(?RC(PBConns), O5Sib, [return_body]),
+    2 = riakc_obj:value_count(O5SibR),
+    O5Sib2 = riakc_obj:select_sibling(1, O5SibR),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 7))),
+
+    lager:info("Resolve object 5 siblings, verify object 4 sibling "
+               "indexes not deleted"),
+    {ok, O5SibR2} = riakc_pb_socket:put(?RC(PBConns), O5Sib2, [return_body]),
+    1 = riakc_obj:value_count(O5SibR2),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 6))),
+
+    lager:info("Resolve object 4 siblings, verify query result"),
+    {ok, O4SibR2} = riakc_pb_socket:put(?RC(PBConns), O4Sib2, [return_body]),
+    1 = riakc_obj:value_count(O4SibR2),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 5))),
+
+    lager:info("Delete all objs, verify only respective indexes are deleted"),
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O5SibR2),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 4))),
+
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O4SibR2),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 3))),
+
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O3R),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 2))),
+
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O2R),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 1))),
+
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O1R),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 0))).
 
 make_query_fun(PBConns, Index, Query, Expected) ->
     fun() ->
@@ -240,7 +296,7 @@ delete_key(Cluster, Key) ->
     Node = yz_rt:select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
-    C:delete(?BUCKET, list_to_binary(Key)).
+    C:delete(?BUCKET, Key).
 
 delete_some_data(Cluster, ReapSleep) ->
     Keys = yz_rt:random_keys(?NUM_KEYS),
