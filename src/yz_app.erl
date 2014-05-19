@@ -38,6 +38,7 @@ start(_StartType, _StartArgs) ->
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
         {ok, Pid} ->
+            _ = application:set_env(ibrowse, inactivity_timeout, 600000),
             maybe_setup(Enabled),
             {ok, Pid};
         Error ->
