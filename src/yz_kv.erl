@@ -23,6 +23,7 @@
 
 -module(yz_kv).
 -compile(export_all).
+-include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
 -type write_reason() :: delete | handoff | put | anti_entropy.
@@ -40,9 +41,9 @@ bucket_name(Name) ->
 bucket_type({Type,_}) ->
     Type;
 bucket_type(_) ->
-    <<"default">>.
+    ?DEFAULT_TYPE.
 
-is_default_type({<<"default">>,_}) ->
+is_default_type({?DEFAULT_TYPE,_}) ->
     true;
 is_default_type({_,_}) ->
     false;
@@ -236,19 +237,17 @@ dont_index(Obj, _, P, BKey, ShortPL) ->
 -spec index(obj(), write_reason(), ring(), p(), bkey(),
             short_preflist(), index_name()) -> ok.
 index(_, delete, _, P, BKey, ShortPL, Index) ->
-    {_, Key} = BKey,
-    ok = yz_solr:delete(Index, [{key, Key}]),
+    ok = yz_solr:delete(Index, [{bkey, BKey}]),
     ok = update_hashtree(delete, P, ShortPL, BKey),
     ok;
 
 index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
     LI = yz_cover:logical_index(Ring),
-    {_, Key} = BKey,
     LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
     LP = yz_cover:logical_partition(LI, P),
     Hash = hash_object(Obj),
     Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-    DelOp = cleanup(length(Docs), {Obj, Key, LP}),
+    DelOp = cleanup(length(Docs), {Obj, BKey, LP}),
     ok = yz_solr:index(Index, Docs, DelOp),
     ok = update_hashtree({insert, Hash}, P, ShortPL, BKey),
     ok.
@@ -364,10 +363,10 @@ check_flag(Flag) ->
     true == erlang:get(Flag).
 
 %% @private
-cleanup(1, {_Obj, Key, _LP}) ->
+cleanup(1, {_Obj, BKey, _LP}) ->
     %% Delete any siblings
-    [{siblings, Key}];
-cleanup(2, {Obj, _Key, LP}) ->
+    [{siblings, BKey}];
+cleanup(2, {Obj, _BKey, LP}) ->
     %% An object has crossed the threshold from
     %% being a single value Object, to a sibling
     %% value Object, delete the non-sibling ID

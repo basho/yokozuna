@@ -48,7 +48,7 @@ confirm() ->
             yz_rt:wait_for_full_exchange_round(Cluster, TS1),
             RepairCountBefore = get_cluster_repair_count(Cluster),
             yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-            Keys = yz_rt:random_keys(?NUM_KEYS),
+            Keys = [{?BUCKET,K} || K <- yz_rt:random_keys(?NUM_KEYS)],
             {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
             lager:info("Deleting ~p keys", [length(DelKeys)]),
             [delete_key_in_solr(Cluster, ?INDEX, K) || K <- DelKeys],
@@ -121,10 +121,11 @@ create_orphan_postings(Cluster, Keys) ->
      || {Obj, Node, P} <- ObjNodePs],
     ok.
 
-delete_key_in_solr(Cluster, Index, Key) ->
+-spec delete_key_in_solr([node()], index_name(), bkey()) -> [ok].
+delete_key_in_solr(Cluster, Index, BKey) ->
     [begin
-         lager:info("Deleting solr doc ~s/~s on node ~p", [Index, Key, Node]),
-         ok = rpc:call(Node, yz_solr, delete, [Index, [{key, list_to_binary(Key)}]])
+         lager:info("Deleting solr doc ~s/~s on node ~p", [Index, BKey, Node]),
+         ok = rpc:call(Node, yz_solr, delete, [Index, [{bkey, BKey}]])
      end || Node <- Cluster].
 
 -spec get_cluster_repair_count([node()]) -> non_neg_integer().
