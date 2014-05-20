@@ -56,7 +56,7 @@ create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
 
 %% @see create/3
--spec create(index_name(), schema_name()) -> 
+-spec create(index_name(), schema_name()) ->
                     ok |
                     {error, schema_not_found} |
                     {error, invalid_name}.
@@ -258,12 +258,19 @@ schema_name(Info) ->
     Info#index_info.schema_name.
 
 %% @doc Verify that the index is a name that Solr can use. Some chars
-%%      are invalid, namely "/".
+%%      are invalid, namely "/" or non-ascii characters until full
+%%      UTF-8 support is available
 -spec verify_name(index_name()) -> {ok, index_name()} | {error, invalid_name}.
 verify_name(Name) ->
-    case re:run(Name, "/", []) of
-        nomatch ->   {ok, Name};
-        {match,_} -> {error, invalid_name}
+    case lists:dropwhile(fun(X) -> X < 128 andalso X > 31 end,
+                         binary_to_list(Name)) =:= "" of
+        true ->
+            case re:run(Name, "/", []) of
+                nomatch ->   {ok, Name};
+                {match,_} -> {error, invalid_name}
+            end;
+        false ->
+            {error, invalid_name}
     end.
 
 %%%===================================================================

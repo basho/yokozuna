@@ -195,7 +195,7 @@ create_index(RD, S) ->
             Msg = "Bad n_val given ~p~n",
             text_response({halt, 400}, Msg, [NVal], RD, S);
         {error, invalid_name} ->
-            Msg = "Invalid character '/' in index name ~s~n",
+            Msg = "Invalid character in index name ~s~n",
             text_response({halt, 400}, Msg, [IndexName], RD, S)
     end.
 
