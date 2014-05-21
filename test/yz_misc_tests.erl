@@ -56,3 +56,9 @@ should_copy_overwrite_test() ->
     ?assert(yz_misc:should_copy(overwrite, "<nofile>", "<nofile>")),
     ?assert(yz_misc:should_copy(overwrite, Thisfile, "<nofile>")).
 
+should_verify_name_test() ->
+    ?assertEqual({ok, <<"just-fine">>}, yz_index:verify_name(<<"just-fine">>)),
+    ?assertEqual({error, invalid_name}, yz_index:verify_name(<<"bad/slash">>)),
+    ?assertEqual({error, invalid_name}, yz_index:verify_name(<<"out-of-range-", 129>>)),
+    ?assertEqual({error, invalid_name}, yz_index:verify_name(<<"out-of-range-", 31>>)),
+    ?assertEqual({ok, <<"just-in-range- ">>}, yz_index:verify_name(<<"just-in-range-", 32>>)).
