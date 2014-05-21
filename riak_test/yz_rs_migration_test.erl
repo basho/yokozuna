@@ -1,5 +1,6 @@
 -module(yz_rs_migration_test).
 -compile(export_all).
+-include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/file.hrl").
 
@@ -220,7 +221,7 @@ create_pb_conn(Node) ->
 load_data(Cluster, YZBenchDir, NumKeys) ->
     {ExitCode, _} = yz_rt:load_data(Cluster, ?FRUIT_BUCKET, YZBenchDir, NumKeys),
     ?assertEqual(0,ExitCode),
-    %% Sleep for soft-commit.
+    % Sleep for soft-commit.
     timer:sleep(1100).
 
 query_data(Cluster, YZBenchDir, NumKeys, Time, DefaultField) ->

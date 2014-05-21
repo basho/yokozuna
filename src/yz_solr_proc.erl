@@ -175,6 +175,7 @@ build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
     SolrHome = "-Dsolr.solr.home=" ++ filename:absname(Dir),
+    HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
     JettyHome = "-Djetty.home=" ++ YZPrivSolr,
     Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
     CP = "-cp",
@@ -197,7 +198,7 @@ build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
-    Args = [Headless, JettyHome, Port, SolrHome, CP, CP2, Logging, LibDir]
+    Args = [Headless, JettyHome, Port, SolrHome, HostContext, CP, CP2, Logging, LibDir]
         ++ string:tokens(solr_jvm_opts(), " ") ++ JMX ++ [Class],
     {JavaPath, Args}.
 

@@ -364,7 +364,7 @@ field_exists(Index, Field, ConnInfo) ->
     end.
 
 field_url({Host,Port}, Index, FieldName) ->
-    ?FMT("http://~s:~B/solr/~s/schema/fields/~s", [Host, Port, Index, FieldName]).
+    ?FMT("http://~s:~B"++?SOLR_HOST_CONTEXT++"/~s/schema/fields/~s", [Host, Port, Index, FieldName]).
 
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
