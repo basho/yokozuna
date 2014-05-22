@@ -169,6 +169,19 @@ run(load_fruit_pb, KeyValGen, _, S=#state{bucket=Bucket, pb_conns=Conns}) ->
         Err -> {error, Err, S2}
     end;
 
+run(load_pb, KeyGen, ValGen, S) ->
+    Bucket = S#state.bucket,
+    Conns = S#state.pb_conns,
+    Conn = get_conn(Conns),
+    Key = KeyGen(),
+    {CT, Val} = ValGen(),
+    Obj = riakc_obj:new(Bucket, Key, Val, CT),
+    S2 = S#state{pb_conns=wrap(Conns)},
+    case riakc_pb_socket:put(Conn, Obj, [{timeout, 90000}], 90000) of
+        ok -> {ok, S2};
+        Err -> {error, Err, S2}
+    end;
+
 run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=undefined}) ->
     S2 = S#state{fruits=gen_fruits(MaxCardinality)},
     run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S2);
@@ -295,6 +308,23 @@ fruit_key_val_gen(Id, NumKeys) ->
 
 always(_Id, Val) ->
     fun() -> Val end.
+
+%% @doc Generate a value generator function that returns a static JSON
+%% object with `NumFields'. Each field has the name `num_<N>_i' where
+%% N is the number of the field. The value for the field is N.
+-spec json_obj_valgen(term(), pos_integer()) ->
+                             fun(() -> {CT :: string(), JSON :: binary()}).
+json_obj_valgen(_Id, NumFields) when NumFields > 0 ->
+    GenFieldVal =
+        fun(I) ->
+                Ib = ?INT_TO_BIN(I),
+                {<<"num_",Ib/binary,"_i">>, I}
+        end,
+    Obj = {struct, [GenFieldVal(I) || I <- lists:seq(1, NumFields)]},
+    JSON = iolist_to_binary(mochijson2:encode(Obj)),
+    fun() ->
+        {"application/json", JSON}
+    end.
 
 %% ====================================================================
 %% Private
