@@ -116,7 +116,7 @@ process(#rpbyokozunaindexputreq{
         {error, schema_not_found} ->
             {error, "Schema not found", State};
         {error, invalid_name} ->
-            {error, "Invalid character '/' in index name", State}
+            {error, "Invalid character in index name", State}
     end;
 
 process(rpbyokozunaindexgetreq, State) ->
