@@ -161,6 +161,17 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
     write_terms(File, Cfg),
     run_bb(sync, File).
 
+%% @doc Load the BEAM for `Module' across the `Nodes'.  This allows
+%% use of higher order functions, defined in a riak test module, on
+%% the Riak node.
+%%
+%% @see yz_mapreduce:collect_results/2
+-spec load_module([node()], module()) -> ok.
+load_module(Nodes, Module) ->
+    {Mod, Bin, File} = code:get_object_code(Module),
+    {_, []} = rpc:multicall(Nodes, code, load_binary, [Mod, File, Bin]),
+    ok.
+
 %% @doc Open a protobuff connection to each node and return the list
 %% of connections.
 %%

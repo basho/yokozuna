@@ -131,8 +131,9 @@ search_fold(Index, Query, Filter, F, Acc) ->
     Params = [{q, Query},
               {fq, Filter},
               {start, Start},
-              {rows, 10},
+              {rows, 100},
               {fl, <<?YZ_RT_FIELD_S,",",?YZ_RB_FIELD_S,",",?YZ_RK_FIELD_S>>},
+              {sort, <<?YZ_RT_FIELD_S," asc, ",?YZ_RB_FIELD_S," asc, ",?YZ_RK_FIELD_S," asc">>},
               {omitHeader, <<"true">>},
               {wt, <<"json">>}],
     {_, Body} = yz_solr:dist_search(Index, Params),
@@ -219,10 +220,10 @@ positions({struct,[X, Y, Z]}) ->
 search_fold([], _, _, _, _, _, _, _, Acc) ->
     Acc;
 search_fold(Results, Start, Params, Positions, Index, Query, Filter, F, Acc) ->
-    F(Results, Acc),
-    Start2 = Start + 10,
+    Acc2 = F(Results, Acc),
+    Start2 = Start + 100,
     Params2 = lists:keystore(start, 1, Params, {start, Start2}),
     {_, Body} = yz_solr:dist_search(Index, Params2),
     Docs = extract_docs(Body),
     E = extract_results(Docs, Positions),
-    search_fold(E, Start2, Params, Positions, Index, Query, Filter, F, Acc).
+    search_fold(E, Start2, Params, Positions, Index, Query, Filter, F, Acc2).
