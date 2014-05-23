@@ -285,7 +285,7 @@ search(Core, Headers, Params) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    "http://localhost:" ++ integer_to_list(port()) ++ "/solr".
+    "http://localhost:" ++ integer_to_list(port()) ++ ?SOLR_HOST_CONTEXT.
 
 %% @private
 %%
@@ -429,4 +429,4 @@ make_ed(More, Continuation, Pairs) ->
 
 -spec shard_frag(index_name(), {string(), string()}) -> string().
 shard_frag(Core, {Host, Port}) ->
-    ?FMT("~s:~s/solr/~s", [Host, Port, Core]).
+    ?FMT("~s:~s"++?SOLR_HOST_CONTEXT++"/~s", [Host, Port, Core]).

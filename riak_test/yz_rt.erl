@@ -271,7 +271,7 @@ search(Type, {Host, Port}, Index, Name0, Term0) ->
     Term = quote_unicode(Term0),
     FmtStr = case Type of
                  solr ->
-                     "http://~s:~s/solr/~s/select?q=~s:~s&wt=json";
+                     "http://~s:~s/internal_solr/~s/select?q=~s:~s&wt=json";
                  yokozuna ->
                      "http://~s:~s/search/~s?q=~s:~s&wt=json"
              end,
