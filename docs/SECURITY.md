@@ -315,7 +315,7 @@ both be searched at the same time but Ryan does have permission to
 search both in separate requests.
 
 ```
-% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/search/ryans_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/search/query/ryans_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 1,
@@ -332,7 +332,7 @@ search both in separate requests.
   }
 }
 
-% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/search/erics_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user ryan:ryan 'https://127.0.0.1:10012/search/query/erics_index?q=text:structure&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 0,
@@ -348,7 +348,7 @@ zero times in Eric's collection of Dijkstra. What if Eric wants to
 query for a word in both indexes?
 
 ```
-% curl -s -k --user eric:eric 'https://127.0.0.1:10012/search/erics_index?q=text:program&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user eric:eric 'https://127.0.0.1:10012/search/query/erics_index?q=text:program&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 1,
@@ -365,11 +365,11 @@ query for a word in both indexes?
   }
 }
 
-% curl -s -k --user eric:eric 'https://127.0.0.1:10012/search/ryans_index?q=text:program&wt=json&omitHeader=true'
+% curl -s -k --user eric:eric 'https://127.0.0.1:10012/search/query/ryans_index?q=text:program&wt=json&omitHeader=true'
 Permission denied: User 'eric' does not have'search.query' on {<<"index">>,
                                                                <<"ryans_index">>}
 
-% curl -s -k --user god:iruleudrool 'https://127.0.0.1:10012/search/ryans_index?q=text:program&wt=json&omitHeader=true' | jsonpp
+% curl -s -k --user god:iruleudrool 'https://127.0.0.1:10012/search/query/ryans_index?q=text:program&wt=json&omitHeader=true' | jsonpp
 {
   "response": {
     "numFound": 0,
