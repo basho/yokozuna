@@ -273,7 +273,7 @@ search(Type, {Host, Port}, Index, Name0, Term0) ->
                  solr ->
                      "http://~s:~s/internal_solr/~s/select?q=~s:~s&wt=json";
                  yokozuna ->
-                     "http://~s:~s/search/~s?q=~s:~s&wt=json"
+                     "http://~s:~s/solr/~s/select?q=~s:~s&wt=json"
              end,
     URL = ?FMT(FmtStr, [Host, Port, Index, Name, Term]),
     lager:info("Run search ~s", [URL]),

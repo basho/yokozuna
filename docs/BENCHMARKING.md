@@ -98,7 +98,6 @@ Here are the contents of the `load-fruit.config`:
 {secure, false}.
 {bucket, {<<"data">>, <<"fruit">>}}.
 {index, <<"fruit">>}.
-{search_path, "/search/fruit"}.
 {pb_conns, [{"127.0.0.1", 10017},
             {"127.0.0.1", 10027},
             {"127.0.0.1", 10037},
