@@ -96,12 +96,50 @@
 </types>
 </schema>">>).
 
+-define(SCHEMA_FIELDS_DOUBLE,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.5\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\"  multiValued=\"false\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"a_field\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" />
+   <field name=\"a_field\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" />
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
 confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
     confirm_409(Cluster),
+    confirm_create_index_bad_schema(Cluster),
     confirm_bad_name(Cluster),
     confirm_bad_n_val(Cluster),
     confirm_list(Cluster, [<<"test_index_1">>, <<"test_index_2">>, <<"test_index_409">>]),
@@ -180,6 +218,36 @@ confirm_409(Cluster) ->
     yz_rt:wait_for_index(Cluster, Index),
     {ok, Status2, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("409", Status2).
+
+%% @doc Test index creation with a broken schema
+confirm_create_index_bad_schema(Cluster) ->
+    Index = <<"test_index_bad_schema">>,
+    Schema = <<"bad_schema">>,
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_create_index_bad_schema ~s [~p]", [Index, HP]),
+
+    lager:info("upload schema ~s [~p]", [Schema, HP]),
+    SchemaURL = schema_url(HP, Schema),
+    SchemaHeaders = [{"content-type", "application/xml"}],
+    {ok, Status1, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELDS_DOUBLE),
+    ?assertEqual("204", Status1),
+
+    URL = index_url(HP, Index),
+    Headers = [{"content-type", "application/json"}],
+    Body = <<"{\"schema\":\"",Schema/binary,"\"}">>,
+    {ok, Status, _, _} = http(put, URL, Headers, Body),
+    ?assertEqual("204", Status),
+    %% wait for the index to fail to create
+    InitFailure = fun(Node) ->
+                      lager:info("Waiting for init failure of ~s [~p]", [Index, Node]),
+                      {ok,_,S} = rpc:call(Node, yz_solr, core, [status, [{wt,json},{core,Index}]]),
+                      {struct,[]} /= kvc:path([<<"initFailures">>], mochijson2:decode(S))
+                  end,
+    yz_rt:wait_until(Cluster, InitFailure),
+    %% ensure index doesn't return
+    {ok, GetStatus, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("404", GetStatus),
+    ok.
 
 confirm_list(Cluster, Indexes) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
