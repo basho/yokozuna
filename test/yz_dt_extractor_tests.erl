@@ -67,7 +67,7 @@ raw_type(map) ->
            {update, {<<"activated">>, ?FLAG_TYPE}, enable},
            {update, {<<"name">>, ?REG_TYPE}, {assign, <<"Ryan Zezeski">> }},
            {update, {<<"phones">>, ?SET_TYPE}, {add_all, [<<"555-5555">>, <<"867-5309">>]}},
-           {update, {<<"page_views">>, ?COUNTER_TYPE}, {increment, 1502}},
+           {update, {<<"page_views">>, ?EMCNTR_TYPE}, {increment, 1502}},
            {update, {<<"events">>, ?MAP_TYPE},
             {update,
              [

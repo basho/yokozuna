@@ -128,6 +128,6 @@ extract_set(Name) ->
 -spec extract_map(field_path_name()) -> fun(({{binary(), module()}, term()}, state()) -> state()).
 extract_map(Prefix) ->
     fun({{FieldName, Mod}, Value}, Acc) ->
-            Type = riak_kv_crdt:from_mod(Mod),
+            Type = riak_kv_crdt:from_mod(Mod, ?EMBEDDED_TYPES),
             extract_fields({Prefix, FieldName}, Type, Value, Acc)
     end.
