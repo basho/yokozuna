@@ -121,7 +121,8 @@ process(#rpbyokozunaindexputreq{
 
 process(rpbyokozunaindexgetreq, State) ->
     Indexes = yz_index:get_indexes_from_meta(),
-    Details = [index_details(IndexName) || IndexName <- Indexes],
+    Details = [index_details(IndexName)
+        || IndexName <- Indexes, yz_index:exists(IndexName)],
     {reply, #rpbyokozunaindexgetresp{index=Details}, State};
 
 process(#rpbyokozunaindexgetreq{name = IndexName}, State) ->

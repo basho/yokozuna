@@ -206,7 +206,8 @@ read_index(RD, S) ->
     case S#ctx.index_name of
         undefined  ->
             Indexes = yz_index:get_indexes_from_meta(),
-            Details = [index_body(IndexName) || IndexName <- Indexes];
+            Details = [index_body(IndexName)
+                || IndexName <- Indexes, yz_index:exists(IndexName)];
         IndexName ->
             Details = index_body(IndexName)
     end,
