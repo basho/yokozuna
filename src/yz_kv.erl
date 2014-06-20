@@ -234,6 +234,9 @@ dont_index(Obj, _, P, BKey, ShortPL) ->
 %%       During active anti-entropy runs on spawned process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
+%%
+%% NOTE: A value of [notfound] is considered to be an ensemble
+%%       tombstone, or at least nonexistent, and acts as a delete
 -spec index(obj(), write_reason(), ring(), p(), bkey(),
             short_preflist(), index_name()) -> ok.
 index(_, delete, _, P, BKey, ShortPL, Index) ->
@@ -242,15 +245,19 @@ index(_, delete, _, P, BKey, ShortPL, Index) ->
     ok;
 
 index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
-    LI = yz_cover:logical_index(Ring),
-    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-    LP = yz_cover:logical_partition(LI, P),
-    Hash = hash_object(Obj),
-    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-    DelOp = cleanup(length(Docs), {Obj, BKey, LP}),
-    ok = yz_solr:index(Index, Docs, DelOp),
-    ok = update_hashtree({insert, Hash}, P, ShortPL, BKey),
-    ok.
+    case riak_object:get_values(Obj) of
+        [notfound] ->
+            ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
+        _ ->
+            LI = yz_cover:logical_index(Ring),
+            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+            LP = yz_cover:logical_partition(LI, P),
+            Hash = hash_object(Obj),
+            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+            DelOp = cleanup(length(Docs), {Obj, BKey, LP}),
+            ok = yz_solr:index(Index, Docs, DelOp),
+            ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
+    end.
 
 %% @doc Should the content be indexed?
 -spec should_index(index_name()) -> boolean().
