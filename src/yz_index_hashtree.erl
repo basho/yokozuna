@@ -493,6 +493,7 @@ clear_tree(S=#state{index=Index}) ->
     S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
     S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
+    ok = yz_kv:update_aae_tree_stats(Index, undefined),
     S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->

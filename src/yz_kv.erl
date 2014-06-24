@@ -281,7 +281,7 @@ update_aae_exchange_stats(Index, IndexN, Count) ->
     ok.
 
 %% @doc Update AAE hashtree status for Yokozuna.
--spec update_aae_tree_stats(p(), non_neg_integer()) -> ok.
+-spec update_aae_tree_stats(p(), non_neg_integer() | undefined) -> ok.
 update_aae_tree_stats(Index, BuildTime) ->
     riak_kv_entropy_info:tree_built(yz, Index, BuildTime),
     ok.
