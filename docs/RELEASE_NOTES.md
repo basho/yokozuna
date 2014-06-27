@@ -155,6 +155,57 @@ The `/search/Index` resource has been changed to `/search/query/Index`.
 [404]: https://github.com/basho/yokozuna/pull/404
 [405]: https://github.com/basho/yokozuna/pull/405
 
+2.0.0-beta
+----------
+
+### Features ###
+
+* [318][] - Add Yokozuna stats to `riak-admin status` and HTTP stats output.
+
+* [332][], [344][] - Upgrade to Solr 4.7.0, add Kurdish support, and
+  make several improvements to the build process.
+
+### Bug Fixes/Misc ###
+
+* [321][], [322][] - Explicitly set `multiValued` attribute for each
+  field so there is no confusion on what the value is.
+
+* [321][], [323][] - Verify schema version to prevent runtime errors
+  during index creation.
+
+* [325][] - Use common Makefile targets from tools.mk shared by the
+  other Riak repos.
+
+* [333][], [339][] - Refactor query coverage plan code.
+
+* [335][], [338][] - Add ring resize test.
+
+* [336][], [340][] - Return 404 or equivalent if search is performed on
+  nonexistent index.
+
+* [337][] - Don't allow forward slash in index names.
+
+* [341][] - Pass JVM options and always pass `-d64`.
+
+* [345][] - Remove implicit bucket association.
+
+[318]: https://github.com/basho/yokozuna/pull/318
+[321]: https://github.com/basho/yokozuna/issues/321
+[322]: https://github.com/basho/yokozuna/pull/322
+[323]: https://github.com/basho/yokozuna/pull/323
+[325]: https://github.com/basho/yokozuna/pull/325
+[332]: https://github.com/basho/yokozuna/issues/332
+[333]: https://github.com/basho/yokozuna/pull/333
+[335]: https://github.com/basho/yokozuna/pull/335
+[336]: https://github.com/basho/yokozuna/issues/336
+[337]: https://github.com/basho/yokozuna/pull/337
+[338]: https://github.com/basho/yokozuna/pull/338
+[339]: https://github.com/basho/yokozuna/pull/339
+[340]: https://github.com/basho/yokozuna/pull/340
+[341]: https://github.com/basho/yokozuna/pull/341
+[344]: https://github.com/basho/yokozuna/pull/344
+[345]: https://github.com/basho/yokozuna/pull/345
+
 0.14.0
 ------
 
