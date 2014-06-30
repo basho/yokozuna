@@ -1,6 +1,211 @@
 Yokozuna Release Notes
 ==========
 
+2.0.0-RC
+--------
+
+### Features ###
+
+* [292][], [349][] - Add `riak-admin search` command along with
+  `aae-status` subcommand.
+
+* [270][] - Official Python driver is no API complete.
+
+* [146][], [357][] - Add diagnostic modules as a first step for sanity
+  checking issues in production.
+
+* [350][] - Add `riak-admin search swtich-to-new-search` subcommand.
+  Used when migrating from legacy riak_search it does a live switch of
+  the HTTP/PB interfaces from legacy to new search.
+
+* [359][], [381][] - Constrain index names to ASCII.  This is a
+  stopgap until we can test unicode support.
+
+* [353][], [404][] - Make Strong Consistency (SC) and Yokozuna work
+  together, with caveats.  The indexes are not strongly consistent
+  with the KV object; they are committed async.  Partially failed SC
+  puts will cause false positive indexes until the key is read
+  repaired.
+
+### Performance ###
+
+* [316][], [358][] - Change the default schema from indexing all
+  undeclared fields as text to ignoring them.  This will give faster
+  indexing and use less space at the cost of some convenience.
+
+* [320][], [358][], [367][], [375][], [330][] - Attempt to deal with
+  ibrowse issues.  Some patching was done to make things better but
+  alternative HTTP clients should be considered for next release.
+
+### Bug Fixes/Misc ###
+
+* [218][], [358][] - Set `ramBufferSize` back to default of 100MB.
+
+* [352][], [354][] - Don't log ops being sent to Solr on index failure
+  as it causes message truncation.
+
+* [363][], [369][] - Fix various bugs in security code.
+
+* [358][] - Set the field value cache warm count to 0.  Adjust the
+  Jetty and ibrowse socket timeouts to be equal.  Ignore unknown
+  fields.  Fix deletion when a reserved word in Lucene query syntax is
+  part of the key.
+
+* [370][], [371][] - Fix various issues when deleting keys.  Allow the
+  use of Lucene query syntax special characters in the key name.
+  Don't URL encode, don't break unicode, and use cons instead of `++`.
+
+* [379][] - Use generated certs for the security test.
+
+* [351][] - Various improvements to the Riak Test suite.
+
+* [376][], [385][] - Fix deletion in the event of many-to-one indexing.
+
+* [361][] - Add support for pulling down dependencies via curl.
+
+* [360][] - Fix map-reduce switch test.
+
+* [343][] - Ran some tests to compare storage space of legacy
+  riak_search vs Yokozuna.
+
+* [368][] - Add a JSON object generator to the basho_bench driver.
+
+* [356][], [386][] - Make sure search based map-reduce visits all
+  unique keys of a result set.
+
+* [312][], [388][] - Change the Solr host context to `internal_solr`
+  to prevent confusion between distributed Yokozuna query and local
+  Solr node query.
+
+* [211][], [393][] - Better schema validation; prevent multivalued
+  `_yz` fields.
+
+* [383][], [394][] - Fix ambiguous HTTP resource; change
+  `search/Index` to `search/query/Index`.
+
+* [395][], [397][] - Don't list indexes which have failed to create.
+
+* [398][] - Use embedded counter inside a map CRDT.
+
+* [248][] - Verified there is no unnecessary AAE repair after restart.
+
+* [387][], [396][] - Correctly set Jetty `tempDirectory`.
+
+* [405][] - When a tree is cleared, clear its AAE stats as well.
+
+### Documentation ###
+
+* [348][] - Security commands no longer use capital letters.
+
+* [364][] - Update README to reflect beta status and point to official
+  search docs.
+
+### Breaking Changes ###
+
+#### HTTP Query Resource Change ([383][], [394][]) ####
+
+The `/search/Index` resource has been changed to `/search/query/Index`.
+
+[146]: https://github.com/basho/yokozuna/issues/146
+[211]: https://github.com/basho/yokozuna/issues/211
+[218]: https://github.com/basho/yokozuna/issues/218
+[248]: https://github.com/basho/yokozuna/issues/248
+[270]: https://github.com/basho/yokozuna/issues/270
+[292]: https://github.com/basho/yokozuna/issues/292
+[312]: https://github.com/basho/yokozuna/issues/312
+[316]: https://github.com/basho/yokozuna/issues/316n
+[320]: https://github.com/basho/yokozuna/issues/320
+[330]: https://github.com/basho/yokozuna/issues/330
+[343]: https://github.com/basho/yokozuna/issues/343
+[348]: https://github.com/basho/yokozuna/pull/348
+[349]: https://github.com/basho/yokozuna/pull/349
+[350]: https://github.com/basho/yokozuna/pull/350
+[351]: https://github.com/basho/yokozuna/pull/351
+[352]: https://github.com/basho/yokozuna/issues/352
+[353]: https://github.com/basho/yokozuna/issues/353
+[354]: https://github.com/basho/yokozuna/pull/354
+[356]: https://github.com/basho/yokozuna/issues/356
+[357]: https://github.com/basho/yokozuna/pull/357
+[358]: https://github.com/basho/yokozuna/pull/358
+[359]: https://github.com/basho/yokozuna/issues/359
+[360]: https://github.com/basho/yokozuna/issues/360
+[361]: https://github.com/basho/yokozuna/pull/361
+[363]: https://github.com/basho/yokozuna/pull/363
+[364]: https://github.com/basho/yokozuna/pull/364
+[367]: https://github.com/basho/yokozuna/issues/367
+[368]: https://github.com/basho/yokozuna/pull/368
+[369]: https://github.com/basho/yokozuna/pull/369
+[370]: https://github.com/basho/yokozuna/issues/370
+[371]: https://github.com/basho/yokozuna/pull/371
+[375]: https://github.com/basho/yokozuna/pull/375
+[376]: https://github.com/basho/yokozuna/issues/376
+[379]: https://github.com/basho/yokozuna/pull/379
+[381]: https://github.com/basho/yokozuna/pull/381
+[383]: https://github.com/basho/yokozuna/issues/383
+[385]: https://github.com/basho/yokozuna/pull/385
+[386]: https://github.com/basho/yokozuna/pull/386
+[387]: https://github.com/basho/yokozuna/issues/387
+[388]: https://github.com/basho/yokozuna/pull/388
+[393]: https://github.com/basho/yokozuna/pull/393
+[394]: https://github.com/basho/yokozuna/pull/394
+[395]: https://github.com/basho/yokozuna/issues/395
+[397]: https://github.com/basho/yokozuna/pull/397
+[396]: https://github.com/basho/yokozuna/pull/396
+[398]: https://github.com/basho/yokozuna/pull/398
+[404]: https://github.com/basho/yokozuna/pull/404
+[405]: https://github.com/basho/yokozuna/pull/405
+
+2.0.0-beta
+----------
+
+### Features ###
+
+* [318][] - Add Yokozuna stats to `riak-admin status` and HTTP stats output.
+
+* [332][], [344][] - Upgrade to Solr 4.7.0, add Kurdish support, and
+  make several improvements to the build process.
+
+### Bug Fixes/Misc ###
+
+* [321][], [322][] - Explicitly set `multiValued` attribute for each
+  field so there is no confusion on what the value is.
+
+* [321][], [323][] - Verify schema version to prevent runtime errors
+  during index creation.
+
+* [325][] - Use common Makefile targets from tools.mk shared by the
+  other Riak repos.
+
+* [333][], [339][] - Refactor query coverage plan code.
+
+* [335][], [338][] - Add ring resize test.
+
+* [336][], [340][] - Return 404 or equivalent if search is performed on
+  nonexistent index.
+
+* [337][] - Don't allow forward slash in index names.
+
+* [341][] - Pass JVM options and always pass `-d64`.
+
+* [345][] - Remove implicit bucket association.
+
+[318]: https://github.com/basho/yokozuna/pull/318
+[321]: https://github.com/basho/yokozuna/issues/321
+[322]: https://github.com/basho/yokozuna/pull/322
+[323]: https://github.com/basho/yokozuna/pull/323
+[325]: https://github.com/basho/yokozuna/pull/325
+[332]: https://github.com/basho/yokozuna/issues/332
+[333]: https://github.com/basho/yokozuna/pull/333
+[335]: https://github.com/basho/yokozuna/pull/335
+[336]: https://github.com/basho/yokozuna/issues/336
+[337]: https://github.com/basho/yokozuna/pull/337
+[338]: https://github.com/basho/yokozuna/pull/338
+[339]: https://github.com/basho/yokozuna/pull/339
+[340]: https://github.com/basho/yokozuna/pull/340
+[341]: https://github.com/basho/yokozuna/pull/341
+[344]: https://github.com/basho/yokozuna/pull/344
+[345]: https://github.com/basho/yokozuna/pull/345
+
 0.14.0
 ------
 
