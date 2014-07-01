@@ -102,7 +102,6 @@ map_update(PB) ->
                             fun(Reg) ->
                                     riakc_register:set(<<"Russell Brown">>, Reg)
                             end},
-                           {{<<"student">>, flag}, fun riakc_flag:disable/1},
                            {{<<"burgers">>, counter}, fun(C) -> riakc_counter:increment(100, C) end}]),
 
     Sean = lists:foldl(fun({Key, Fun}, Map) ->
@@ -133,7 +132,6 @@ map_update(PB) ->
 map_search(Solr) ->
     ?assertSearch(Solr, ?MAP, "burgers_counter", "*", 2),
     ?assertSearch(Solr, ?MAP, "burgers_counter", "[11 TO 1000]", 1),
-    ?assertSearch(Solr, ?MAP, "student_flag", "*", 2),
     ?assertSearch(Solr, ?MAP, "student_flag", "true", 1),
     ?assertSearch(Solr, ?MAP, "name_register", "S*", 2),
     ?assertSearch(Solr, ?MAP, "office_map.cats_counter", "1", 0),
