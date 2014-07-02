@@ -114,11 +114,15 @@ verify_unique_id(Cluster, PBConns) ->
     Index = <<"unique">>,
     T1 = <<"t1/λ/{1}+-&&||!()[]^\"~*?:\\">>,
     T2 = <<"t2/λ/{1}+-&&||!()[]^\"~*?:\\">>,
+    T3 = <<"btx">>,
+    T4 = <<"btx*bky">>,
     B1 = {T1, <<"b1/λ/{1}+-&&||!()[]^\"~*?:\\">>},
     B2 = {T1, <<"b2/λ/{1}+-&&||!()[]^\"~*?:\\">>},
     B3 = {T2, <<"b1/λ/{1}+-&&||!()[]^\"~*?:\\">>},
     B4 = {T2, <<"b2/λ/{1}+-&&||!()[]^\"~*?:\\">>},
     B5 = {T2, <<"b3/λ/{1}+-&&||!()[]^\"~*?:\\">>},
+    B6 = {T3, <<"bky*bt">>},
+    B7 = {T4, <<"bt">>},
     Key = <<"key">>,
     Val = <<"yokozuna">>,
     CT = "text/plain",
@@ -138,13 +142,19 @@ verify_unique_id(Cluster, PBConns) ->
     O4Sib = riakc_obj:new(B4, Key, Val, CT),
     O5 = riakc_obj:new(B5, Key, Val, CT),
     O5Sib = riakc_obj:new(B5, Key, Val, CT),
+    O6 = riakc_obj:new(B6, Key, Val, CT),
+    O7 = riakc_obj:new(B7, Key, Val, CT),
 
     %% Associate index with bucket-types
     Node = yz_rt:select_random(Cluster),
-    yz_rt:set_bucket_type_index(Node, T1, <<"unique">>),
-    yz_rt:set_bucket_type_index(Node, T2, <<"unique">>),
+    yz_rt:set_bucket_type_index(Node, T1, Index),
+    yz_rt:set_bucket_type_index(Node, T2, Index),
+    yz_rt:set_bucket_type_index(Node, T3, Index),
+    yz_rt:set_bucket_type_index(Node, T4, Index),
     rt:wait_until_bucket_type_status(T1, active, Cluster),
     rt:wait_until_bucket_type_status(T2, active, Cluster),
+    rt:wait_until_bucket_type_status(T3, active, Cluster),
+    rt:wait_until_bucket_type_status(T4, active, Cluster),
 
     lager:info("Write 4 objects, verify query result"),
     {ok, O1R} = riakc_pb_socket:put(?RC(PBConns), O1, [return_body]),
@@ -186,7 +196,21 @@ verify_unique_id(Cluster, PBConns) ->
     1 = riakc_obj:value_count(O4SibR2),
     ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 5))),
 
+    lager:info("Creating two potential overlapping type/bucket names"),
+    {ok, O6R} = riakc_pb_socket:put(?RC(PBConns), O6, [return_body]),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 6))),
+
+    {ok, O7R} = riakc_pb_socket:put(?RC(PBConns), O7, [return_body]),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 7))),
+
+
     lager:info("Delete all objs, verify only respective indexes are deleted"),
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O7R),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 6))),
+
+    ok = riakc_pb_socket:delete_obj(?RC(PBConns), O6R),
+    ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 5))),
+
     ok = riakc_pb_socket:delete_obj(?RC(PBConns), O5SibR2),
     ?assertEqual(ok, rt:wait_until(make_query_fun(PBConns, Index, Query, 4))),
 
@@ -205,7 +229,9 @@ verify_unique_id(Cluster, PBConns) ->
 make_query_fun(PBConns, Index, Query, Expected) ->
     fun() ->
             QueryRes = query_all(PBConns, Index, Query),
-            lists:all(fun(X) -> X == Expected end, QueryRes)
+            lists:all(fun(X) -> 
+                lager:info("~p~n", [X]),
+                X == Expected end, QueryRes)
     end.
 
 query_all(PBConns, Index, Query) ->

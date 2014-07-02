@@ -23,6 +23,8 @@
 -include("yokozuna.hrl").
 
 -define(MD_VTAG, <<"X-Riak-VTag">>).
+-define(YZ_ID_SEP, "*").
+-define(YZ_ID_VER, "1").
 
 %% @doc Functionality for working with Yokozuna documents.
 
@@ -35,21 +37,21 @@ add_to_doc({doc, Fields}, Field) ->
 
 -spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    Bucket = yz_kv:get_obj_bucket(O),
-    BType = yz_kv:bucket_type(Bucket),
-    BName = yz_kv:bucket_name(Bucket),
-    Key = yz_kv:get_obj_key(O),
-    <<BType/binary,"_",BName/binary,"_",Key/binary,"_",Partition/binary>>.
+    doc_id(O, Partition, none).
 
-doc_id(O, Partition, none) ->
-    doc_id(O, Partition);
-
+-spec doc_id(obj(), binary(), term()) -> binary().
 doc_id(O, Partition, Sibling) ->
     Bucket = yz_kv:get_obj_bucket(O),
-    BType = yz_kv:bucket_type(Bucket),
-    BName = yz_kv:bucket_name(Bucket),
-    Key = yz_kv:get_obj_key(O),
-    <<BType/binary,"_",BName/binary,"_",Key/binary,"_",Partition/binary,"_",Sibling/binary>>.
+    BType = encode_doc_part(yz_kv:bucket_type(Bucket)),
+    BName = encode_doc_part(yz_kv:bucket_name(Bucket)),
+    Key = encode_doc_part(yz_kv:get_obj_key(O)),
+    IODocId = [?YZ_ID_VER,?YZ_ID_SEP,BType,?YZ_ID_SEP,BName,?YZ_ID_SEP,Key,?YZ_ID_SEP,Partition],
+    case Sibling of
+        none ->
+            iolist_to_binary(IODocId);
+        _ ->
+            iolist_to_binary([IODocId,?YZ_ID_SEP,Sibling])
+    end.
 
 % @doc `true' if this Object has multiple contents
 has_siblings(O) -> riak_object:value_count(O) > 1.
@@ -71,6 +73,15 @@ make_doc(O, Hash, {MD, V}, FPN, Partition) ->
     ExtractedFields = extract_fields({MD, V}),
     Tags = extract_tags(MD),
     {doc, lists:append([Tags, ExtractedFields, Fields])}.
+
+%% @private
+%% @doc encode `*' as %1, and `%' as %2. This is so we can reasonably use
+%% the char `*' as a seperator for _yz_id parts (TBK+partition[+sibling]).
+%% This removes the potential case where `*' included in a part can break
+%% _yz_id uniqueness
+-spec encode_doc_part(binary()) -> iolist().
+encode_doc_part(Part) ->
+    re:replace(re:replace([Part],"[%]","%2",[global]), "[*]","%1",[global]).
 
 make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
     [{?YZ_ID_FIELD, DocId},
