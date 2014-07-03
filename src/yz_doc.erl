@@ -79,9 +79,18 @@ make_doc(O, Hash, {MD, V}, FPN, Partition) ->
 %% the char `*' as a seperator for _yz_id parts (TBK+partition[+sibling]).
 %% This removes the potential case where `*' included in a part can break
 %% _yz_id uniqueness
--spec encode_doc_part(binary()) -> iolist().
+-spec encode_doc_part(binary()) -> list().
 encode_doc_part(Part) ->
-    re:replace(re:replace([Part],"[%]","%2",[global]), "[*]","%1",[global]).
+    encode_doc_part(binary_to_list(Part), []).
+
+encode_doc_part([], Acc) ->
+  lists:reverse(Acc);
+encode_doc_part([$* | Rest], Acc) ->
+  encode_doc_part(Rest, ["%1" | Acc]);
+encode_doc_part([$% | Rest], Acc) ->
+  encode_doc_part(Rest, ["%2" | Acc]);
+encode_doc_part([C | Rest], Acc) ->
+  encode_doc_part(Rest, [C | Acc]).
 
 make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
     [{?YZ_ID_FIELD, DocId},
