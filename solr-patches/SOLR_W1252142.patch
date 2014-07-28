@@ -1,7 +1,7 @@
 Index: solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ConditionalCopyTransformer.java
 ===================================================================
---- solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ConditionalCopyTransformer.java	(revision 0)
-+++ solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ConditionalCopyTransformer.java	(working copy)
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ConditionalCopyTransformer.java	(revision 0)
++++ a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ConditionalCopyTransformer.java	(working copy)
 @@ -0,0 +1,59 @@
 +package org.apache.solr.handler.dataimport;
 +
