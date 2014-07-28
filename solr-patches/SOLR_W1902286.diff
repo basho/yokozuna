@@ -1,0 +1,13 @@
+Index: solr/core/src/java/org/apache/solr/handler/SnapPuller.java
+===================================================================
+--- solr/core/src/java/org/apache/solr/handler/SnapPuller.java	(revision 942)
++++ solr/core/src/java/org/apache/solr/handler/SnapPuller.java	(working copy)
+@@ -164,7 +164,7 @@
+   /**
+    * Disable the timer task for polling
+    */
+-  private AtomicBoolean pollDisabled = new AtomicBoolean(false);
++  private AtomicBoolean pollDisabled = new AtomicBoolean(true);
+ 
+   private final HttpClient myHttpClient;
+ 
