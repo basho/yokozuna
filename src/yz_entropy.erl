@@ -17,11 +17,11 @@
 %% under the License.
 %%
 %% -------------------------------------------------------------------
+%% @doc This module contains functionality related to entropy.
 -module(yz_entropy).
 -compile(export_all).
 -include("yokozuna.hrl").
 
-%% @doc This module contains functionality related to entropy.
 
 %%%===================================================================
 %%% Private

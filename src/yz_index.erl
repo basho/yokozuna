@@ -18,6 +18,9 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc This module contains functionaity for using and administrating
+%%      indexes.  In this case an index is an instance of a Solr Core.
+
 -module(yz_index).
 -include("yokozuna.hrl").
 -compile(export_all).
@@ -34,9 +37,6 @@
           schema_name :: schema_name()
         }).
 -type index_info() :: #index_info{}.
-
-%% @doc This module contains functionaity for using and administrating
-%%      indexes.  In this case an index is an instance of a Solr Core.
 
 %%%===================================================================
 %%% API

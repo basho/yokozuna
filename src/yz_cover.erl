@@ -17,6 +17,8 @@
 %% under the License.
 %%
 %% -------------------------------------------------------------------
+%% @doc This module contains functionality related to creating
+%%      coverage information for distributed search queries.
 
 -module(yz_cover).
 -compile(export_all).
@@ -33,9 +35,6 @@
           %% The ring used to calculate the current cached plan.
           ring_used :: ring()
          }).
-
-%% @doc This module contains functionality related to creating
-%%      coverage information for distributed search queries.
 
 %%%===================================================================
 %%% API

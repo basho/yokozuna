@@ -18,12 +18,12 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc An extractor for JSON.  Nested object's have their fields
+%% @doc An extractor for JSON.  Nested objects have their fields
 %% concatenated with `field_separator'.  An array is converted into a
 %% multi-valued field.
 %%
 %% Example:
-%%
+%% ```
 %%   {"name":"ryan",
 %%    "info":{"city":"Baltimore",
 %%            "visited":["Boston", "New York", "San Francisco"]}}
@@ -33,7 +33,7 @@
 %%    {<<"info_visited">>,<<"Boston">>},
 %%    {<<"info_city">>,<<"Baltimore">>},
 %%    {<<"name">>,<<"ryan">>}]
-%%
+%% '''
 %% Options:
 %%
 %%   `field_separator' - Use a different field separator than the
