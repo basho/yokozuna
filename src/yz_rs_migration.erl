@@ -17,12 +17,12 @@
 %% under the License.
 %%
 %% -------------------------------------------------------------------
+%% @doc This code is only needed for riak search migration and can be
+%% pulled once riak search is removed from riak.
+
 -module(yz_rs_migration).
 -compile(export_all).
 -include("yokozuna.hrl").
-
-%%% @doc This code is only needed for riak search migration and can be
-%%% pulled once riak search is removed from riak.
 
 %% @doc Determine if Riak Search is enabled.
 -spec is_riak_search_enabled() -> boolean().

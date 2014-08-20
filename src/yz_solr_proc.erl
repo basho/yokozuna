@@ -18,6 +18,9 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc This module/process is responsible for administrating the
+%%      external Solr/JVM OS process.
+
 -module(yz_solr_proc).
 -include("yokozuna.hrl").
 -compile(export_all).
@@ -46,9 +49,6 @@
                         solr_jmx_port=_SolrJMXPort}).
 -define(S_PORT(S), S#state.port).
 -define(YZ_DEFAULT_SOLR_JVM_OPTS, "").
-
-%% @doc This module/process is responsible for administrating the
-%%      external Solr/JVM OS process.
 
 %%%===================================================================
 %%% API
@@ -222,7 +222,7 @@ ensure_data_dir(Dir) ->
             ok
     end.
 
-%% @prviate
+%% @private
 %%
 %% @doc Get the path of `java' executable.
 -spec get_java_path() -> undefined | filename().

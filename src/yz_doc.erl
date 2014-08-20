@@ -18,6 +18,8 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc Functionality for working with Yokozuna documents.
+
 -module(yz_doc).
 -compile(export_all).
 -include("yokozuna.hrl").
@@ -25,8 +27,6 @@
 -define(MD_VTAG, <<"X-Riak-VTag">>).
 -define(YZ_ID_SEP, "*").
 -define(YZ_ID_VER, "1").
-
-%% @doc Functionality for working with Yokozuna documents.
 
 %%%===================================================================
 %%% API
