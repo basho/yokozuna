@@ -1,5 +1,6 @@
 *~
 deps
+doc
 ebin
 priv/java_lib
 priv/conf/lang
