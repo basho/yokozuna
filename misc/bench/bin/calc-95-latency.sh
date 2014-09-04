@@ -11,9 +11,11 @@ RESULTS_DIR=$1
 
 for lat in $RESULTS_DIR/*latencies*
 do
-    # taking average of all the medians, divide by 1000 to convert
-    # from microseconds to milli
+    # taking average of all 95th percentiles, divide by 1000 to
+    # convert from microseconds to milli
+    #
+    # drop first 30 seconds and last 10 seconds to remove outliers
     echo -n "The mean 95th latency for $lat: "
-    sed -e '1,2d' -e '$d' $lat | \
+    sed -e '1,4d' -e '$d' $lat | \
         awk -F, '{total += $7 } END { printf("%f\n", (total / NR) / 1000) }'
 done

@@ -1,0 +1,2 @@
+yokozuna.erl:37: The call application:set_env('yokozuna',{'component',_},'false') breaks the contract (Application,Par,Val) -> 'ok' when is_subtype(Application,atom()), is_subtype(Par,atom()), is_subtype(Val,term())
+yokozuna.erl:44: The call application:set_env('yokozuna',{'component',_},'true') breaks the contract (Application,Par,Val) -> 'ok' when is_subtype(Application,atom()), is_subtype(Par,atom()), is_subtype(Val,term())

@@ -14,6 +14,6 @@ do
     # taking average of all the medians, divide by 1000 to convert
     # from microseconds to milli
     echo -n "The mean median latency for $lat: "
-    sed -e '1,2d' -e '$d' $lat | \
+    sed -e '1,4d' -e '$d' $lat | \
         awk -F, '{total += $6 } END { printf("%f\n", (total / NR) / 1000) }'
 done

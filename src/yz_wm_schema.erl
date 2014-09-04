@@ -23,10 +23,10 @@
 %%
 %% Available operations:
 %% 
-%% GET /yz/schema/Schema
+%% GET /search/schema/Schema
 %%   Retrieves the schema with the given name
 %%
-%% PUT /yz/schema/Schema
+%% PUT /search/schema/Schema
 %%   Uploads a schema with the given name
 %%   A PUT request requires this header:
 %%     Content-Type: application/xml
@@ -39,8 +39,10 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(ctx, {schema_name :: string() % name the schema
-             }).
+-record(ctx, {schema_name :: string(), %% name the schema
+              method :: atom(),        %% HTTP method for the request
+              security                 %% security context
+              }).
 
 %%%===================================================================
 %%% API
@@ -48,7 +50,7 @@
 
 %% @doc Return the list of routes provided by this resource.
 routes() ->
-    [{["yz", "schema", schema], yz_wm_schema, []}].
+    [{["search", "schema", schema], yz_wm_schema, []}].
 
 
 %%%===================================================================
@@ -62,7 +64,8 @@ service_available(RD, Ctx=#ctx{}) ->
     {true,
         RD,
         Ctx#ctx{
-            schema_name=wrq:path_info(schema, RD)}
+            method=wrq:method(RD),
+            schema_name=mochiweb_util:unquote(wrq:path_info(schema, RD))}
     }.
 
 allowed_methods(RD, S) ->
@@ -87,6 +90,39 @@ malformed_request(RD, S) ->
         _ -> {false, RD, S}
     end.
 
+is_authorized(ReqData, Ctx) ->
+    case riak_api_web_security:is_authorized(ReqData) of
+        false ->
+            {"Basic realm=\"Riak\"", ReqData, Ctx};
+        {true, SecContext} ->
+            {true, ReqData, Ctx#ctx{security=SecContext}};
+        insecure ->
+            %% XXX 301 may be more appropriate here, but since the http and
+            %% https port are different and configurable, it is hard to figure
+            %% out the redirect URL to serve.
+            {{halt, 426}, wrq:append_to_resp_body(<<"Security is enabled and "
+                    "Riak does not accept credentials over HTTP. Try HTTPS "
+                    "instead.">>, ReqData), Ctx}
+    end.
+
+%% Uses the riak_kv,secure_referer_check setting rather
+%% as opposed to a special yokozuna-specific config
+forbidden(RD, Ctx=#ctx{security=undefined}) ->
+    {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
+forbidden(RD, Ctx=#ctx{security=Security}) ->
+    case riak_kv_wm_utils:is_forbidden(RD) of
+        true ->
+            {true, RD, Ctx};
+        false ->
+            PermAndResource = {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_SCHEMA},
+            Res = riak_core_security:check_permission(PermAndResource, Security),
+            case Res of
+                {false, Error, _} ->
+                    {true, wrq:append_to_resp_body(Error, RD), Ctx};
+                {true, _} ->
+                    {false, RD, Ctx}
+            end
+    end.
 %% Responds to a PUT request by storing the schema
 %% Will overwrite schema with the same name
 store_schema(RD, S) ->
@@ -96,7 +132,7 @@ store_schema(RD, S) ->
         ok  ->
             {true, RD, S};
         {error, Reason} ->
-            Msg = io_lib:format("Error storing schema ~p~n", [Reason]),
+            Msg = io_lib:format("Error storing schema: ~s~n", [Reason]),
             RD2 = wrq:append_to_response_body(Msg, RD),
             RD3 = wrq:set_resp_header("Content-Type", "text/plain", RD2),
             {{halt,400}, RD3, S}

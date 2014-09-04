@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<solr>
+
+  <shardHandlerFactory name="shardHandlerFactory"
+    class="HttpShardHandlerFactory">
+    <int name="socketTimeout">${socketTimeout:0}</int>
+    <int name="connTimeout">${connTimeout:0}</int>
+  </shardHandlerFactory>
+
+</solr>

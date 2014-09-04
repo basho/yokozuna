@@ -2,9 +2,9 @@
 -module(yz_schema_admin).
 -compile(export_all).
 -import(yz_rt, [host_entries/1, select_random/1]).
+-include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
@@ -12,14 +12,15 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -47,7 +48,7 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
    <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"tru">>).
 
 -define(MISSING_YZ_FIELDS_SCHEMA,
@@ -81,14 +82,14 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -117,14 +118,14 @@
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_id\" type=\"string\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -148,18 +149,20 @@
 </types>
 </schema>">>).
 
+%% Use a bad class name for the `text_general' field type.
 -define(BAD_CLASS_SCHEMA,
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
-   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" />
-   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_node\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
-   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\"/>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
 </fields>
 
@@ -183,9 +186,47 @@
 </types>
 </schema>">>).
 
+-define(BAD_VSN_SCHEMA,
+        <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+<schema name=\"test\" version=\"1.0\">
+<fields>
+   <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_ed\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_pn\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_fpn\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_vtag\" type=\"_yz_str\" indexed=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rt\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"text\" type=\"text_general\" indexed=\"true\" stored=\"false\" multiValued=\"true\"/>
+</fields>
+
+ <uniqueKey>_yz_id</uniqueKey>
+
+<types>
+    <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"text_general\" class=\"solr.TextField\" positionIncrementGap=\"100\">
+      <analyzer type=\"index\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+      <analyzer type=\"query\">
+        <tokenizer class=\"solr.StandardTokenizerFactory\"/>
+        <filter class=\"solr.StopFilterFactory\" ignoreCase=\"true\" words=\"stopwords.txt\" enablePositionIncrements=\"true\" />
+        <filter class=\"solr.SynonymFilterFactory\" synonyms=\"synonyms.txt\" ignoreCase=\"true\" expand=\"true\"/>
+        <filter class=\"solr.LowerCaseFilterFactory\"/>
+      </analyzer>
+    </fieldType>
+</types>
+</schema>">>).
+
 
 confirm() ->
-    Cluster = prepare_cluster(4),
+    Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
+    confirm_compressed_metadata(Cluster, <<"some_schema">>, ?TEST_SCHEMA),
     confirm_create_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_get_schema(Cluster, <<"test_schema">>, ?TEST_SCHEMA),
     confirm_not_found(Cluster, <<"not_a_schema">>),
@@ -196,6 +237,8 @@ confirm() ->
     confirm_bad_yz_field(Cluster, <<"bad_yz_field">>, ?BAD_YZ_FIELD_SCHEMA),
     confirm_default_schema(Cluster, <<"default">>, default_schema(Cluster)),
     confirm_bad_schema(Cluster),
+    confirm_bad_vsn(Cluster, <<"bad_vsn_attr">>, ?BAD_VSN_SCHEMA),
+    confirm_bad_name(Cluster, <<"bad%2Fname">>, ?TEST_SCHEMA),
     pass.
 
 %% @doc Confirm a custom schema may be added.
@@ -231,7 +274,7 @@ confirm_bad_ct(Cluster, Name, RawSchema) ->
     lager:info("confirm_bad_ct ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/json"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, _Body} = http(put, URL, Headers, RawSchema),
     ?assertEqual("415", Status).
 
 %% @doc Confirm that truncated schema fails, returning 400.
@@ -240,8 +283,8 @@ confirm_truncated(Cluster, Name, RawSchema) ->
     lager:info("confirm_truncated ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
-    ?assertEqual("400", Status),
+    {ok, "400", _, Body} = http(put, URL, Headers, RawSchema),
+    %% ?assertEqual("400", Status),
     %% assert the body contains some kind of msg as to why the schema
     %% failed to parse
     ?assert(size(Body) > 0).
@@ -270,6 +313,26 @@ confirm_bad_uk(Cluster, Name, RawSchema) ->
 confirm_bad_yz_field(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_bad_yz_field ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm a bad version attribute returns 400.
+confirm_bad_vsn(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm bad version attribute is rejected ~s [~p]", [Name, HP]),
+    URL = schema_url(HP, Name),
+    Headers = [{"content-type", "application/xml"}],
+    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    ?assertEqual("400", Status),
+    ?assert(size(Body) > 0).
+
+%% @doc Confirm a bad schema name returns 400.
+confirm_bad_name(Cluster, Name, RawSchema) ->
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm schema name is rejected ~s [~p]", [Name, HP]),
     URL = schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
     {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
@@ -312,19 +375,30 @@ confirm_bad_schema(Cluster) ->
     lager:info("give solr time to attempt to create core ~s", [Name]),
     timer:sleep(5000),
     lager:info("verify solr core ~s is not up", [Name]),
-    ?assertNot(yz_solr:ping(binary_to_list(Name))),
+    ?assertNot(yz_solr:ping(Name)),
 
     lager:info("upload corrected schema ~s", [Name]),
     {ok, Status3, _, _} = http(put, URL, Headers, ?TEST_SCHEMA),
     ?assertEqual("204", Status3),
 
     lager:info("wait for yz to retry creation of core ~s", [Name]),
-    Node = select_random(Cluster),
     F = fun(Node2) ->
                 lager:info("try to ping core ~s", [Name]),
-                rpc:call(Node2, yz_solr, ping, [binary_to_list(Name)])
+                rpc:call(Node2, yz_solr, ping, [Name])
         end,
-    ?assertEqual(ok, rt:wait_until(Node, F)).
+    yz_rt:wait_until(Cluster, F).
+
+%% @doc Confirm that creating a new shema gets added to the
+%%      cluster metadata as a compressed blob, and is retrievable
+%%      as its original raw text
+confirm_compressed_metadata(Cluster, Name, RawSchema) ->
+    Node = select_random(Cluster),
+    lager:info("confirm_compressed_metadata ~s [~p]", [Name, Node]),
+    ok = rpc:call(Node, yz_schema, store, [Name, RawSchema]),
+    R = rpc:call(Node, riak_core_metadata, get, [?YZ_META_SCHEMAS, Name]),
+    ?assertEqual(RawSchema, iolist_to_binary(yz_misc:decompress(R))),
+    {ok, RawSchema2} = rpc:call(Node, yz_schema, get, [Name]),
+    ?assertEqual(RawSchema, RawSchema2).
 
 
 %%%===================================================================
@@ -346,23 +420,7 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 index_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/yz/index/~s", [Host, Port, Name]).
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Name]).
 
 schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/yz/schema/~s", [Host, Port, Name]).
-
-join(Nodes) ->
-    [NodeA|Others] = Nodes,
-    [rt:join(Node, NodeA) || Node <- Others],
-    Nodes.
-
-prepare_cluster(NumNodes) ->
-    %% Note: may need to use below call b/c of diff between
-    %% deploy_nodes/1 & /2
-    %%
-    %% Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Nodes = rt:deploy_nodes(NumNodes, ?CFG),
-    Cluster = join(Nodes),
-    yz_rt:wait_for_joins(Cluster),
-    rt:wait_for_cluster_service(Cluster, yokozuna),
-    Cluster.
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).

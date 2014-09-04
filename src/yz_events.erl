@@ -35,21 +35,28 @@
          terminate/2]).
 -include("yokozuna.hrl").
 
+-define(NUM_TICKS_START, 1).
+
 -record(state, {
-          previous_ring :: ring()
+          %% The number of ticks since the last time this value was
+          %% reset to 1. This value along with
+          %% `get_full_check_after/0' is used to determine when a
+          %% "full check" should be performed. This is to prevent
+          %% expensive checks occurring on every tick.
+          num_ticks = ?NUM_TICKS_START  :: non_neg_integer(),
+
+          %% The hash of the index cluster meta last time it was
+          %% checked.
+          prev_index_hash = undefined   :: term()
          }).
--define(PREV_RING(S), S#state.previous_ring).
+
+
+-define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
+-define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
-
--spec get_mapping() -> list().
-get_mapping() ->
-    case ets:lookup(?YZ_EVENTS_TAB, mapping) of
-        [{mapping, Mapping}] -> Mapping;
-        [] -> []
-    end.
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -59,56 +66,31 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    ok = watch_ring_events(),
-    ok = create_events_table(),
     ok = set_tick(),
-    {ok, #state{previous_ring=yz_misc:get_ring(raw)}}.
+    {ok, #state{}}.
 
-handle_cast({ring_event, Ring}=RE, S) ->
-    PrevRing = ?PREV_RING(S),
-    S2 = S#state{previous_ring=Ring},
-    Mapping = get_mapping(),
-    Mapping2 = new_mapping(RE, Mapping),
-    ok = set_mapping(Mapping2),
-
-    Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
-    Current = names(yz_index:get_indexes_from_ring(Ring)),
-    {Removed, Added, Same} = yz_misc:delta(Previous, Current),
-
-    PreviousFlags = flagged_buckets(PrevRing),
-    CurrentFlags = flagged_buckets(Ring),
-    {FlagsRemoved, FlagsAdded, _} = yz_misc:delta(PreviousFlags, CurrentFlags),
-
-    ok = sync_indexes(Ring, Removed, Added, Same),
-    %% Pass `PrevRing' because need access to index name associated
-    %% with bucket.
-    ok = sync_data(PrevRing, FlagsRemoved, FlagsAdded),
-
-    {noreply, S2}.
+handle_cast(Msg, _S) ->
+    ?WARN("unknown message ~p", [Msg]).
 
 handle_info(tick, S) ->
-    %% TODO: tick and ring_event should be merged, actions taken in
-    %% ring_event could fail and should be retried during tick, may
-    %% need to rely on something other than ring to determine when to
-    %% retry certain actions, e.g. if the `sync_data' call fails then
-    %% AAE trees will be incorrect until the next ring_event or until
-    %% tree rebuild
-    ok = remove_non_owned_data(),
+    PrevHash = S#state.prev_index_hash,
+    CurrHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
+    NumTicks = S#state.num_ticks,
+    IsFullCheck = (NumTicks == ?NUM_TICKS_START),
+    DidHashChange = PrevHash /= CurrHash,
 
-    Mapping = get_mapping(),
-    Mapping2 = check_unkown(Mapping),
-    ok = set_mapping(Mapping2),
+    ok = ?MAYBE(yz_solr:is_up() andalso (IsFullCheck orelse DidHashChange),
+                sync_indexes()),
 
-    %% Index creation may have failed during ring event.
-    PrevRing = ?PREV_RING(S),
-    Ring = yz_misc:get_ring(raw),
-    Previous = names(yz_index:get_indexes_from_ring(PrevRing)),
-    Current = names(yz_index:get_indexes_from_ring(Ring)),
-    {Removed, Added, Same} = yz_misc:delta(Previous, Current),
-    ok = sync_indexes(Ring, Removed, Added, Same),
+    ok = ?MAYBE(IsFullCheck,
+                remove_non_owned_data(yz_cover:get_ring_used())),
 
     ok = set_tick(),
-    {noreply, S}.
+
+    NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
+    S2 = S#state{num_ticks=NumTicks2,
+                 prev_index_hash=CurrHash},
+    {noreply, S2}.
 
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
@@ -118,109 +100,65 @@ code_change(_, S, _) ->
     {ok, S}.
 
 terminate(_Reason, _S) ->
-    ok = destroy_events_table().
-
+    ok.
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
 
--spec add_index(ring(), index_name()) -> ok.
-add_index(Ring, Name) ->
+-spec add_index(index_name()) -> ok.
+add_index(Name) ->
     case yz_index:exists(Name) of
-        true ->
-            ok;
-        false ->
-            ok = yz_index:local_create(Ring, Name)
+        true -> ok;
+        false -> ok = yz_index:local_create(Name)
     end.
 
--spec add_indexes(ring(), index_set()) -> ok.
-add_indexes(Ring, Names) ->
-    [add_index(Ring, N) || N <- Names],
+-spec add_indexes(index_set()) -> ok.
+add_indexes(Names) ->
+    _ = [ok = add_index(N) || N <- Names],
     ok.
 
--spec add_node(node(), list()) -> list().
-add_node(Node, Mapping) ->
-    HostPort = host_port(Node),
-    lists:keystore(Node, 1, Mapping, {Node, HostPort}).
+%% @private
+%%
+%% @doc Get the number of ticks after which a full check is
+%% performed. If the tick interval is 1 second and this function
+%% returns 60 then a full check will be performed every 60 seconds.
+-spec get_full_check_after() -> non_neg_integer().
+get_full_check_after() ->
+    NumTicks = app_helper:get_env(?YZ_APP_NAME, events_full_check_after,
+                                  ?DEFAULT_EVENTS_FULL_CHECK_AFTER),
+    case is_integer(NumTicks) of
+        true -> NumTicks;
+        false -> 60
+    end.
 
--spec add_nodes([node()], list()) -> list().
-add_nodes(Nodes, Mapping) ->
-    lists:foldl(fun add_node/2, Mapping, Nodes).
-
--spec check_unkown(list()) -> list().
-check_unkown(Mapping) ->
-    Unknown = lists:filter(fun is_unknown/1, Mapping),
-    add_nodes(just_nodes(Unknown), Mapping).
-
--spec create_events_table() -> ok.
-create_events_table() ->
-    Opts = [named_table, protected, {read_concurrency, true}],
-    ?YZ_EVENTS_TAB = ets:new(?YZ_EVENTS_TAB, Opts),
-    ok.
-
--spec destroy_events_table() -> ok.
-destroy_events_table() ->
-    true = ets:delete(?YZ_EVENTS_TAB),
-    ok.
-
--spec flagged_buckets(ring()) -> ordset(bucket()).
-flagged_buckets(Ring) ->
-    Buckets = riak_core_bucket:get_buckets(Ring),
-    ordsets:from_list(
-      [proplists:get_value(name, BProps)
-       || BProps <- Buckets, yz_kv:index_content(yz_kv:which_index(BProps))]).
-
+%% @private
+%%
+%% @doc Return the tick interval specified in milliseconds.
+-spec get_tick_interval() -> ms().
 get_tick_interval() ->
-    app_helper:get_env(?YZ_APP_NAME, tick_interval, ?YZ_DEFAULT_TICK_INTERVAL).
-
--spec host_port(node()) -> {string(), non_neg_integer() | unknown}.
-host_port(Node) ->
-    case rpc:call(Node, yz_solr, port, [], 5000) of
-        {badrpc, Reason} ->
-            ?ERROR("error retrieving Solr port ~p ~p", [Node, Reason]),
-            {hostname(Node), unknown};
-        Port when is_list(Port) ->
-            {hostname(Node), Port}
+    I = app_helper:get_env(?YZ_APP_NAME, events_tick_interval,
+                           ?DEFAULT_EVENTS_TICK_INTERVAL),
+    case is_integer(I) andalso I >= 1000 of
+        true -> I;
+        false -> 1000
     end.
 
--spec hostname(node()) -> string().
-hostname(Node) ->
-    S = atom_to_list(Node),
-    [_, Host] = re:split(S, "@", [{return, list}]),
-    Host.
-
--spec is_unknown(tuple()) -> boolean().
-is_unknown({_, {_, unknown}}) -> true;
-is_unknown({_, {_, Port}}) when is_list(Port) -> false.
-
--spec just_nodes(list()) -> [node()].
-just_nodes(Mapping) ->
-    [Node || {Node, _} <- Mapping].
+%% @private
+%%
+%% @doc Increment the integer N unless it is equal to M then wrap
+%% around to 0.
+-spec incr_or_wrap(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
+incr_or_wrap(N, M) ->
+    case N == M of
+        true -> ?NUM_TICKS_START;
+        false -> N + 1
+    end.
 
 maybe_log({_, []}) ->
     ok;
 maybe_log({Index, Removed}) ->
     ?INFO("removed non-owned partitions ~p from index ~p", [Removed, Index]).
-
-names(Indexes) ->
-    [Name || {Name,_} <- Indexes].
-
--spec new_mapping(event(), list()) -> list().
-new_mapping({ring_event, Ring}, Mapping) ->
-    Nodes = riak_core_ring:all_members(Ring),
-    {Removed, Added} = node_ops(Mapping, Nodes),
-    Mapping2 = remove_nodes(Removed, Mapping),
-    Mapping3 = add_nodes(Added, Mapping2),
-    check_unkown(Mapping3).
-
--spec node_ops(list(), list()) -> {Removed::list(), Added::list()}.
-node_ops(Mapping, Nodes) ->
-    MappingNodesSet = sets:from_list(just_nodes(Mapping)),
-    NodesSet = sets:from_list(Nodes),
-    Removed = sets:subtract(MappingNodesSet, NodesSet),
-    Added = sets:subtract(NodesSet, MappingNodesSet),
-    {sets:to_list(Removed), sets:to_list(Added)}.
 
 -spec remove_index(index_name()) -> ok.
 remove_index(Name) ->
@@ -231,26 +169,23 @@ remove_index(Name) ->
 
 -spec remove_indexes(index_set()) -> ok.
 remove_indexes(Names) ->
-    [ok = remove_index(N) || N <- Names],
+    _ = [ok = remove_index(N) || N <- Names],
     ok.
-
--spec remove_node(node(), list()) -> list().
-remove_node(Node, Mapping) ->
-    proplists:delete(Node, Mapping).
-
--spec remove_nodes([node()], list()) -> list().
-remove_nodes(Nodes, Mapping) ->
-    lists:foldl(fun remove_node/2, Mapping, Nodes).
 
 %% @private
 %%
 %% @doc Remove documents for any data not owned by this node.
--spec remove_non_owned_data() -> ok.
-remove_non_owned_data() ->
+-spec remove_non_owned_data(ring() | unkown) -> ok.
+remove_non_owned_data(unknown) ->
+    %% The ring used to calculate the current coverage plan could not
+    %% be determined. In this case do nothing to prevent removing data
+    %% that the current coverage plan is using.
+    ok;
+remove_non_owned_data(Ring) ->
     case yz_solr:cores() of
         {ok, Cores} ->
             Indexes = ordsets:to_list(Cores),
-            Removed = [{Index, yz_index:remove_non_owned_data(Index)}
+            Removed = [{Index, yz_index:remove_non_owned_data(Index, Ring)}
                        || Index <- Indexes],
             [maybe_log(R) || R <- Removed];
         _ ->
@@ -258,55 +193,35 @@ remove_non_owned_data() ->
     end,
     ok.
 
-send_ring_event(Ring) ->
-    gen_server:cast(?MODULE, {ring_event, Ring}).
-
-set_mapping(Mapping) ->
-    true = ets:insert(?YZ_EVENTS_TAB, [{mapping, Mapping}]),
-    ok.
-
 set_tick() ->
     Interval = get_tick_interval(),
     erlang:send_after(Interval, ?MODULE, tick),
     ok.
 
--spec sync_data(ring(), list(), list()) -> ok.
-sync_data(PrevRing, Removed, Added) ->
-    [sync_added(Bucket) || Bucket <- Added],
-    [sync_removed(PrevRing, Bucket) || Bucket <- Removed],
-    ok.
-
-sync_added(Bucket) ->
-    Params = [{q, <<"_yz_rb:",Bucket/binary>>},{wt,<<"json">>}],
-    case yz_solr:search(?YZ_DEFAULT_INDEX, [], Params) of
-        {_, Resp} ->
-            Struct = mochijson2:decode(Resp),
-            NumFound = kvc:path([<<"response">>, <<"numFound">>], Struct),
-            if NumFound > 0 ->
-                    lager:info("index flag enabled for bucket ~s with existing data", [Bucket]),
-                    Ops = [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}],
-                    ok = yz_solr:delete(?YZ_DEFAULT_INDEX, Ops),
-                    yz_solr:commit(?YZ_DEFAULT_INDEX),
-                    yz_entropy_mgr:clear_trees();
-               true ->
-                    ok
-            end;
-        _ ->
+%% @private
+%%
+%% @doc Synchronize the Solr indexes with the official list stored in
+%% memory.
+-spec sync_indexes() -> ok.
+sync_indexes() ->
+    case yz_solr:cores() of
+        {ok, IndexesFromSolr} ->
+            IndexSetFromSolr = ordsets:from_list(IndexesFromSolr),
+            IndexSetFromMeta = ordsets:from_list(yz_index:get_indexes_from_meta()),
+            {Removed, Added, Same} = yz_misc:delta(IndexSetFromSolr, IndexSetFromMeta),
+            ok = sync_indexes(Removed, Added, Same);
+        {error, _Reason} ->
             ok
     end.
 
--spec sync_removed(ring(), bucket()) -> ok.
-sync_removed(PrevRing, Bucket) ->
-    lager:info("index flag disabled for bucket ~s", [Bucket]),
-    Index = yz_kv:which_index(riak_core_bucket:get_bucket(Bucket, PrevRing)),
-    ok = yz_solr:delete(Index, [{'query', <<?YZ_RB_FIELD_B/binary,":",Bucket/binary>>}]),
-    yz_solr:commit(Index),
-    yz_entropy_mgr:clear_trees(),
-    ok.
-
-sync_indexes(Ring, Removed, Added, Same) ->
+%% @private
+%%
+%% @doc Synchronize Solr indexes by removing the indexes in the
+%% `Removed' set and creating, if they don't already exist, those
+%% indexes in the `Added' and `Same' set.
+%%
+%% @see sync_indexes/0
+-spec sync_indexes(index_set(), index_set(), index_set()) -> ok.
+sync_indexes(Removed, Added, Same) ->
     ok = remove_indexes(Removed),
-    ok = add_indexes(Ring, Added ++ Same).
-
-watch_ring_events() ->
-    riak_core_ring_events:add_sup_callback(fun send_ring_event/1).
+    ok = add_indexes(Added ++ Same).

@@ -8,7 +8,9 @@
 #>
 #> Example:
 #>
-#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.2.0-yz http://www.motorlogy.com/apache/lucene/solr/4.2.0/solr-4.2.0-src.tgz | tee build-solr.out
+#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.7.0-yz http://archive.apache.org/dist/lucene/solr/4.7.0/solr-4.7.0-src.tgz | tee build-solr.out
+
+set -e
 
 error()
 {
@@ -28,6 +30,15 @@ apply_patches()
         for p in $PATCH_DIR/*.patch; do
             patch -p1 < $p
         done
+    fi
+}
+
+download()
+{
+    if which wget > /dev/null; then
+        wget --no-check-certificate --progress=dot:mega $1
+    elif which curl > /dev/null; then
+        curl --insecure --progress-bar -O $1
     fi
 }
 
@@ -68,9 +79,19 @@ WORK_DIR=$1; shift
 NAME=$1; shift
 URL=$1; shift
 
-mkdir $WORK_DIR
+if ! javac -version 2>&1 | egrep "1\.6\.[0-9_.]+"
+then
+    echo "JDK 1.6 must be used to compile Solr"
+    exit 1
+fi
+
+if [ ! -x "`which ant`" ]; then
+  echo "Couldn't find ant, which is needed to compile Solr."
+  exit 1
+fi
+
 if test ! -e $WORK_DIR; then
-    error "failed to created work dir: $WORK_DIR"
+    mkdir $WORK_DIR
 fi
 
 cd $WORK_DIR
@@ -86,7 +107,7 @@ else
     SOLR_DIR=${SOLR_FILE%-src.tgz}
 
     if test ! -e $SOLR_FILE; then
-        wget $URL
+        download $URL
     fi
 
     if test ! -e $SOLR_DIR; then
@@ -124,4 +145,3 @@ tar zcvf $NAME.tgz \
     --exclude=example/etc/solrtest.keystore \
     $NAME
 mv $NAME solr
-

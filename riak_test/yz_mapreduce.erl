@@ -9,7 +9,6 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 
 -type host() :: string().
 -type portnum() :: integer().
@@ -33,18 +32,79 @@
 
 -spec confirm() -> pass.
 confirm() ->
-    Index = "mr_index",
+    Index = <<"mr_index">>,
+    Bucket = {Index, <<"b1">>},
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
     yz_rt:create_index(yz_rt:select_random(Cluster), Index),
-    yz_rt:set_index(yz_rt:select_random(Cluster), list_to_binary(Index)),
     yz_rt:wait_for_index(Cluster, Index),
-    write_100_objs(Cluster, Index),
-    verify_100_objs_mr(Cluster, Index),
+    yz_rt:set_bucket_type_index(yz_rt:select_random(Cluster), Index),
+    timer:sleep(500),
+    write_objs(Cluster, Bucket),
+    verify_objs_mr(Cluster, Index),
+    ok = yz_rt:load_module(Cluster, ?MODULE),
+    %% NOTE: Deliberate choice not to use `wait_unil'.  The data is
+    %% known to be indexed at this point; therefore the fold should
+    %% ALWAYS return the full unique set of results.
+    _ = [ok = verify_unique(Node, Index) || Node <- Cluster],
     pass.
 
--spec verify_100_objs_mr(list(), string()) -> ok.
-verify_100_objs_mr(Cluster, Index) ->
+%% @doc Verify `yokozuna:search_fold' returns the total set of unique
+%% results.  This check is related to issue #355.  Pagination can
+%% break depending on the `sort' parameter.
+%%
+%% https://github.com/basho/yokozuna/issues/355
+-spec verify_unique(node(), index_name()) -> ok.
+verify_unique(Node, Index) ->
+    lager:info("Verify search_fold on ~s returns entire unique result set",
+               [Node]),
+    Args = [Index, <<"name_s:yokozuna">>, <<"">>,
+            fun collect_results/2, {Index, []}],
+    {_, Results} = rpc:call(Node, yokozuna, search_fold, Args),
+    ?assertEqual(1000, length(lists:usort(Results))),
+    ok.
+
+%% @private
+%%
+%% @doc Collect the results from `yokozuna:search_fold'.  This
+%% function is running on a server process, not the riak test process.
+collect_results(_, {_, failed_to_change_query_plan}) ->
+    failed_to_change_query_plan;
+collect_results(Results, {Index, Acc}) ->
+    case change_query_plan(Index) of
+        ok ->
+            {Index, Acc ++ Results};
+        fail ->
+            {Index, failed_to_change_query_plan}
+    end.
+
+%% @private
+%%
+%% @doc Wait for the query plan to change.  This function runs on a
+%% server process, not the riak test process.
+-spec change_query_plan(index_name()) -> ok | fail.
+change_query_plan(Index) ->
+    change_query_plan(Index, 10).
+
+change_query_plan(_, 0) ->
+    fail;
+change_query_plan(Index, Num) ->
+    Plan1 = yz_cover:plan(Index),
+    gen_server:cast(yz_cover, update_all_plans),
+    %% NOTE: this sleep is here to give the server a chance to
+    %% update the cache, dont' remove it.
+    timer:sleep(500),
+    Plan2 = yz_cover:plan(Index),
+    case Plan1 /= Plan2 of
+        true ->
+            ok;
+        false ->
+            change_query_plan(Index, Num - 1)
+    end.
+
+-spec verify_objs_mr(list(), index_name()) -> ok.
+verify_objs_mr(Cluster, Index) ->
     MakeTick = [{map, [{language, <<"javascript">>},
                        {keep, false},
                        {source, <<"function(v) { return [1]; }">>}]}],
@@ -53,35 +113,36 @@ verify_100_objs_mr(Cluster, Index) ->
                            {name, <<"Riak.reduceSum">>}]}],
     MR = [{inputs, [{module, <<"yokozuna">>},
                     {function, <<"mapred_search">>},
-                    {arg, [list_to_binary(Index), <<"name_s:yokozuna">>]}]},
+                    {arg, [Index, <<"name_s:yokozuna">>]}]},
           {'query', [MakeTick, ReduceSum]}],
     F = fun(Node) ->
                 HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-                R = http_mr(HP, MR),
-                100 == hd(mochijson2:decode(R))
+                A = hd(mochijson2:decode(http_mr(HP, MR))),
+                lager:info("Running map-reduce job on ~p", [Node]),
+                lager:info("E: 1000, A: ~p", [A]),
+                1000 == A
         end,
     yz_rt:wait_until(Cluster, F).
 
--spec write_100_objs([node()], index_name()) -> ok.
-write_100_objs(Cluster, Index) ->
-    lager:info("Writing 100 objects"),
-    lists:foreach(write_obj(Cluster, Index), lists:seq(1,100)).
+-spec write_objs([node()], index_name()) -> ok.
+write_objs(Cluster, Bucket) ->
+    lager:info("Writing 1000 objects"),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1,1000)).
 
--spec write_obj([node()], index_name()) -> fun().
-write_obj(Cluster, Index) ->
+-spec write_obj([node()], bucket()) -> fun().
+write_obj(Cluster, Bucket) ->
     fun(N) ->
             PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
             Key = list_to_binary(io_lib:format("key_~B", [N])),
             Body = mochijson2:encode(PL),
             HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(Cluster))),
             CT = "application/json",
-            lager:info("Writing object with bkey ~p [~p]", [{Index,Key}, HP]),
-            yz_rt:http_put(HP, list_to_binary(Index), Key, CT, Body)
+            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
+            yz_rt:http_put(HP, Bucket, Key, CT, Body)
     end.
 
 -spec http_mr({host(), portnum()}, term()) -> binary().
 http_mr({Host,Port}, MR) ->
-    lager:info("Running map-reduce job [~p]", [{Host,Port}]),
     URL = ?FMT("http://~s:~s/mapred", [Host, integer_to_list(Port)]),
     Opts = [],
     Headers = [{"content-type", "application/json"}],

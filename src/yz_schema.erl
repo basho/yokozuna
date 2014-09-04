@@ -20,8 +20,10 @@
 
 -module(yz_schema).
 -include("yokozuna.hrl").
--include_lib("xmerl/include/xmerl.hrl").
 -compile(export_all).
+
+-define(SCHEMA_VSN, "1.5").
+-type schema_err() :: {error, string()}.
 
 %% @doc Administration of schemas.
 
@@ -35,26 +37,26 @@ filename(SchemaName) ->
     binary_to_list(SchemaName) ++ ".xml".
 
 %% @doc Retrieve the raw schema from Riak.
--spec get(schema_name()) -> {ok, raw_schema()} | {error, schema_name(), term()}.
+-spec get(schema_name()) -> {ok, raw_schema()} | {error, term()}.
 get(Name) ->
-    C = yz_kv:client(),
-    R = yz_kv:get(C, ?YZ_SCHEMA_BUCKET, Name),
+    R = riak_core_metadata:get(?YZ_META_SCHEMAS, Name),
     case {Name, R} of
-        {?YZ_DEFAULT_SCHEMA_NAME, {error, _}} ->
-            {ok, _RawSchema} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
-        {_, {error, Reason}} ->
-            {error, Name, Reason};
-        {_, {value, RawSchema}} ->
-            {ok, RawSchema}
+        {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
+            {ok, _} = file:read_file(?YZ_DEFAULT_SCHEMA_FILE);
+        {_, undefined} ->
+            {error, notfound};
+        {_, R} ->
+            {ok, iolist_to_binary(yz_misc:decompress(R))}
     end.
 
 %% @doc Store the `RawSchema' with `Name'.
--spec store(schema_name(), raw_schema()) -> ok | {error, term()}.
+-spec store(schema_name(), raw_schema()) -> ok | schema_err().
 store(Name, RawSchema) when is_binary(RawSchema) ->
-    case parse_and_verify(RawSchema) of
+    case parse_and_verify(Name, RawSchema) of
         {ok, RawSchema} ->
-            C = yz_kv:client(),
-            yz_kv:put(C, ?YZ_SCHEMA_BUCKET, Name, RawSchema, "text/xml");
+            CompressedSchema = yz_misc:compress(RawSchema),
+            riak_core_metadata:put(?YZ_META_SCHEMAS, Name, CompressedSchema),
+            ok;
         {error, _} = Err ->
             Err
     end.
@@ -63,7 +65,7 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
 -spec exists(schema_name()) -> true | false.
 exists(SchemaName) ->
     case yz_schema:get(SchemaName) of
-        {error, _, _} -> false;
+        {error, _} -> false;
         _ -> true
     end.
 
@@ -71,33 +73,70 @@ exists(SchemaName) ->
 %%% Private
 %%%===================================================================
 
+%% @doc Set ?YZ_SCHEMA_BUCKET with the property {allow_mult, false}
+%%      We never want schema value siblings.
+-spec setup_schema_bucket() -> ok.
+setup_schema_bucket() ->
+    ok = riak_core_bucket:set_bucket(?YZ_SCHEMA_BUCKET, [{allow_mult, false}]).
+
 %% @private
 %%
 %% @doc Parse the schema and verify it contains necessary elements.
--spec parse_and_verify(raw_schema()) -> {ok, raw_schema()} | {error, term()}.
-parse_and_verify(RawSchema) ->
+-spec parse_and_verify(schema_name(), raw_schema()) -> {ok, raw_schema()} | schema_err().
+parse_and_verify(Name, RawSchema) ->
     try
+        %% TODO: should this use unicode?
         {Schema, _} = xmerl_scan:string(binary_to_list(RawSchema), []),
         case verify(Schema) of
             {ok, _} ->
-                {ok, RawSchema};
+                case verify_name(Name) of
+                    {ok, Name} ->
+                        {ok, RawSchema};
+                    {error, _} = NameErr ->
+                        NameErr
+                end;
             {error, _} = Err ->
                 Err
         end
     catch exit:Reason ->
-            {error, Reason}
+            Msg = ?FMT("failed to parse ~p", [Reason]),
+            {error, Msg}
     end.
 
 %% @doc Verify the `Schema' contains all necessary configuration for
 %%      Yokozuna to function properly.
--spec verify(schema()) -> {ok, schema()} | {error, term()}.
+-spec verify(schema()) -> {ok, schema()} | schema_err().
 verify(Schema) ->
-    verify_fts(verify_fields(verify_uk(Schema))).
+    verify_fts(verify_fields(verify_vsn(verify_uk(Schema)))).
+
+%% @doc Verify that the schema is a name that Solr can use. Some chars
+%%      are invalid, namely "/".
+-spec verify_name(schema_name()) -> {ok, schema_name()} | schema_err().
+verify_name(Name) ->
+    case re:run(Name, "/", []) of
+        nomatch ->   {ok, Name};
+        {match,_} -> {error, "Invalid character '/' in schema name"}
+    end.
+
+%% @private
+%%
+%% @doc Verify the the schema 'version' attribute is set to correct
+%% value.
+-spec verify_vsn({ok, schema()} | schema_err()) -> {ok, schema()} | schema_err().
+verify_vsn({ok, Schema}) ->
+    case xmerl_xpath:string("string(/schema/@version)", Schema) of
+        {xmlObj, string, ?SCHEMA_VSN} ->
+            {ok, Schema};
+        _ ->
+            {error, "schema 'version' attribute must be " ++ ?SCHEMA_VSN}
+    end;
+verify_vsn({error, _}=Err) ->
+    Err.
 
 %% @private
 %%
 %% @doc Verify the `uniqueKey' element is correct.
--spec verify_uk(schema()) -> {ok, schema()} | {error, term()}.
+-spec verify_uk(schema()) -> {ok, schema()} | schema_err().
 verify_uk(Schema) ->
     case xmerl_xpath:string("/schema/uniqueKey/text()", Schema) of
         [#xmlText{value="_yz_id"}] ->
@@ -109,34 +148,36 @@ verify_uk(Schema) ->
 %% @private
 %%
 %% @doc Verify the necessary fields are present with correct attributes.
--spec verify_fields({ok, schema()} | {error, term()}) ->
-                           {ok, schema()} | {error, term()}.
+-spec verify_fields({ok, schema()} | schema_err()) ->
+                           {ok, schema()} | schema_err().
 verify_fields({ok, Schema}) ->
     Fields = [?YZ_ID_FIELD_XPATH,
               ?YZ_ED_FIELD_XPATH,
               ?YZ_FPN_FIELD_XPATH,
               ?YZ_VTAG_FIELD_XPATH,
-              ?YZ_NODE_FIELD_XPATH,
               ?YZ_PN_FIELD_XPATH,
               ?YZ_RK_FIELD_XPATH,
-              ?YZ_RB_FIELD_XPATH],
+              ?YZ_RT_FIELD_XPATH,
+              ?YZ_RB_FIELD_XPATH,
+              ?YZ_ERR_FIELD_XPATH],
     Checks = [verify_field(F, Schema) || F <- Fields],
     IsError = fun(X) -> X /= ok end,
     case lists:filter(IsError, Checks) of
         [] ->
             {ok, Schema};
         Errs ->
-            {error, {missing_fields, Errs}}
+            ErrMsg = string:join([Msg || {error, Msg} <- Errs], "\n"),
+            {error, ErrMsg}
     end;
 verify_fields({error, _}=Err) ->
     Err.
 
 %% @private
--spec verify_field(string(), schema()) -> ok | {error, term()}.
+-spec verify_field(string(), schema()) -> ok | {error, string()}.
 verify_field(Path, Schema) ->
     case xmerl_xpath:string(Path, Schema) of
         [] ->
-            {error, {missing_field, Path}};
+            {error, "missing field " ++ Path};
         _ ->
             ok
     end.
@@ -145,12 +186,12 @@ verify_field(Path, Schema) ->
 %%
 %% @doc Verify the necessary field types are present with correct
 %%      attributes.
--spec verify_fts({ok, schema()} | {error, term()}) ->
-                        {ok, schema()} | {error, term()}.
+-spec verify_fts({ok, schema()} | schema_err()) ->
+                        {ok, schema()} | schema_err().
 verify_fts({ok, Schema}) ->
     case xmerl_xpath:string(?YZ_STR_FT_XPATH, Schema) of
         [] ->
-            {error, {missing_field_type, ?YZ_STR_FT_XPATH}};
+            {error, "missing field type " ++ ?YZ_STR_FT_XPATH};
         _ ->
             {ok, Schema}
     end;

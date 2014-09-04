@@ -60,8 +60,11 @@
             <Call class="java.lang.System" name="setProperty"> <Arg>log4j.configuration</Arg> <Arg>etc/log4j.properties</Arg> </Call>
             <Set name="host"><SystemProperty name="jetty.host" /></Set>
             <Set name="port"><SystemProperty name="jetty.port" default="8983"/></Set>
-            <Set name="maxIdleTime">50000</Set>
-            <Set name="lowResourceMaxIdleTime">1500</Set>
+            <Set name="maxIdleTime">60000</Set>
+            <!-- this could prematurely close sockets, but is better than tying up resources -->
+            <Set name="lowResourceMaxIdleTime">5000</Set>
+            <!-- acceptors should equal number of CPUs * 2 -->
+            <!-- <Set name="acceptors">16</Set> -->
             <Set name="statsOn">false</Set>
           </New>
       </Arg>

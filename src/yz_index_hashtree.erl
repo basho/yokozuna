@@ -28,6 +28,7 @@
 
 -record(state, {index,
                 built,
+                expired :: boolean(),
                 lock :: undefined | reference(),
                 path,
                 build_time,
@@ -58,7 +59,7 @@ insert(async, Id, BKey, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
 insert(sync, Id, BKey, Hash, Tree, Options) ->
-    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, 1000).
+    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity).
 
 %% @doc Delete the `BKey' from `Tree'.  The id will be determined from
 %%      `BKey'.  The result of the sync call should be ignored since
@@ -68,21 +69,16 @@ delete(async, Id, BKey, Tree) ->
     gen_server:cast(Tree, {delete, Id, BKey});
 
 delete(sync, Id, BKey, Tree) ->
-    catch gen_server:call(Tree, {delete, Id, BKey}, 1000).
+    catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
 
 -spec update({p(),n()}, tree()) -> ok.
 update(Id, Tree) ->
     gen_server:call(Tree, {update_tree, Id}, infinity).
 
--spec compare({p(),n()}, hashtree:remote_fun(), tree()) ->
-                     [hashtree:keydiff()].
-compare(Id, Remote, Tree) ->
-    compare(Id, Remote, undefined, Tree).
-
 -spec compare({p(),n()}, hashtree:remote_fun(),
-              undefined | hashtree:acc_fun(T), tree()) -> T.
-compare(Id, Remote, AccFun, Tree) ->
-    gen_server:call(Tree, {compare, Id, Remote, AccFun}, infinity).
+              undefined | hashtree:acc_fun(T), term(), tree()) -> T.
+compare(Id, Remote, AccFun, Acc, Tree) ->
+    gen_server:call(Tree, {compare, Id, Remote, AccFun, Acc}, infinity).
 
 get_index(Tree) ->
     gen_server:call(Tree, get_index, infinity).
@@ -110,6 +106,10 @@ poke(Tree) ->
 -spec clear(tree()) -> ok.
 clear(Tree) ->
     gen_server:cast(Tree, clear).
+
+%% @doc Expire the tree.
+expire(Tree) ->
+    gen_server:call(Tree, expire, infinity).
 
 %% @doc Terminate the `Tree'.
 stop(Tree) ->
@@ -145,8 +145,18 @@ init([Index, RPs]) ->
             S = #state{index=Index,
                        trees=orddict:new(),
                        built=false,
+                       expired=false,
                        path=Path},
             S2 = init_trees(RPs, S),
+
+            %% If no indexes exist then mark tree as built
+            %% immediately. This allows exchange to start immediately
+            %% rather than waiting a potentially long time for a build.
+            BuiltImmediately = ([] == yz_index:get_indexes_from_meta()),
+            _ = case BuiltImmediately of
+                    true -> gen_server:cast(self(), build_finished);
+                    false -> ok
+                end,
             {ok, S2}
     end.
 
@@ -179,13 +189,17 @@ handle_call({update_tree, Id}, From, S) ->
                end,
                S);
 
-handle_call({compare, Id, Remote, AccFun}, From, S) ->
-    do_compare(Id, Remote, AccFun, From, S),
+handle_call({compare, Id, Remote, AccFun, Acc}, From, S) ->
+    do_compare(Id, Remote, AccFun, Acc, From, S),
     {noreply, S};
 
 handle_call(destroy, _From, S) ->
     S2 = destroy_trees(S),
     {stop, normal, ok, S2};
+
+handle_call(expire, _From, S) ->
+    S2 = S#state{expired=true},
+    {reply, ok, S2};
 
 handle_call(_Request, _From, S) ->
     Reply = ok,
@@ -264,7 +278,7 @@ init_trees(RPs, S) ->
     S2 = lists:foldl(fun(Id, SAcc) ->
                                  do_new_tree(Id, SAcc)
                          end, S, RPs),
-    S2#state{built=false, closed=false}.
+    S2#state{built=false, closed=false, expired=false}.
 
 -spec load_built(state()) -> boolean().
 load_built(#state{trees=Trees}) ->
@@ -278,8 +292,7 @@ load_built(#state{trees=Trees}) ->
 fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
-    Indexes = yz_index:get_indexes_from_ring(yz_misc:get_ring(transformed)),
-    Indexes2 = [{?YZ_DEFAULT_INDEX, ignored}|Indexes],
+    Indexes = yz_index:get_indexes_from_meta(),
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -287,7 +300,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(Name, Filter, F) || {Name,_} <- Indexes2],
+    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
     ok.
 
 -spec do_new_tree({p(),n()}, state()) -> state().
@@ -358,7 +371,7 @@ do_build_finished(S=#state{index=Index, built=_Pid}) ->
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
     hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
     yz_kv:update_aae_tree_stats(Index, BuildTime),
-    S#state{built=true, build_time=BuildTime}.
+    S#state{built=true, build_time=BuildTime, expired=false}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
@@ -433,8 +446,7 @@ tree_id({Index, N}) ->
 tree_id(_) ->
     erlang:error(badarg).
 
-%% TODO: handle non-existent tree
-do_compare(Id, Remote, AccFun, From, S) ->
+do_compare(Id, Remote, AccFun, Acc, From, S) ->
     case orddict:find(Id, S#state.trees) of
         error ->
             %% This case shouldn't happen, but might as well safely handle it.
@@ -444,12 +456,9 @@ do_compare(Id, Remote, AccFun, From, S) ->
         {ok, Tree} ->
             spawn_link(
               fun() ->
-                      Result = case AccFun of
-                                   undefined ->
-                                       hashtree:compare(Tree, Remote);
-                                   _ ->
-                                       hashtree:compare(Tree, Remote, AccFun)
-                               end,
+                      Remote(init, self()),
+                      Result = hashtree:compare(Tree, Remote, AccFun, Acc),
+                      Remote(final, self()),
                       gen_server:reply(From, Result)
               end)
     end,
@@ -458,34 +467,34 @@ do_compare(Id, Remote, AccFun, From, S) ->
 %% TODO: OMG cache this with entry in proc dict, use `_yz_fp` as Index
 %%       and keep an orddict(Bucket,N) in proc dict
 get_index_n(BKey) ->
-    get_index_n(BKey, yz_misc:get_ring(transformed)).
+    riak_kv_util:get_index_n(BKey).
 
-get_index_n({Bucket, Key}, Ring) ->
-    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    N = proplists:get_value(n_val, BucketProps),
-    ChashKey = riak_core_util:chash_key({Bucket, Key}),
-    Index = riak_core_ring:responsible_index(ChashKey, Ring),
-    {Index, N}.
-
+-spec do_poke(state()) -> state().
 do_poke(S) ->
-    maybe_build(maybe_clear(S)).
+    S1 = maybe_rebuild(maybe_expire(S)),
+    S2 = maybe_build(S1),
+    S2.
 
-maybe_clear(S=#state{lock=undefined, built=true}) ->
+-spec maybe_expire(state()) -> state().
+maybe_expire(S=#state{lock=undefined, built=true}) ->
     Diff = timer:now_diff(os:timestamp(), S#state.build_time),
-    case Diff > (?YZ_ENTROPY_EXPIRE * 1000)  of
-        true -> clear_tree(S);
+    Expire = ?YZ_ENTROPY_EXPIRE,
+    case (Expire /= never) andalso (Diff > (Expire * 1000))  of
+        true ->  S#state{expired=true};
         false -> S
     end;
 
-maybe_clear(S) ->
+maybe_expire(S) ->
     S.
 
+-spec clear_tree(state()) -> state().
 clear_tree(S=#state{index=Index}) ->
     lager:debug("Clearing tree ~p", [S#state.index]),
     S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
     S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
-    S3#state{built=false}.
+    ok = yz_kv:update_aae_tree_stats(Index, undefined),
+    S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->
     S2 = close_trees(S),
@@ -502,29 +511,82 @@ maybe_build(S) ->
     %% Already built or build in progress
     S.
 
+%% @private
+%%
+%% @doc Flush and close the trees if not closed already.
+-spec close_trees(#state{}) -> #state{}.
 close_trees(S=#state{trees=Trees, closed=false}) ->
-    Trees2 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees],
-    S#state{trees=Trees2, closed=true};
+    Trees2 = [begin
+                  NewTree =
+                      try
+                          hashtree:flush_buffer(Tree)
+                      catch _:_ ->
+                              lager:warning("Failed to flush trees during close"),
+                              Tree
+                      end,
+                  {IdxN, NewTree}
+              end || {IdxN, Tree} <- Trees],
+    Trees3 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees2],
+    S#state{trees=Trees3, closed=true};
 close_trees(S) ->
     S.
 
-build_or_rehash(Self, S=#state{index=Index, trees=Trees}) ->
+-spec build_or_rehash(pid(), state()) -> ok.
+build_or_rehash(Tree, S) ->
     Type = case load_built(S) of
                false -> build;
                true  -> rehash
            end,
-    Lock = yz_entropy_mgr:get_lock(Type),
-    case {Lock, Type} of
-        {ok, build} ->
+    Locked = get_all_locks(Type, self()),
+    build_or_rehash(Tree, Locked, Type, S).
+
+-spec build_or_rehash(pid(), boolean(), build | rehash, state()) -> ok.
+build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
+    case {Locked, Type} of
+        {true, build} ->
             lager:debug("Starting build: ~p", [Index]),
-            fold_keys(Index, Self),
+            fold_keys(Index, Tree),
             lager:debug("Finished build: ~p", [Index]),
-            gen_server:cast(Self, build_finished);
-        {ok, rehash} ->
+            gen_server:cast(Tree, build_finished);
+        {true, rehash} ->
             lager:debug("Starting rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
             lager:debug("Finished rehash: ~p", [Index]),
-            gen_server:cast(Self, build_finished);
-        {_Error, _} ->
-            gen_server:cast(Self, build_failed)
+            gen_server:cast(Tree, build_finished);
+        {_, _} ->
+            gen_server:cast(Tree, build_failed)
     end.
+
+maybe_rebuild(S=#state{lock=undefined, built=true, expired=true}) ->
+    Tree = self(),
+    Pid = spawn_link(fun() ->
+                             receive
+                                 {lock, Locked, S2} ->
+                                     build_or_rehash(Tree, Locked, build, S2);
+                                 stop ->
+                                     ok
+                             end
+                     end),
+    Locked = get_all_locks(build, Pid),
+    case Locked of
+        true ->
+            S2 = clear_tree(S),
+            Pid ! {lock, Locked, S2},
+            S2#state{built=Pid};
+        _ ->
+            Pid ! stop,
+            S
+    end;
+maybe_rebuild(S) ->
+    S.
+
+-spec get_all_locks(build | rehash, pid()) -> boolean().
+get_all_locks(Type, Pid) ->
+    %% NOTE: Yokozuna diverges from KV here. KV has notion of vnode
+    %% fold to make sure handoff/aae don't fight each other. Yokozuna
+    %% has no vnodes. It would probably be a good idea to adda lock
+    %% around Solr so that mutliple tree builds don't fight for the
+    %% file page cache but the bg manager stuff is kind of convoluted
+    %% and there isn't time to figure this all out for 2.0. Thus,
+    %% Yokozuna will not bother with the Solr lock for now.
+    ok == yz_entropy_mgr:get_lock(Type, Pid).

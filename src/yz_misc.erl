@@ -28,20 +28,12 @@
 %%% API
 %%%===================================================================
 
-%% @doc Extract the `Claimant' from the `Ring'.
--spec get_claimant(ring()) -> Claimant::node().
-get_claimant(Ring) ->
-    riak_core_ring:claimant(Ring).
-
-%% @doc Check if the given `Node' is the claimant according to `Ring'.
--spec is_claimant(ring(), node()) -> boolean().
-is_claimant(Ring, Node) ->
-    Node == get_claimant(Ring).
-
-%% @doc Determine if Riak Search is enabled.
--spec is_riak_search_enabled() -> boolean().
-is_riak_search_enabled() ->
-    app_helper:get_env(?RS_SVC, enabled, false).
+%% @doc Extract the hostname from `Node'.
+-spec hostname(node()) -> string().
+hostname(Node) ->
+    S = atom_to_list(Node),
+    [_, Host] = re:split(S, "@", [{return, list}]),
+    Host.
 
 %% @doc Add list of webmachine routes to the router.
 add_routes(Routes) ->
@@ -166,6 +158,15 @@ group_by_1(Transform) ->
             orddict:update(K, Cons, [V], Acc)
     end.
 
+%% @doc Determine the owner of the index (riak partition).
+-spec index_owner(ring(), p()) -> node() | no_owner.
+index_owner(Ring, Index) ->
+    try
+        riak_core_ring:index_owner(Ring, Index)
+    catch error:{badmatch,_} ->
+            no_owner
+    end.
+
 %% @doc Create the `Dir' if it doesn't already exist.
 -spec make_dir(string()) -> ok.
 make_dir(Dir) ->
@@ -259,6 +260,24 @@ set_ring_meta(Name, Default, Fun, Arg) ->
     riak_core_ring_manager:ring_trans(
       fun set_ring_trans/2,
       {Name, Default, Fun, Arg}).
+
+-spec compress(iodata()) -> iolist().
+compress(Data) ->
+    Z = zlib:open(),
+    ok = zlib:deflateInit(Z),
+    Compressed = zlib:deflate(Z, Data, finish),
+    ok = zlib:deflateEnd(Z),
+    zlib:close(Z),
+    Compressed.
+
+-spec decompress(iodata()) -> iolist().
+decompress(Data) ->
+    Z = zlib:open(),
+    zlib:inflateInit(Z),
+    Decompressed = zlib:inflate(Z, Data),
+    zlib:inflateEnd(Z),
+    zlib:close(Z),
+    Decompressed.
 
 %%%===================================================================
 %%% Private

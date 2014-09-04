@@ -5,7 +5,6 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 -define(CFG,
 	[
 	 {riak_core,
@@ -54,4 +53,4 @@ http(Method, URL, Headers, Body) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 extract_url({Host,Port}) ->
-    ?FMT("http://~s:~B/extract", [Host, Port]).
+    ?FMT("http://~s:~B/search/extract", [Host, Port]).

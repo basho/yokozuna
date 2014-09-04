@@ -23,13 +23,13 @@
 %%
 %% Available operations:
 %%
-%% GET /yz/index
+%% GET /search/index
 %%
 %%   Get information about every index in JSON format.
-%%   Currently the same information as /yz/index/Index,
+%%   Currently the same information as /search/index/Index,
 %%   but as an array of JSON objects.
 %%
-%% GET /yz/index/Index
+%% GET /search/index/Index
 %%
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
@@ -45,23 +45,23 @@
 %%   index. That schema file must already be installed on the server.
 %%   Defaults to "_yz_default".
 %%
-%% PUT /yz/index/Index
+%% PUT /search/index/Index
 %%
-%%   Creates a new index with the given name, and also creates
-%%   a post commit hook to a bucket of the same name.
+%%   Creates a new index with the given name.
 %%
 %%   A PUT request requires this header:
 %%     Content-Type: application/json
 %%
-%%   A JSON body may be sent. It currently only accepts
+%%   A JSON body may be sent. It accepts the following:
 %%
-%%   { "schema" : SchemaName }
+%%   { "schema" : SchemaName,
+%%     "n_val" : N}
 %%
 %%   If no schema is given, it defaults to "_yz_default".
 %%
 %%   Returns a '409 Conflict' code if the index already exists.
 %%
-%% DELETE /yz/index/Index
+%% DELETE /search/index/Index
 %%
 %%   Deletes the index with the given index name.
 %%
@@ -71,10 +71,11 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(ctx, {index_name :: string(), % name the index
-              props :: proplist(),    % properties of the body
-              method :: atom(),       % HTTP method for the request
-              ring :: ring()
+-record(ctx, {index_name :: index_name() | undefined, %% name the index
+              props :: proplist(),    %% properties of the body
+              method :: atom(),       %% HTTP method for the request
+              ring :: ring(),         %% Ring data
+              security                %% security context
              }).
 
 %%%===================================================================
@@ -83,9 +84,8 @@
 
 %% @doc Return the list of routes provided by this resource.
 routes() ->
-    [{["yz", "index", index], yz_wm_index, []},
-     {["yz", "index"], yz_wm_index, []}].
-
+    [{["search", "index", index], yz_wm_index, []},
+     {["search", "index"], yz_wm_index, []}].
 
 %%%===================================================================
 %%% Callbacks
@@ -97,11 +97,15 @@ init(_Props) ->
 %% NOTE: Need to grab the ring once at beginning of request because it
 %%       could change as this request is being serviced.
 service_available(RD, Ctx=#ctx{}) ->
+    IndexName = case wrq:path_info(index, RD) of
+                    undefined -> undefined;
+                    V -> list_to_binary(mochiweb_util:unquote(V))
+                end,
     {true,
      RD,
      Ctx#ctx{
        method=wrq:method(RD),
-       index_name=wrq:path_info(index, RD),
+       index_name=IndexName,
        props=decode_json(wrq:req_body(RD)),
        ring=yz_misc:get_ring(transformed)
       }
@@ -120,13 +124,47 @@ content_types_accepted(RD, S) ->
              {"application/octet-stream", create_index}],
     {Types, RD, S}.
 
+is_authorized(ReqData, Ctx) ->
+    case riak_api_web_security:is_authorized(ReqData) of
+        false ->
+            {"Basic realm=\"Riak\"", ReqData, Ctx};
+        {true, SecContext} ->
+            {true, ReqData, Ctx#ctx{security=SecContext}};
+        insecure ->
+            %% XXX 301 may be more appropriate here, but since the http and
+            %% https port are different and configurable, it is hard to figure
+            %% out the redirect URL to serve.
+            {{halt, 426}, wrq:append_to_resp_body(<<"Security is enabled and "
+                    "Riak does not accept credentials over HTTP. Try HTTPS "
+                    "instead.">>, ReqData), Ctx}
+    end.
+
+%% Uses the riak_kv,secure_referer_check setting rather
+%% as opposed to a special yokozuna-specific config
+forbidden(RD, Ctx=#ctx{security=undefined}) ->
+    {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
+forbidden(RD, Ctx=#ctx{security=Security}) ->
+    case riak_kv_wm_utils:is_forbidden(RD) of
+        true ->
+            {true, RD, Ctx};
+        false ->
+            PermAndResource = {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX},
+            Res = riak_core_security:check_permission(PermAndResource, Security),
+            case Res of
+                {false, Error, _} ->
+                    {true, wrq:append_to_resp_body(Error, RD), Ctx};
+                {true, _} ->
+                    {false, RD, Ctx}
+            end
+    end.
+
 % Responsed to a DELETE request by removing the
 % given index, and returning a 2xx code if successful
 delete_resource(RD, S) ->
     IndexName = S#ctx.index_name,
-    case yz_index:exists(IndexName) of
+    case exists(IndexName) of
         true  ->
-            case associated_buckets(IndexName, S#ctx.ring) of
+            case yz_index:associated_buckets(IndexName, S#ctx.ring) of
                 [] ->
                     ok = yz_index:remove(IndexName),
                     {true, RD, S};
@@ -146,38 +184,34 @@ create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
-    case maybe_create_index(IndexName, SchemaName) of
+    NVal = proplists:get_value(<<"n_val">>, BodyProps, undefined),
+    case maybe_create_index(IndexName, SchemaName, NVal) of
         ok ->
             {<<>>, RD, S};
-        {error, {rpc_fail, Claimant, _}} ->
-            Msg = "Cannot create index while claimant node ~p is down~n",
-            text_response({halt, 500}, Msg, [Claimant], RD, S)
+        {error, schema_not_found} ->
+            Msg = "Cannot create index because schema ~s was not found~n",
+            text_response({halt, 500}, Msg, [SchemaName], RD, S);
+        {error, bad_n_val} ->
+            Msg = "Bad n_val given ~p~n",
+            text_response({halt, 400}, Msg, [NVal], RD, S);
+        {error, invalid_name} ->
+            Msg = "Invalid character in index name ~s~n",
+            text_response({halt, 400}, Msg, [IndexName], RD, S)
     end.
 
 
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
 read_index(RD, S) ->
-    Ring = S#ctx.ring,
     case S#ctx.index_name of
         undefined  ->
-            Indexes = yz_index:get_indexes_from_ring(Ring),
-            Details = [index_body(Ring, IndexName)
-              || IndexName <- orddict:fetch_keys(Indexes)];
+            Indexes = yz_index:get_indexes_from_meta(),
+            Details = [index_body(IndexName)
+                || IndexName <- Indexes, yz_index:exists(IndexName)];
         IndexName ->
-            Details = index_body(Ring, IndexName)
+            Details = index_body(IndexName)
     end,
     {mochijson2:encode(Details), RD, S}.
-
-index_body(Ring, IndexName) ->
-    Info = yz_index:get_info_from_ring(Ring, IndexName),
-    SchemaName = yz_index:schema_name(Info),
-    {struct, [
-        {"name", list_to_binary(IndexName)},
-        {"bucket", list_to_binary(IndexName)},
-        {"schema", SchemaName}
-    ]}.
-
 
 text_response(Result, Message, Data, RD, S) ->
     RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
@@ -189,8 +223,8 @@ schema_exists_response(RD, S) ->
     case yz_schema:exists(Name) of
         true  -> {false, RD, S};
         false ->
-            text_response(true, "Schema ~p does not exist~n",
-                [binary_to_list(Name)], RD, S)
+            text_response(true, "Schema ~s does not exist~n",
+                [Name], RD, S)
     end.
 
 malformed_request(RD, S) when S#ctx.method =:= 'PUT' ->
@@ -215,7 +249,7 @@ malformed_request(RD, S) ->
     case IndexName of
       undefined -> {false, RD, S};
       _ ->
-          case yz_index:exists(IndexName) of
+          case exists(IndexName) of
               true -> {false, RD, S};
               _ -> text_response({halt, 404}, "not found~n", [], RD, S)
           end
@@ -224,7 +258,7 @@ malformed_request(RD, S) ->
 %% Returns a 409 Conflict if this index already exists
 is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
     IndexName = S#ctx.index_name,
-    case yz_index:exists(IndexName) of
+    case exists(IndexName) of
         true  ->
             {true, RD, S};
         false ->
@@ -234,12 +268,6 @@ is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
--spec associated_buckets(index_name(), ring()) -> [bucket()].
-associated_buckets(IndexName, Ring) ->
-    AllBucketProps = riak_core_bucket:get_buckets(Ring),
-    Indexes = lists:map(fun yz_kv:which_index/1, AllBucketProps),
-    lists:filter(fun(I) -> I == IndexName end, Indexes).
 
 %% accepts a string and attempt to parse it into json
 decode_json(RDBody) ->
@@ -252,13 +280,40 @@ decode_json(RDBody) ->
           end
     end.
 
--spec maybe_create_index(index_name(), schema_name()) -> ok |
-                                                         {error, schema_not_found} |
-                                                         {error, {rpc_fail, node(), term()}}.
-maybe_create_index(IndexName, SchemaName)->
-    case yz_index:exists(IndexName) of
+-spec exists(undefined | index_name()) -> boolean().
+exists(undefined) ->
+    false;
+exists(IndexName) ->
+    yz_index:exists(IndexName).
+
+%% @private
+-spec index_body(index_name()) -> {struct, [{string(), binary()}]}.
+index_body(IndexName) ->
+    Info = yz_index:get_index_info(IndexName),
+    SchemaName = yz_index:schema_name(Info),
+    NVal = yz_index:get_n_val(Info),
+    {struct, [
+              {"name", IndexName},
+              {"n_val", NVal},
+              {"schema", SchemaName}
+    ]}.
+
+-spec maybe_create_index(index_name(), schema_name(), n()) ->
+                                ok |
+                                {error, schema_not_found} |
+                                {error, bad_n_val} |
+                                {error, invalid_name}.
+maybe_create_index(IndexName, SchemaName, NVal)->
+    case exists(IndexName) of
         true  ->
             ok;
         false ->
-            yz_index:create(IndexName, SchemaName)
+            case NVal of
+                undefined ->
+                    yz_index:create(IndexName, SchemaName);
+                Int when is_integer(Int), Int > 0 ->
+                    yz_index:create(IndexName, SchemaName, NVal);
+                _ ->
+                    {error, bad_n_val}
+            end
     end.

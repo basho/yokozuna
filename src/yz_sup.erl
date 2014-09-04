@@ -18,6 +18,17 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc Top-level supervisor for yokozuna.
+%%
+%% Starts no children if yokozuna is not enabled (`start_link(false)').
+%%
+%% Starts two sub-supervisors if yokozuna is enabled: one supervisor
+%% for the JVM solr manager, and another supervisor for the rest of
+%% the long-lived yokozuna processes. This top-level supervisor's
+%% restart strategy is thus to allow zero restarts of its
+%% sub-supervisors. If those sub-supervisors exit, something is really
+%% wrong, and yokozuna should shut down.
+
 -module(yz_sup).
 -behaviour(supervisor).
 -include("yokozuna.hrl").
@@ -42,30 +53,18 @@ init([false]) ->
     {ok, {{one_for_one, 5, 10}, []}};
 
 init([_Enabled]) ->
-    Dir = ?YZ_ROOT_DIR,
-    SolrPort = yz_solr:port(),
-    SolrJMXPort = yz_solr:jmx_port(),
+    SolrSup = {yz_solr_sup,
+               {yz_solr_sup, start_link, []},
+               permanent, 5000, supervisor, [yz_solr_sup]},
 
-    SolrProc = {yz_solr_proc,
-                {yz_solr_proc, start_link, [Dir, SolrPort, SolrJMXPort]},
-                permanent, 5000, worker, [yz_solr_proc]},
+    GeneralSup = {yz_general_sup,
+                  {yz_general_sup, start_link, []},
+                  permanent, infinity, supervisor, [yz_general_sup]},
 
-    Events = {yz_events,
-              {yz_events, start_link, []},
-              permanent, 5000, worker, [yz_events]},
+    Children = [SolrSup, GeneralSup],
 
-    HashtreeSup = {yz_index_hashtree_sup,
-                   {yz_index_hashtree_sup, start_link, []},
-                   permanent, infinity, supervisor, [yz_index_hashtree_sup]},
-
-    EntropyMgr = {yz_entropy_mgr,
-                  {yz_entropy_mgr, start_link, []},
-                  permanent, 5000, worker, [yz_entropy_mgr]},
-
-    Cover = {yz_cover,
-             {yz_cover, start_link, []},
-             permanent, 5000, worker, [yz_cover]},
-
-    Children = [SolrProc, Events, HashtreeSup, EntropyMgr, Cover],
-
-    {ok, {{one_for_one, 5, 10}, Children}}.
+    %% if these sub-supervisors ever exit, there's something really
+    %% wrong; don't try to restart them
+    MaxR = 0,
+    MaxT = 1,
+    {ok, {{one_for_one, MaxR, MaxT}, Children}}.

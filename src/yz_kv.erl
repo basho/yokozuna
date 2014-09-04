@@ -23,15 +23,32 @@
 
 -module(yz_kv).
 -compile(export_all).
+-include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
--define(ONE_SECOND, 1000).
--define(WAIT_FLAG(Index), {wait_flag, Index}).
--define(MAX_WAIT_FOR_INDEX, app_helper:get_env(?YZ_APP_NAME, max_wait_for_index_seconds, 5)).
+-type write_reason() :: delete | handoff | put | anti_entropy.
 
--type check() :: {module(), atom(), list()}.
--type seconds() :: pos_integer().
--type write_reason() :: delete | handoff | put.
+
+%%%===================================================================
+%%% TODO: move to riak_core
+%%%===================================================================
+
+bucket_name({_,Name}) ->
+    Name;
+bucket_name(Name) ->
+    Name.
+
+bucket_type({Type,_}) ->
+    Type;
+bucket_type(_) ->
+    ?DEFAULT_TYPE.
+
+is_default_type({?DEFAULT_TYPE,_}) ->
+    true;
+is_default_type({_,_}) ->
+    false;
+is_default_type(_) ->
+    true.
 
 
 %%%===================================================================
@@ -65,7 +82,8 @@ get(C, Bucket, Key) ->
             Other
     end.
 
--spec hash_object(obj()) -> binary().
+%% @doc calculates the hash of a riak object, returns binary 
+-spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
     Vclock = riak_object:vclock(Obj),
     Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
@@ -77,7 +95,7 @@ hash_object(Obj) ->
 get_obj_ct(MD) ->
     dict:fetch(<<"content-type">>, MD).
 
--spec get_obj_bucket(obj()) -> binary().
+-spec get_obj_bucket(obj()) -> bucket().
 get_obj_bucket(Obj) ->
     riak_object:bucket(Obj).
 
@@ -94,7 +112,7 @@ get_obj_value(Obj) ->
     riak_object:get_value(Obj).
 
 %% @doc Get the build time of the tree.
--spec get_tree_build_time(tree()) -> timestamp().
+-spec get_tree_build_time(hashtree:hashtree()) -> any().
 get_tree_build_time(Tree) ->
     riak_kv_index_hashtree:get_build_time(Tree).
 
@@ -109,27 +127,114 @@ is_tombstone(MD) ->
 get_md_entry(MD, Key) ->
     yz_misc:dict_get(Key, MD, none).
 
-index(Obj, Reason, VNodeState) ->
+%% @doc Extract the index name from the `Bucket'. Return the tombstone
+%% value if there is none.
+-spec get_index(bkey()) -> index_name().
+get_index({Bucket, _}) ->
+    BProps = riak_core_bucket:get_bucket(Bucket),
+    proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
+
+%% @doc Called by KV vnode to determine if handoff should start or
+%% not.  Yokozuna needs to make sure that the bucket types have been
+%% transfered first.  Otherwise the bucket-to-index associations may
+%% be missing causing missing index entries.
+%%
+%% TODO: Currently this call will block vnode and also vnode mgr.  If
+%% I want to get really fancy the first time this function is called I
+%% could return false but then send off async job to wait for bucket
+%% types to transfer.  Once types have transfered some global flag
+%% which is cheap to check would be set and this call would simply
+%% check that.
+-spec should_handoff({term(), {p(), node()}}) -> boolean().
+should_handoff({_Reason, {_Partition, TargetNode}}) ->
+    case ?YZ_ENABLED andalso is_service_up(?YZ_SVC_NAME, TargetNode) of
+        true ->
+            Consistent = is_metadata_consistent(TargetNode),
+            HasIndexes = has_indexes(TargetNode),
+            case {Consistent, HasIndexes} of
+                {true, true} ->
+                    true;
+                {false, false} ->
+                    ?INFO("waiting for bucket types prefix and indexes to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false;
+                {false, _} ->
+                    ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false;
+                {_, false} ->
+                    ?INFO("waiting for indexes to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false
+            end;
+        false ->
+            true
+    end.
+
+%% @doc Returns true if the RemoteNode's indexes
+%% match this node's indexes.
+-spec has_indexes(node()) -> boolean().
+has_indexes(RemoteNode) ->
+    RemoteIndexes = case rpc:call(RemoteNode, yz_solr, cores, [], 5000) of
+        {ok, Indexes} -> Indexes;
+        _ -> error
+    end,
+    case {RemoteIndexes, yz_solr:cores()} of
+        {error, _} -> false;
+        {RemoteIndexes, {ok, LocalIndexes}} ->
+            lists:sort(LocalIndexes) == lists:sort(RemoteIndexes);
+        _ -> false
+    end.
+
+index(Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
             Ring = yz_misc:get_ring(transformed),
-            P = get_partition(VNodeState),
             case is_owner_or_future_owner(P, node(), Ring) of
                 true ->
-                    {Bucket, _} = BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-                    BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-                    NVal = riak_core_bucket:n_val(BProps),
-                    PrimaryPL = yz_misc:primary_preflist(BKey, Ring, NVal),
-                    Index = which_index(BProps),
-                    IndexContent = index_content(Index),
-                    IdxN = {first_partition(PrimaryPL), NVal},
-                    index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent);
+                    T1 = os:timestamp(),
+                    BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+                    try
+                        Index = get_index(BKey),
+                        ShortPL = riak_kv_util:get_index_n(BKey),
+                        case should_index(Index) of
+                            true ->
+                                index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
+                            false ->
+                                dont_index(Obj, Reason, P, BKey, ShortPL)
+                        end,
+                        yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
+                    catch _:Err ->
+                            yz_stat:index_fail(),
+                            Trace = erlang:get_stacktrace(),
+                            case Reason of
+                                delete ->
+                                    ?ERROR("failed to delete docid ~p with error ~p because ~p",
+                                           [BKey, Err, Trace]);
+                                _ ->
+                                    ?ERROR("failed to index object ~p with error ~p because ~p",
+                                           [BKey, Err, Trace])
+                            end
+                    end;
                 false ->
                     ok
             end;
         false ->
             ok
     end.
+
+%% @private
+%%
+%% @doc Update the hashtree so that AAE works but don't create any
+%% indexes.  This is called when a bucket has no indexed defined.
+-spec dont_index(obj(), write_reason(), p(), bkey(), short_preflist()) -> ok.
+dont_index(_, delete, P, BKey, ShortPL) ->
+    update_hashtree(delete, P, ShortPL, BKey),
+    ok;
+dont_index(Obj, _, P, BKey, ShortPL) ->
+    Hash = hash_object(Obj),
+    update_hashtree({insert, Hash}, P, ShortPL, BKey),
+    ok.
 
 %% @doc An object modified hook to create indexes as object data is
 %% written or modified.
@@ -138,43 +243,45 @@ index(Obj, Reason, VNodeState) ->
 %%       During active anti-entropy runs on spawned process.
 %%
 %% NOTE: Index is doing double duty of index and delete.
+%%
+%% NOTE: A value of [notfound] is considered to be an ensemble
+%%       tombstone, or at least nonexistent, and acts as a delete
 -spec index(obj(), write_reason(), ring(), p(), bkey(),
-            {p(), n()}, index_name(), boolean()) -> ok.
-index(_, delete, _, P, BKey, IdxN, Index, _) ->
-    {_, Key} = BKey,
-    try
-        ok = yz_solr:delete(Index, [{key, Key}]),
-        ok = update_hashtree(delete, P, IdxN, BKey)
-    catch _:Err ->
-            ?ERROR("failed to delete docid ~p with error ~p", [BKey, Err])
-    end,
+            short_preflist(), index_name()) -> ok.
+index(_, delete, _, P, BKey, ShortPL, Index) ->
+    ok = yz_solr:delete(Index, [{bkey, BKey}]),
+    ok = update_hashtree(delete, P, ShortPL, BKey),
     ok;
 
-index(Obj, Reason, Ring, P, BKey, IdxN, Index, IndexContent) ->
-    LI = yz_cover:logical_index(Ring),
-    {_, Key} = BKey,
-    ok = maybe_wait(Reason, Index),
-    LFPN = yz_cover:logical_partition(LI, element(1, IdxN)),
-    LP = yz_cover:logical_partition(LI, P),
-    Docs = yz_doc:make_docs(Obj, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP),
-                            IndexContent),
-    try
-        DelOp = cleanup(length(Docs), {Obj, Key, LP}),
-        ok = yz_solr:index(Index, Docs, DelOp),
-        ok = update_hashtree({insert, yz_kv:hash_object(Obj)},
-                             P, IdxN, BKey)
-    catch _:Err ->
-        Trace = erlang:get_stacktrace(),
-        ?ERROR("failed to index object ~p with error ~p because ~p~n", [BKey, Err, Trace])
-    end,
-    ok.
+index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
+    case riak_object:get_values(Obj) of
+        [notfound] ->
+            ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
+        _ ->
+            LI = yz_cover:logical_index(Ring),
+            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+            LP = yz_cover:logical_partition(LI, P),
+            Hash = hash_object(Obj),
+            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+            DelOp = cleanup(length(Docs), {Obj, BKey, LP}),
+            ok = yz_solr:index(Index, Docs, DelOp),
+            ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
+    end.
 
 %% @doc Should the content be indexed?
--spec index_content(index_name()) -> boolean().
-index_content(?YZ_DEFAULT_INDEX) ->
+-spec should_index(index_name()) -> boolean().
+should_index(?YZ_INDEX_TOMBSTONE) ->
     false;
-index_content(_) ->
+should_index(_) ->
     true.
+
+%% @doc Perform a local KV get for `BKey' stored under `Index'.  This
+%% avoids spawning a coordinator and performing quorum.
+%%
+%% @see yz_exchange_fsm:read_repair_keydiff/2
+-spec local_get(p(), bkey()) -> {ok, obj()} | term().
+local_get(Index, BKey) ->
+    riak_kv_vnode:local_get(Index, BKey).
 
 %% @doc Update AAE exchange stats for Yokozuna.
 -spec update_aae_exchange_stats(p(), {p(),n()}, non_neg_integer()) -> ok.
@@ -183,82 +290,86 @@ update_aae_exchange_stats(Index, IndexN, Count) ->
     ok.
 
 %% @doc Update AAE hashtree status for Yokozuna.
--spec update_aae_tree_stats(p(), non_neg_integer()) -> ok.
+-spec update_aae_tree_stats(p(), non_neg_integer() | undefined) -> ok.
 update_aae_tree_stats(Index, BuildTime) ->
     riak_kv_entropy_info:tree_built(yz, Index, BuildTime),
     ok.
 
+%% @private
+%%
+%% @doc Update the hashtree for `Parition'/`IdxN'.
+%%
+%% `Action' - Either delete the `BKey' by passing `delete' or insert
+%% hash by passing `{insert, ObjHash}'.
+%%
+%% `Partition' - The partition number of the tree to update.
+%%
+%% `IdxN' - The preflist the `BKey' belongs to.
+%%
+%% `BKey' - The bucket/key encoded as binary.
 -spec update_hashtree(delete | {insert, binary()}, p(), {p(),n()},
                       {binary(), binary()}) -> ok.
 update_hashtree(Action, Partition, IdxN, BKey) ->
-    try
-        case get_tree(Partition) of
-            not_registered ->
-                ok;
-            Tree ->
-                case Action of
-                    {insert, ObjHash} ->
-                        yz_index_hashtree:insert(sync, IdxN, BKey,
-                                                 ObjHash, Tree, []);
-                    delete ->
-                        yz_index_hashtree:delete(sync, IdxN, BKey, Tree)
-                end
-        end
-    catch _:Reason ->
-            lager:debug("Failed to update hashtree: ~p ~p", [BKey, Reason])
+    case get_tree(Partition) of
+        not_registered ->
+            ok;
+        Tree ->
+            Method = get_method(),
+            case Action of
+                {insert, ObjHash} ->
+                    yz_index_hashtree:insert(Method, IdxN, BKey,
+                                             ObjHash, Tree, []),
+                    ok;
+                delete ->
+                    yz_index_hashtree:delete(Method, IdxN, BKey, Tree),
+                    ok
+            end
     end.
+
+%% @private
+%%
+%% @doc Determine the method used to make the hashtree update.  Most
+%% updates will be performed in async manner but want to occasionally
+%% use a blocking call to avoid overloading the hashtree.
+%%
+%% NOTE: This uses the process dictionary and thus is another function
+%% which relies running on a long-lived process.  In this case that
+%% process is the KV vnode.  In the future this should probably use
+%% cast only + sidejob for overload protection.
+-spec get_method() -> async | sync.
+get_method() ->
+    case get(yz_hashtree_tokens) of
+        undefined ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            async;
+        N when N > 0 ->
+            put(yz_hashtree_tokens, N - 1),
+            async;
+        _ ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            sync
+    end.
+
+%% @private
+%%
+%% @doc Return the max number of async hashtree calls that may be
+%% performed before requiring a blocking call.
+-spec max_hashtree_tokens() -> pos_integer().
+max_hashtree_tokens() ->
+    %% Use same max as riak_kv
+    app_helper:get_env(riak_kv, anti_entropy_max_async, 90).
 
 %% @doc Write a value
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
 put(Client, Bucket, Key, Value, ContentType) ->
     O = riak_object:new(Bucket, Key, Value, ContentType),
-    Ring = yz_misc:get_ring(transformed),
-    BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    N = proplists:get_value(n_val, BucketProps),
+    BucketProps = riak_core_bucket:get_bucket(Bucket),
+    N = riak_core_bucket:n_val(BucketProps),
     Client:put(O, [{pw,N},{w,N},{dw,N}]).
-
-%% @doc Remove the `Index' property from `Bucket'.  Data stored under
-%%      `Bucket' will no longer be indexed.
--spec remove_index(bucket()) -> ok.
-remove_index(Bucket) ->
-    set_index(Bucket, ?YZ_DEFAULT_INDEX).
-
-%% @doc Set the `Index' for which data stored in `Bucket' should be
-%%      indexed under.
--spec set_index(bucket(), index_name()) -> ok.
-set_index(Bucket, Index) ->
-    ok = riak_core_bucket:set_bucket(Bucket, [{?YZ_INDEX, Index}]).
-
-
-%% @doc Extract the index name from `BProps' or return the default
-%%      index name if there is none.
-%%
-%% TODO: Convert `index_name()' to be binary everywhere.
--spec which_index(term()) -> index_name().
-which_index(BProps) ->
-    case proplists:get_value(?YZ_INDEX, BProps, ?YZ_DEFAULT_INDEX) of
-        B when is_binary(B) ->
-            binary_to_list(B);
-        S ->
-            S
-    end.
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
-
-%% @private
-%%
-%% @docs remove a hook from the bucket
-%%
-%% NOTE: Move this into riak_kv
-remove_obj_modified_hook(Bucket, Mod, Fun) ->
-    BProps = riak_core_bucket:get_bucket(Bucket),
-    Existing = proplists:get_value(obj_modified_hooks, BProps, []),
-    HookProp = {Mod, Fun},
-    Hooks = lists:delete(HookProp, Existing),
-    ok = riak_core_bucket:set_bucket(Bucket, [{obj_modified_hooks, Hooks}]).
-
 
 %% @private
 %%
@@ -268,10 +379,10 @@ check_flag(Flag) ->
     true == erlang:get(Flag).
 
 %% @private
-cleanup(1, {_Obj, Key, _LP}) ->
+cleanup(1, {_Obj, BKey, _LP}) ->
     %% Delete any siblings
-    [{siblings, Key}];
-cleanup(2, {Obj, _Key, LP}) ->
+    [{siblings, BKey}];
+cleanup(2, {Obj, _BKey, LP}) ->
     %% An object has crossed the threshold from
     %% being a single value Object, to a sibling
     %% value Object, delete the non-sibling ID
@@ -288,19 +399,13 @@ first_partition([{Partition, _}|_]) ->
 
 %% @private
 %%
-%% @doc Get the partition from the `VNodeState'.
-get_partition(VNodeState) ->
-    riak_kv_vnode:get_state_partition(VNodeState).
-
-%% @private
-%%
 %% @doc Get the tree.
 %%
 %% NOTE: Relies on the fact that this code runs on the KV vnode
 %%       process.
 -spec get_tree(p()) -> tree() | not_registered.
 get_tree(Partition) ->
-    case erlang:get(tree) of
+    case erlang:get({tree,Partition}) of
         undefined ->
             lager:debug("Tree cache miss (undefined): ~p", [Partition]),
             get_and_set_tree(Partition);
@@ -319,12 +424,26 @@ get_tree(Partition) ->
 get_and_set_tree(Partition) ->
     case yz_entropy_mgr:get_tree(Partition) of
         {ok, Tree} ->
-            erlang:put(tree, Tree),
+            erlang:put({tree,Partition}, Tree),
             Tree;
         not_registered ->
-            erlang:put(tree, undefined),
+            erlang:put({tree,Partition}, undefined),
             not_registered
     end.
+
+%% @private
+%%
+%% @doc Determine if the local node and remote node have the same
+%% metadata.
+-spec is_metadata_consistent(node()) -> boolean().
+is_metadata_consistent(RemoteNode) ->
+    BucketTypesPrefix = {core, bucket_types},
+    Server = {riak_core_metadata_hashtree, RemoteNode},
+    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
+    %% TODO Even though next call is local should also add 1s timeout
+    %% since this call blocks vnode.  Or see above.
+    LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
+    LocalHash == RemoteHash.
 
 %% @private
 %%
@@ -337,38 +456,7 @@ is_owner_or_future_owner(P, Node, Ring) ->
 
 %% @private
 %%
-%% @doc Wait for index creation if hook was invoked for handoff write.
-%%
-%% NOTE: This function assumes it is running on a long-lived process.
--spec maybe_wait(write_reason(), index_name()) -> ok.
-maybe_wait(handoff, Index) ->
-    Flag = ?WAIT_FLAG(Index),
-    case check_flag(Flag) of
-        false ->
-            Seconds = ?MAX_WAIT_FOR_INDEX,
-            ok = wait_for({yz_solr, ping, [Index]}, Seconds),
-            ok = set_flag(Flag);
-        true ->
-            ok
-    end;
-maybe_wait(_, _) ->
-    ok.
-
-%% @doc Set the `Flag'.
--spec set_flag(term()) -> ok.
-set_flag(Flag) ->
-    erlang:put(Flag, true),
-    ok.
-
-%% @doc Wait for `Check' for the given number of `Seconds'.
--spec wait_for(check(), seconds()) -> ok.
-wait_for(_, 0) ->
-    ok;
-wait_for(Check={M,F,A}, Seconds) when Seconds > 0 ->
-    case M:F(A) of
-        true ->
-            ok;
-        false ->
-            timer:sleep(?ONE_SECOND),
-            wait_for(Check, Seconds - 1)
-    end.
+%% @doc Determine if service is up on node.
+-spec is_service_up(atom(), node()) -> boolean().
+is_service_up(Service, Node) ->
+    lists:member(Service, riak_core_node_watcher:services(Node)).

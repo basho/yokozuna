@@ -2,7 +2,15 @@
 deps
 ebin
 priv/java_lib
-priv/solr*
+priv/conf/lang
+priv/conf/*.txt
+priv/solr/etc/create-solrtest.keystore.sh
+priv/solr/etc/webdefault.xml
+priv/solr/lib
+priv/solr/resources
+priv/solr/start.jar
+priv/solr/webapps
+priv/solr/solr-webapp
 build/
 *.class
 *.tgz
@@ -12,3 +20,7 @@ tests/current
 .eunit
 log
 bb-*-fruit*
+.local_dialyzer_plt
+.yokozuna_test_dialyzer_plt
+dialyzer_warnings
+dialyzer_unhandled_warnings

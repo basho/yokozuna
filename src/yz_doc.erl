@@ -23,6 +23,8 @@
 -include("yokozuna.hrl").
 
 -define(MD_VTAG, <<"X-Riak-VTag">>).
+-define(YZ_ID_SEP, "*").
+-define(YZ_ID_VER, "1").
 
 %% @doc Functionality for working with Yokozuna documents.
 
@@ -35,51 +37,73 @@ add_to_doc({doc, Fields}, Field) ->
 
 -spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
-    <<(yz_kv:get_obj_key(O))/binary,"_",Partition/binary>>.
+    doc_id(O, Partition, none).
 
-doc_id(O, Partition, none) ->
-    doc_id(O, Partition);
-
+-spec doc_id(obj(), binary(), term()) -> binary().
 doc_id(O, Partition, Sibling) ->
-    <<(riak_object:key(O))/binary,"_",Partition/binary,"_",Sibling/binary>>.
+    Bucket = yz_kv:get_obj_bucket(O),
+    BType = encode_doc_part(yz_kv:bucket_type(Bucket)),
+    BName = encode_doc_part(yz_kv:bucket_name(Bucket)),
+    Key = encode_doc_part(yz_kv:get_obj_key(O)),
+    IODocId = [?YZ_ID_VER,?YZ_ID_SEP,BType,?YZ_ID_SEP,BName,?YZ_ID_SEP,Key,?YZ_ID_SEP,Partition],
+    case Sibling of
+        none ->
+            iolist_to_binary(IODocId);
+        _ ->
+            iolist_to_binary([IODocId,?YZ_ID_SEP,Sibling])
+    end.
 
 % @doc `true' if this Object has multiple contents
 has_siblings(O) -> riak_object:value_count(O) > 1.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_docs(obj(), binary(), binary(), boolean()) -> [doc()].
-make_docs(O, FPN, Partition, IndexContent) ->
-    [make_doc(O, Content, FPN, Partition, IndexContent)
+-spec make_docs(obj(), hash(), binary(), binary()) -> [doc()].
+make_docs(O, Hash, FPN, Partition) ->
+    [make_doc(O, Hash, Content, FPN, Partition)
      || Content <- riak_object:get_contents(O)].
 
--spec make_doc(obj(), {dict(), dict()}, binary(), binary(), boolean()) -> doc().
-make_doc(O, {MD, V}, FPN, Partition, IndexContent) ->
+-spec make_doc(obj(), hash(), {dict(), dict()}, binary(), binary()) -> doc().
+make_doc(O, Hash, {MD, V}, FPN, Partition) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
-    EntropyData = gen_ed(O, Partition),
+    EntropyData = gen_ed(O, Hash, Partition),
     Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
     Fields = make_fields({DocId, Bkey, FPN,
                           Partition, Vtag, EntropyData}),
-    ExtractedFields =
-        case IndexContent of
-            true -> extract_fields({MD, V});
-            false -> []
-        end,
+    ExtractedFields = extract_fields({MD, V}),
     Tags = extract_tags(MD),
     {doc, lists:append([Tags, ExtractedFields, Fields])}.
+
+%% @private
+%% @doc encode `*' as %1, and `%' as %2. This is so we can reasonably use
+%% the char `*' as a seperator for _yz_id parts (TBK+partition[+sibling]).
+%% This removes the potential case where `*' included in a part can break
+%% _yz_id uniqueness
+-spec encode_doc_part(binary()) -> list().
+encode_doc_part(Part) ->
+    encode_doc_part(binary_to_list(Part), []).
+
+encode_doc_part([], Acc) ->
+  lists:reverse(Acc);
+encode_doc_part([$* | Rest], Acc) ->
+  encode_doc_part(Rest, ["%1" | Acc]);
+encode_doc_part([$% | Rest], Acc) ->
+  encode_doc_part(Rest, ["%2" | Acc]);
+encode_doc_part([C | Rest], Acc) ->
+  encode_doc_part(Rest, [C | Acc]).
 
 make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
     [{?YZ_ID_FIELD, DocId},
      {?YZ_ED_FIELD, EntropyData},
      {?YZ_FPN_FIELD, FPN},
-     {?YZ_NODE_FIELD, ?ATOM_TO_BIN(node())},
      {?YZ_PN_FIELD, Partition},
      {?YZ_RK_FIELD, Key},
-     {?YZ_RB_FIELD, Bucket}];
+     {?YZ_RT_FIELD, yz_kv:bucket_type(Bucket)},
+     {?YZ_RB_FIELD, yz_kv:bucket_name(Bucket)}];
 
 make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
-    make_fields({DocId, BKey, FPN, Partition, none, EntropyData}) ++
-      [{?YZ_VTAG_FIELD, Vtag}].
+    Fields = make_fields({DocId, BKey, FPN, Partition, none, EntropyData}),
+    [{?YZ_VTAG_FIELD, Vtag}|Fields].
 
 %% @doc If this is a sibling, return its binary vtag
 get_vtag(O, MD) ->
@@ -97,15 +121,17 @@ extract_fields({MD, V}) ->
             try
                 case yz_extractor:run(V, ExtractorDef) of
                     {error, Reason} ->
+                        yz_stat:index_fail(),
                         ?ERROR("failed to index fields from value with reason ~s~nValue: ~s", [Reason, V]),
                         [{?YZ_ERR_FIELD_S, 1}];
                     Fields ->
                         Fields
                 end
             catch _:Err ->
-                Trace = erlang:get_stacktrace(),
-                ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
-                [{?YZ_ERR_FIELD_S, 1}]
+                    yz_stat:index_fail(),
+                    Trace = erlang:get_stacktrace(),
+                    ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
+                    [{?YZ_ERR_FIELD_S, 1}]
             end;
         true ->
             []
@@ -135,10 +161,11 @@ get_user_meta(MD) ->
         none ->
             dict:new();
         MetaMeta ->
+
             %% NOTE: Need to call `to_lower' because
             %%       `erlang:decode_packet' which is used by mochiweb
             %%       will modify the case of certain header names
-            MM2 = [{list_to_binary(string:to_lower(K)), list_to_binary(V)}
+            MM2 = [{format_meta(key, K), format_meta(value, V)}
                    || {K,V} <- MetaMeta],
             dict:from_list(MM2)
     end.
@@ -189,24 +216,25 @@ split_tag_names(TagNames) ->
 %%% Private
 %%%===================================================================
 
-%% TODO: I don't like having X-Riak-Last-Modified in here.  Add
-%%       function to riak_object.
-doc_ts(MD) ->
-    dict:fetch(<<"X-Riak-Last-Modified">>, MD).
-
-gen_ts() ->
-    {{Year, Month, Day},
-     {Hour, Min, Sec}} = calendar:now_to_universal_time(erlang:now()),
-    list_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0B",
-                                 [Year,Month,Day,Hour,Min,Sec])).
-
 %% NOTE: All of this data needs to be in one field to efficiently
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.
-gen_ed(O, Partition) ->
-    TS = gen_ts(),
+gen_ed(O, Hash, Partition) ->
+    %% Store `Vsn' to allow future changes to this format.
+    Vsn = <<"1">>,
     RiakBucket = yz_kv:get_obj_bucket(O),
+    RiakBType = yz_kv:bucket_type(RiakBucket),
+    RiakBName = yz_kv:bucket_name(RiakBucket),
     RiakKey = yz_kv:get_obj_key(O),
-    %% TODO: do this in KV vnode and pass to hook
-    Hash = base64:encode(yz_kv:hash_object(O)),
-    <<TS/binary," ",Partition/binary," ",RiakBucket/binary," ",RiakKey/binary," ",Hash/binary>>.
+    Hash64 = base64:encode(Hash),
+    <<Vsn/binary," ",Partition/binary," ",RiakBType/binary," ",RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
+
+%% Meta keys and values can be strings or binaries
+format_meta(key, Value) when is_binary(Value) ->
+    format_meta(key, binary_to_list(Value));
+format_meta(key, Value) ->
+    list_to_binary(string:to_lower(Value));
+format_meta(value, Value) when is_binary(Value) ->
+    Value;
+format_meta(value, Value) ->
+    list_to_binary(Value).
