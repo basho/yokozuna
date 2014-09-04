@@ -149,12 +149,21 @@ get_index({Bucket, _}) ->
 should_handoff({_Reason, {_Partition, TargetNode}}) ->
     case ?YZ_ENABLED andalso is_service_up(?YZ_SVC_NAME, TargetNode) of
         true ->
-            case is_metadata_consistent(TargetNode) andalso
-                 has_indexes(TargetNode) of
-                true ->
+            Consistent = is_metadata_consistent(TargetNode),
+            HasIndexes = has_indexes(TargetNode),
+            case {Consistent, HasIndexes} of
+                {true, true} ->
                     true;
-                false ->
+                {false, false} ->
                     ?INFO("waiting for bucket types prefix and indexes to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false;
+                {false, _} ->
+                    ?INFO("waiting for bucket types prefix to agree between ~p and ~p",
+                          [node(), TargetNode]),
+                    false;
+                {_, false} ->
+                    ?INFO("waiting for indexes to agree between ~p and ~p",
                           [node(), TargetNode]),
                     false
             end;
