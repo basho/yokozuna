@@ -262,7 +262,8 @@ index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
             Hash = hash_object(Obj),
-            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+            SchemaHash = base64:encode(yz_schema:get_hash(Index)),
+            Docs = yz_doc:make_docs(Obj, Hash, SchemaHash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
             DelOp = cleanup(length(Docs), {Obj, BKey, LP}),
             ok = yz_solr:index(Index, Docs, DelOp),
             ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)

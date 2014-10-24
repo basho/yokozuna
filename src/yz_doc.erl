@@ -25,8 +25,9 @@
 -include("yokozuna.hrl").
 
 -define(MD_VTAG, <<"X-Riak-VTag">>).
--define(YZ_ID_SEP, "*").
--define(YZ_ID_VER, "1").
+-define(YZ_ID_SEP, <<"*">>).
+-define(YZ_ID_VER, <<"1">>).
+-define(YZ_ED_VER, <<"2">>).
 
 %%%===================================================================
 %%% API
@@ -57,16 +58,16 @@ doc_id(O, Partition, Sibling) ->
 has_siblings(O) -> riak_object:value_count(O) > 1.
 
 %% @doc Given an object generate the doc to be indexed by Solr.
--spec make_docs(obj(), hash(), binary(), binary()) -> [doc()].
-make_docs(O, Hash, FPN, Partition) ->
-    [make_doc(O, Hash, Content, FPN, Partition)
+-spec make_docs(obj(), hash(), hash(), binary(), binary()) -> [doc()].
+make_docs(O, Hash, SchemaHash, FPN, Partition) ->
+    [make_doc(O, Hash, SchemaHash, Content, FPN, Partition)
      || Content <- riak_object:get_contents(O)].
 
--spec make_doc(obj(), hash(), {dict(), dict()}, binary(), binary()) -> doc().
-make_doc(O, Hash, {MD, V}, FPN, Partition) ->
+-spec make_doc(obj(), hash(), hash(), {dict(), dict()}, binary(), binary()) -> doc().
+make_doc(O, Hash, SchemaHash, {MD, V}, FPN, Partition) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
-    EntropyData = gen_ed(O, Hash, Partition),
+    EntropyData = gen_ed(O, Hash, SchemaHash, Partition),
     Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
     Fields = make_fields({DocId, Bkey, FPN,
                           Partition, Vtag, EntropyData}),
@@ -219,15 +220,17 @@ split_tag_names(TagNames) ->
 %% NOTE: All of this data needs to be in one field to efficiently
 %%       iterate.  Otherwise the doc would have to be fetched for each
 %%       entry.
-gen_ed(O, Hash, Partition) ->
-    %% Store `Vsn' to allow future changes to this format.
-    Vsn = <<"1">>,
+%%       Values are seperated by `*', like solr ids, since it's a rarely
+%%       used character for bucket-types/names and keys.
+gen_ed(O, Hash, SchemaHash, Partition) ->
     RiakBucket = yz_kv:get_obj_bucket(O),
-    RiakBType = yz_kv:bucket_type(RiakBucket),
-    RiakBName = yz_kv:bucket_name(RiakBucket),
-    RiakKey = yz_kv:get_obj_key(O),
+    RiakBType = encode_doc_part(yz_kv:bucket_type(RiakBucket)),
+    RiakBName = encode_doc_part(yz_kv:bucket_name(RiakBucket)),
+    RiakKey = encode_doc_part(yz_kv:get_obj_key(O)),
     Hash64 = base64:encode(Hash),
-    <<Vsn/binary," ",Partition/binary," ",RiakBType/binary," ",RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
+    IOEd = [?YZ_ED_VER,?YZ_ID_SEP,Partition,?YZ_ID_SEP,SchemaHash,?YZ_ID_SEP,RiakBType,?YZ_ID_SEP,RiakBName,?YZ_ID_SEP,RiakKey,?YZ_ID_SEP,Hash64],
+    iolist_to_binary(IOEd).
+
 
 %% Meta keys and values can be strings or binaries
 format_meta(key, Value) when is_binary(Value) ->

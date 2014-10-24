@@ -55,6 +55,8 @@ store(Name, RawSchema) when is_binary(RawSchema) ->
         {ok, RawSchema} ->
             CompressedSchema = yz_misc:compress(RawSchema),
             riak_core_metadata:put(?YZ_META_SCHEMAS, Name, CompressedSchema),
+            SchemaHash = hash_schema(CompressedSchema),
+            riak_core_metadata:put(?YZ_META_SCHEMA_HASHES, Name, SchemaHash),
             ok;
         {error, _} = Err ->
             Err
@@ -68,9 +70,31 @@ exists(SchemaName) ->
         _ -> true
     end.
 
+%% @doc Retrieve the schema hash from Riak. The default schema
+%%      returns the integer 1, and unknown returns 0
+-spec get_hash(schema_name()) -> integer().
+get_hash(Name) ->
+    R = riak_core_metadata:get(?YZ_META_SCHEMA_HASHES, Name),
+    Hash = case {Name, R} of
+        {?YZ_DEFAULT_SCHEMA_NAME, undefined} ->
+            <<1>>;
+        {_, undefined} ->
+            <<0>>;
+        {_, R} ->
+            R
+    end,
+    term_to_binary(Hash).
+
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @doc Accepts a Compressed Schema, returns hash of that schema as binary
+%%      Store this hash along with the schema in core MD
+-spec hash_schema(iodata()) -> binary().
+hash_schema(CompressedSchema) ->
+    Hash = erlang:phash2(CompressedSchema),
+    term_to_binary(Hash).
 
 %% @doc Set ?YZ_SCHEMA_BUCKET with the property {allow_mult, false}
 %%      We never want schema value siblings.
