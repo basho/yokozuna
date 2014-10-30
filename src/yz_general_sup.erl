@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2013 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2013-2014 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -58,6 +58,10 @@ init([]) ->
              {yz_cover, start_link, []},
              permanent, 5000, worker, [yz_cover]},
 
-    Children = [Events, HashtreeSup, EntropyMgr, Cover],
+    NotifyHandler = {yz_notify_handler,
+                     {yz_notify_handler, start_link, []},
+                     permanent, 5000, worker, [yz_notify_handler]},
+
+    Children = [Events, HashtreeSup, EntropyMgr, Cover, NotifyHandler],
 
     {ok, {{one_for_one, 5, 10}, Children}}.
