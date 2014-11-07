@@ -146,17 +146,12 @@ update({index_end, Time}) ->
     exometer:update([?PFX, ?APP, index, latency], Time),
     exometer:update([?PFX, ?APP, index, throughput], 1);
 update(index_fail) ->
-    exometer:update([?PFX, ?APP, fail], 1);
+    exometer:update([?PFX, ?APP, index, fail], 1);
 update({search_end, Time}) ->
-    exometer:update([?PFX, ?APP, search, latency], Time),
-    exometer:update([?PFX, ?APP, search, throughput], 1);
+    exometer:update([?PFX, ?APP, 'query', latency], Time),
+    exometer:update([?PFX, ?APP, 'query', throughput], 1);
 update(search_fail) ->
-    exometer:update([?PFX, ?APP, search, fail], 1).
-
-%% %% @private
-%% get_sample_type(Name) ->
-%%     SampleType0 = app_helper:get_env(riak_kv, stat_sample_type, {slide_uniform, {60, 1028}}),
-%%     app_helper:get_env(?APP, Name, SampleType0).
+    exometer:update([?PFX, ?APP, 'query', fail], 1).
 
 %% @private
 -spec stats() -> [{riak_core_stat_q:path(), atom()}].
