@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 %% @doc Functionality related to events.  This is the single producer of
-%% writes to the ETS table `yz_events`.
+%% writes to the ETS table `yz_events'.
 %%
 %% NOTE: Store the raw ring in the state because that is what is being
 %%       delivered during a ring event.

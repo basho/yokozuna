@@ -23,45 +23,46 @@
 %%
 %% Available operations:
 %%
-%% GET /search/index
+%% `GET /search/index'
 %%
 %%   Get information about every index in JSON format.
 %%   Currently the same information as /search/index/Index,
 %%   but as an array of JSON objects.
 %%
-%% GET /search/index/Index
+%% `GET /search/index/Index'
 %%
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
-%%
+%% ```
 %%   {
 %%      "name"  : IndexName,
 %%      "schema": SchemaName
 %%   }
-%%
+%% '''
 %%   `IndexName' is the same value passed into the URL.
 %%
 %%   `Schema' is the name of the schema associate with this
 %%   index. That schema file must already be installed on the server.
 %%   Defaults to "_yz_default".
 %%
-%% PUT /search/index/Index
+%% `PUT /search/index/Index'
 %%
 %%   Creates a new index with the given name.
 %%
 %%   A PUT request requires this header:
-%%     Content-Type: application/json
+%%
+%%     `Content-Type: application/json'
 %%
 %%   A JSON body may be sent. It accepts the following:
-%%
+%% ```
 %%   { "schema" : SchemaName,
 %%     "n_val" : N}
-%%
+%% '''
 %%   If no schema is given, it defaults to "_yz_default".
 %%
-%%   Returns a '409 Conflict' code if the index already exists.
+%%   Returns a `409 Conflict' code if the index already exists.
 %%
-%% DELETE /search/index/Index
+%% `DELETE /search/index/Index'
 %%
 %%   Deletes the index with the given index name.
 %%
