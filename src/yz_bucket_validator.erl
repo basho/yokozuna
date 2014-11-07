@@ -17,8 +17,8 @@
 %%
 %% -------------------------------------------------------------------
 %%
-%% @doc yz_bucket_validator verifies that a bucket type's
-%%      n_val property matches any associated indexe's n_val
+%% @doc Verifies that a bucket type's `n_val' property matches any
+%% associated index's `n_val'
 -module(yz_bucket_validator).
 -export([validate/4]).
 -include("yokozuna.hrl").
@@ -29,9 +29,9 @@
 -type errors() :: [error()].
 
 %% @doc Performs two validations. The first is validating that an index
-%% exists before a bucket-type/bucket can be associated to it by setting search_index.
-%% The second checks that the bucket-type/bucket has the same n_val as the associated
-%% index's n_val.
+%% exists before a bucket-type/bucket can be associated to it by setting `search_index'.
+%% The second checks that the bucket-type/bucket has the same `n_val' as the associated
+%% index's `n_val'.
 -spec validate(create | update,
                {riak_core_bucket_type:bucket_type(), undefined | binary()} | binary(),
                undefined | props(),

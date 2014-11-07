@@ -464,7 +464,7 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
     end,
     ok.
 
-%% TODO: OMG cache this with entry in proc dict, use `_yz_fp` as Index
+%% TODO: OMG cache this with entry in proc dict, use `_yz_fp' as Index
 %%       and keep an orddict(Bucket,N) in proc dict
 get_index_n(BKey) ->
     riak_kv_util:get_index_n(BKey).

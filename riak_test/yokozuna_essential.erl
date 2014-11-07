@@ -29,6 +29,14 @@
            %% more quickly.
            {vnode_management_timer, 1000}
           ]},
+         {riak_kv,
+          [
+           %% Max number of times that a secondary system can block
+           %% handoff of primary key-value data.
+           %% Set to prevent a race-condition when propagating cluster
+           %% meta to newly joined nodes.
+           {handoff_rejected_max, infinity}
+          ]},
          {yokozuna,
           [
           {enabled, true},
@@ -229,7 +237,7 @@ verify_unique_id(Cluster, PBConns) ->
 make_query_fun(PBConns, Index, Query, Expected) ->
     fun() ->
             QueryRes = query_all(PBConns, Index, Query),
-            lists:all(fun(X) -> 
+            lists:all(fun(X) ->
                 lager:info("~p~n", [X]),
                 X == Expected end, QueryRes)
     end.

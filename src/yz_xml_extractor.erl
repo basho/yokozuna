@@ -24,7 +24,7 @@
 %%      innermost element.
 %%
 %% Example:
-%%
+%% ```
 %%   <person>
 %%     <name>Ryan</name>
 %%     <age>29</age>
@@ -32,7 +32,7 @@
 %%
 %%   [{<<"person_name">>, <<"Ryan">>},
 %%    {<<"person_age">>, <<"29">>}]
-%%
+%% '''
 %% Options:
 %%
 %%   `field_separator' - Use a different field separator than the default of `.'.
