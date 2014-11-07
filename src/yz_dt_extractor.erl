@@ -25,20 +25,20 @@
 %% are treated as regular fields.
 %%
 %% Counter example:
-%%
+%% ```
 %%    [{<<"counter">>, <<"5">>}]
-%%
+%% '''
 %% Set example:
-%%
+%% ```
 %%    [<<"Cassandra">>, <<"Riak">>, <<"Voldemort">>]
 %%
 %%    [{<<"set">>, <<"Cassandra">>},
 %%     {<<"set">>, <<"Riak">>},
 %%     {<<"set">>, <<"Voldemort">>}]
-%%
+%% '''
 %% Map example (note the output of embedded types and conversion of
 %% module to symbolic type):
-%%
+%% ```
 %%    [{{<<"activated">>, riak_dt_od_flag}, true},
 %%     {{<<"name">>, riak_dt_lwwreg}, <<"Ryan Zezeski">>},
 %%     {{<<"phones">>, riak_dt_orswot}, [<<"555-5555">>, <<"867-5309">>]},
@@ -54,7 +54,7 @@
 %%     {<<"page_views_counter">>, <<"1502">>},
 %%     {<<"events_map.RICON_register">>, <<"spoke">>},
 %%     {<<"events_map.Surge_register">>, <<"attended">>}]
-%%
+%% '''
 %% Options:
 %%
 %%   `field_separator' - Use a different field separator than the

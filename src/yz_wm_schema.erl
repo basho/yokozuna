@@ -22,14 +22,19 @@
 %% @doc Resource for managing Yokozuna/Solr Schemas over HTTP.
 %%
 %% Available operations:
-%% 
-%% GET /search/schema/Schema
+%%
+%% `GET /search/schema/Schema'
+%%
 %%   Retrieves the schema with the given name
 %%
-%% PUT /search/schema/Schema
+%% `PUT /search/schema/Schema'
+%%
 %%   Uploads a schema with the given name
+%%
 %%   A PUT request requires this header:
-%%     Content-Type: application/xml
+%%
+%%     `Content-Type: application/xml'
+%%
 %%   A Solr schema is expected as body
 %%
 %%

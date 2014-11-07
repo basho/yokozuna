@@ -18,6 +18,9 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc This module provides the interface for making calls to Solr.
+%%      All interaction with Solr should go through this API.
+
 -module(yz_solr).
 -compile(export_all).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
@@ -38,9 +41,6 @@
                    | {'query', binary()}.
 
 -export_type([delete_op/0]).
-
-%% @doc This module provides the interface for making calls to Solr.
-%%      All interaction with Solr should go through this API.
 
 %%%===================================================================
 %%% API
