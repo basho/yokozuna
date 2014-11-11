@@ -137,6 +137,10 @@ code_change(_OldVsn, State, _Extra) ->
 %% Private
 %% -------------------------------------------------------------------
 
+-spec stat_name(riak_core_stat_q:path()) -> riak_core_stat_q:stat_name().
+stat_name(Name) ->
+    [?PFX, ?APP | Name].
+
 %% @private
 %%
 %% @doc Notify specific metrics in folsom based on the `StatUpdate' term
