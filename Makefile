@@ -1,3 +1,6 @@
+EXOMETER_PACKAGES = "(basic), +afunix"
+export EXOMETER_PACKAGES
+
 REBAR ?= $(shell pwd)/rebar
 
 .PHONY: deps rel stagedevrel test
