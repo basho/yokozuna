@@ -1,4 +1,4 @@
-EXOMETER_PACKAGES = "(basic), +afunix"
+EXOMETER_PACKAGES = "(basic)"
 export EXOMETER_PACKAGES
 
 REBAR ?= $(shell pwd)/rebar
