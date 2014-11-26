@@ -24,7 +24,6 @@
 -compile(export_all).
 
 -define(SCHEMA_VSN, "1.5").
--type schema_err() :: {error, string()}.
 
 %%%===================================================================
 %%% API
