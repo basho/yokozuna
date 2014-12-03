@@ -119,6 +119,14 @@ function compile_yz_bench()
         error "failed to get deps for yokozuna/misc/bench"
     fi
 
+    pushd deps/basho_bench
+
+    if ! make; then
+        error "failed to compile yokozuna/misc/bench/deps/basho_bench"
+    fi
+
+    popd
+
     if ! ../../rebar compile; then
         error "failed to compile yokozuna/misc/bench"
     fi
