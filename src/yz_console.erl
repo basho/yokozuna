@@ -26,6 +26,15 @@
          add_to_schema/1,
          remove_from_schema/1]).
 
+-type field_data() :: {dynamicfield | field, list(), list()}.
+
+-define(LIST_TO_ATOM(L), list_to_atom(L)).
+-define(LIST_TO_BINARY(L), list_to_binary(L)).
+-define(FIELD_DEFAULTS, [{type, "text_general"},
+                         {indexed, "true"},
+                         {stored, "false"},
+                         {multiValued, "true"}]).
+
 %% @doc Print the Active Anti-Entropy status to stdout.
 -spec aae_status([]) -> ok.
 aae_status([]) ->
@@ -45,7 +54,8 @@ aae_status([]) ->
 %% back without restarting the cluster.
 -spec switch_to_new_search([]) -> ok | {error, {nodes_down, [node()]}}.
 switch_to_new_search([]) ->
-    {_Good, Down} = riak_core_util:rpc_every_member_ann(yokozuna, switch_to_yokozuna, [], 5000),
+    {_Good, Down} = riak_core_util:rpc_every_member_ann(
+                      yokozuna, switch_to_yokozuna, [], 5000),
     case Down of
         [] ->
             ok;
@@ -57,49 +67,95 @@ switch_to_new_search([]) ->
     end.
 
 %% @doc Creates (and overrides) schema for name and file path.
--spec create_schema([string()|string()]) -> ok | schema_err().
+%% riak-admin search schema create <schema name> <path to file>
+-spec create_schema([string()|string()]) -> ok | error.
 create_schema([Name, Path]) ->
     try
         RawSchema = read_schema(Path),
-        FMTName = list_to_atom(Name),
-        case yz_schema:store(list_to_binary(Name), RawSchema) of
+        FMTName = ?LIST_TO_ATOM(Name),
+        case yz_schema:store(?LIST_TO_BINARY(Name), RawSchema) of
             ok ->
                 io:format("~p schema created~n", [FMTName]),
                 ok;
             {error, _} ->
-                io:format("Error creating schema ~p", [FMTName]),
+                io:format("Error creating schema ~p~n", [FMTName]),
                 error
         end
-    catch fileReadError:exitError ->
-           exitError
+    catch {fileReadError, _} ->
+           error
     end.
 
 %% @doc Shows solr schema for name passed in.
--spec show_schema([string()]) -> ok | schema_err().
+%% riak-admin search schema show <name of schema>
+-spec show_schema([string()]) -> ok | error.
 show_schema([Name]) ->
-    FMTName = list_to_atom(Name),
-    case yz_schema:get(list_to_binary(Name)) of
+    FMTName = ?LIST_TO_ATOM(Name),
+    case yz_schema:get(?LIST_TO_BINARY(Name)) of
         {ok, R} ->
-            io:format("Schema ~p:~n~s", [FMTName, binary_to_list(R)]),
+            io:format("Schema ~p:~n~s~n", [FMTName, binary_to_list(R)]),
             ok;
         {error, notfound} ->
-            io:format("Schema ~p doesn't exist~n", [FMTName]),
+            io:format("Schema ~p not found~n", [FMTName]),
             error
     end.
 
-%% @doc
--spec add_to_schema([string()|string()]) -> ok | schema_err().
-add_to_schema([Name|Opts]) ->
-    {Name, Opts}.
+%% @doc Adds field of <fieldname> to schema contents.
+%% riak-admin search schema <name> add field|dynamicfield <fieldname> [<option>=<value> [...]]
+-spec add_to_schema([string()|string()]) -> ok | error.
+add_to_schema([Name,FieldType,FieldName|Options]) ->
+    try
+        ParsedOptions = [{?LIST_TO_ATOM(K), V} || {K, V} <- parse_options(Options)],
+        Field = make_field(?LIST_TO_ATOM(FieldType), FieldName, ParsedOptions),
+        %% TODO: Wrap *update_schema* in a Case to check for ok|error
+        update_schema(add, Name, Field),
+        ok
+    catch {error, {invalid_option, Option}} ->
+            io:format("Invalid Option: ~p~n", [?LIST_TO_ATOM(Option)]),
+            error
+    end.
 
-%% @doc
--spec remove_from_schema([string()|string()]) -> ok | schema_err().
+
+%% @doc Removes field of <fieldname> from schema contents.
+%% riak-admin search schema <name> remove <fieldname>
+-spec remove_from_schema([string()|string()]) -> ok | error.
 remove_from_schema([Name, FieldName]) ->
-    {Name, FieldName}.
+    %% TODO: Wrap Update in a Case to check for ok|error
+    update_schema(remove, Name, FieldName),
+    ok.
 
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @doc Create field tagged tuple.
+-spec make_field(atom(), string(), list()) -> field_data().
+make_field(dynamicfield, FieldName, Options)  ->
+    {dynamicfield, [{name, FieldName}|merge(Options, ?FIELD_DEFAULTS)], []};
+make_field(field, FieldName, Options) ->
+    {field, [{name, FieldName}|merge(Options, ?FIELD_DEFAULTS)], []}.
+
+%% @doc Update schema with change(s).
+-spec update_schema(add | remove, string(), field_data() | string()) ->
+                           ok | schema_err().
+update_schema(add, Name, Field) ->
+    {Name, Field};
+update_schema(remove, Name, FieldName) ->
+    {Name, FieldName}.
+
+%% TODO: Use Riak-Cli or place *parse_options* in a one place for all consoles
+-spec parse_options(list(string())) -> list({string(), string()}).
+parse_options(Options) ->
+    parse_options(Options, []).
+
+parse_options([], Acc) ->
+    Acc;
+parse_options([H|T], Acc) ->
+    case re:split(H, "=", [{parts, 2}, {return, list}]) of
+        [Key, Value] when is_list(Key), is_list(Value) ->
+            parse_options(T, [{string:to_lower(Key), Value}|Acc]);
+        _Other ->
+            throw({error, {invalid_option, H}})
+    end.
 
 %% @doc Reads and returns `RawSchema` from file path.
 -spec read_schema(string()) -> raw_schema() | schema_err().
@@ -116,3 +172,9 @@ read_schema(Path) ->
             io:format("Error reading file ~s, see log for details~n", [Path]),
             throw({fileReadError, Reason})
     end.
+
+%% @doc Merge field defaults.
+-spec merge([{atom(), any()}], [{atom(), any()}]) -> [{atom(), any()}].
+merge(Overriding, Other) ->
+    lists:ukeymerge(1, lists:ukeysort(1, Overriding),
+                    lists:ukeysort(1, Other)).
