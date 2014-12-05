@@ -26,7 +26,11 @@
          add_to_schema/1,
          remove_from_schema/1]).
 
--type field_data() :: {dynamicfield | field, list(), list()}.
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+-type field_data() :: {dynamicfield | field, list()}.
 
 -define(LIST_TO_ATOM(L), list_to_atom(L)).
 -define(LIST_TO_BINARY(L), list_to_binary(L)).
@@ -71,7 +75,7 @@ switch_to_new_search([]) ->
 -spec create_schema([string()|string()]) -> ok | error.
 create_schema([Name, Path]) ->
     try
-        RawSchema = read_schema(Path),
+        {ok, RawSchema} = read_schema(Path),
         FMTName = ?LIST_TO_ATOM(Name),
         case yz_schema:store(?LIST_TO_BINARY(Name), RawSchema) of
             ok ->
@@ -130,9 +134,9 @@ remove_from_schema([Name, FieldName]) ->
 %% @doc Create field tagged tuple.
 -spec make_field(atom(), string(), list()) -> field_data().
 make_field(dynamicfield, FieldName, Options)  ->
-    {dynamicfield, [{name, FieldName}|merge(Options, ?FIELD_DEFAULTS)], []};
+    {dynamicfield, [{name, FieldName}|merge(Options, ?FIELD_DEFAULTS)]};
 make_field(field, FieldName, Options) ->
-    {field, [{name, FieldName}|merge(Options, ?FIELD_DEFAULTS)], []}.
+    {field, [{name, FieldName}|merge(Options, ?FIELD_DEFAULTS)]}.
 
 %% @doc Update schema with change(s).
 -spec update_schema(add | remove, string(), field_data() | string()) ->
@@ -158,12 +162,12 @@ parse_options([H|T], Acc) ->
     end.
 
 %% @doc Reads and returns `RawSchema` from file path.
--spec read_schema(string()) -> raw_schema() | schema_err().
+-spec read_schema(string()) -> {ok, raw_schema()} | schema_err().
 read_schema(Path) ->
     AbsPath = filename:absname(Path),
     case file:read_file(AbsPath) of
         {ok, RawSchema} ->
-            RawSchema;
+            {ok, RawSchema};
         {error, enoent} ->
             io:format("No such file or directory: ~s~n", [Path]),
             throw({fileReadError, enoent});
@@ -178,3 +182,52 @@ read_schema(Path) ->
 merge(Overriding, Other) ->
     lists:ukeymerge(1, lists:ukeysort(1, Overriding),
                     lists:ukeysort(1, Other)).
+
+%% ===================================================================
+%% EUnit tests
+%% ===================================================================
+
+-ifdef(TEST).
+
+read_schema_test() ->
+    {ok, CurrentDir} = file:get_cwd(),
+    MissingSchema = CurrentDir ++ "/foo.xml",
+    GoodSchema = filename:join([?YZ_PRIV, "default_schema.xml"]),
+    GoodOutput = read_schema(GoodSchema),
+    ?assertMatch({ok, _}, GoodOutput),
+    {ok, RawSchema} = GoodOutput,
+    ?assert(is_binary(RawSchema)),
+    ?assertThrow({fileReadError, enoent}, read_schema(MissingSchema)).
+
+parse_options_test() ->
+    EmptyOptions = [],
+    GoodOptions = ["foo=bar", "bar=baz", "foobar=barbaz"],
+    BadOptions = ["hey", "foo"],
+    ?assertEqual([], parse_options(EmptyOptions)),
+    %% first errored option will be thrown
+    ?assertThrow({error, {invalid_option, "hey"}}, parse_options(BadOptions)),
+    ?assertEqual([{"foobar", "barbaz"}, {"bar", "baz"}, {"foo", "bar"}],
+                 parse_options(GoodOptions)).
+
+merge_test() ->
+    Overriding = [{type, "integer"}, {stored, "true"}, {indexed, "true"}],
+    Other = ?FIELD_DEFAULTS,
+    Merged = merge(Overriding, Other),
+    Expected = [{indexed, "true"}, {multiValued, "true"}, {stored, "true"},
+                {type, "integer"}],
+    ?assertEqual(Expected, Merged).
+
+make_field_test() ->
+    Field = make_field(field, "person",
+                             parse_options(["foo=bar", "bar=baz"])),
+    DynamicField = make_field(dynamicfield, "person", []),
+    ?assertMatch({field, [_|_]}, Field),
+    ?assertMatch({dynamicfield, [_|_]}, DynamicField),
+    {_, FieldItems} = Field,
+    {_, DynamicFieldItems} = DynamicField,
+    %% + 2 new options + 1 for the field name
+    ?assertEqual(length(FieldItems), length(?FIELD_DEFAULTS) + 3),
+    %% + 1 for the field name
+    ?assertEqual(length(DynamicFieldItems), length(?FIELD_DEFAULTS) + 1).
+
+-endif.
