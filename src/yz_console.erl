@@ -192,8 +192,7 @@ merge(Overriding, Other) ->
 read_schema_test() ->
     {ok, CurrentDir} = file:get_cwd(),
     MissingSchema = CurrentDir ++ "/foo.xml",
-    GoodSchema = filename:join([?YZ_PRIV, "default_schema.xml"]),
-    GoodOutput = read_schema(GoodSchema),
+    GoodOutput = read_schema("../priv/default_schema.xml"),
     ?assertMatch({ok, _}, GoodOutput),
     {ok, RawSchema} = GoodOutput,
     ?assert(is_binary(RawSchema)),
