@@ -32,6 +32,11 @@
 -define(APP, ?YZ_APP_NAME).
 -define(PFX, riak_core_stat:prefix()).
 
+-type stat_name() :: list().
+-type stat_type() :: atom().
+-type stat_opts() :: [tuple()].
+-type stat_map()  :: [{atom() | integer(), atom()}].
+
 %% -------------------------------------------------------------------
 %% API
 %% -------------------------------------------------------------------
@@ -158,13 +163,27 @@ update(search_fail) ->
     exometer:update([?PFX, ?APP, 'query', fail], 1).
 
 %% @private
--spec stats() -> [{riak_core_stat_q:path(), atom()}].
+-spec stats() -> [{stat_name(), stat_type(), stat_opts(), stat_map()}].
 stats() ->
     [
-     {[index, fail], spiral},
-     {[index, latency], histogram},
-     {[index, throughput], spiral},
-     {['query', fail], spiral},
-     {['query', latency], histogram},
-     {['query', throughput], spiral}
+     {[index, fail], spiral, [], [{count,search_index_fail_count},
+                                  {one  ,search_index_fail_one}]},
+     {[index, latency], histogram, [], [{95    , search_index_latency_95},
+                                        {99    , search_index_latency_99},
+                                        {999   , search_index_latency_999},
+                                        {max   , search_index_latency_max},
+                                        {median, search_index_latency_median},
+                                        {min   , search_index_latency_min}]},
+     {[index, throughput], spiral, [], [{count, search_index_throughput_count},
+                                        {one  , search_index_throughtput_one}]},
+     {['query', fail], spiral, [], [{count, search_search_query_fail_count},
+                                    {one  , search_query_fail_one}]},
+     {['query', latency], histogram, [], [{95    , search_query_latency_95},
+                                          {99    , search_query_latency_99},
+                                          {999   , search_query_latency_999},
+                                          {max   , search_query_latency_max},
+                                          {median, search_query_latency_median},
+                                          {min   , search_query_latency_min}]},
+     {['query', throughput], spiral, [], [{count,search_query_throughput_count},
+                                          {one  ,search_query_throughput_one}]}
     ].
