@@ -176,7 +176,7 @@ stats() ->
                                         {min   , search_index_latency_min}]},
      {[index, throughput], spiral, [], [{count, search_index_throughput_count},
                                         {one  , search_index_throughtput_one}]},
-     {['query', fail], spiral, [], [{count, search_search_query_fail_count},
+     {['query', fail], spiral, [], [{count, search_query_fail_count},
                                     {one  , search_query_fail_one}]},
      {['query', latency], histogram, [], [{95    , search_query_latency_95},
                                           {99    , search_query_latency_99},
