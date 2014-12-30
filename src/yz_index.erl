@@ -198,6 +198,10 @@ local_create(Name) ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
             ok;
+        {error, notfound} ->
+            lager:error("Couldn't create index ~s because the schema ~s isn't found",
+                        [Name, SchemaName]),
+            ok;
         {error, Reason} ->
             lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
             ok
