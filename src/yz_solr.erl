@@ -101,7 +101,7 @@ core(Action, Props, Timeout) ->
                     {error, {ok, "400", Headers, Body}};
                 _ ->
                     {error, exists}
-            end.
+            end;
         X ->
             {error, X}
     end.
