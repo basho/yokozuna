@@ -192,8 +192,7 @@ local_create(Name) ->
                 {error, exists} ->
                     lager:info("Index ~s already exists in Solr, "
                                "but not in Riak metadata",
-                               [Name]),
-                    ok;
+                               [Name]);
                 {error, Err} ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
