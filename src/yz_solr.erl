@@ -95,6 +95,13 @@ core(Action, Props, Timeout) ->
     case ibrowse:send_req(URL, [], get, [], Opts, Timeout) of
         {ok, "200", Headers, Body} ->
             {ok, Headers, Body};
+        {ok, "400", Headers, Body} ->
+            case re:run(Body, "already exists") of
+                nomatch ->
+                    {error, {ok, "400", Headers, Body}};
+                _ ->
+                    {error, exists}
+            end;
         X ->
             {error, X}
     end.
