@@ -84,7 +84,10 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
 				R = mochijson2:decode(Body),
 				Resp = yz_solr:get_response(R),
 				Pairs = yz_solr:get_doc_pairs(Resp),
-				MaxScore = kvc:path([<<"maxScore">>], Resp),
+				MaxScore = case kvc:path([<<"maxScore">>], Resp) of
+					[] -> 0.0;
+					Score -> Score
+				end,
 				NumFound = kvc:path([<<"numFound">>], Resp),
 
 				RPBResp = #rpbsearchqueryresp{
