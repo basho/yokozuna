@@ -189,12 +189,17 @@ local_create(Name) ->
                     lager:info("Created index ~s with schema ~s",
                                [Name, SchemaName]),
                     ok;
+                {error, exists} ->
+                    lager:info("Index ~s already exists in Solr, "
+                               "but not in Riak metadata",
+                               [Name]);
                 {error, Err} ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
             ok;
-        {error, Reason} ->
-            lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
+        {error, _Reason} ->
+            lager:error("Couldn't create index ~s because the schema ~s isn't found",
+                        [Name, SchemaName]),
             ok
     end.
 
