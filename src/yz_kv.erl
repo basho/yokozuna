@@ -82,7 +82,7 @@ get(C, Bucket, Key) ->
             Other
     end.
 
-%% @doc calculates the hash of a riak object, returns binary 
+%% @doc calculates the hash of a riak object, returns binary
 -spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
     Vclock = riak_object:vclock(Obj),
@@ -252,8 +252,7 @@ index(_, delete, _, P, BKey, ShortPL, Index) ->
     ok = yz_solr:delete(Index, [{bkey, BKey}]),
     ok = update_hashtree(delete, P, ShortPL, BKey),
     ok;
-
-index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
+index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
     case riak_object:get_values(Obj) of
         [notfound] ->
             ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
@@ -263,8 +262,8 @@ index(Obj, _Reason, Ring, P, BKey, ShortPL, Index) ->
             LP = yz_cover:logical_partition(LI, P),
             Hash = hash_object(Obj),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-            DelOp = cleanup(length(Docs), {Obj, BKey, LP}),
-            ok = yz_solr:index(Index, Docs, DelOp),
+            ok = yz_solr:index(Index, Docs, delete_operation(Obj, Reason, Docs,
+                                                             BKey, LP)),
             ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
     end.
 
@@ -460,3 +459,38 @@ is_owner_or_future_owner(P, Node, Ring) ->
 -spec is_service_up(atom(), node()) -> boolean().
 is_service_up(Service, Node) ->
     lists:member(Service, riak_core_node_watcher:services(Node)).
+
+%% @private
+%%
+%% @doc Check if object has 2.0 CRDT datatype entry or property for
+%%      strong consistency.
+-spec is_datatype_or_consistent(obj()) -> boolean().
+is_datatype_or_consistent(Obj) ->
+    case riak_kv_crdt:value(Obj) of
+        undefined ->
+            is_strongly_consistent(Obj);
+        _ ->
+            true
+    end.
+
+%% @private
+%%
+%% @doc Check if object has property for strong consistency.
+-spec is_strongly_consistent(riak_object:riak_object()) -> boolean().
+is_strongly_consistent(Obj) ->
+    Bucket = riak_object:bucket_only(Obj),
+    riak_kv_util:consistent_object(Bucket).
+
+%% @private
+%%
+%% @doc Set yz_solr:index delete operation(s) on write_reason.
+-spec delete_operation(obj(), put|handoff|anti_entropy, [doc()], bkey(), lp()) ->
+                              []|[{id, _}]|[{siblings, _}].
+delete_operation(Obj, put, Docs, BKey, LP) ->
+    case is_datatype_or_consistent(Obj) of
+        true -> [];
+        false -> cleanup(length(Docs), {Obj, BKey, LP})
+    end;
+delete_operation(Obj, _Reason, Docs, BKey, LP) ->
+    cleanup(length(Docs), {Obj, BKey, LP}).
+
