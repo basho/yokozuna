@@ -26,6 +26,10 @@
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -type write_reason() :: delete | handoff | put | anti_entropy.
 
 
@@ -478,7 +482,7 @@ is_datatype_or_consistent(Obj) ->
 %% @doc Check if object has property for strong consistency.
 -spec is_strongly_consistent(riak_object:riak_object()) -> boolean().
 is_strongly_consistent(Obj) ->
-    Bucket = riak_object:bucket_only(Obj),
+    Bucket = riak_object:bucket(Obj),
     riak_kv_util:consistent_object(Bucket).
 
 %% @private
@@ -494,3 +498,96 @@ delete_operation(Obj, put, Docs, BKey, LP) ->
 delete_operation(Obj, _Reason, Docs, BKey, LP) ->
     cleanup(length(Docs), {Obj, BKey, LP}).
 
+
+%%%===================================================================
+%%% Tests
+%%%===================================================================
+
+-ifdef(TEST).
+
+is_datatype_or_consistent_test_() ->
+{setup,
+     fun() ->
+             meck:new(riak_core_capability, []),
+             meck:expect(riak_core_capability, get,
+                         fun({riak_core, bucket_types}) -> true;
+                            (X) -> meck:passthrough([X]) end),
+             meck:expect(riak_core_capability, get,
+                         fun({riak_kv, crdt}, []) ->
+                                 [pncounter,riak_dt_pncounter,riak_dt_orswot,
+                                  riak_dt_map];
+                         (X, Y) -> meck:passthrough([X, Y]) end),
+             application:load(riak_core),
+             application:set_env(riak_core, default_bucket_props, []),
+             riak_core_ring_events:start_link(),
+             riak_core_ring_manager:start_link(test),
+             riak_core_claimant:start_link(),
+             riak_core_metadata_manager:start_link([]),
+             riak_core_ring_manager:setup_ets(test),
+             riak_core_metadata_hashtree:start_link(),
+             ok
+     end,
+     fun(_) ->
+             process_flag(trap_exit, true),
+             riak_core_ring_manager:cleanup_ets(test),
+             catch application:stop(riak_core),
+             catch(riak_core_metadata_hashtree:stop()),
+             catch(riak_core_claimant:stop()),
+             catch(riak_core_ring_manager:stop()),
+             catch(exit(whereis(riak_core_ring_events), shutdown)),
+             application:unset_env(riak_core, default_bucket_props),
+             meck:unload(riak_core_capability)
+     end,
+     [
+      ?_test(begin
+                 Bucket1 = <<"bucket">>,
+                 BucketType = <<"type">>,
+                 Bucket2 = {BucketType, <<"bucket2">>},
+                 riak_core_bucket:set_bucket(Bucket1, [{consistent, true}]),
+                 riak_core_bucket_type:create(BucketType, [{consistent, true}]),
+                 riak_core_bucket_type:activate(BucketType),
+                 TypeProps = riak_core_bucket_type:get(BucketType),
+                 ?assert(proplists:get_value(consistent, TypeProps)),
+                 ?assertEqual([{consistent,true}, {name, Bucket1}],
+                              riak_core_bucket:get_bucket(Bucket1)),
+                 BTProps = riak_core_bucket:get_bucket(Bucket2),
+                 ?assert(proplists:get_value(consistent, BTProps)),
+                 ?assertEqual(Bucket2, proplists:get_value(name, BTProps)),
+                 [?assert(is_datatype_or_consistent(riak_object:new(B, K, V)))
+                  || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                 {Bucket2, <<"k2">>, hey}]]
+             end),
+      ?_test(begin
+                 BucketType1 = <<"counters">>,
+                 BucketType2 = <<"maps">>,
+                 Bucket1 = {BucketType1, <<"crdt">>},
+                 Bucket2 = {BucketType2, <<"crdtz">>},
+                 riak_core_bucket_type:create(BucketType1, [{datatype, counter}]),
+                 riak_core_bucket_type:activate(BucketType1),
+                 riak_core_bucket_type:create(BucketType2, [{datatype, map}]),
+                 riak_core_bucket_type:activate(BucketType2),
+                 BTProps1 = riak_core_bucket:get_bucket(Bucket1),
+                 BTProps2 = riak_core_bucket:get_bucket(Bucket2),
+                 ?assertEqual(counter, proplists:get_value(datatype, BTProps1)),
+                 ?assertEqual(map, proplists:get_value(datatype, BTProps2)),
+                 [?assert(is_datatype_or_consistent(riak_object:new(B, K, V)))
+                  || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                 {Bucket2, <<"k2">>, hey}]]
+             end),
+      ?_test(begin
+                 Bucket1 = <<"buckety">>,
+                 BucketType = <<"typey">>,
+                 Bucket2 = {BucketType, <<"bucketjumpy">>},
+                 riak_core_bucket:set_bucket(Bucket1, []),
+                 riak_core_bucket_type:create(BucketType, []),
+                 riak_core_bucket_type:activate(BucketType),
+                 ?assertEqual([{name, Bucket1}],
+                              riak_core_bucket:get_bucket(Bucket1)),
+                 BTProps = riak_core_bucket:get_bucket(Bucket2),
+                 ?assertEqual(Bucket2, proplists:get_value(name, BTProps)),
+                 [?assertNot(is_datatype_or_consistent(riak_object:new(B, K, V)))
+                  || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                 {Bucket2, <<"k2">>, hey}]]
+             end)]}.
+
+-endif.
