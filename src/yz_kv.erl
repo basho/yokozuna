@@ -470,11 +470,13 @@ is_service_up(Service, Node) ->
 %%      strong consistency.
 -spec is_datatype_or_consistent(obj()) -> boolean().
 is_datatype_or_consistent(Obj) ->
-    case riak_kv_crdt:value(Obj) of
-        undefined ->
+    case riak_kv_crdt:is_crdt(Obj) of
+        false ->
             is_strongly_consistent(Obj);
+        true ->
+            true;
         _ ->
-            true
+            false
     end.
 
 %% @private
@@ -483,7 +485,13 @@ is_datatype_or_consistent(Obj) ->
 -spec is_strongly_consistent(riak_object:riak_object()) -> boolean().
 is_strongly_consistent(Obj) ->
     Bucket = riak_object:bucket(Obj),
-    riak_kv_util:consistent_object(Bucket).
+    case riak_kv_util:consistent_object(Bucket) of
+        true ->
+            true;
+        _ ->
+            false
+    end.
+
 
 %% @private
 %%
