@@ -87,7 +87,8 @@ create(Name, SchemaName, NVal) when is_integer(NVal),
                     {error, schema_not_found};
                 true  ->
                     Info = make_info(SchemaName, NVal),
-                    ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info)
+                    ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info),
+                    wait_for_index(Name, 20)
             end;
         {error, _} = Err ->
             Err
@@ -338,3 +339,18 @@ index_dir(Name) ->
 make_info(SchemaName, NVal) ->
     #index_info{n_val=NVal,
                 schema_name=SchemaName}.
+
+%% @private
+%% 
+%% @doc Wait for index existence for the given number of `Seconds'.
+-spec wait_for_index(index_name(), seconds()) -> ok.
+wait_for_index(_, 0) ->
+    ok;
+wait_for_index(Name, Seconds) when Seconds > 0 ->
+    case exists(Name) of
+        true ->
+            ok;
+        false ->
+            timer:sleep(1000),
+            wait_for_index(Name, Seconds - 1)
+    end.
