@@ -468,30 +468,30 @@ is_service_up(Service, Node) ->
 %%
 %% @doc Check if object has 2.0 CRDT datatype entry or property for
 %%      strong consistency.
--spec is_datatype_or_consistent(obj()) -> boolean().
+-spec is_datatype_or_consistent(obj()) -> boolean()|{error, _}.
 is_datatype_or_consistent(Obj) ->
-    case riak_kv_crdt:is_crdt(Obj) of
-        false ->
-            is_strongly_consistent(Obj);
-        true ->
-            true;
-        _ ->
-            false
+    Bucket = riak_object:bucket(Obj),
+    case riak_core_bucket:get_bucket(Bucket) of
+        BProps when is_list(BProps) ->
+            case is_datatype(BProps) of
+                false ->
+                    %% Check if this is a consistent object
+                    lists:member({consistent, true}, BProps);
+                _ ->
+                    true
+            end;
+        {error, _}=Err ->
+            Err
     end.
 
 %% @private
 %%
-%% @doc Check if object has property for strong consistency.
--spec is_strongly_consistent(riak_object:riak_object()) -> boolean().
-is_strongly_consistent(Obj) ->
-    Bucket = riak_object:bucket(Obj),
-    case riak_kv_util:consistent_object(Bucket) of
-        true ->
-            true;
-        _ ->
-            false
-    end.
-
+%% @doc Check if BucketProps has 2.0 CRDT datatype
+-spec is_datatype(riak_kv_bucket:props()) -> boolean().
+is_datatype(BProps) ->
+    Type = proplists:get_value(datatype, BProps),
+    Mod = riak_kv_crdt:to_mod(Type),
+    riak_kv_crdt:supported(Mod).
 
 %% @private
 %%
