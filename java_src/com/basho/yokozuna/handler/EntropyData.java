@@ -121,6 +121,7 @@ public class EntropyData
             String[] vals;
             String docPartition;
             String vsn;
+            String schemaHash;
             String riakBType;
             String riakBName;
             String riakKey;
@@ -136,18 +137,20 @@ public class EntropyData
                     if (log.isDebugEnabled()) {
                         log.debug("text: " + text);
                     }
-                    vals = text.split(" ");
+                    vals = text.split("*");
 
                     vsn = vals[0];
                     docPartition = vals[1];
-                    riakBType = vals[2];
-                    riakBName = vals[3];
-                    riakKey = vals[4];
-                    hash = vals[5];
+                    schemaHash = vals[2];
+                    riakBType = decodeDocPart(vals[3]);
+                    riakBName = decodeDocPart(vals[4]);
+                    riakKey = decodeDocPart(vals[5]);
+                    hash = vals[6];
 
                     if (partition.equals(docPartition)) {
                         SolrDocument tmpDoc = new SolrDocument();
                         tmpDoc.addField("vsn", vsn);
+                        tmpDoc.addField("schema_hash", schemaHash);
                         tmpDoc.addField("riak_bucket_type", riakBType);
                         tmpDoc.addField("riak_bucket_name", riakBName);
                         tmpDoc.addField("riak_key", riakKey);
@@ -192,6 +195,42 @@ public class EntropyData
 
     static boolean isContinue(final BytesRef cont) {
         return DEFAULT_CONT != cont;
+    }
+
+    /**
+     * Decodes "%1" as '*', and "%2" as '%'. This is so we can reasonably use
+     * the char '*' as a separator for entropy data. This removes the potential
+     * case where '*' included in a part can break ed uniqueness.
+     * @param val
+     * @return
+     */
+    private String decodeDocPart(String val) {
+        StringBuilder sb = new StringBuilder();
+        boolean pp = false;
+        for( int i = 0; i < val.length(); i++ ) {
+          char c = val.charAt(i);
+          if( pp ) {
+            pp = false;
+            if( c == '1' ) {
+              sb.append('*');
+            } else if( c == '2' ) {
+              sb.append('%');
+            } else {
+              sb.append('%');
+              if( c == '%' ) {
+                pp = true;
+              } else {
+                sb.append(c);
+              }
+            }
+          } else if( !(pp = (c == '%')) ) {
+            sb.append(c);
+          }
+        }
+        if( pp ) {
+          sb.append('%');
+        }
+        return sb.toString();
     }
 
     @Override
