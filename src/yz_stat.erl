@@ -148,7 +148,7 @@ stat_name(Name) ->
 
 %% @private
 %%
-%% @doc Notify specific metrics in folsom based on the `StatUpdate' term
+%% @doc Notify specific metrics in exometer based on the `StatUpdate' term
 %% passed in.
 -spec update(StatUpdate::term()) -> ok.
 update({index_end, Time}) ->
