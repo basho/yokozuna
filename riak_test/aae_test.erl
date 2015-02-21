@@ -164,7 +164,6 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
     ok = yz_rt:wait_for_schema(Cluster, ?INDEX, RawSchema),
     ok = yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
-    ok = yz_rt:wait_for_index(Cluster, ?INDEX),
     ok = yz_rt:set_index(Node, ?BUCKET, ?INDEX).
 
 %% @doc Verify that expired trees do not prevent exchange from

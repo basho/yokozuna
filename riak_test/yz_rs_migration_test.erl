@@ -211,8 +211,7 @@ create_index([Node1|_]=Cluster, riak_search) ->
     yz_rt:wait_until(Cluster, F);
 create_index(Cluster, yokozuna) ->
     Idx = ?FRUIT_BUCKET,
-    yz_rt:create_index(hd(Cluster), Idx),
-    yz_rt:wait_for_index(Cluster, Idx).
+    yz_rt:create_index(hd(Cluster), Idx).
 
 close_pb_conn(PB) ->
     riakc_pb_socket:stop(PB).
