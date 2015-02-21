@@ -23,6 +23,7 @@
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"age_i\" type=\"int\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
 </fields>
 <uniqueKey>_yz_id</uniqueKey>
 <types>
@@ -43,6 +44,7 @@ confirm() ->
     confirm_multivalued_field(Cluster),
     confirm_stored_fields(Cluster),
     confirm_search_non_existent_index(Cluster),
+    confirm_search_to_test_max_score_defaults(Cluster),
     pass.
 
 select_random(List) ->
@@ -105,6 +107,8 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
         lager:info("Search for ~s [~p:~p]", [Search, Host, Port]),
         {ok,{search_results,R,Score,Found}} =
             riakc_pb_socket:search(Pid, BType, Search, Params),
+            ?assertNotEqual(Score, []),
+            ?assertNotEqual(Score, 0),
         case Found of
             1 ->
                 [{BType,Results}] = R,
@@ -175,7 +179,7 @@ confirm_basic_search(Cluster) ->
     Index = <<"basic">>,
     Bucket = {Index, <<"b1">>},
     create_index(Cluster, Index, Index),
-    lager:info("confirm_basic_search ~s", [Bucket]),
+    lager:info("confirm_basic_search ~p", [Bucket]),
     Body = "herp derp",
     Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
     store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
@@ -184,7 +188,7 @@ confirm_encoded_search(Cluster) ->
     Index = <<"encoded">>,
     Bucket = {Index, <<"b1">>},
     create_index(Cluster, Index, Index),
-    lager:info("confirm_encoded_search ~s", [Bucket]),
+    lager:info("confirm_encoded_search ~p", [Bucket]),
     Body = "א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ",
     Params = [{sort, <<"score desc">>}, {fl, ["_yz_rk"]}],
     store_and_search(Cluster, Bucket, "וְאֵת", Body, <<"text:בָּרָא">>, Params).
@@ -220,7 +224,7 @@ confirm_search_non_existent_index(Cluster) ->
     {error, Err} = riakc_pb_socket:search(Pid, BadIndex, Search, []),
     ?assertEqual(<<"No index <<\"does_not_exist\">> found.">>, Err),
     riakc_pb_socket:stop(Pid).
-    
+
 confirm_stored_fields(Cluster) ->
     Index = <<"stored_fields">>,
     Bucket = {Index, <<"b1">>},
@@ -244,3 +248,13 @@ confirm_stored_fields(Cluster) ->
     ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
     ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
     riakc_pb_socket:stop(Pid).
+
+confirm_search_to_test_max_score_defaults(Cluster) ->
+    Index = <<"basic_for_max_score">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_search_to_test_max_score_defaults ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{sort, <<"age_i asc">>}],
+    store_and_search(Cluster, Bucket, "test_max_score_defaults",
+                     Body, "application/json", <<"age_i:5">>, Params).
