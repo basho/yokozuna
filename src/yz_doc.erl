@@ -27,6 +27,7 @@
 -define(MD_VTAG, <<"X-Riak-VTag">>).
 -define(YZ_ID_SEP, "*").
 -define(YZ_ID_VER, "1").
+-define(YZ_ED_VER, <<"2">>).
 
 %%%===================================================================
 %%% API
@@ -217,17 +218,16 @@ split_tag_names(TagNames) ->
 %%%===================================================================
 
 %% NOTE: All of this data needs to be in one field to efficiently
-%%       iterate.  Otherwise the doc would have to be fetched for each
-%%       entry.
+%%       iterate. Otherwise the doc would have to be fetched for each entry.
 gen_ed(O, Hash, Partition) ->
-    %% Store `Vsn' to allow future changes to this format.
-    Vsn = <<"1">>,
     RiakBucket = yz_kv:get_obj_bucket(O),
-    RiakBType = yz_kv:bucket_type(RiakBucket),
-    RiakBName = yz_kv:bucket_name(RiakBucket),
-    RiakKey = yz_kv:get_obj_key(O),
+    RiakBType = base64:encode(yz_kv:bucket_type(RiakBucket)),
+    RiakBName = base64:encode(yz_kv:bucket_name(RiakBucket)),
+    RiakKey = base64:encode(yz_kv:get_obj_key(O)),
     Hash64 = base64:encode(Hash),
-    <<Vsn/binary," ",Partition/binary," ",RiakBType/binary," ",RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
+    <<?YZ_ED_VER/binary," ",Partition/binary," ",RiakBType/binary," ",
+      RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
+
 
 %% Meta keys and values can be strings or binaries
 format_meta(key, Value) when is_binary(Value) ->

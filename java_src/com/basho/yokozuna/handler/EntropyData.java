@@ -140,9 +140,9 @@ public class EntropyData
 
                     vsn = vals[0];
                     docPartition = vals[1];
-                    riakBType = vals[2];
-                    riakBName = vals[3];
-                    riakKey = vals[4];
+                    riakBType = decodeBase64DocPart(vals[2]);
+                    riakBName = decodeBase64DocPart(vals[3]);
+                    riakKey = decodeBase64DocPart(vals[4]);
                     hash = vals[5];
 
                     if (partition.equals(docPartition)) {
@@ -207,5 +207,14 @@ public class EntropyData
     @Override
     public String getSource() {
         return "TODO: implement getSource";
+    }
+
+    /**
+       @param base64EncodedVal base64 encoded string
+       @return a string of decoded base64 bytes
+     */
+    private String decodeBase64DocPart(String base64EncodedVal) {
+        byte[] bytes = Base64.decodeBase64(base64EncodedVal);
+        return new String(bytes);
     }
 }
