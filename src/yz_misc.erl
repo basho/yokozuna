@@ -118,7 +118,7 @@ delta(Old, New) ->
 
 %% @doc Attempt to get the `Key' from `Dict'.  If it doesn't exist
 %%      then return `Default'.
--spec dict_get(term(), dict(), term()) -> term().
+-spec dict_get(term(), yz_dict(), term()) -> term().
 dict_get(Key, Dict, Default) ->
     case dict:find(Key, Dict) of
         {ok, Val} -> Val;

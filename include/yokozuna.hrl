@@ -241,8 +241,14 @@
 %%% Riak KV
 %%%===================================================================
 
+-ifdef(namespaced_types).
+-type yz_dict() :: dict:dict().
+-else.
+-type yz_dict() :: dict().
+-endif.
+
 -type obj() :: riak_object:riak_object().
--type obj_metadata() :: dict().
+-type obj_metadata() :: yz_dict().
 
 %%%===================================================================
 %%% Docs
