@@ -9,7 +9,7 @@
 -include_lib("basho_bench/include/basho_bench.hrl").
 -record(state, {default_field, fruits, pb_conns, index, bucket, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
--define(SPACER, 'foo ').
+-define(SPACER, "testfor spaces ").
 
 -define(M100,   100000000).
 -define(M10,    10000000).

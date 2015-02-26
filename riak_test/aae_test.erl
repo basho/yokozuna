@@ -9,7 +9,7 @@
 -define(INDEX, <<"fruit_aae">>).
 -define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
--define(SPACER, 'foo ').
+-define(SPACER, "testfor spaces ").
 -define(CFG,
         [{riak_core,
           [
