@@ -15,6 +15,7 @@ priv/solr/solr-webapp
 build/
 *.class
 *.tgz
+.rebar
 riak_test/ebin
 tests/20*
 tests/current

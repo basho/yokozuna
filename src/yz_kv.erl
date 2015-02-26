@@ -107,7 +107,7 @@ get_obj_bucket(Obj) ->
 get_obj_key(Obj) ->
     riak_object:key(Obj).
 
--spec get_obj_md(obj()) -> undefined | dict().
+-spec get_obj_md(obj()) -> undefined | yz_dict().
 get_obj_md(Obj) ->
     riak_object:get_metadata(Obj).
 
