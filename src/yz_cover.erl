@@ -46,14 +46,13 @@
 %% to the caller how to interpret this.
 -spec get_ring_used() -> ring() | unknown.
 get_ring_used() ->
-    try gen_server:call(?MODULE, get_ring_used, 5000) of
-        undefined -> unknown;
-        Ring -> Ring
-    catch
-        _:_ ->
-            %% If the call failed then not sure what ring is
-            %% being used.
-            unknown
+    case riak_core_util:proxy_spawn(fun() -> gen_server:call(?MODULE, get_ring_used, 5000) end) of
+	{error, _} ->
+	    unknown;
+	undefined ->
+	    unknown;
+	Ring ->
+	    Ring
     end.
 
 -spec logical_partitions(ring(), ordset(p())) -> ordset(lp()).
