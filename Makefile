@@ -7,7 +7,7 @@ REBAR ?= $(shell pwd)/rebar
 
 all: deps compile-riak-test
 
-compile:
+compile: deps
 	$(REBAR) compile
 
 compile-riak-test: compile
