@@ -1,9 +1,28 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2015 Basho Technologies, Inc.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+%%-------------------------------------------------------------------
+
 -module(eqc_util).
 -compile(export_all).
 
 -include("yokozuna.hrl").
 
--ifdef(TEST).
 -ifdef(EQC).
 
 -include_lib("eqc/include/eqc.hrl").
@@ -56,10 +75,15 @@ lower_char() ->
 %%%===================================================================
 
 set_core_envs() ->
+    set_core_envs([]).
+
+set_core_envs(Options) ->
+    HashFun = proplists:get_value(chash_keyfun, Options,
+                                  {riak_core_util,chash_std_keyfun}),
     application:set_env(riak_core, default_bucket_props,
                         [{n_val, 1},
                          {search_index, "test"},
-                         {chash_keyfun,{riak_core_util,chash_std_keyfun}}]),
+                         {chash_keyfun,HashFun}]),
     application:set_env(riak_core, ring_state_dir, "ring"),
     application:set_env(riak_core, platform_data_dir, "eqc_test_data"),
     application:set_env(riak_core, handoff_port, 0).
@@ -73,6 +97,10 @@ set_yokozuna_envs() ->
     application:set_env(yokozuna, enabled, true).
 
 start_mock_components() ->
+    start_mock_components([]).
+
+start_mock_components(Options) ->
+    RingSize = proplists:get_value(ring_size, Options, 64),
     application:load(riak_core),
     application:load(riak_kv),
     application:load(lager),
@@ -81,7 +109,7 @@ start_mock_components() ->
     riak_core_ring_events:start_link(),
     riak_core_ring_manager:start_link(test),
     riak_core_ring_manager:setup_ets(test),
-    setup_mockring(),
+    setup_mockring(RingSize),
     riak_kv_entropy_info:create_table(),
     riak_kv_entropy_manager:start_link(),
     ok.
@@ -120,9 +148,9 @@ wait_for_pid(Pid) ->
             {error, didnotexit, Pid, erlang:process_info(Pid)}
     end.
 
-setup_mockring() ->
+setup_mockring(RingSize) ->
     % requires a running riak_core_ring_manager, in test-mode is ok
-    Ring0 = riak_core_ring:fresh(16, node()),
+    Ring0 = riak_core_ring:fresh(RingSize, node()),
     Ring1 = riak_core_ring:add_member(node(), Ring0, 'othernode@otherhost'),
     Ring2 = riak_core_ring:add_member(node(), Ring1, 'othernode2@otherhost2'),
 
@@ -143,4 +171,3 @@ get_bkey_from_object(RObj) ->
     {riak_object:bucket(RObj), riak_object:key(RObj)}.
 
 -endif. % EQC
--endif. % Test

@@ -121,6 +121,10 @@ stop(Tree) ->
 destroy(Tree) ->
     gen_server:call(Tree, destroy, infinity).
 
+%% @doc For testing only, retrieve the hashtree data structures. It is
+%% not safe to tamper with these structures due to the LevelDB backend
+get_trees({test, Pid}) ->
+    gen_server:call(Pid, get_trees, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -163,6 +167,9 @@ init([Index, RPs]) ->
 handle_call({insert, Id, BKey, Hash, Options}, _From, S) ->
     S2 = do_insert(Id, term_to_binary(BKey), Hash, Options, S),
     {reply, ok, S2};
+
+handle_call(get_trees, _From, #state{trees=Trees}=State) ->
+    {reply, Trees, State};
 
 handle_call({delete, IdxN, BKey}, _From, S) ->
     S2 = do_delete(IdxN, term_to_binary(BKey), S),

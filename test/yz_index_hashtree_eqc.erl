@@ -19,17 +19,30 @@
 %%-------------------------------------------------------------------
 
 %% @doc
+%% This module is a Quickcheck eqc_statem test that checks to make sure
+%% that the fundamental concepts of Yokozuna's AAE process implementation
+%% (i.e. start, insert, update, compare) operate correctly when inserting
+%% objects into both a single yokozuna hashtree process and a riak-kv hashtree
+%% process where n=1.
+
+%% Based on the differing objects between the trees, the riak-kv hashtree
+%% is the canonical source of the data and the count to repair is determined
+%% by objects that a yz_index_hashtree is missing.
+
+%% The goal of this test to start modelling Yokozuna's AAE implementation and
+%% to make sure it handles tree comparisons correctly.
+
 %% Key Things to Note:
 %% There's 1 riak_kv_idx_hashtree && 1 yz_kv_idx_hashtree per vnode.
 
 %% Each idx_hashtree can contain a collection of hashtrees...
 %% # of hashtrees per vnode == # in responsible_preflists
 
-%% This this current assumes N=1.
+%% This currently assumes N=1.
 
-%% Much of the functionality happens in the compare grouped operator, as to
-%% not have to store actual hashtrees for various generations.
-
+%% We're sidestepping Yokozuna's logical partitioning
+%% (http://docs.basho.com/riak/latest/dev/advanced/search/#Indexes) for testing
+%% purposes.
 
 -module(yz_index_hashtree_eqc).
 -compile(export_all).
@@ -42,10 +55,13 @@
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("eqc/include/eqc_statem.hrl").
 
+-include_lib("eunit/include/eunit.hrl").
+
+-define(RING_SIZE, 16).
+-define(TEST_INDEX_N, {0, 1}).
+
 -define(QC_OUT(P),
         eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
-
--include_lib("eunit/include/eunit.hrl").
 
 insert_method() ->
     oneof([sync, async]).
@@ -61,11 +77,28 @@ index_hashtree_test_() ->
       end
      }}.
 
+%% We want to constrain all data to fit in the last portion of our
+%% hash space so that it maps to partition 0.
+hashfun({_Bucket, _Key}=ID) ->
+    %% Top valid hash value
+    Top = (1 bsl 160) - 1,
+    %% Calculate partition size
+    PartitionSize = chash:ring_increment(?RING_SIZE),
+    %% Generate an integer hash
+    Hash = intify_sha(riak_core_util:chash_std_keyfun(ID)),
+    %% Map the hash to 1/?RING_SIZE of the full hash space
+    SmallHash = Hash rem PartitionSize,
+    %% Force the hash into the last 1/?RING_SIZE block
+    Top - SmallHash.
+
+intify_sha(<<Int:160>>) ->
+    Int.
+
 setup() ->
-    eqc_util:set_core_envs(),
+    eqc_util:set_core_envs([{chash_keyfun, {?MODULE, hashfun}}]),
     eqc_util:set_kv_envs(),
     eqc_util:set_yokozuna_envs(),
-    eqc_util:start_mock_components(),
+    eqc_util:start_mock_components([{ring_size, ?RING_SIZE}]),
     ok.
 
 cleanup() ->
@@ -83,6 +116,7 @@ test(N) ->
     end.
 
 %% Use General State Record
+%% TODO: Move to sets/ordsets as this expands
 -record(state, {yz_idx_tree,
                 kv_idx_tree,
                 yz_idx_objects = dict:new(),
@@ -111,7 +145,7 @@ start_yz_tree_pre(S) ->
                          V :: eqc_statem:var(),
                          Args :: [term()]) -> eqc_statem:symbolic_state().
 start_yz_tree_next(S, V, _Args) ->
-    S#state{yz_idx_tree=V, yz_idx_objects=dict:store({0, 1}, dict:new(),
+    S#state{yz_idx_tree=V, yz_idx_objects=dict:store(?TEST_INDEX_N, dict:new(),
                                                S#state.yz_idx_objects)}.
 
 %% @doc start_yz_tree_post - Postcondition for start_yz_tree
@@ -130,7 +164,7 @@ start_yz_tree_post(_S, _Args, R) ->
 %%      NOTE: Currently defaults to N=1 and a single RP
 -spec start_yz_tree() -> {ok, tree()}.
 start_yz_tree() ->
-    yz_index_hashtree:start_link(0, [{0, 1}]).
+    yz_index_hashtree:start_link(0, [?TEST_INDEX_N]).
 
 %% ------ Grouped operator: start_kv_tree
 %% @doc start_kv_tree_command - Command generator
@@ -149,7 +183,7 @@ start_kv_tree_pre(S) ->
                          V :: eqc_statem:var(),
                          Args :: [term()]) -> eqc_statem:symbolic_state().
 start_kv_tree_next(S, V, _Args) ->
-    S#state{kv_idx_tree=V, kv_idx_objects=dict:store({0, 1}, dict:new(),
+    S#state{kv_idx_tree=V, kv_idx_objects=dict:store(?TEST_INDEX_N, dict:new(),
                                                S#state.kv_idx_objects)}.
 
 %% @doc start_kv_tree_post - Postcondition for start_kv_tree
@@ -187,13 +221,13 @@ insert_yz_tree_pre(S, _Args) ->
                           V :: eqc_statem:var(),
                           Args :: [term()]) -> eqc_statem:symbolic_state().
 insert_yz_tree_next(S, _V, [_, RObj, _]) ->
-    {ok, TreeData} = dict:find({0, 1}, S#state.yz_idx_objects),
-    S#state{yz_idx_objects=dict:store({0, 1},
+    {ok, TreeData} = dict:find(?TEST_INDEX_N, S#state.yz_idx_objects),
+    S#state{yz_idx_objects=dict:store(?TEST_INDEX_N,
                                       set_treedata(RObj, TreeData),
                                       S#state.yz_idx_objects),
             trees_updated=false}.
 
-%% @doc insert_yz_tree_post - Postcondition for inserfsft_yz_tree
+%% @doc insert_yz_tree_post - Postcondition for insert_yz_tree
 -spec insert_yz_tree_post(S :: eqc_statem:dynamic_state(),
                           Args :: [term()], R :: ok) -> true | term().
 insert_yz_tree_post(_S, _Args, _Res) ->
@@ -202,7 +236,7 @@ insert_yz_tree_post(_S, _Args, _Res) ->
 -spec insert_yz_tree(sync|async, obj(), {ok, tree()}) -> ok.
 insert_yz_tree(Method, RObj, {ok, TreePid}) ->
     BKey = eqc_util:get_bkey_from_object(RObj),
-    yz_index_hashtree:insert(Method, {0, 1}, BKey,
+    yz_index_hashtree:insert(Method, ?TEST_INDEX_N, BKey,
                              yz_kv:hash_object(RObj), TreePid, []).
 
 %% %% ------ Grouped operator: insert_kv_tree
@@ -224,8 +258,8 @@ insert_kv_tree_pre(S, _Args) ->
                           V :: eqc_statem:var(),
                           Args :: [term()]) -> eqc_statem:symbolic_state().
 insert_kv_tree_next(S, _V, [_, RObj, _]) ->
-    {ok, TreeData} = dict:find({0, 1}, S#state.kv_idx_objects),
-    S#state{kv_idx_objects=dict:store({0, 1},
+    {ok, TreeData} = dict:find(?TEST_INDEX_N, S#state.kv_idx_objects),
+    S#state{kv_idx_objects=dict:store(?TEST_INDEX_N,
                                       set_treedata(RObj, TreeData),
                                       S#state.kv_idx_objects),
             trees_updated=false}.
@@ -239,7 +273,7 @@ insert_kv_tree_post(_S, _Args, _Res) ->
 -spec insert_kv_tree(sync|async, obj(), {ok, tree()}) -> ok.
 insert_kv_tree(Method, RObj, {ok, TreePid}) ->
     {Bucket, Key} = eqc_util:get_bkey_from_object(RObj),
-    Items = [{void, {Bucket, Key}, RObj}],
+    Items = [{object, {Bucket, Key}, RObj}],
     case Method of
         sync ->
             riak_kv_index_hashtree:insert(Items, [], TreePid);
@@ -266,12 +300,12 @@ insert_both_pre(S, _Args) ->
                        V :: eqc_statem:var(),
                        Args :: [term()]) -> eqc_statem:symbolic_state().
 insert_both_next(S, _V, [_, RObj, _, _]) ->
-    {ok, YZTreeData} = dict:find({0, 1}, S#state.yz_idx_objects),
-    {ok, KVTreeData} = dict:find({0, 1}, S#state.kv_idx_objects),
-    S#state{yz_idx_objects=dict:store({0, 1},
+    {ok, YZTreeData} = dict:find(?TEST_INDEX_N, S#state.yz_idx_objects),
+    {ok, KVTreeData} = dict:find(?TEST_INDEX_N, S#state.kv_idx_objects),
+    S#state{yz_idx_objects=dict:store(?TEST_INDEX_N,
                                       set_treedata(RObj, YZTreeData),
                                       S#state.yz_idx_objects),
-            kv_idx_objects=dict:store({0, 1},
+            kv_idx_objects=dict:store(?TEST_INDEX_N,
                                       set_treedata(RObj, KVTreeData),
                                       S#state.kv_idx_objects),
             trees_updated=false}.
@@ -310,14 +344,27 @@ update_next(S, _Value, _Args) ->
 %% @doc update_post - Postcondition for update
 -spec update_post(S :: eqc_statem:dynamic_state(),
                   Args :: [term()], R :: term()) -> true | term().
-update_post(_S, _Args, _Res) ->
-    true.
+update_post(S, _Args, _Res) ->
+    KVTreeData = dict:fetch(?TEST_INDEX_N, S#state.kv_idx_objects),
+
+    ModelKVKeyCount = dict:size(KVTreeData),
+
+    RealKVKeyCount = count_kv_keys(element(2, S#state.kv_idx_tree)),
+
+    YZTreeData = dict:fetch(?TEST_INDEX_N, S#state.yz_idx_objects),
+
+    ModelYZKeyCount = dict:size(YZTreeData),
+
+    RealYZKeyCount = count_yz_keys(element(2, S#state.yz_idx_tree)),
+
+    eq(ModelKVKeyCount, RealKVKeyCount) and
+        eq(ModelYZKeyCount, RealYZKeyCount).
 
 %% @doc Update (commit) hashtrees.
 -spec update({ok, tree()}, {ok, tree()}) -> ok.
 update({ok, YZTreePid}, {ok, KVTreePid}) ->
-    yz_index_hashtree:update({0, 1}, YZTreePid),
-    riak_kv_index_hashtree:update({0, 1}, KVTreePid),
+    yz_index_hashtree:update(?TEST_INDEX_N, YZTreePid),
+    riak_kv_index_hashtree:update(?TEST_INDEX_N, KVTreePid),
     ok.
 
 %% ------ Grouped operator: compare
@@ -345,43 +392,36 @@ compare_next(S, _V, _Args) ->
 -spec compare_post(S :: eqc_statem:dynamic_state(),
                     Args :: [term()], R :: term()) -> true | term().
 compare_post(S, _Args, Res) ->
-    YZTreeData = dict:fetch({0, 1}, S#state.yz_idx_objects),
-    KVTreeData = dict:fetch({0, 1}, S#state.kv_idx_objects),
+    YZTreeData = dict:fetch(?TEST_INDEX_N, S#state.yz_idx_objects),
+    KVTreeData = dict:fetch(?TEST_INDEX_N, S#state.kv_idx_objects),
 
-    FoldFun = fun(D) -> dict:fold(fun(BKey, Hash, Acc) ->
-                                         hashtree:insert(
-                                           term_to_binary(BKey),
-                                           Hash,
-                                           Acc)
-                                 end, hashtree:new(), D)
-              end,
+    LeftDiff = dict:fold(fun(BKey, Hash, Count) ->
+                                 case dict:find(BKey, KVTreeData) of
+                                     {ok, Hash} -> Count;
+                                     {ok, _OtherHash} -> Count;
+                                     error -> Count+1
+                                 end
+                         end, 0, YZTreeData),
+    RightDiff = dict:fold(fun(BKey, Hash, Count) ->
+                                 case dict:find(BKey, YZTreeData) of
+                                     {ok, Hash} -> Count;
+                                     {ok, _OtherHash} -> Count;
+                                     error -> Count+1
+                                 end
+                         end, LeftDiff, KVTreeData),
 
-    YZHashTree = hashtree:update_tree(FoldFun(YZTreeData)),
-
-    RemoteKVHashTree = spawn_link(
-                         fun() ->
-                                 Tree = hashtree:update_tree(FoldFun(KVTreeData)),
-                                 message_loop(Tree, 0, 0)
-                         end),
-
-    Count = hashtree_compare(YZHashTree, RemoteKVHashTree),
-
-    {YZKeys, KVKeys, ModelDiff, ValueDiff} =
-        check_model_against_keys(YZTreeData, KVTreeData, Count),
-    if ModelDiff =:= ValueDiff andalso Res =:= Count ->
-            true;
-       true -> {compare_post, Res, Count, ModelDiff, ValueDiff, YZKeys, KVKeys}
-    end.
+    eq(RightDiff, Res).
 
 %% @doc compare - Runs comparison between *local* YZ Idx Hashtree and
 %%      *remote* KV Idx Hashtree.
 -spec compare({ok, tree()}, {ok, tree()}) -> integer().
 compare({ok, YZTreePid}, {ok, KVTreePid}) ->
     Remote = fun(get_bucket, {L, B}) ->
-                     riak_kv_index_hashtree:exchange_bucket({0, 1}, L, B,
+                     riak_kv_index_hashtree:exchange_bucket(?TEST_INDEX_N, L, B,
                                                             KVTreePid);
                 (key_hashes, Segment) ->
-                     riak_kv_index_hashtree:exchange_segment({0, 1}, Segment,
+                     riak_kv_index_hashtree:exchange_segment(?TEST_INDEX_N,
+                                                             Segment,
                                                              KVTreePid);
                 (_, _) ->
                      ok
@@ -396,7 +436,7 @@ compare({ok, YZTreePid}, {ok, KVTreePid}) ->
                                  end, Count, KeyDiff)
              end,
 
-    yz_index_hashtree:compare({0, 1}, Remote, AccFun, 0, YZTreePid).
+    yz_index_hashtree:compare(?TEST_INDEX_N, Remote, AccFun, 0, YZTreePid).
 
 %% Property Test
 prop_correct() ->
@@ -422,29 +462,6 @@ set_treedata(RObj, D) ->
     BKey = eqc_util:get_bkey_from_object(RObj),
     dict:store(BKey, yz_kv:hash_object(RObj), D).
 
--spec hashtree_compare(hashtree(), pid()) -> non_neg_integer().
-hashtree_compare(Tree, RemotePid) ->
-    Remote = fun(get_bucket, {L, B}) ->
-                     RemotePid ! {get_bucket, self(), L, B},
-                     receive {remote, X} -> X end;
-                (key_hashes, Segment) ->
-                     RemotePid ! {key_hashes, self(), Segment},
-                     receive {remote, X} -> X end
-             end,
-
-    AccFun = fun(Keys, KeyAcc) ->
-                     Keys ++ KeyAcc
-             end,
-
-    KeyDiff = hashtree:compare(Tree, Remote, AccFun, []),
-
-    RemotePid ! done,
-
-    %% This returns diffs for terms remote_missing and missing (not different)
-    %% b/c we always make sure to update hashtrees.
-    length(lists:usort([M || {T, M} <- KeyDiff, (T =:= remote_missing)
-                                or (T =:= missing)])).
-
 -spec repair(p(), keydiff()) -> full_repair | tree_repair | failed_repair.
 repair(_, {remote_missing, KeyBin}) ->
     BKey = binary_to_term(KeyBin),
@@ -455,54 +472,48 @@ repair(_, {remote_missing, KeyBin}) ->
         false ->
             tree_repair
     end;
-repair(Partition, {missing, KeyBin}) ->
+repair(_Partition, {missing, KeyBin}) ->
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
-    case yz_kv:local_get(Partition, BKey) of
-        {ok, _} ->
-            case yz_kv:should_index(Index) of
-                true ->
-                    full_repair;
-                false ->
-                    tree_repair
-            end;
-        _Other ->
-            failed_repair
+    case yz_kv:should_index(Index) of
+        true ->
+            full_repair;
+        false ->
+            tree_repair
     end.
 
--spec message_loop(hashtree(), non_neg_integer(), non_neg_integer()) -> ok.
-message_loop(Tree, Msgs, Bytes) ->
-    receive
-        {get_bucket, From, L, B} ->
-            Reply = hashtree:get_bucket(L, B, Tree),
-            From ! {remote, Reply},
-            Size = byte_size(term_to_binary(Reply)),
-            message_loop(Tree, Msgs+1, Bytes+Size);
-        {key_hashes, From, Segment} ->
-            [{_, KeyHashes2}] = hashtree:key_hashes(Tree, Segment),
-            Reply = KeyHashes2,
-            From ! {remote, Reply},
-            Size = byte_size(term_to_binary(Reply)),
-            message_loop(Tree, Msgs+1, Bytes+Size);
-        done ->
-            ok
-    end.
+%% @doc Count number of keys in the embedded hashtree(s)
+count_yz_keys(YZIndex) ->
+    lists:sum(lists:map(fun(T) -> count_hashes(T) end, extract_yz_trees(YZIndex))).
 
--spec intersection(list(), list()) -> list().
-intersection(List1, List2) ->
-	[Y || X <- List1, Y <- List2, X==Y].
+extract_yz_trees(YZIndex) ->
+    lists:map(fun({_Idx, Tree}) -> Tree end,
+              yz_index_hashtree:get_trees({test, YZIndex})).
 
-%% @doc Check model hashtree count against diffcount against bkeys.
--spec check_model_against_keys(dict(), dict(), non_neg_integer()) ->
-                                      {list(), list(), non_neg_integer(),
-                                       non_neg_integer()}.
-check_model_against_keys(YZTreeData, KVTreeData, ModelDiffCount) ->
-    YZKeys = dict:fetch_keys(YZTreeData),
-    KVKeys = dict:fetch_keys(KVTreeData),
+count_kv_keys(KVIndex) ->
+    lists:sum(lists:map(fun(T) -> count_hashes(T) end, extract_kv_trees(KVIndex))).
 
-    SharedKeys = intersection(YZKeys, KVKeys),
-    DiffCount = length(YZKeys -- SharedKeys) + length(KVKeys -- SharedKeys),
-    {YZKeys, KVKeys, ModelDiffCount, DiffCount}.
+extract_kv_trees(KVIndex) ->
+    lists:map(fun({_Idx, Tree}) -> Tree end,
+              riak_kv_index_hashtree:get_trees({test, KVIndex})).
+
+count_hashes(Tree) ->
+    NumLevels = hashtree:levels(Tree),
+    lists:sum(lists:flatten(chase_level(2, NumLevels, hashtree:get_bucket(1, 0, Tree), Tree))).
+
+chase_level(NextLevel, MaxLevel, Bucket, Tree) when NextLevel > MaxLevel ->
+    lists:sum(
+      lists:map(fun(Id) -> count_items_in_segments(hashtree:key_hashes(Tree, Id)) end,
+                orddict:fetch_keys(Bucket)));
+chase_level(NextLevel, MaxLevel, Bucket, Tree) ->
+    lists:map(fun(Id) -> chase_level(NextLevel+1, MaxLevel,
+                                     hashtree:get_bucket(NextLevel, Id, Tree),
+                                     Tree) end,
+              orddict:fetch_keys(Bucket)).
+
+count_items_in_segments(Segments) ->
+    lists:sum(lists:map(fun({_Segment, Dict}) -> length(orddict:fetch_keys(Dict)) end,
+                        Segments)).
 
 -endif.
 -endif.
