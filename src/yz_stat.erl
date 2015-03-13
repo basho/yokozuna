@@ -102,7 +102,7 @@ stats_map(true) ->
 
       %% Index stats
       {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
-      {search_index_throughtput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
+      {search_index_throughput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
       {search_index_fail_count, {{?YZ_APP_NAME, index, fail}, count}, spiral},
       {search_index_fail_one, {{?YZ_APP_NAME, index, fail}, one}, spiral},
       {search_index_latency_min, {{?YZ_APP_NAME, index, latency}, min}, histogram},
@@ -175,7 +175,7 @@ stats() ->
                                         {median, search_index_latency_median},
                                         {min   , search_index_latency_min}]},
      {[index, throughput], spiral, [], [{count, search_index_throughput_count},
-                                        {one  , search_index_throughtput_one}]},
+                                        {one  , search_index_throughput_one}]},
      {['query', fail], spiral, [], [{count, search_query_fail_count},
                                     {one  , search_query_fail_one}]},
      {['query', latency], histogram, [], [{95    , search_query_latency_95},
