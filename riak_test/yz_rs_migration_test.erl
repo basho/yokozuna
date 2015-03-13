@@ -65,7 +65,11 @@ confirm() ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
             lager:info("YZBenchDir: ~p", [YZBenchDir]),
-            Cluster = rt:build_cluster(lists:duplicate(3, {previous, ?CFG})),
+
+            TestMetaData = riak_test_runner:metadata(),
+            OldVsn = proplists:get_value(upgrade_version, TestMetaData, previous),
+
+            Cluster = rt:build_cluster(lists:duplicate(3, {OldVsn, ?CFG})),
 
             create_index(Cluster, riak_search),
             load_data(Cluster, YZBenchDir, 1000),
