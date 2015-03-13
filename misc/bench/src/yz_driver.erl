@@ -9,6 +9,7 @@
 -include_lib("basho_bench/include/basho_bench.hrl").
 -record(state, {default_field, fruits, pb_conns, index, bucket, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
+-define(SPACER, "testfor spaces ").
 
 -define(M100,   100000000).
 -define(M10,    10000000).
@@ -153,6 +154,17 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Val} = KeyValGen(),
     URL = ?FMT("~s/~p", [Base, Key]),
+    S2 = S#state{iurls=wrap(URLs)},
+    case http_put(URL, "text/plain", Val) of
+        ok -> {ok, S2};
+        {error, Reason} -> {error, Reason, S2}
+    end;
+
+run(load_fruit_plus_spaces, KeyValGen, _, S=#state{iurls=URLs}) ->
+    Base = get_base(URLs),
+    {Key, Val} = KeyValGen(),
+    Key2 = mochiweb_util:quote_plus(lists:concat([?SPACER, Key])),
+    URL = ?FMT("~s/~s", [Base, Key2]),
     S2 = S#state{iurls=wrap(URLs)},
     case http_put(URL, "text/plain", Val) of
         ok -> {ok, S2};

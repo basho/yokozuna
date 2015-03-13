@@ -45,6 +45,7 @@ confirm() ->
     confirm_stored_fields(Cluster),
     confirm_search_non_existent_index(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
+    confirm_search_with_spaced_key(Cluster),
     pass.
 
 select_random(List) ->
@@ -96,9 +97,10 @@ store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     store_and_search(Cluster, Bucket, Key, Body, "text/plain", Search, Params).
 
 store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
-    {BType, _} = Bucket,
+    {BType, Bucket2} = Bucket,
     {Host, Port} = select_random(host_entries(rt:connection_info(Cluster))),
-    URL = bucket_url({Host, Port}, Bucket, Key),
+    URL = bucket_url({Host, Port}, {BType, mochiweb_util:quote_plus(Bucket2)},
+                     mochiweb_util:quote_plus(Key)),
     lager:info("Storing to bucket ~s", [URL]),
     %% populate a value
     {ok, "204", _, _} = ibrowse:send_req(URL, [{"Content-Type", CT}], put, Body),
@@ -258,3 +260,15 @@ confirm_search_to_test_max_score_defaults(Cluster) ->
     Params = [{sort, <<"age_i asc">>}],
     store_and_search(Cluster, Bucket, "test_max_score_defaults",
                      Body, "application/json", <<"age_i:5">>, Params).
+
+confirm_search_with_spaced_key(Cluster) ->
+    Index = <<"basic_for_spaced_key">>,
+    Bucket = {Index, <<"b 1">>},
+    Key = "test spaced key",
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_search_with_spaced_key ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{sort, <<"age_i asc">>}],
+    store_and_search(Cluster, Bucket, Key,
+                     Body, "application/json", <<"age_i:5">>, Params).
+

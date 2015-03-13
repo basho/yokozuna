@@ -139,10 +139,11 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
 %%
 %% `NumKeys' - The total number of keys to write.  The maximum values
 %% is 10 million.
--spec load_data(cluster(), bucket(), string(), integer()) ->
+%% `Operations` - Basho Bench operations to run.
+-spec load_data(cluster(), bucket(), string(), integer(), [tuple()]) ->
                        timeout |
                        {Status :: integer(), Output :: binary()}.
-load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
+load_data(Cluster, Bucket, YZBenchDir, NumKeys, Operations) ->
     lager:info("Load data into bucket ~p onto cluster ~p", [Bucket, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
     KeyGen = {function, yz_driver, fruit_key_val_gen, [NumKeys]},
@@ -155,11 +156,17 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
-           {operations, [{load_fruit, 1}]},
+           {operations, Operations},
            {shutdown_on_error, true}],
     File = "load-data",
     write_terms(File, Cfg),
     run_bb(sync, File).
+
+-spec load_data(cluster(), bucket(), string(), integer()) ->
+                       timeout |
+                       {Status :: integer(), Output :: binary()}.
+load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
+    load_data(Cluster, Bucket, YZBenchDir, NumKeys, [{load_fruit, 1}]).
 
 %% @doc Load the BEAM for `Module' across the `Nodes'.  This allows
 %% use of higher order functions, defined in a riak test module, on
