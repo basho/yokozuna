@@ -394,9 +394,6 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     ok = yz_rt:create_index(Node, <<"escaped">>),
     ok = yz_rt:create_index(Node, <<"unique">>),
 
-    [yz_rt:wait_for_index(Cluster, I)
-     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]],
-
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).

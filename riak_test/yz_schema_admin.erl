@@ -7,6 +7,7 @@
 
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
+-define(IBROWSE_TIMEOUT, 60000).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(TEST_SCHEMA,
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
@@ -366,16 +367,10 @@ confirm_bad_schema(Cluster) ->
     URL2 = index_url(HP, Name),
     Headers2 = [{"content-type", "application/json"}],
     Body = {struct, [{schema, Name}]},
-    lager:info("create ~s index using ~s schema", [Name, Name]),
+    lager:info("create ~s index using bad ~s schema", [Name, Name]),
     {ok, Status2, _, _} = http(put, URL2, Headers2, mochijson2:encode(Body)),
     %% This should return 204 because it simply adds an entry to the
-    %% ring.  The actual Solr Core creation is async.
-    ?assertEqual("204", Status2),
-
-    lager:info("give solr time to attempt to create core ~s", [Name]),
-    timer:sleep(5000),
-    lager:info("verify solr core ~s is not up", [Name]),
-    ?assertNot(yz_solr:ping(Name)),
+    ?assertEqual("400", Status2),
 
     lager:info("upload corrected schema ~s", [Name]),
     {ok, Status3, _, _} = http(put, URL, Headers, ?TEST_SCHEMA),
@@ -386,7 +381,12 @@ confirm_bad_schema(Cluster) ->
                 lager:info("try to ping core ~s", [Name]),
                 rpc:call(Node2, yz_solr, ping, [Name])
         end,
-    yz_rt:wait_until(Cluster, F).
+    yz_rt:wait_until(Cluster, F),
+
+    lager:info("create ~s index using good ~s schema", [Name, Name]),
+    {ok, Status4, _, _} = http(put, URL2, Headers2, mochijson2:encode(Body)),
+    %% This should return 204 because it simply adds an entry to the
+    ?assertEqual("204", Status4).
 
 %% @doc Confirm that creating a new shema gets added to the
 %%      cluster metadata as a compressed blob, and is retrievable
@@ -417,7 +417,7 @@ default_schema(Cluster) ->
 
 http(Method, URL, Headers, Body) ->
     Opts = [{response_format, binary}],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
 
 index_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Name]).
