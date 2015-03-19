@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Script to grab Solr and embed in priv dir. This script assumes it is
 # being called from root dir or tools dir.
@@ -43,7 +43,7 @@ download()
 
 get_solr()
 {
-        if [[ -z ${SOLR_PKG_DIR+x} ]]
+        if [ -z ${SOLR_PKG_DIR+x} ]
         then
             if [ -e $TMP_FILE ]; then
                 echo "Using cached copy of Solr $TMP_FILE"
