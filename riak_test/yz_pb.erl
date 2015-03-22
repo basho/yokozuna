@@ -24,10 +24,13 @@
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"age_i\" type=\"int\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"groups_s\" type=\"string\" indexed=\"true\" stored=\"true\" multiValued=\"true\"/>
 </fields>
 <uniqueKey>_yz_id</uniqueKey>
 <types>
     <fieldType name=\"_yz_str\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"string\" class=\"solr.StrField\" sortMissingLast=\"true\" />
+    <fieldType name=\"int\" class=\"solr.TrieIntField\" precisionStep=\"0\" positionIncrementGap=\"0\" />
 </types>
 </schema>">>).
 
@@ -43,6 +46,7 @@ confirm() ->
     confirm_encoded_search(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
+    confirm_multivalued_field_json_array(Cluster),
     confirm_stored_fields(Cluster),
     confirm_search_non_existent_index(Cluster),
     confirm_search_with_spaced_key(Cluster),
@@ -75,12 +79,27 @@ http(Method, URL, Headers, Body) ->
 create_index(Cluster, BucketType, Index) ->
     create_index(Cluster, BucketType, Index, 3).
 
-create_index(Cluster, BucketType, Index, Nval) ->
+create_index(Cluster, BucketType, Index, UseDefaultSchema) when
+      is_boolean(UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, 3, UseDefaultSchema);
+create_index(Cluster, BucketType, Index, Nval) when is_integer(Nval) ->
+    create_index(Cluster, BucketType, Index, Nval, true).
+
+create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
     Node = select_random(Cluster),
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("create_index ~s for bucket type ~s [~p]", [Index, BucketType, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    SchemaName = ?YZ_DEFAULT_SCHEMA_NAME,
+    if
+        UseDefaultSchema ->
+            lager:info("Using Default Schema"),
+            SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
+        true ->
+            lager:info("Using Custom Schema ?SCHEMA_CONTENT"),
+            SchemaName = <<"anotherschema">>,
+            ok = yz_rt:store_schema(Pid, SchemaName, ?SCHEMA_CONTENT),
+            ok = yz_rt:wait_for_schema(Cluster, SchemaName, ?SCHEMA_CONTENT)
+    end,
     NvalT = {n_val, Nval},
     %% set index in props with the same name as the bucket
     ?assertEqual(ok,
@@ -200,7 +219,7 @@ confirm_encoded_search(Cluster) ->
 confirm_search_to_test_max_score_defaults(Cluster) ->
     Index = <<"basic_for_max_score">>,
     Bucket = {Index, <<"b1">>},
-    create_index(Cluster, Index, Index),
+    create_index(Cluster, Index, Index, false),
     lager:info("confirm_search_to_test_max_score_defaults ~p", [Bucket]),
     Body = <<"{\"age_i\":5}">>,
     Params = [{sort, <<"age_i asc">>}],
@@ -210,7 +229,7 @@ confirm_search_to_test_max_score_defaults(Cluster) ->
 confirm_multivalued_field(Cluster) ->
     Index = <<"basic">>,
     Bucket = {Index, <<"b1">>},
-    lager:info("cofirm multiValued=true fields decode properly"),
+    lager:info("confirm multiValued=true fields decode properly"),
     Body = <<"{\"name_ss\":\"turner\", \"name_ss\":\"hooch\"}">>,
     Params = [],
     HP = select_random(host_entries(rt:connection_info(Cluster))),
@@ -227,6 +246,27 @@ confirm_multivalued_field(Cluster) ->
             riakc_pb_socket:search(Pid, Index, Search, Params),
     ?assert(lists:member({<<"name_ss">>,<<"turner">>}, Fields)),
     ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)),
+    riakc_pb_socket:stop(Pid).
+
+confirm_multivalued_field_json_array(Cluster) ->
+    Index = <<"multifunarray">>,
+    Bucket = {Index, <<"b2">>},
+    lager:info("confirm multiValued=true array fields decode properly"),
+    create_index(Cluster, Index, Index, false),
+    Body = <<"{\"groups_s\":[\"3304cf79\", \"abe155cf\"]}">>,
+    Params = [],
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = bucket_url(HP, Bucket, "multivalued_array"),
+    lager:info("Storing to bucket ~s", [URL]),
+    {Host, Port} = HP,
+    {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
+    %% Sleep for soft commit
+    timer:sleep(1100),
+    Search = <<"groups_s:3304cf79">>,
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
+            riakc_pb_socket:search(Pid, Index, Search, Params),
+    ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
     riakc_pb_socket:stop(Pid).
 
 confirm_search_non_existent_index(Cluster) ->
@@ -269,10 +309,10 @@ confirm_search_with_spaced_key(Cluster) ->
     Key = "test spaced key",
     create_index(Cluster, Index, Index),
     lager:info("confirm_search_with_spaced_key ~p", [Bucket]),
-    Body = <<"{\"age_i\":5}">>,
+    Body = <<"{\"foo_i\":5}">>,
     Params = [{sort, <<"age_i asc">>}],
     store_and_search(Cluster, Bucket, Key,
-                     Body, "application/json", <<"age_i:5">>, Params).
+                     Body, "application/json", <<"foo_i:5">>, Params).
 
 confirm_create_index_within_timeout(Cluster) ->
     Index = <<"index_within_timeout">>,
