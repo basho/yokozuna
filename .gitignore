@@ -1,5 +1,6 @@
 *~
 deps
+doc
 ebin
 priv/java_lib
 priv/conf/lang
@@ -14,6 +15,7 @@ priv/solr/solr-webapp
 build/
 *.class
 *.tgz
+.rebar/*
 riak_test/ebin
 tests/20*
 tests/current
@@ -24,3 +26,5 @@ bb-*-fruit*
 .yokozuna_test_dialyzer_plt
 dialyzer_warnings
 dialyzer_unhandled_warnings
+/.eqc-info
+/current_counterexample.eqc

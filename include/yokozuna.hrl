@@ -129,6 +129,7 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+-define(DEFAULT_IDX_CREATE_TIMEOUT, 30000).
 
 -define(MAYBE(Check, Expression, Default),
         case Check of
@@ -243,8 +244,14 @@
 %%% Riak KV
 %%%===================================================================
 
+-ifdef(namespaced_types).
+-type yz_dict() :: dict:dict().
+-else.
+-type yz_dict() :: dict().
+-endif.
+
 -type obj() :: riak_object:riak_object().
--type obj_metadata() :: dict().
+-type obj_metadata() :: yz_dict().
 
 %%%===================================================================
 %%% Docs

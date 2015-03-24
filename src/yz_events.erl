@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 %% @doc Functionality related to events.  This is the single producer of
-%% writes to the ETS table `yz_events`.
+%% writes to the ETS table `yz_events'.
 %%
 %% NOTE: Store the raw ring in the state because that is what is being
 %%       delivered during a ring event.
@@ -180,6 +180,7 @@ remove_non_owned_data(unknown) ->
     %% The ring used to calculate the current coverage plan could not
     %% be determined. In this case do nothing to prevent removing data
     %% that the current coverage plan is using.
+    ?DEBUG("the current ring is unknown, no data can be removed", []),
     ok;
 remove_non_owned_data(Ring) ->
     case yz_solr:cores() of

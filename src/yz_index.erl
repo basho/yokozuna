@@ -18,9 +18,16 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc This module contains functionaity for using and administrating
+%%      indexes.  In this case an index is an instance of a Solr Core.
+
 -module(yz_index).
 -include("yokozuna.hrl").
 -compile(export_all).
+
+-define(SOLR_INITFAILURES(I, S), kvc:path(erlang:iolist_to_binary(
+                                            [<<"initFailures">>, <<".">>, I]),
+                                          mochijson2:decode(S))).
 
 -record(index_info,
         {
@@ -33,10 +40,9 @@
           %% The name of the schema this index is using.
           schema_name :: schema_name()
         }).
+
 -type index_info() :: #index_info{}.
 
-%% @doc This module contains functionaity for using and administrating
-%%      indexes.  In this case an index is an instance of a Solr Core.
 
 %%%===================================================================
 %%% API
@@ -70,16 +76,30 @@ create(Name, SchemaName) ->
 %% `ok' - The schema was found and index added to the list.
 %%
 %% `schema_not_found' - The `SchemaName' could not be found.
+%% @see create/4
 -spec create(index_name(), schema_name(), n() | undefined) ->
                     ok |
+                    {error, index_not_created_within_timeout} |
                     {error, schema_not_found} |
-                    {error, invalid_name}.
+                    {error, invalid_name} |
+                    {error, core_error_on_index_creation, binary()}.
 create(Name, SchemaName, undefined) ->
     DefaultNVal = riak_core_bucket:default_object_nval(),
-    create(Name, SchemaName, DefaultNVal);
+    create(Name, SchemaName, DefaultNVal, ?DEFAULT_IDX_CREATE_TIMEOUT);
+create(Name, SchemaName, NVal) ->
+    create(Name, SchemaName, NVal, ?DEFAULT_IDX_CREATE_TIMEOUT).
 
-create(Name, SchemaName, NVal) when is_integer(NVal),
-                                    NVal > 0 ->
+-spec create(index_name(), schema_name(), n() | undefined, timeout()) ->
+                    ok |
+                    {error, index_not_created_within_timeout} |
+                    {error, schema_not_found} |
+                    {error, invalid_name} |
+                    {error, core_error_on_index_creation, binary()}.
+create(Name, SchemaName, undefined, Timeout) ->
+    DefaultNVal = riak_core_bucket:default_object_nval(),
+    create(Name, SchemaName, DefaultNVal, Timeout);
+create(Name, SchemaName, NVal, Timeout) when is_integer(NVal),
+                                             NVal > 0 ->
     case verify_name(Name) of
         {ok, Name} ->
             case yz_schema:exists(SchemaName) of
@@ -87,7 +107,23 @@ create(Name, SchemaName, NVal) when is_integer(NVal),
                     {error, schema_not_found};
                 true  ->
                     Info = make_info(SchemaName, NVal),
-                    ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info)
+                    %% Propagate index across cluster
+                    ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info),
+
+                    %% Spawn a process that spawns a linked child process that
+                    %% waits for the index to exist within the set timeout.
+
+                    %% Propagation of the index can still occur, but may
+                    %% take longer than the alloted timeout for the request.
+                    spawn(?MODULE, sync_index, [self(), Name, Timeout]),
+                    receive
+                        ok ->
+                            ok;
+                        {core_error, Error} ->
+                            {error, core_error_on_index_creation, Error};
+                        timeout ->
+                            {error, index_not_created_within_timeout}
+                    end
             end;
         {error, _} = Err ->
             Err
@@ -189,12 +225,17 @@ local_create(Name) ->
                     lager:info("Created index ~s with schema ~s",
                                [Name, SchemaName]),
                     ok;
+                {error, exists} ->
+                    lager:info("Index ~s already exists in Solr, "
+                               "but not in Riak metadata",
+                               [Name]);
                 {error, Err} ->
                     lager:error("Couldn't create index ~s: ~p", [Name, Err])
             end,
             ok;
-        {error, Reason} ->
-            lager:error("Couldn't create index ~s: ~p", [Name, Reason]),
+        {error, _Reason} ->
+            lager:error("Couldn't create index ~s because the schema ~s isn't found",
+                        [Name, SchemaName]),
             ok
     end.
 
@@ -333,3 +374,44 @@ index_dir(Name) ->
 make_info(SchemaName, NVal) ->
     #index_info{n_val=NVal,
                 schema_name=SchemaName}.
+
+-spec sync_index(pid(), index_name(), timeout()) -> ok | timeout |
+                                                   {core_error, binary()}.
+sync_index(Pid, IndexName, Timeout) ->
+    process_flag(trap_exit, true),
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    Nodes = riak_core_ring:all_members(Ring),
+    WaitPid = spawn_link(?MODULE, wait_for_index, [self(), IndexName, Nodes]),
+    register(wait_for_index, WaitPid),
+    receive
+        {_From, ok} ->
+            Pid ! ok;
+        {'EXIT', _Pid, _Reason} ->
+            sync_index(Pid, IndexName, Timeout)
+    after Timeout ->
+            exit(whereis(wait_for_index), kill),
+
+            %% Check if initFailure occurred
+            {ok, _, S} = yz_solr:core(status, [{wt,json},{core, IndexName}]),
+            case ?SOLR_INITFAILURES(IndexName, S) of
+                [] ->
+                    lager:notice("Index ~s not created within ~p ms timeout",
+                                  [IndexName, Timeout]),
+                    Pid ! timeout;
+                Error ->
+                    lager:error("Solr core error after trying to create index ~s: ~p",
+                                [IndexName, Error]),
+                    Pid ! {core_error, Error}
+            end
+    end.
+
+-spec wait_for_index(pid(), index_name(), [Node :: term()]) -> {pid(), ok}.
+wait_for_index(Pid, IndexName, Nodes) ->
+    Results =  riak_core_util:multi_rpc_ann(Nodes, ?MODULE, exists, [IndexName]),
+    case lists:filter(fun({_, Res}) -> Res =/= true end, Results) of
+        [] ->
+            Pid ! {self(), ok};
+        Rest ->
+            Nodes = [Node || {Node, _} <- Rest],
+            wait_for_index(Pid, IndexName, Nodes)
+    end.

@@ -1,10 +1,13 @@
+EXOMETER_PACKAGES = "(basic)"
+export EXOMETER_PACKAGES
+
 REBAR ?= $(shell pwd)/rebar
 
 .PHONY: deps rel stagedevrel test
 
 all: deps compile-riak-test
 
-compile:
+compile: deps
 	$(REBAR) compile
 
 compile-riak-test: compile

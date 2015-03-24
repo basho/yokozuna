@@ -23,6 +23,7 @@
    <field name=\"_yz_rk\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"_yz_rb\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
    <field name=\"_yz_err\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
+   <field name=\"age_i\" type=\"int\" indexed=\"true\" stored=\"true\" multiValued=\"false\"/>
 </fields>
 <uniqueKey>_yz_id</uniqueKey>
 <types>
@@ -40,9 +41,13 @@ confirm() ->
     confirm_admin_bad_index_name(Cluster),
     confirm_basic_search(Cluster),
     confirm_encoded_search(Cluster),
+    confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
     confirm_stored_fields(Cluster),
     confirm_search_non_existent_index(Cluster),
+    confirm_search_with_spaced_key(Cluster),
+    confirm_create_index_within_timeout(Cluster),
+    confirm_create_index_not_within_timeout(Cluster),
     pass.
 
 select_random(List) ->
@@ -79,14 +84,14 @@ create_index(Cluster, BucketType, Index, Nval) ->
     NvalT = {n_val, Nval},
     %% set index in props with the same name as the bucket
     ?assertEqual(ok,
-        riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT])),
-    yz_rt:wait_for_index(Cluster, Index),
-    % Add the index to the bucket props
-    yz_rt:set_bucket_type_index(Node, BucketType, Index, Nval),
-    yz_rt:wait_for_bucket_type(Cluster, BucketType),
+                 riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT])),
     %% Check that the index exists
     {ok, IndexData} = riakc_pb_socket:get_search_index(Pid, Index),
     ?assertEqual([{index, Index}, {schema, SchemaName}, NvalT], IndexData),
+
+    %% Add the index to the bucket props
+    yz_rt:set_bucket_type_index(Node, BucketType, Index, Nval),
+    yz_rt:wait_for_bucket_type(Cluster, BucketType),
     riakc_pb_socket:stop(Pid),
     ok.
 
@@ -94,9 +99,10 @@ store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     store_and_search(Cluster, Bucket, Key, Body, "text/plain", Search, Params).
 
 store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
-    {BType, _} = Bucket,
+    {BType, Bucket2} = Bucket,
     {Host, Port} = select_random(host_entries(rt:connection_info(Cluster))),
-    URL = bucket_url({Host, Port}, Bucket, Key),
+    URL = bucket_url({Host, Port}, {BType, mochiweb_util:quote_plus(Bucket2)},
+                     mochiweb_util:quote_plus(Key)),
     lager:info("Storing to bucket ~s", [URL]),
     %% populate a value
     {ok, "204", _, _} = ibrowse:send_req(URL, [{"Content-Type", CT}], put, Body),
@@ -105,6 +111,8 @@ store_and_search(Cluster, Bucket, Key, Body, CT, Search, Params) ->
         lager:info("Search for ~s [~p:~p]", [Search, Host, Port]),
         {ok,{search_results,R,Score,Found}} =
             riakc_pb_socket:search(Pid, BType, Search, Params),
+            ?assertNotEqual(Score, []),
+            ?assertNotEqual(Score, 0),
         case Found of
             1 ->
                 [{BType,Results}] = R,
@@ -175,7 +183,7 @@ confirm_basic_search(Cluster) ->
     Index = <<"basic">>,
     Bucket = {Index, <<"b1">>},
     create_index(Cluster, Index, Index),
-    lager:info("confirm_basic_search ~s", [Bucket]),
+    lager:info("confirm_basic_search ~p", [Bucket]),
     Body = "herp derp",
     Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
     store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
@@ -184,10 +192,20 @@ confirm_encoded_search(Cluster) ->
     Index = <<"encoded">>,
     Bucket = {Index, <<"b1">>},
     create_index(Cluster, Index, Index),
-    lager:info("confirm_encoded_search ~s", [Bucket]),
+    lager:info("confirm_encoded_search ~p", [Bucket]),
     Body = "א בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ",
     Params = [{sort, <<"score desc">>}, {fl, ["_yz_rk"]}],
     store_and_search(Cluster, Bucket, "וְאֵת", Body, <<"text:בָּרָא">>, Params).
+
+confirm_search_to_test_max_score_defaults(Cluster) ->
+    Index = <<"basic_for_max_score">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_search_to_test_max_score_defaults ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{sort, <<"age_i asc">>}],
+    store_and_search(Cluster, Bucket, "test_max_score_defaults",
+                     Body, "application/json", <<"age_i:5">>, Params).
 
 confirm_multivalued_field(Cluster) ->
     Index = <<"basic">>,
@@ -220,7 +238,7 @@ confirm_search_non_existent_index(Cluster) ->
     {error, Err} = riakc_pb_socket:search(Pid, BadIndex, Search, []),
     ?assertEqual(<<"No index <<\"does_not_exist\">> found.">>, Err),
     riakc_pb_socket:stop(Pid).
-    
+
 confirm_stored_fields(Cluster) ->
     Index = <<"stored_fields">>,
     Bucket = {Index, <<"b1">>},
@@ -243,4 +261,76 @@ confirm_stored_fields(Cluster) ->
                  ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
     ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
     ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
+    riakc_pb_socket:stop(Pid).
+
+confirm_search_with_spaced_key(Cluster) ->
+    Index = <<"basic_for_spaced_key">>,
+    Bucket = {Index, <<"b 1">>},
+    Key = "test spaced key",
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_search_with_spaced_key ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{sort, <<"age_i asc">>}],
+    store_and_search(Cluster, Bucket, Key,
+                     Body, "application/json", <<"age_i:5">>, Params).
+
+confirm_create_index_within_timeout(Cluster) ->
+    Index = <<"index_within_timeout">>,
+    Index1 = <<"index_within_infinity">>,
+    Bucket = {Index, <<"b1">>},
+    Node = select_random(Cluster),
+    [{Host, Port}] = host_entries(rt:connection_info([Node])),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    SchemaName = ?YZ_DEFAULT_SCHEMA_NAME,
+    lager:info("confirm_search_to_test_index_within_timeout ~p", [Bucket]),
+    NvalT = {n_val, 3},
+    Timeout = {timeout, 25000},
+    Timeout1 = {timeout, infinity},
+    ?assertEqual(ok,
+                 riakc_pb_socket:create_search_index(Pid, Index, SchemaName,
+                                                     [NvalT, Timeout])),
+    ?assertEqual(ok, element(1, riakc_pb_socket:get_search_index(Pid, Index, []))),
+
+    lager:info("confirm_search_to_test_index_within_infinity ~p", [Bucket]),
+    ?assertEqual(ok,
+                 riakc_pb_socket:create_search_index(Pid, Index1, SchemaName,
+                                                     [NvalT, Timeout1])),
+    ?assertEqual(ok,
+                 element(1, riakc_pb_socket:get_search_index(Pid, Index1, []))),
+
+    riakc_pb_socket:stop(Pid).
+
+confirm_create_index_not_within_timeout(Cluster) ->
+    Index = <<"index_not_within_timeout">>,
+    Bucket = {Index, <<"b1">>},
+    lager:info("confirm_search_to_test_index_not_within_timeout ~p", [Bucket]),
+    Node = select_random(Cluster),
+    [{Host, Port}] = host_entries(rt:connection_info([Node])),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    riakc_pb_socket:set_options(Pid, [queue_if_disconnected]),
+
+    SchemaName = ?YZ_DEFAULT_SCHEMA_NAME,
+    %% Test invalid n_val
+    NValT = {n_val, bbbbbb},
+    %% Test invalid timeout value
+    Timeout = {timeout, asdasdasd},
+
+    NValT1 = {n_val, 3},
+    Timeout1 = {timeout, 10},
+
+    ?assertError(badarg, riakc_pb_socket:create_search_index(Pid, Index,
+                                                             SchemaName,
+                                                             [NValT1, Timeout])),
+    ?assertError(badarg, riakc_pb_socket:create_search_index(Pid, Index,
+                                                             SchemaName,
+                                                             [NValT, Timeout1])),
+
+    {error, <<"Index index_not_within_timeout not created on all the nodes within 10 ms timeout\n">>} =
+        riakc_pb_socket:create_search_index(
+          Pid, Index, SchemaName,
+          [NValT1, Timeout1]),
+
+    ok = yz_rt:wait_for_index(Cluster, Index),
+    ?assertEqual(ok,
+                 element(1, riakc_pb_socket:get_search_index(Pid, Index, []))),
     riakc_pb_socket:stop(Pid).

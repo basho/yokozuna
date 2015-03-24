@@ -18,6 +18,8 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc Functionality for working with Yokozuna documents.
+
 -module(yz_doc).
 -compile(export_all).
 -include("yokozuna.hrl").
@@ -25,8 +27,7 @@
 -define(MD_VTAG, <<"X-Riak-VTag">>).
 -define(YZ_ID_SEP, "*").
 -define(YZ_ID_VER, "1").
-
-%% @doc Functionality for working with Yokozuna documents.
+-define(YZ_ED_VER, <<"2">>).
 
 %%%===================================================================
 %%% API
@@ -62,7 +63,7 @@ make_docs(O, Hash, FPN, Partition) ->
     [make_doc(O, Hash, Content, FPN, Partition)
      || Content <- riak_object:get_contents(O)].
 
--spec make_doc(obj(), hash(), {dict(), dict()}, binary(), binary()) -> doc().
+-spec make_doc(obj(), hash(), {yz_dict(), yz_dict()}, binary(), binary()) -> doc().
 make_doc(O, Hash, {MD, V}, FPN, Partition) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
@@ -141,7 +142,7 @@ extract_fields({MD, V}) ->
 %% @private
 %%
 %% @doc Extract tags from object metadata.
--spec extract_tags(dict()) -> fields().
+-spec extract_tags(yz_dict()) -> fields().
 extract_tags(MD) ->
     MD2 = get_user_meta(MD),
     TagNames = get_tag_names(MD2),
@@ -155,7 +156,7 @@ extract_tags(MD) ->
 %%       Riak Object metadata so that `yz_kv:get_md_entry' may be
 %%       used.  This way when KV is altered to store user meta at the
 %%       top-level the migration will be easier.
--spec get_user_meta(dict()) -> dict().
+-spec get_user_meta(yz_dict()) -> yz_dict().
 get_user_meta(MD) ->
     case yz_kv:get_md_entry(MD, <<"X-Riak-Meta">>) of
         none ->
@@ -170,7 +171,7 @@ get_user_meta(MD) ->
             dict:from_list(MM2)
     end.
 
--spec get_tag(dict()) -> function().
+-spec get_tag(yz_dict()) -> function().
 get_tag(MD) ->
     fun(TagName, Fields) ->
             case yz_kv:get_md_entry(MD, TagName) of
@@ -195,7 +196,7 @@ strip_prefix(_) ->
 %% @private
 %%
 %% @doc Get the tags names.
--spec get_tag_names(dict()) -> list().
+-spec get_tag_names(yz_dict()) -> list().
 get_tag_names(MD) ->
     case yz_kv:get_md_entry(MD, <<"x-riak-meta-yz-tags">>) of
         none -> [];
@@ -217,17 +218,16 @@ split_tag_names(TagNames) ->
 %%%===================================================================
 
 %% NOTE: All of this data needs to be in one field to efficiently
-%%       iterate.  Otherwise the doc would have to be fetched for each
-%%       entry.
+%%       iterate. Otherwise the doc would have to be fetched for each entry.
 gen_ed(O, Hash, Partition) ->
-    %% Store `Vsn' to allow future changes to this format.
-    Vsn = <<"1">>,
     RiakBucket = yz_kv:get_obj_bucket(O),
-    RiakBType = yz_kv:bucket_type(RiakBucket),
-    RiakBName = yz_kv:bucket_name(RiakBucket),
-    RiakKey = yz_kv:get_obj_key(O),
+    RiakBType = base64:encode(yz_kv:bucket_type(RiakBucket)),
+    RiakBName = base64:encode(yz_kv:bucket_name(RiakBucket)),
+    RiakKey = base64:encode(yz_kv:get_obj_key(O)),
     Hash64 = base64:encode(Hash),
-    <<Vsn/binary," ",Partition/binary," ",RiakBType/binary," ",RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
+    <<?YZ_ED_VER/binary," ",Partition/binary," ",RiakBType/binary," ",
+      RiakBName/binary," ",RiakKey/binary," ",Hash64/binary>>.
+
 
 %% Meta keys and values can be strings or binaries
 format_meta(key, Value) when is_binary(Value) ->

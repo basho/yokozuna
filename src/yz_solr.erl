@@ -18,6 +18,9 @@
 %%
 %% -------------------------------------------------------------------
 
+%% @doc This module provides the interface for making calls to Solr.
+%%      All interaction with Solr should go through this API.
+
 -module(yz_solr).
 -compile(export_all).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
@@ -38,9 +41,6 @@
                    | {'query', binary()}.
 
 -export_type([delete_op/0]).
-
-%% @doc This module provides the interface for making calls to Solr.
-%%      All interaction with Solr should go through this API.
 
 %%%===================================================================
 %%% API
@@ -95,6 +95,13 @@ core(Action, Props, Timeout) ->
     case ibrowse:send_req(URL, [], get, [], Opts, Timeout) of
         {ok, "200", Headers, Body} ->
             {ok, Headers, Body};
+        {ok, "400", Headers, Body} ->
+            case re:run(Body, "already exists") of
+                nomatch ->
+                    {error, {ok, "400", Headers, Body}};
+                _ ->
+                    {error, exists}
+            end;
         X ->
             {error, X}
     end.

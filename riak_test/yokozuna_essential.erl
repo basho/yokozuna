@@ -29,6 +29,14 @@
            %% more quickly.
            {vnode_management_timer, 1000}
           ]},
+         {riak_kv,
+          [
+           %% Max number of times that a secondary system can block
+           %% handoff of primary key-value data.
+           %% Set to prevent a race-condition when propagating cluster
+           %% meta to newly joined nodes.
+           {handoff_rejected_max, infinity}
+          ]},
          {yokozuna,
           [
           {enabled, true},
@@ -60,7 +68,7 @@ confirm() ->
             timer:sleep(30000),
             Cluster2 = join_rest(Cluster, Nodes),
             rt:wait_for_cluster_service(Cluster2, yokozuna),
-            check_status(wait_for(Ref)),
+            check_bb_status(wait_for(Ref)),
             verify_non_owned_data_deleted(Cluster, ?INDEX),
             ok = test_tagging(Cluster),
             KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
@@ -229,7 +237,7 @@ verify_unique_id(Cluster, PBConns) ->
 make_query_fun(PBConns, Index, Query, Expected) ->
     fun() ->
             QueryRes = query_all(PBConns, Index, Query),
-            lists:all(fun(X) -> 
+            lists:all(fun(X) ->
                 lager:info("~p~n", [X]),
                 X == Expected end, QueryRes)
     end.
@@ -303,8 +311,38 @@ async_query(Cluster, YZBenchDir) ->
     write_terms(File, Cfg),
     run_bb(async, File).
 
-check_status({Status,_}) ->
-    ?assertEqual(?SUCCESS, Status).
+check_bb_status({Status,_}) ->
+    %% If we see an error, it'll be helpful to have the basho bench output here
+    %% in the riak_test log, since otherwise it may get wiped off of the build
+    %% machines before we get a chance to investigate the failure.
+    case Status of
+        ?SUCCESS ->
+            ok;
+        _ ->
+            lager:info("basho_bench returned error status ~p", [Status]),
+            lager:info("basho_bench log dump follows:"),
+            dump_bb_logs(),
+            ?assertEqual(?SUCCESS, Status)
+    end.
+
+dump_bb_logs() ->
+    Logs = filelib:wildcard("/tmp/yz-bb-results/current/*.log"),
+    lists:foreach(fun dump_log/1, Logs).
+
+dump_log(Log) ->
+    lager:info("--- Dumping log file ~p ---", [Log]),
+    {ok, File} = file:open(Log, [read]),
+    dump_file(File),
+    lager:info("--- End log file dump of ~p ---", [Log]).
+
+dump_file(File) ->
+    case file:read_line(File) of
+        eof ->
+            ok;
+        {ok, Data} ->
+            lager:info("~s", [Data]),
+            dump_file(File)
+    end.
 
 delete_key(Cluster, Key) ->
     Node = yz_rt:select_random(Cluster),
@@ -356,9 +394,6 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     ok = yz_rt:create_index(Node, <<"escaped">>),
     ok = yz_rt:create_index(Node, <<"unique">>),
 
-    [yz_rt:wait_for_index(Cluster, I)
-     || I <- [?INDEX, <<"tagging">>, <<"escaped">>, <<"unique">>]],
-
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).
@@ -383,7 +418,7 @@ verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
            {shutdown_on_error, true}],
     File = "bb-verify-deletes",
     write_terms(File, Cfg),
-    check_status(run_bb(sync, File)).
+    check_bb_status(run_bb(sync, File)).
 
 wait_for(Ref) ->
     rt:wait_for_cmd(Ref).

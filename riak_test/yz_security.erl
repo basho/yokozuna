@@ -139,16 +139,13 @@ confirm_index_pb(Node) ->
     Pid1 = get_secure_pid(Host, Port),
     lager:info("verifying user can create an index"),
     ?assertEqual(ok, riakc_pb_socket:create_search_index(Pid1, ?INDEX)),
-    yz_rt:wait_for_index([Node], ?INDEX),
 
     %% create another index, never give permission to use it
     ?assertEqual(ok,
         riakc_pb_socket:create_search_index(Pid1, ?INDEX2)),
-    yz_rt:wait_for_index([Node], ?INDEX2),
 
     ?assertEqual(ok,
         riakc_pb_socket:create_search_index(Pid1, <<"_gonna_be_dead_">>)),
-    yz_rt:wait_for_index([Node], <<"_gonna_be_dead_">>),
 
     lager:info("verifying user can delete an index"),
     ?assertEqual(ok,

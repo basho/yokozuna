@@ -23,45 +23,45 @@
 %%
 %% Available operations:
 %%
-%% GET /search/index
+%% `GET /search/index'
 %%
 %%   Get information about every index in JSON format.
 %%   Currently the same information as /search/index/Index,
 %%   but as an array of JSON objects.
 %%
-%% GET /search/index/Index
+%% `GET /search/index/Index'
 %%
 %%   Gets information about a specific index in JSON format.
 %%   Returns the following information:
-%%
+%% ```
 %%   {
 %%      "name"  : IndexName,
 %%      "schema": SchemaName
 %%   }
-%%
+%% '''
 %%   `IndexName' is the same value passed into the URL.
 %%
 %%   `Schema' is the name of the schema associate with this
 %%   index. That schema file must already be installed on the server.
 %%   Defaults to "_yz_default".
 %%
-%% PUT /search/index/Index
+%% `PUT /search/index/Index'
 %%
 %%   Creates a new index with the given name.
 %%
 %%   A PUT request requires this header:
-%%     Content-Type: application/json
+%%
+%%     `Content-Type: application/json'
 %%
 %%   A JSON body may be sent. It accepts the following:
-%%
+%% ```
 %%   { "schema" : SchemaName,
 %%     "n_val" : N}
-%%
+%% '''
 %%   If no schema is given, it defaults to "_yz_default".
 %%
-%%   Returns a '409 Conflict' code if the index already exists.
 %%
-%% DELETE /search/index/Index
+%% `DELETE /search/index/Index'
 %%
 %%   Deletes the index with the given index name.
 %%
@@ -71,12 +71,16 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(ctx, {index_name :: index_name() | undefined, %% name the index
-              props :: proplist(),    %% properties of the body
-              method :: atom(),       %% HTTP method for the request
-              ring :: ring(),         %% Ring data
-              security                %% security context
+-record(ctx, {index_name :: index_name() | undefined,    %% name the index
+              props :: proplist(),                       %% properties of the body
+              method :: atom(),                          %% HTTP method for the request
+              ring :: ring(),                            %% Ring data
+              security,                                  %% security context
+              timeout :: non_neg_integer() | undefined |
+                         infinity
              }).
+
+-type context() :: #ctx{}.
 
 %%%===================================================================
 %%% API
@@ -176,18 +180,29 @@ delete_resource(RD, S) ->
             {true, RD, S}
     end.
 
-%% Responds to a PUT request by creating an index and setting the
-%% index flag for the "index" name given in the route. Returns 204 if
-%% created, or 409 if an index of that name already exists. Returns a
-%% 400 error if the schema does not exist.
+%% @doc Responds to a PUT request by creating an index and setting the
+%%      index flag for the "index" name given in the route. Returns 204 if
+%%      created. Returns a 202 if not completed withint the set timeout.
+%%      Returns a 400 error if the schema does not exist, the index name
+%%      contains an invalid char, or a bad n_val is given or if a request
+%%      doesn't complete within a set timeout.
 create_index(RD, S) ->
     IndexName = S#ctx.index_name,
     BodyProps = S#ctx.props,
+    Timeout =
+        case S#ctx.timeout of
+            undefined -> ?DEFAULT_IDX_CREATE_TIMEOUT;
+            Set -> Set
+        end,
+
     SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
     NVal = proplists:get_value(<<"n_val">>, BodyProps, undefined),
-    case maybe_create_index(IndexName, SchemaName, NVal) of
+    case maybe_create_index(IndexName, SchemaName, NVal, Timeout) of
         ok ->
             {<<>>, RD, S};
+        {error, index_not_created_within_timeout} ->
+            Msg = "Index ~s not created on all the nodes within ~p ms timeout",
+            text_response({halt, 202}, Msg, [IndexName, Timeout], RD, S);
         {error, schema_not_found} ->
             Msg = "Cannot create index because schema ~s was not found~n",
             text_response({halt, 500}, Msg, [SchemaName], RD, S);
@@ -196,9 +211,10 @@ create_index(RD, S) ->
             text_response({halt, 400}, Msg, [NVal], RD, S);
         {error, invalid_name} ->
             Msg = "Invalid character in index name ~s~n",
-            text_response({halt, 400}, Msg, [IndexName], RD, S)
+            text_response({halt, 400}, Msg, [IndexName], RD, S);
+        {error, core_error_on_index_creation, Error} ->
+            text_response({halt, 400}, binary_to_list(Error), [], RD, S)
     end.
-
 
 %% Responds to a GET request by returning index info for
 %% the given index as a JSON response.
@@ -221,7 +237,7 @@ text_response(Result, Message, Data, RD, S) ->
 schema_exists_response(RD, S) ->
     Name = proplists:get_value(<<"schema">>, S#ctx.props, ?YZ_DEFAULT_SCHEMA_NAME),
     case yz_schema:exists(Name) of
-        true  -> {false, RD, S};
+        true  -> malformed_timeout_param(RD, S);
         false ->
             text_response(true, "Schema ~s does not exist~n",
                 [Name], RD, S)
@@ -255,14 +271,31 @@ malformed_request(RD, S) ->
           end
     end.
 
-%% Returns a 409 Conflict if this index already exists
-is_conflict(RD, S) when S#ctx.method =:= 'PUT' ->
-    IndexName = S#ctx.index_name,
-    case exists(IndexName) of
-        true  ->
-            {true, RD, S};
-        false ->
-            {false, RD, S}
+-spec malformed_timeout_param(#wm_reqdata{}, context()) ->
+    {boolean(), #wm_reqdata{}, context()}.
+%% @doc Check that the timeout parameter is are a
+%%      string-encoded integer.  Store the integer value
+%%      in context() if so.
+malformed_timeout_param(RD, S) ->
+    case wrq:get_qs_value("timeout", none, RD) of
+        none ->
+            {false, RD, S};
+        TimeoutStr ->
+            try
+                Timeout = list_to_integer(TimeoutStr),
+                {false, RD, S#ctx{timeout=Timeout}}
+            catch
+                error:badarg ->
+                    {true,
+                     wrq:append_to_resp_body(io_lib:format("Bad timeout "
+                                                           "value ~p. "
+                                                           "Could not be converted"
+                                                           "to an integer value.~n",
+                                                           [TimeoutStr]),
+                                             wrq:set_resp_header(?HEAD_CTYPE,
+                                                                 "text/plain", RD)),
+                     S}
+            end
     end.
 
 %%%===================================================================
@@ -298,21 +331,24 @@ index_body(IndexName) ->
               {"schema", SchemaName}
     ]}.
 
--spec maybe_create_index(index_name(), schema_name(), n()) ->
+-spec maybe_create_index(index_name(), schema_name(), n() | undefined,
+                         timeout()) ->
                                 ok |
+                                {error, index_not_created_within_timeout} |
                                 {error, schema_not_found} |
                                 {error, bad_n_val} |
-                                {error, invalid_name}.
-maybe_create_index(IndexName, SchemaName, NVal)->
+                                {error, invalid_name} |
+                                {error, core_error_on_index_creation, binary()}.
+maybe_create_index(IndexName, SchemaName, NVal, Timeout) ->
     case exists(IndexName) of
         true  ->
             ok;
         false ->
             case NVal of
                 undefined ->
-                    yz_index:create(IndexName, SchemaName);
+                    yz_index:create(IndexName, SchemaName, undefined, Timeout);
                 Int when is_integer(Int), Int > 0 ->
-                    yz_index:create(IndexName, SchemaName, NVal);
+                    yz_index:create(IndexName, SchemaName, NVal, Timeout);
                 _ ->
                     {error, bad_n_val}
             end

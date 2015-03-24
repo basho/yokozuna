@@ -3,10 +3,13 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 10000).
+-define(NUM_KEYS_SPACES, 1000).
+-define(TOTAL_KEYS, ?NUM_KEYS + ?NUM_KEYS_SPACES).
 -define(BUCKET_TYPE, <<"data">>).
 -define(INDEX, <<"fruit_aae">>).
 -define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
+-define(SPACER, "testfor spaces ").
 -define(CFG,
         [{riak_core,
           [
@@ -35,8 +38,11 @@ confirm() ->
             PBConn = yz_rt:select_random(PBConns),
             setup_index(Cluster, PBConn, YZBenchDir),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
+            {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir,
+                                     ?NUM_KEYS_SPACES,
+                                     [{load_fruit_plus_spaces, 1}]),
             lager:info("Verify data was indexed"),
-            verify_num_match(Cluster, ?NUM_KEYS),
+            verify_num_match(Cluster, ?TOTAL_KEYS),
             %% Wait for a full round of exchange and then get total repair
             %% count.  Need to do this because setting AAE so agressive means
             %% that the Solr soft-commit could race with AAE and thus repair
@@ -48,12 +54,19 @@ confirm() ->
             yz_rt:wait_for_full_exchange_round(Cluster, TS1),
             RepairCountBefore = get_cluster_repair_count(Cluster),
             yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-            Keys = [{?BUCKET,K} || K <- yz_rt:random_keys(?NUM_KEYS)],
-            {DelKeys, _ChangeKeys} = lists:split(length(Keys) div 2, Keys),
-            lager:info("Deleting ~p keys", [length(DelKeys)]),
-            [delete_key_in_solr(Cluster, ?INDEX, K) || K <- DelKeys],
+            NumKeys = [{?BUCKET,K} || K <- yz_rt:random_keys(?NUM_KEYS)],
+            NumKeysSpaces = [{?BUCKET,add_space_to_key(K)} ||
+                                K <- yz_rt:random_keys(?NUM_KEYS_SPACES)],
+            {DelNumKeys, _ChangeKeys} = lists:split(length(NumKeys) div 2,
+                                                    NumKeys),
+            {DelNumKeysSpaces, _ChangeKeysSpaces} = lists:split(
+                                                length(NumKeysSpaces) div 2,
+                                                NumKeysSpaces),
+            AllDelKeys = DelNumKeys ++ DelNumKeysSpaces,
+            lager:info("Deleting ~p keys", [length(AllDelKeys)]),
+            [delete_key_in_solr(Cluster, ?INDEX, K) || K <- AllDelKeys],
             lager:info("Verify Solr indexes missing"),
-            verify_num_match(Cluster, ?NUM_KEYS - length(DelKeys)),
+            verify_num_match(Cluster, ?TOTAL_KEYS - length(AllDelKeys)),
             lager:info("Clear trees so AAE will notice missing indexes"),
             [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster],
             lager:info("Wait for all trees to re-build"),
@@ -63,9 +76,9 @@ confirm() ->
             TS2 = erlang:now(),
             yz_rt:wait_for_full_exchange_round(Cluster, TS2),
             lager:info("Verify AAE repairs missing Solr documents"),
-            verify_num_match(Cluster, ?NUM_KEYS),
+            verify_num_match(Cluster, ?TOTAL_KEYS),
             %% Multiply by 3 because of N value
-            ExpectedNumRepairs = length(DelKeys) * 3,
+            ExpectedNumRepairs = length(AllDelKeys) * 3,
             lager:info("Verify repair count = ~p", [ExpectedNumRepairs]),
             verify_repair_count(Cluster, RepairCountBefore + ExpectedNumRepairs),
             yz_rt:stop_tracing(),
@@ -124,7 +137,7 @@ create_orphan_postings(Cluster, Keys) ->
 -spec delete_key_in_solr([node()], index_name(), bkey()) -> [ok].
 delete_key_in_solr(Cluster, Index, BKey) ->
     [begin
-         lager:info("Deleting solr doc ~s/~s on node ~p", [Index, BKey, Node]),
+         lager:info("Deleting solr doc ~s/~p on node ~p", [Index, BKey, Node]),
          ok = rpc:call(Node, yz_solr, delete, [Index, [{bkey, BKey}]])
      end || Node <- Cluster].
 
@@ -151,7 +164,6 @@ setup_index(Cluster, PBConn, YZBenchDir) ->
     ok = yz_rt:wait_for_schema(Cluster, ?INDEX, RawSchema),
     ok = yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
     ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
-    ok = yz_rt:wait_for_index(Cluster, ?INDEX),
     ok = yz_rt:set_index(Node, ?BUCKET, ?INDEX).
 
 %% @doc Verify that expired trees do not prevent exchange from
@@ -279,3 +291,7 @@ verify_repair_count(Cluster, ExpectedNumRepairs) ->
     RepairCount = get_cluster_repair_count(Cluster),
     ?assertEqual(ExpectedNumRepairs, RepairCount),
     ok.
+
+-spec add_space_to_key(binary()) -> binary().
+add_space_to_key(Key) ->
+    list_to_binary(lists:concat([?SPACER, ?BIN_TO_INT(Key)])).
