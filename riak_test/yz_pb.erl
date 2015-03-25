@@ -11,7 +11,7 @@
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(CT_JSON, {"Content-Type", "application/json"}).
 
--define(SCHEMA_CONTENT, <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
+-define(ALTERNATE_SCHEMA_CONTENT, <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 <schema name=\"test\" version=\"1.5\">
 <fields>
    <field name=\"_yz_id\" type=\"_yz_str\" indexed=\"true\" stored=\"true\" required=\"true\" multiValued=\"false\"/>
@@ -47,6 +47,7 @@ confirm() ->
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
     confirm_multivalued_field_json_array(Cluster),
+    confirm_multivalued_field_with_high_n_val(Cluster),
     confirm_stored_fields(Cluster),
     confirm_search_non_existent_index(Cluster),
     confirm_search_with_spaced_key(Cluster),
@@ -95,10 +96,11 @@ create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
             lager:info("Using Default Schema"),
             SchemaName = ?YZ_DEFAULT_SCHEMA_NAME;
         true ->
-            lager:info("Using Custom Schema ?SCHEMA_CONTENT"),
-            SchemaName = <<"anotherschema">>,
-            ok = yz_rt:store_schema(Pid, SchemaName, ?SCHEMA_CONTENT),
-            ok = yz_rt:wait_for_schema(Cluster, SchemaName, ?SCHEMA_CONTENT)
+            lager:info("Using Custom Schema ?ALTERNATE_SCHEMA_CONTENT"),
+            SchemaName = <<"alternate_schema">>,
+            ok = yz_rt:store_schema(Pid, SchemaName, ?ALTERNATE_SCHEMA_CONTENT),
+            ok = yz_rt:wait_for_schema(Cluster, SchemaName,
+                                       ?ALTERNATE_SCHEMA_CONTENT)
     end,
     NvalT = {n_val, Nval},
     %% set index in props with the same name as the bucket
@@ -152,8 +154,8 @@ confirm_admin_schema(Cluster) ->
     {Host, Port} = yz_rt:riak_pb(hd(rt:connection_info([Node]))),
     lager:info("confirm_admin_schema ~s [~p]", [Name, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, Port),
-    yz_rt:store_schema(Pid, Name, ?SCHEMA_CONTENT),
-    yz_rt:wait_for_schema(Cluster, Name, ?SCHEMA_CONTENT),
+    yz_rt:store_schema(Pid, Name, ?ALTERNATE_SCHEMA_CONTENT),
+    yz_rt:wait_for_schema(Cluster, Name, ?ALTERNATE_SCHEMA_CONTENT),
     MissingMessage = riakc_pb_socket:get_search_schema(Pid,<<"not_here">>),
     ?assertEqual({error,<<"notfound">>}, MissingMessage),
     riakc_pb_socket:stop(Pid),
@@ -165,7 +167,8 @@ confirm_admin_bad_schema_name(Cluster) ->
     {Host, Port} = yz_rt:riak_pb(hd(rt:connection_info([Node]))),
     lager:info("confirm_admin_bad_schema_name ~s [~p]", [Name, {Host, Port}]),
     {ok, Pid} = riakc_pb_socket:start_link(Host, Port),
-    {error,_} = riakc_pb_socket:create_search_schema(Pid, Name, ?SCHEMA_CONTENT),
+    {error,_} = riakc_pb_socket:create_search_schema(Pid, Name,
+                                                     ?ALTERNATE_SCHEMA_CONTENT),
     riakc_pb_socket:stop(Pid),
     ok.
 
@@ -267,6 +270,28 @@ confirm_multivalued_field_json_array(Cluster) ->
     {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
             riakc_pb_socket:search(Pid, Index, Search, Params),
     ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
+    riakc_pb_socket:stop(Pid).
+
+confirm_multivalued_field_with_high_n_val(Cluster) ->
+    Index = <<"high_n_val">>,
+    Bucket = {Index, <<"b3">>},
+    lager:info("confirm high_n_val should not affect document indexes"),
+    create_index(Cluster, Index, Index, 5, false),
+    Body = <<"{\"groups_s\":[\"3304cf79\", \"abe155cf\"]}">>,
+    Params = [],
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    URL = bucket_url(HP, Bucket, "high_n_val_test"),
+    lager:info("Storing to bucket ~s", [URL]),
+    {Host, Port} = HP,
+    {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
+    %% Sleep for soft commit
+    timer:sleep(1100),
+    Search = <<"groups_s:3304cf79">>,
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+    {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
+            riakc_pb_socket:search(Pid, Index, Search, Params),
+    ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
+    ?assert(lists:member({<<"groups_s">>,<<"abe155cf">>}, Fields)),
     riakc_pb_socket:stop(Pid).
 
 confirm_search_non_existent_index(Cluster) ->
