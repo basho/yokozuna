@@ -412,6 +412,5 @@ wait_for_index(Pid, IndexName, Nodes) ->
         [] ->
             Pid ! {self(), ok};
         Rest ->
-            Nodes = [Node || {Node, _} <- Rest],
-            wait_for_index(Pid, IndexName, Nodes)
+            wait_for_index(Pid, IndexName, [Node || {Node, _} <- Rest])
     end.
