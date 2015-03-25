@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Build JAR file containing customer Solr request handlers.
 set -e
