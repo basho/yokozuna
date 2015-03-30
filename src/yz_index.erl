@@ -382,14 +382,13 @@ sync_index(Pid, IndexName, Timeout) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Nodes = riak_core_ring:all_members(Ring),
     WaitPid = spawn_link(?MODULE, wait_for_index, [self(), IndexName, Nodes]),
-    register(wait_for_index, WaitPid),
     receive
         {_From, ok} ->
             Pid ! ok;
         {'EXIT', _Pid, _Reason} ->
             sync_index(Pid, IndexName, Timeout)
     after Timeout ->
-            exit(whereis(wait_for_index), kill),
+            exit(WaitPid, kill),
 
             %% Check if initFailure occurred
             {ok, _, S} = yz_solr:core(status, [{wt,json},{core, IndexName}]),
