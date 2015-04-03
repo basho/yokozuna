@@ -82,13 +82,23 @@ get_default(Map) ->
         error -> none
     end.
 
-%% @doc Get the extractor map.
+%% @doc Get the `extractor_map' from the mochiglobal cache or
+%% check and read through CMD. If not in CMD, it will check
+%% the Ring's metadata or return a default map.
 -spec get_map() -> extractor_map().
 get_map() ->
-    get_map(yz_misc:get_ring(transformed)).
+    case mochiglobal:get(?META_EXTRACTOR_MAP, undefined) of
+        undefined ->
+            Map = get_map_read_through(),
+            mochiglobal:put(?META_EXTRACTOR_MAP, Map),
+            Map;
+        Map ->
+            Map
+    end.
 
-%% @doc Like `get_map/0' but takes the `Ring' as argument instead of
-%%      fetching it.
+%% @doc Like `get_map/0' but takes the `Ring' as argument instead
+%%      and checks the Ring's metadata. If the map is not in the Ring's
+%%      metadata, then return the default map.
 -spec get_map(ring()) -> extractor_map().
 get_map(Ring) ->
     case riak_core_ring:get_meta(?META_EXTRACTOR_MAP, Ring) of
@@ -97,7 +107,9 @@ get_map(Ring) ->
     end.
 
 %% @doc Check if there is an entry for the given extractor `Name'.
--spec is_registered(extractor_name()) -> boolean().
+-spec is_registered(extractor_def()) -> boolean().
+is_registered({ExtractorName, _}) ->
+    is_registered(ExtractorName);
 is_registered(ExtractorName) ->
     Map = get_map(),
     F = fun({_, {Name, _}}) ->
@@ -108,10 +120,12 @@ is_registered(ExtractorName) ->
     lists:any(F, Map).
 
 %% @doc Register an extractor `Def' under the given `MimeType'.  If
-%%      there is already an entry then return `already_registered'.
+%%      there is already an entry and overwrite is false, then return
+%%      `already_registered'. If there is no option to overwrite an existing
+%%      entry then return `not_set_to_overwrite'.
 %%      The `register/2' call can be used to overwrite an entry.
 -spec register(mime_type(), extractor_def()) ->
-                      extractor_map() | already_registered.
+                      extractor_map() | already_registered | not_set_to_overwrite.
 register(MimeType, Def) ->
     ?MODULE:register(MimeType, Def, []).
 
@@ -122,27 +136,37 @@ register(MimeType, Def) ->
 %%   `overwrite' - Overwrite the entry if one already exists.
 %%
 -spec register(mime_type(), extractor_def(), register_opts()) ->
-                      extractor_map() | already_registered.
+                      extractor_map() | already_registered | not_set_to_overwrite.
 register(MimeType, Def, Opts) ->
-    case yz_misc:set_ring_meta(?META_EXTRACTOR_MAP,
-                               ?DEFAULT_MAP,
-                               fun register_map/2,
-                               {MimeType, Def, Opts}) of
-        {ok, Ring} ->
-            get_map(Ring);
-        not_changed ->
-            already_registered
+    case register_map(get_map(), {MimeType, Def, Opts}) of
+        registered ->
+            already_registered;
+        ignore ->
+            not_set_to_overwrite;
+        Map ->
+            ok = riak_core_metadata:put(?YZ_META_EXTRACTORS, ?META_EXTRACTOR_MAP,
+                                        Map),
+            mochiglobal:put(?META_EXTRACTOR_MAP, Map),
+            Map
     end.
 
+%% @doc Register a map with a new `MimeType'-`Def' key-value or overwrite
+%% an existing one if `overwrite' is set to true. If `overwrite' is false and
+%% the `ExtractorName' is_registered, then return `registered'. If it is not
+%% registered and `overwrite' is false, then just return `ignore'.
+-spec register_map(extractor_map(), {mime_type(), extractor_def(), register_opts()})
+                  -> extractor_map() | registered | ignore.
 register_map(Map, {MimeType, Def, Opts}) ->
     CurrentDef = get_def(Map, MimeType, []),
     Overwrite = proplists:get_bool(overwrite, Opts),
-    case {CurrentDef, Overwrite} of
-        {none, _} ->
+    case {CurrentDef, is_registered(CurrentDef), Overwrite} of
+        {none, _, _} ->
             orddict:store(MimeType, Def, Map);
-        {_, true} ->
+        {_, _, true} ->
             orddict:store(MimeType, Def, Map);
-        {_, false} ->
+        {_, true, false} ->
+            registered;
+        {_, false, false} ->
             ignore
     end.
 
@@ -153,3 +177,24 @@ run(Value, {Module, Opts}) ->
     Module:extract(Value, Opts);
 run(Value, Module) ->
     Module:extract(Value).
+
+%% @doc If there's no `extractor_map' in the cache, then call this read-through
+%%      function which checks if the map has been moved to CMD, which is also
+%%      registered as a riak_core_capability. If it's not in CMD, then it will
+%%      pull the map from the Ring's metadata (or just the default map) and
+%%      update CMD accordingly.
+-spec get_map_read_through() -> extractor_map().
+get_map_read_through() ->
+    ExtractorMetaMap = riak_core_metadata:get(?YZ_META_EXTRACTORS, ?META_EXTRACTOR_MAP),
+    ExtractorCap = riak_core_capability:get(?YZ_CAPS_CMD_EXTRACTORS),
+    case {ExtractorMetaMap /= undefined, ExtractorCap} of
+        {true, true} ->
+            ExtractorMetaMap;
+        {true, false} ->
+            ExtractorMetaMap;
+        {_, _} ->
+            ExtractorRingMap = get_map(yz_misc:get_ring(transformed)),
+            ok = riak_core_metadata:put(?YZ_META_EXTRACTORS, ?META_EXTRACTOR_MAP,
+                                       ExtractorRingMap),
+            ExtractorRingMap
+    end.
