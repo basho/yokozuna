@@ -61,7 +61,7 @@ confirm() ->
             verify_non_existent_index(Cluster, <<"froot">>),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
             %% wait for soft-commit
-            timer:sleep(1000),
+            timer:sleep(1100),
             Ref = async_query(Cluster, YZBenchDir),
             %% Verify data exists before running join
             timer:sleep(30000),

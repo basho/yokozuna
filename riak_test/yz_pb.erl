@@ -245,10 +245,17 @@ confirm_multivalued_field(Cluster) ->
     timer:sleep(1100),
     Search = <<"name_ss:turner">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
-            riakc_pb_socket:search(Pid, Index, Search, Params),
-    ?assert(lists:member({<<"name_ss">>,<<"turner">>}, Fields)),
-    ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)),
+    F = fun(_) ->
+                {ok,{search_results,[{Index,Fields}], _Score, Found}} =
+                    riakc_pb_socket:search(Pid, Index, Search, Params),
+                ?assert(lists:member({<<"name_ss">>,<<"turner">>}, Fields)),
+                ?assert(lists:member({<<"name_ss">>,<<"hooch">>}, Fields)),
+                case Found of
+                    1 -> true;
+                    0 -> false
+                end
+        end,
+    yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid).
 
 confirm_multivalued_field_json_array(Cluster) ->
@@ -267,9 +274,16 @@ confirm_multivalued_field_json_array(Cluster) ->
     timer:sleep(1100),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
-            riakc_pb_socket:search(Pid, Index, Search, Params),
-    ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
+    F = fun(_) ->
+                {ok,{search_results,[{Index,Fields}], _Score, Found}} =
+                    riakc_pb_socket:search(Pid, Index, Search, Params),
+                ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
+                case Found of
+                    1 -> true;
+                    0 -> false
+                end
+        end,
+    yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid).
 
 confirm_multivalued_field_with_high_n_val(Cluster) ->
@@ -288,10 +302,17 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
     timer:sleep(1100),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
-            riakc_pb_socket:search(Pid, Index, Search, Params),
-    ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
-    ?assert(lists:member({<<"groups_s">>,<<"abe155cf">>}, Fields)),
+    F = fun(_) ->
+                {ok,{search_results,[{Index,Fields}], _Score, Found}} =
+                    riakc_pb_socket:search(Pid, Index, Search, Params),
+                ?assert(lists:member({<<"groups_s">>,<<"3304cf79">>}, Fields)),
+                ?assert(lists:member({<<"groups_s">>,<<"abe155cf">>}, Fields)),
+                case Found of
+                    1 -> true;
+                    0 -> false
+                end
+        end,
+    yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid).
 
 confirm_search_non_existent_index(Cluster) ->
@@ -319,13 +340,20 @@ confirm_stored_fields(Cluster) ->
     timer:sleep(1100),
     Search = <<"float_tf:3.14">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    {ok,{search_results,[{Index,Fields}],_Score,_Found}} =
-        riakc_pb_socket:search(Pid, Index, Search, Params),
-    ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
-    ?assertEqual(3.14,
-                 ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
-    ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
-    ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
+    F = fun(_) ->
+                {ok,{search_results,[{Index,Fields}], _Score, Found}} =
+                    riakc_pb_socket:search(Pid, Index, Search, Params),
+                ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
+                ?assertEqual(3.14,
+                             ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
+                ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
+                ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
+                case Found of
+                    1 -> true;
+                    0 -> false
+                end
+        end,
+    yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid).
 
 confirm_search_with_spaced_key(Cluster) ->
