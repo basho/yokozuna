@@ -204,14 +204,6 @@ local_create(Name) ->
             yz_misc:make_dirs([ConfDir, DataDir]),
             yz_misc:copy_files(ConfFiles, ConfDir, update),
 
-            %% Delete `core.properties' file or CREATE may complain
-            %% about the core already existing. This can happen when
-            %% the core is initially created with a bad schema. Solr
-            %% gets in a state where CREATE thinks the core already
-            %% exists but RELOAD says no core exists.
-            PropsFile = filename:join([IndexDir, "core.properties"]),
-            file:delete(PropsFile),
-
             ok = file:write_file(SchemaFile, RawSchema),
 
             CoreProps = [
@@ -220,6 +212,40 @@ local_create(Name) ->
                          {cfg_file, ?YZ_CORE_CFG_FILE},
                          {schema_file, LocalSchemaFile}
                         ],
+
+            %% Solr won't allow us to CREATE a new core when one with the same
+            %% properties already exists. This is problematic when treating
+            %% create as an idempotent operation, and moreso when creation fails
+            %% for one reason or another, or AAE believes the index needs to be
+            %% re-created (i.e. bad schema, missing core.properties, etc...).
+            %% Without first unloading the core Solr may believe the core still
+            %% exists (i.e. exists in memory, but there's no core.properties on
+            %% disk), but AAE may disagree and enter a cycle of continuously
+            %% trying to CREATE the core, making it impossible for AAE to
+            %% recover Solr from these states.
+            %%
+            %% To address this, we first unload the core from Solr. This may be
+            %% a moderately expensive process, but given we should only be
+            %% issuing creation requests when either AAE believes Solr is
+            %% missing the index, or we are creating it for the first time, the
+            %% impact should be minimal (and somewhat unavoidable; if AAE is
+            %% replacing the whole index, that's what it's going to do anyway).
+            case yz_solr:core(remove, CoreProps) of
+                {ok, _, _} ->
+                    lager:info("Unloaded previous instance of index "
+                               "~s prior to re-creating it.", [Name]),
+                    ok;
+                {error, {ok, "400", _, Resp}} ->
+                    lager:info("Couldn't unload index ~s prior to creating "
+                               "a new instance of it. This is likely the first "
+                               "time this index has been created. Solr "
+                               "responded with ~s.", [Name, Resp]),
+                    ok;
+                {error, UnloadErr} ->
+                    lager:error("Couldn't unload index ~s prior to creating "
+                                "a new instance of it: ~p", [Name, UnloadErr])
+            end,
+
             case yz_solr:core(create, CoreProps) of
                 {ok, _, _} ->
                     lager:info("Created index ~s with schema ~s",
