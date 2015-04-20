@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2012-2015 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -63,7 +63,7 @@ make_docs(O, Hash, FPN, Partition) ->
     [make_doc(O, Hash, Content, FPN, Partition)
      || Content <- riak_object:get_contents(O)].
 
--spec make_doc(obj(), hash(), {yz_dict(), yz_dict()}, binary(), binary()) -> doc().
+-spec make_doc(obj(), hash(), {dict_t(), dict_t()}, binary(), binary()) -> doc().
 make_doc(O, Hash, {MD, V}, FPN, Partition) ->
     Vtag = get_vtag(O, MD),
     DocId = doc_id(O, Partition, Vtag),
@@ -142,7 +142,7 @@ extract_fields({MD, V}) ->
 %% @private
 %%
 %% @doc Extract tags from object metadata.
--spec extract_tags(yz_dict()) -> fields().
+-spec extract_tags(dict_t()) -> fields().
 extract_tags(MD) ->
     MD2 = get_user_meta(MD),
     TagNames = get_tag_names(MD2),
@@ -156,7 +156,7 @@ extract_tags(MD) ->
 %%       Riak Object metadata so that `yz_kv:get_md_entry' may be
 %%       used.  This way when KV is altered to store user meta at the
 %%       top-level the migration will be easier.
--spec get_user_meta(yz_dict()) -> yz_dict().
+-spec get_user_meta(dict_t()) -> dict_t().
 get_user_meta(MD) ->
     case yz_kv:get_md_entry(MD, <<"X-Riak-Meta">>) of
         none ->
@@ -171,7 +171,7 @@ get_user_meta(MD) ->
             dict:from_list(MM2)
     end.
 
--spec get_tag(yz_dict()) -> function().
+-spec get_tag(dict_t()) -> function().
 get_tag(MD) ->
     fun(TagName, Fields) ->
             case yz_kv:get_md_entry(MD, TagName) of
@@ -196,7 +196,7 @@ strip_prefix(_) ->
 %% @private
 %%
 %% @doc Get the tags names.
--spec get_tag_names(yz_dict()) -> list().
+-spec get_tag_names(dict_t()) -> list().
 get_tag_names(MD) ->
     case yz_kv:get_md_entry(MD, <<"x-riak-meta-yz-tags">>) of
         none -> [];

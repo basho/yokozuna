@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2012-2015 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -20,9 +20,10 @@
 
 -module(yz_misc).
 -compile(export_all).
--include("yokozuna.hrl").
--include_lib("webmachine/include/webmachine.hrl").
+
 -include_lib("kernel/include/file.hrl").
+-include_lib("webmachine/include/webmachine.hrl").
+-include("yokozuna.hrl").
 
 %%%===================================================================
 %%% API
@@ -118,7 +119,7 @@ delta(Old, New) ->
 
 %% @doc Attempt to get the `Key' from `Dict'.  If it doesn't exist
 %%      then return `Default'.
--spec dict_get(term(), yz_dict(), term()) -> term().
+-spec dict_get(term(), dict_t(), term()) -> term().
 dict_get(Key, Dict, Default) ->
     case dict:find(Key, Dict) of
         {ok, Val} -> Val;

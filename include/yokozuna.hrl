@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2012-2015 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -23,6 +23,7 @@
 %%%===================================================================
 
 -include_lib("xmerl/include/xmerl.hrl").
+-include_lib("otp_compat/include/otp_compat.hrl").
 
 %%%===================================================================
 %%% Types
@@ -242,14 +243,8 @@
 %%% Riak KV
 %%%===================================================================
 
--ifdef(namespaced_types).
--type yz_dict() :: dict:dict().
--else.
--type yz_dict() :: dict().
--endif.
-
 -type obj() :: riak_object:riak_object().
--type obj_metadata() :: yz_dict().
+-type obj_metadata() :: dict_t().
 
 %%%===================================================================
 %%% Docs
