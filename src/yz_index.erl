@@ -204,14 +204,6 @@ local_create(Name) ->
             yz_misc:make_dirs([ConfDir, DataDir]),
             yz_misc:copy_files(ConfFiles, ConfDir, update),
 
-            %% Delete `core.properties' file or CREATE may complain
-            %% about the core already existing. This can happen when
-            %% the core is initially created with a bad schema. Solr
-            %% gets in a state where CREATE thinks the core already
-            %% exists but RELOAD says no core exists.
-            PropsFile = filename:join([IndexDir, "core.properties"]),
-            file:delete(PropsFile),
-
             ok = file:write_file(SchemaFile, RawSchema),
 
             CoreProps = [
@@ -220,34 +212,81 @@ local_create(Name) ->
                          {cfg_file, ?YZ_CORE_CFG_FILE},
                          {schema_file, LocalSchemaFile}
                         ],
-            case yz_solr:core(create, CoreProps) of
-                {ok, _, _} ->
-                    lager:info("Created index ~s with schema ~s",
-                               [Name, SchemaName]),
-                    ok;
-                {error, exists} ->
-                    lager:info("Index ~s already exists in Solr, "
-                               "but not in Riak metadata",
-                               [Name]);
-                {error, Err} ->
-                    lager:error("Couldn't create index ~s: ~p", [Name, Err])
-            end,
-            ok;
+
+            %% Delete `core.properties' file or CREATE may complain
+            %% about the core already existing. This can happen when
+            %% the core is initially created with a *bad schema*. Solr
+            %% gets in a state where CREATE thinks the core already
+            %% exists but RELOAD says no core exists.
+            PropsFile = filename:join([IndexDir, "core.properties"]),
+            file:delete(PropsFile),
+
+            core_create(Name, SchemaName, CoreProps);
         {error, _Reason} ->
             lager:error("Couldn't create index ~s because the schema ~s isn't found",
                         [Name, SchemaName]),
             ok
     end.
 
+%% @doc
+-spec core_create(index_name(), schema_name(), [{name | index_dir | cfg_file | schema_file,
+                                                index_name() | string() | binary()}]) -> ok.
+core_create(Name, SchemaName, CoreProps) ->
+    %% Solr won't allow us to CREATE a new core when one with the same
+    %% properties already exists. This is problematic when treating
+    %% create as an idempotent operation, and moreso when creation fails
+    %% for one reason or another, or AAE believes the index needs to be
+    %% re-created (i.e. bad schema, missing core.properties, etc...).
+    %% Without first unloading the core Solr may believe the core still
+    %% exists (i.e. exists in memory, but there's no core.properties on
+    %% disk), but AAE may disagree and enter a cycle of continuously
+    %% trying to CREATE the core, making it impossible for AAE to
+    %% recover Solr from these states.
+    %%
+    %% To address this, we first unload (local_remove) the core from Solr.
+    %% This may be a moderately expensive process, but given we should
+    %% only be issuing creation requests when either AAE believes Solr is
+    %% missing the index, or we are creating it for the first time, the
+    %% impact should be minimal (and somewhat unavoidable; if AAE is
+    %% replacing the whole index, that's what it's going to do anyway).
+    ok = local_remove(Name, [{core, Name}]),
+    case yz_solr:core(create, CoreProps) of
+        {ok, _, _} ->
+            lager:info("Created index ~s with schema ~s",
+                       [Name, SchemaName]),
+            ok;
+        {error, exists} ->
+            lager:notice("Index ~s already exists in Solr, "
+                       "but not in Riak metadata",
+                       [Name]);
+        {error, Err} ->
+            lager:error("Couldn't create index ~s: ~p", [Name, Err])
+    end.
+
 %% @doc Remove the index `Name' locally.
 -spec local_remove(index_name()) -> ok.
 local_remove(Name) ->
     CoreProps = [
-                    {core, Name},
-                    {delete_instance, "true"}
+                 {core, Name},
+                 {delete_instance, "true"}
                 ],
-    {ok, _, _} = yz_solr:core(remove, CoreProps),
-    ok.
+    local_remove(Name, CoreProps).
+
+-spec local_remove(index_name(), [{core | delete_instance | delete_index | delete_data_dir,
+                                   index_name() | string()}]) -> ok.
+local_remove(Name, CoreProps) ->
+    case yz_solr:core(remove, CoreProps) of
+        {ok, _, _} ->
+            lager:info("Unloaded previous instance of index ~s", [Name]);
+        {error, {ok, "400", _, Resp}} ->
+            lager:info("Couldn't unload index ~s prior to creating "
+                       "a new instance of it. This is likely the first "
+                       "time this index has been created. Solr "
+                       "responded with ~s.", [Name, Resp]);
+        {error, UnloadErr} ->
+            lager:error("Couldn't unload index ~s prior to creating "
+                        "a new instance of it: ~p", [Name, UnloadErr])
+    end.
 
 %% @doc Reload the `Index' cluster-wide. By default this will also
 %% pull the latest version of the schema associated with the
@@ -382,21 +421,20 @@ sync_index(Pid, IndexName, Timeout) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Nodes = riak_core_ring:all_members(Ring),
     WaitPid = spawn_link(?MODULE, wait_for_index, [self(), IndexName, Nodes]),
-    register(wait_for_index, WaitPid),
     receive
         {_From, ok} ->
             Pid ! ok;
         {'EXIT', _Pid, _Reason} ->
             sync_index(Pid, IndexName, Timeout)
     after Timeout ->
-            exit(whereis(wait_for_index), kill),
+            exit(WaitPid, kill),
 
             %% Check if initFailure occurred
             {ok, _, S} = yz_solr:core(status, [{wt,json},{core, IndexName}]),
             case ?SOLR_INITFAILURES(IndexName, S) of
                 [] ->
                     lager:notice("Index ~s not created within ~p ms timeout",
-                                  [IndexName, Timeout]),
+                                 [IndexName, Timeout]),
                     Pid ! timeout;
                 Error ->
                     lager:error("Solr core error after trying to create index ~s: ~p",
@@ -412,6 +450,5 @@ wait_for_index(Pid, IndexName, Nodes) ->
         [] ->
             Pid ! {self(), ok};
         Rest ->
-            Nodes = [Node || {Node, _} <- Rest],
-            wait_for_index(Pid, IndexName, Nodes)
+            wait_for_index(Pid, IndexName, [Node || {Node, _} <- Rest])
     end.

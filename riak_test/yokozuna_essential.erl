@@ -3,7 +3,6 @@
 -import(yz_rt, [host_entries/1,
                 run_bb/2,
                 search_expect/5, search_expect/6,
-                verify_count/2,
                 wait_for_joins/1, write_terms/2]).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
@@ -62,7 +61,7 @@ confirm() ->
             verify_non_existent_index(Cluster, <<"froot">>),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
             %% wait for soft-commit
-            timer:sleep(1000),
+            timer:sleep(1100),
             Ref = async_query(Cluster, YZBenchDir),
             %% Verify data exists before running join
             timer:sleep(30000),
@@ -70,7 +69,8 @@ confirm() ->
             rt:wait_for_cluster_service(Cluster2, yokozuna),
             check_bb_status(wait_for(Ref)),
             verify_non_owned_data_deleted(Cluster, ?INDEX),
-            ok = test_tagging(Cluster),
+            ok = test_tagging_http(Cluster),
+            ok = test_tagging_pb(Cluster),
             KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
             verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
             ok = test_escaped_key(Cluster2),
@@ -268,19 +268,28 @@ http_get({Host, Port}, {BType, BName}, Key) ->
     {ok, "200", _, _} = ibrowse:send_req(URL, Headers, get, [], []),
     ok.
 
-test_tagging(Cluster) ->
-    lager:info("Test tagging"),
+test_tagging_http(Cluster) ->
+    lager:info("Test tagging http"),
     HP = hd(host_entries(rt:connection_info(Cluster))),
-    ok = write_with_tag(HP),
+    ok = write_with_tag_http(HP),
     %% TODO: the test fails if this sleep isn't here
     timer:sleep(5000),
-    true = search_expect(HP, <<"tagging">>, "user_s", "rzezeski", 1),
-    true = search_expect(HP, <<"tagging">>, "desc_t", "description", 1),
+    true = search_expect(HP, <<"tagging_http">>, "user_s", "rzezeski", 1),
+    true = search_expect(HP, <<"tagging_http">>, "desc_t", "description", 1),
     ok.
 
-write_with_tag({Host, Port}) ->
-    lager:info("Tag the object tagging/test"),
-    URL = lists:flatten(io_lib:format("http://~s:~s/types/data/buckets/tagging/keys/test",
+test_tagging_pb(Cluster) ->
+    lager:info("Test tagging pb"),
+    HP = hd(host_entries(rt:connection_info(Cluster))),
+    ok = write_with_tag_pb(HP),
+    timer:sleep(5000),
+    true = search_expect(HP, <<"tagging_pb">>, "user_s", "rzezeski", 1),
+    true = search_expect(HP, <<"tagging_pb">>, "desc_t", "description", 1),
+    ok.
+
+write_with_tag_http({Host, Port}) ->
+    lager:info("Tag the object tagging/test (http)"),
+    URL = lists:flatten(io_lib:format("http://~s:~s/types/data/buckets/tagging_http/keys/test",
                                       [Host, integer_to_list(Port)])),
     Opts = [],
     Body = <<"testing tagging">>,
@@ -289,6 +298,25 @@ write_with_tag({Host, Port}) ->
                {"x-riak-meta-user_s", "rzezeski"},
                {"x-riak-meta-desc_t", "This is a description"}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
+    ok.
+
+%% @doc tagging via the pb_client should not need `x-riak-meta*'
+%%      (used for http-headers), but this is the current workaround until
+%%      we make the pb interface better.
+write_with_tag_pb({Host, Port}) ->
+    lager:info("Tag the object tagging/test (pb)"),
+    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
+
+    O0 = riakc_obj:new({<<"data">>, <<"tagging_pb">>}, <<"test">>, <<"testing tagging">>),
+    MD0 = riakc_obj:get_update_metadata(O0),
+    MD1 = riakc_obj:set_user_metadata_entry(MD0, {<<"x-riak-meta-yz-tags">>,
+                                                  <<"x-riak-meta-user_s, x-riak-meta-desc_t">>}),
+    MD2 = riakc_obj:set_user_metadata_entry(MD1, {<<"x-riak-meta-user_s">>,<<"rzezeski">>}),
+    MD3 = riakc_obj:set_user_metadata_entry(MD2, {<<"x-riak-meta-desc_t">>,<<"This is a description">>}),
+    O1 = riakc_obj:update_metadata(O0, MD3),
+    O2 = riakc_obj:update_content_type(O1, "text/plain"),
+    ok = riakc_pb_socket:put(Pid, O2),
+    riakc_pb_socket:stop(Pid),
     ok.
 
 async_query(Cluster, YZBenchDir) ->
@@ -390,12 +418,14 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
-    ok = yz_rt:create_index(Node, <<"tagging">>),
+    ok = yz_rt:create_index(Node, <<"tagging_http">>),
+    ok = yz_rt:create_index(Node, <<"tagging_pb">>),
     ok = yz_rt:create_index(Node, <<"escaped">>),
     ok = yz_rt:create_index(Node, <<"unique">>),
 
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
-    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging">>}, <<"tagging">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging_http">>}, <<"tagging_http">>),
+    yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging_pb">>}, <<"tagging_pb">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).
 
 verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
