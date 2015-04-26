@@ -23,7 +23,7 @@
 %%%===================================================================
 
 -include_lib("xmerl/include/xmerl.hrl").
--include_lib("otp_compat/include/otp_compat.hrl").
+-include_lib("otp_compat/include/ns_types.hrl").
 
 %%%===================================================================
 %%% Types
