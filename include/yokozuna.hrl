@@ -165,6 +165,8 @@
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_META_INDEXES, {yokozuna, indexes}).
 -define(YZ_META_SCHEMAS, {yokozuna, schemas}).
+-define(YZ_META_EXTRACTORS, {yokozuna, extractors}).
+-define(YZ_CAPS_CMD_EXTRACTORS, {yokozuna, extractor_map_in_cmd}).
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
