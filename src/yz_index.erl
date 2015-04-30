@@ -183,6 +183,11 @@ get_index_info(Name) ->
 get_n_val(IndexInfo) ->
     IndexInfo#index_info.n_val.
 
+%% @doc Get the N value from the index name.
+-spec get_n_val_from_index(index_name()) -> n().
+get_n_val_from_index(IndexName) ->
+    get_n_val(yz_index:get_index_info(IndexName)).
+
 %% @doc Create the index `Name' locally.  Make best attempt to create
 %%      the index, log if a failure occurs.  Always return `ok'.
 %%
