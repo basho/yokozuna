@@ -267,6 +267,16 @@ search_expect(Type, HP, Index, Name, Term, Expect) ->
     {ok, "200", _, R} = search(Type, HP, Index, Name, Term),
     verify_count(Expect, R).
 
+search_expect(solr, {Host, Port}, Index, Name0, Term0, Shards, Expect)
+  when is_list(Shards), length(Shards) > 0 ->
+    Name = quote_unicode(Name0),
+    Term = quote_unicode(Term0),
+    URL = internal_solr_url(Host, Port, Index, Name, Term, Shards),
+    lager:info("Run search ~s", [URL]),
+    Opts = [{response_format, binary}],
+    {ok, "200", _, R} = ibrowse:send_req(URL, [], get, [], Opts),
+    verify_count(Expect, R).
+
 search(HP, Index, Name, Term) ->
     search(yokozuna, HP, Index, Name, Term).
 
@@ -280,7 +290,7 @@ search(Type, {Host, Port}, Index, Name0, Term0) ->
                  solr ->
                      "http://~s:~s/internal_solr/~s/select?q=~s:~s&wt=json";
                  yokozuna ->
-                     "http://~s:~s/solr/~s/select?q=~s:~s&wt=json"
+                     "http://~s:~s/search/query/~s?q=~s:~s&wt=json"
              end,
     URL = ?FMT(FmtStr, [Host, Port, Index, Name, Term]),
     lager:info("Run search ~s", [URL]),
@@ -457,3 +467,19 @@ write_terms(File, Terms) ->
 wait_until(Nodes, F) ->
     [?assertEqual(ok, rt:wait_until(Node, F)) || Node <- Nodes],
     ok.
+
+-spec node_solr_port(node()) -> port().
+node_solr_port(Node) ->
+    {ok, P} = riak_core_util:safe_rpc(Node, application, get_env,
+                                      [yokozuna, solr_port]),
+    P.
+
+internal_solr_url(Host, Port, Index) ->
+    ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
+internal_solr_url(Host, Port, Index, Shards) ->
+    internal_solr_url(Host, Port, Index, Shards, <<"*">>, <<"*">>).
+internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
+    Ss = [internal_solr_url(Host, ShardPort, Index)
+          || {_, ShardPort} <- Shards],
+    ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
+         [Host, Port, Index, Name, Term, string:join(Ss, ",")]).

@@ -419,6 +419,10 @@ get_pairs(R) ->
     Docs = kvc:path([<<"response">>, <<"docs">>], R),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
+%% @doc Convert a doc struct into a pair. Remove the bucket_type to match
+%% kv trees when iterating over entropy data to build yz trees.
+to_pair({struct, [{_,_Vsn},{_,<<"default">>},{_,BName},{_,Key},{_,Base64Hash}]}) ->
+    {{BName,Key}, base64:decode(Base64Hash)};
 to_pair({struct, [{_,_Vsn},{_,BType},{_,BName},{_,Key},{_,Base64Hash}]}) ->
     {{{BType, BName},Key}, base64:decode(Base64Hash)}.
 
