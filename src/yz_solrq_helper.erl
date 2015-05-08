@@ -100,7 +100,6 @@ handle_cast({batch, Index, Entries0}, State) ->
             ok ->
                 update_aae_and_repair_stats(Entries);
             {error, Reason} ->
-                lager:info("FUCK!"),
                 ok
         end,
         {noreply, State}
@@ -217,7 +216,6 @@ update_aae_and_repair_stats(Entries) ->
     Repairs = lists:foldl(
                 fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
                         ReasonAction = get_reason_action(Reason),
-                        lager:info("Reason: ~p", [Reason]),
                         Action = case ReasonAction of
                                      delete -> delete;
                                      _ -> {insert, Hash}
