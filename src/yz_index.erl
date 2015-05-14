@@ -250,10 +250,9 @@ core_create(Name, SchemaName, CoreProps) ->
     %%
     %% To address this, we first unload (local_remove) the core from Solr.
     %% This may be a moderately expensive process, but given we should
-    %% only be issuing creation requests when either AAE believes Solr is
-    %% missing the index, or we are creating it for the first time, the
-    %% impact should be minimal (and somewhat unavoidable; if AAE is
-    %% replacing the whole index, that's what it's going to do anyway).
+    %% only be issuing creation requests when either Solr is can't
+    %% discover the index, or we are creating it for the first time, the
+    %% impact should be minimal.
     ok = local_remove(Name, [{core, Name}]),
     case yz_solr:core(create, CoreProps) of
         {ok, _, _} ->

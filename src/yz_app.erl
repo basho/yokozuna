@@ -78,6 +78,10 @@ maybe_setup(true) ->
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],
                                        false),
+    ok = riak_core_capability:register(
+           ?YZ_CAPS_HANDLE_LEGACY_DEFAULT_BUCKET_TYPE_AAE,
+           [v1, v0],
+           v0),
     ok = riak_core:register(yokozuna, [{bucket_validator, yz_bucket_validator}]),
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),

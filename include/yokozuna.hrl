@@ -169,6 +169,8 @@
 -define(YZ_META_SCHEMAS, {yokozuna, schemas}).
 -define(YZ_META_EXTRACTORS, {yokozuna, extractors}).
 -define(YZ_CAPS_CMD_EXTRACTORS, {yokozuna, extractor_map_in_cmd}).
+-define(YZ_CAPS_HANDLE_LEGACY_DEFAULT_BUCKET_TYPE_AAE,
+        {yokozuna, handle_legacy_default_bucket_type_aae}).
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").
