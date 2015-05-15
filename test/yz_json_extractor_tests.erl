@@ -1,9 +1,30 @@
+%% -*- encoding: latin-1 -*-
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2012,2013,2015 Basho Technologies, Inc.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+%% -------------------------------------------------------------------
+
 -module(yz_json_extractor_tests).
 -compile(export_all).
--include_lib("yz_test.hrl").
+-include("yz_test.hrl").
 
 json_extract_test() ->
-    {ok, TestJSON} = file:read_file("../test/test.json"),
+    {ok, TestJSON} = yz_test:read_file("../test/test.json", utf8),
     Result = yz_json_extractor:extract(TestJSON),
     Expect =
         [{<<"name">>,<<"ryan">>},
@@ -32,7 +53,7 @@ json_extract_test() ->
     ?STACK_IF_FAIL(yz_solr:prepare_json([{doc, Result}])).
 
 utf8_test() ->
-    {ok, JSON} = file:read_file("../test/utf8.json"),
+    {ok, JSON} = yz_test:read_file("../test/utf8.json", utf8),
     Result = yz_json_extractor:extract(JSON),
     case Result of
         {error, Reason} ->
