@@ -1,4 +1,4 @@
-%% -*- encoding: latin-1 -*-
+%% -*- encoding: utf-8 -*-
 %% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2013,2015 Basho Technologies, Inc.
@@ -67,11 +67,11 @@ chinese:
     天明去
     来如春梦几多时
     去似朝云无觅处
-">>).
+"/utf8>>).
 
 
 utf8_test() ->
-    {ok, Txt} = yz_test:read_file("../test/utf8.txt", utf8),
+    {ok, Txt} = file:read_file("../test/utf8.txt"),
     Result = yz_text_extractor:extract(Txt),
     case Result of
         {error, Reason} ->
@@ -80,7 +80,5 @@ utf8_test() ->
         _ ->
             ok
     end,
-    % uncomment for debugging
-    % ?assertPairsEq({text, ?UTF8_EXPECT}, hd(Result)),
     ?assertEqual([{text, ?UTF8_EXPECT}], Result),
     ?STACK_IF_FAIL(yz_solr:prepare_json([{doc, Result}])).
