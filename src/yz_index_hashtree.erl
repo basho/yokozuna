@@ -159,7 +159,7 @@ init([Index, RPs]) ->
             BuiltImmediately = ([] == yz_index:get_indexes_from_meta()),
             _ = case BuiltImmediately of
                     true -> gen_server:cast(self(), build_finished);
-                    false -> ok
+                    false -> maybe_expire(S)
                 end,
             {ok, S2}
     end.
@@ -488,7 +488,7 @@ maybe_expire(S=#state{lock=undefined, built=true}) ->
     Expire = ?YZ_ENTROPY_EXPIRE,
     case (Expire /= never) andalso (Diff > (Expire * 1000))  of
         true ->  S#state{expired=true};
-        false -> S
+        false -> maybe_expire_caps_check(S)
     end;
 
 maybe_expire(S) ->
@@ -591,9 +591,21 @@ maybe_rebuild(S) ->
 get_all_locks(Type, Pid) ->
     %% NOTE: Yokozuna diverges from KV here. KV has notion of vnode
     %% fold to make sure handoff/aae don't fight each other. Yokozuna
-    %% has no vnodes. It would probably be a good idea to adda lock
+    %% has no vnodes. It would probably be a good idea to add a lock
     %% around Solr so that mutliple tree builds don't fight for the
     %% file page cache but the bg manager stuff is kind of convoluted
     %% and there isn't time to figure this all out for 2.0. Thus,
     %% Yokozuna will not bother with the Solr lock for now.
     ok == yz_entropy_mgr:get_lock(Type, Pid).
+
+%% @doc Maybe expire trees for rebuild depending on riak_core_capability
+%%      checks/changes. Used for possible upgrade path.
+-spec maybe_expire_caps_check(state()) -> state().
+maybe_expire_caps_check(S) ->
+    DefaultBTCapVersion = riak_core_capability:get(
+                            ?YZ_CAPS_HANDLE_LEGACY_DEFAULT_BUCKET_TYPE_AAE, v0),
+    case DefaultBTCapVersion =/= v1 of
+        true ->
+            S#state{expired=true};
+        false -> S
+    end.
