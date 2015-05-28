@@ -2,47 +2,68 @@
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
--define(NUM_KEYS, 10000).
+-define(N, 3).
+-define(NUM_KEYS, 1000).
 -define(NUM_KEYS_SPACES, 1000).
 -define(TOTAL_KEYS, ?NUM_KEYS + ?NUM_KEYS_SPACES).
+-define(TOTAL_KEYS_REP, ?N * (?NUM_KEYS + ?NUM_KEYS_SPACES)).
 -define(BUCKET_TYPE, <<"data">>).
--define(INDEX, <<"fruit_aae">>).
--define(BUCKET, {?BUCKET_TYPE, ?INDEX}).
+-define(INDEX1, <<"fruit_aae">>).
+-define(INDEX2, <<"fruitpie_aae">>).
+-define(BUCKETWITHTYPE,
+        {?BUCKET_TYPE, ?INDEX2}).
+-define(BUCKET, ?INDEX1).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(SPACER, "testfor spaces ").
 -define(CFG,
         [{riak_core,
           [
-           {ring_creation_size, 16}
-          ]},
-         {riak_kv,
-          [
-           %% allow AAE to build trees and exchange rapidly
-           {anti_entropy_build_limit, {100, 1000}},
-           {anti_entropy_concurrency, 4}
+           {ring_creation_size, 16},
+           {default_bucket_props, [{n_val, ?N}]},
+           {handoff_concurrency, 10},
+           {vnode_management_timer, 1000}
           ]},
          {yokozuna,
           [
            {enabled, true},
-           {anti_entropy_tick, 1000}
+           {anti_entropy_tick, 1000},
+           %% allow AAE to build trees and exchange rapidly
+           {anti_entropy_build_limit, {100, 1000}},
+           {anti_entropy_concurrency, 8}
           ]}
         ]).
 
-
 confirm() ->
+    Cluster = rt:build_cluster(5, ?CFG),
+
+    %% Run test for `default'/legacy bucket type
+    lager:info("Run test for default (type)/legacy bucket"),
+    aae_run(Cluster, ?BUCKET, ?INDEX1),
+
+    %% Run test for custom bucket type
+    lager:info("Run test for custom bucket type"),
+    aae_run(Cluster, ?BUCKETWITHTYPE, ?INDEX2).
+
+-spec aae_run([node()], bucket(), index_name) -> pass | fail.
+aae_run(Cluster, Bucket, Index) ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
             random:seed(now()),
-            Cluster = rt:build_cluster(4, ?CFG),
             PBConns = yz_rt:open_pb_conns(Cluster),
             PBConn = yz_rt:select_random(PBConns),
-            setup_index(Cluster, PBConn, YZBenchDir),
-            {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
-            {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir,
+
+            setup_index(Cluster, PBConn, Index, Bucket, YZBenchDir),
+            {0, _} = yz_rt:load_data(Cluster, Bucket, YZBenchDir, ?NUM_KEYS),
+            {0, _} = yz_rt:load_data(Cluster, Bucket, YZBenchDir,
                                      ?NUM_KEYS_SPACES,
                                      [{load_fruit_plus_spaces, 1}]),
+
+            {ok, BProps} = riakc_pb_socket:get_bucket(PBConn, Bucket),
+            ?assertEqual(?N, proplists:get_value(n_val, BProps)),
+
             lager:info("Verify data was indexed"),
-            verify_num_match(Cluster, ?TOTAL_KEYS),
+            verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+
             %% Wait for a full round of exchange and then get total repair
             %% count.  Need to do this because setting AAE so agressive means
             %% that the Solr soft-commit could race with AAE and thus repair
@@ -54,8 +75,8 @@ confirm() ->
             yz_rt:wait_for_full_exchange_round(Cluster, TS1),
             RepairCountBefore = get_cluster_repair_count(Cluster),
             yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-            NumKeys = [{?BUCKET,K} || K <- yz_rt:random_keys(?NUM_KEYS)],
-            NumKeysSpaces = [{?BUCKET,add_space_to_key(K)} ||
+            NumKeys = [{Bucket, K} || K <- yz_rt:random_keys(?NUM_KEYS)],
+            NumKeysSpaces = [{Bucket, add_space_to_key(K)} ||
                                 K <- yz_rt:random_keys(?NUM_KEYS_SPACES)],
             {DelNumKeys, _ChangeKeys} = lists:split(length(NumKeys) div 2,
                                                     NumKeys),
@@ -64,37 +85,31 @@ confirm() ->
                                                 NumKeysSpaces),
             AllDelKeys = DelNumKeys ++ DelNumKeysSpaces,
             lager:info("Deleting ~p keys", [length(AllDelKeys)]),
-            [delete_key_in_solr(Cluster, ?INDEX, K) || K <- AllDelKeys],
+            [delete_key_in_solr(Cluster, Index, K) || K <- AllDelKeys],
             lager:info("Verify Solr indexes missing"),
-            verify_num_match(Cluster, ?TOTAL_KEYS - length(AllDelKeys)),
-            lager:info("Clear trees so AAE will notice missing indexes"),
-            [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster],
-            lager:info("Wait for all trees to re-build"),
-            %% Before exchange of a partition can take place the KV and
-            %% Yokozuna hashtree must be built.  Wait for all trees before
-            %% checking that Solr indexes are repaired.
-            TS2 = erlang:now(),
-            yz_rt:wait_for_full_exchange_round(Cluster, TS2),
-            lager:info("Verify AAE repairs missing Solr documents"),
-            verify_num_match(Cluster, ?TOTAL_KEYS),
+            verify_num_match(Cluster, Index, ?TOTAL_KEYS - length(AllDelKeys)),
+
+            verify_exchange_after_clear(Cluster, Index),
+
             %% Multiply by 3 because of N value
-            ExpectedNumRepairs = length(AllDelKeys) * 3,
+            ExpectedNumRepairs = length(AllDelKeys) * ?N,
             lager:info("Verify repair count = ~p", [ExpectedNumRepairs]),
             verify_repair_count(Cluster, RepairCountBefore + ExpectedNumRepairs),
             yz_rt:stop_tracing(),
             Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
             ?assertEqual(ExpectedNumRepairs, Count),
 
-            _ = verify_removal_of_orphan_postings(Cluster),
+            verify_removal_of_orphan_postings(Cluster, Bucket),
 
             verify_no_indefinite_repair(Cluster),
 
-            _ = verify_no_repair_for_non_indexed_data(Cluster, PBConns),
+            verify_no_repair_for_non_indexed_data(Cluster, Bucket, PBConns),
+
             yz_rt:close_pb_conns(PBConns),
 
-            _ = verify_no_repair_after_restart(Cluster),
+            verify_no_repair_after_restart(Cluster),
 
-            _ = verify_exchange_after_expire(Cluster),
+            verify_exchange_after_expire(Cluster, Index),
 
             pass;
         {error, bb_driver_build_failed} ->
@@ -104,30 +119,30 @@ confirm() ->
     end.
 
 %% @doc Create a tuple containing a riak object and the first
-%% partition and owner for that object.
+%%      partition and owner for that object.
 -spec create_obj_node_partition_tuple([node()], {bucket(), binary()}) ->
                                              {obj(), node(), p()}.
 create_obj_node_partition_tuple(Cluster, BKey={Bucket, Key}) ->
     Obj = riak_object:new(Bucket, Key, <<"orphan index">>, "text/plain"),
     Ring = rpc:call(hd(Cluster), yz_misc, get_ring, [transformed]),
-    BProps = rpc:call(hd(Cluster), riak_core_bucket, get_bucket, [?BUCKET]),
+    BProps = rpc:call(hd(Cluster), riak_core_bucket, get_bucket, [Bucket]),
     N = riak_core_bucket:n_val(BProps),
     PL = rpc:call(hd(Cluster), yz_misc, primary_preflist, [BKey, Ring, N]),
     {P, Node} = hd(PL),
     {Obj, Node, P}.
 
 %% @doc Create postings for the given keys without storing
-%% corresponding KV objects. This is used to simulate scenario where
-%% Solr has postings for objects which no longer exist in Riak. Such a
-%% scenario would happen if the KV object was deleted but the
-%% corresponding delete operation for Solr failed to complete.
+%%      corresponding KV objects. This is used to simulate scenario where
+%%      Solr has postings for objects which no longer exist in Riak. Such a
+%%      scenario would happen if the KV object was deleted but the
+%%      corresponding delete operation for Solr failed to complete.
 %%
 %% NOTE: This is only creating 1 replica for each posting, not
 %% N. There is no reason to create N replicas for each posting to
 %% verify to correctness of AAE in this scenario.
--spec create_orphan_postings([node()], [pos_integer()]) -> ok.
-create_orphan_postings(Cluster, Keys) ->
-    Keys2 = [{?BUCKET, ?INT_TO_BIN(K)} || K <- Keys],
+-spec create_orphan_postings([node()], bucket(),  [pos_integer()]) -> ok.
+create_orphan_postings(Cluster, Bucket, Keys) ->
+    Keys2 = [{Bucket, ?INT_TO_BIN(K)} || K <- Keys],
     lager:info("Create orphan postings with keys ~p", [Keys]),
     ObjNodePs = [create_obj_node_partition_tuple(Cluster, Key) || Key <- Keys2],
     [ok = rpc:call(Node, yz_kv, index, [Obj, put, P])
@@ -157,19 +172,24 @@ read_schema(YZBenchDir) ->
     {ok, RawSchema} = file:read_file(Path),
     RawSchema.
 
-setup_index(Cluster, PBConn, YZBenchDir) ->
+setup_index(Cluster, PBConn, Index, Bucket, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     RawSchema = read_schema(YZBenchDir),
-    ok = yz_rt:store_schema(PBConn, ?INDEX, RawSchema),
-    ok = yz_rt:wait_for_schema(Cluster, ?INDEX, RawSchema),
-    ok = yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
-    ok = yz_rt:create_index(Node, ?INDEX, ?INDEX),
-    ok = yz_rt:set_index(Node, ?BUCKET, ?INDEX).
+    ok = yz_rt:store_schema(PBConn, Index, RawSchema),
+    ok = yz_rt:wait_for_schema(Cluster, Index, RawSchema),
+    ok = create_bucket_type(Node, Bucket),
+    ok = yz_rt:create_index(Node, Index, Index),
+    ok = yz_rt:set_index(Node, Bucket, Index).
+
+create_bucket_type(Node, {BType, _Bucket}) ->
+    ok = yz_rt:create_bucket_type(Node, BType);
+create_bucket_type(_Node, _Bucket) ->
+    ok.
 
 %% @doc Verify that expired trees do not prevent exchange from
-%% occurring (like clearing trees does).
--spec verify_exchange_after_expire([node()]) -> ok.
-verify_exchange_after_expire(Cluster) ->
+%%      occurring (like clearing trees does).
+-spec verify_exchange_after_expire([node()], index_name()) -> ok.
+verify_exchange_after_expire(Cluster, Index) ->
     lager:info("Expire all trees and verify exchange still happens"),
     lager:info("Set anti_entropy_build_limit to 0 so that trees can't be built"),
     _ = [ok = rpc:call(Node, application, set_env, [riak_kv, anti_entropy_build_limit, {0, 1000}])
@@ -184,28 +204,50 @@ verify_exchange_after_expire(Cluster) ->
 
     ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
 
+    verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+
+    %% Check against the internal_solr replica count
+    verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
+
     lager:info("Set anti_entropy_build_limit to 100 so trees can build again"),
     _ = [ok = rpc:call(Node, application, set_env, [riak_kv, anti_entropy_build_limit, {100, 1000}])
          || Node <- Cluster],
     ok.
 
+%% @doc Verify that after clearing trees, the correct amount of query
+%%      values are provided after AAE repair.
+-spec verify_exchange_after_clear([node()], index_name()) -> ok.
+verify_exchange_after_clear(Cluster, Index) ->
+    lager:info("Clear trees so AAE will notice missing indexes"),
+    [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) ||
+        Node <- Cluster],
+    lager:info("Wait for all trees to re-build"),
+    %% Before exchange of a partition can take place the KV and
+    %% Yokozuna hashtree must be built.  Wait for all trees before
+    %% checking that Solr indexes are repaired.
+    TS2 = erlang:now(),
+    yz_rt:wait_for_full_exchange_round(Cluster, TS2),
+    lager:info("Verify AAE repairs missing Solr documents"),
+    verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+    ok.
+
 %% @doc Verify that Yokozuna deletes postings which have no
-%% corresponding KV object.
--spec verify_removal_of_orphan_postings([node()]) -> ok.
-verify_removal_of_orphan_postings(Cluster) ->
+%%      corresponding KV object.
+-spec verify_removal_of_orphan_postings([node()], bucket()) -> ok.
+verify_removal_of_orphan_postings(Cluster, Bucket) ->
     Num = random:uniform(100),
     lager:info("verify removal of ~p orphan postings", [Num]),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     Keys = lists:seq(?NUM_KEYS + 1, ?NUM_KEYS + Num),
-    ok = create_orphan_postings(Cluster, Keys),
+    ok = create_orphan_postings(Cluster, Bucket, Keys),
     ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
     ok = yz_rt:stop_tracing(),
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
     ok.
 
 %% @doc Verify that there is no indefinite repair.  There have been
-%% several bugs in the past where Yokozuna AAE would indefinitely
-%% repair.
+%%      several bugs in the past where Yokozuna AAE would indefinitely
+%%      repair.
 verify_no_indefinite_repair(Cluster) ->
     lager:info("Verify no indefinite repair"),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
@@ -216,8 +258,8 @@ verify_no_indefinite_repair(Cluster) ->
     ?assertEqual(0, Count).
 
 %% @doc Verify that no repair occurrs after restart. In the past there
-%% have been times when Yokozuna would unnecessairly repair data after
-%% a node restart.
+%%      have been times when Yokozuna would unnecessairly repair data after
+%%      a node restart.
 -spec verify_no_repair_after_restart([node()]) -> ok.
 verify_no_repair_after_restart(Cluster) ->
     lager:info("verify no repair after restart"),
@@ -242,19 +284,19 @@ verify_no_repair_after_restart(Cluster) ->
     ok.
 
 %% @doc Verify that KV data written to a bucket with no associated
-%% index is not repaired by AAE. When Yokozuna sees an incoming KV
-%% write which has no associated index it, obviously, shouldn't index
-%% the data but it should update it's AAE trees so that future
-%% exchanges don't think a repair is in order. The only time when this
-%% shouldn't hold is when the trees are manually cleared or
-%% expired. In that case repair must happen but Yokozuna is smart
-%% enough to only repair its AAE tree on not actually index the
-%% data. However, in this test, the trees are not cleared and no
-%% repair should hapen.
--spec verify_no_repair_for_non_indexed_data([node()], [pid()]) -> ok.
-verify_no_repair_for_non_indexed_data(Cluster, PBConns) ->
+%%      index is not repaired by AAE. When Yokozuna sees an incoming KV
+%%      write which has no associated index it, obviously, shouldn't index
+%%      the data but it should update it's AAE trees so that future
+%%      exchanges don't think a repair is in order. The only time when this
+%%      shouldn't hold is when the trees are manually cleared or
+%%      expired. In that case repair must happen but Yokozuna is smart
+%%      enough to only repair its AAE tree on not actually index the
+%%      data. However, in this test, the trees are not cleared and no
+%%      repair should hapen.
+-spec verify_no_repair_for_non_indexed_data([node()], bucket(),  [pid()]) -> ok.
+verify_no_repair_for_non_indexed_data(Cluster, {BType, _Bucket}, PBConns) ->
     lager:info("verify no repair occurred for non-indexed data"),
-    Bucket = {?BUCKET_TYPE, <<"non_indexed">>},
+    Bucket = {BType, <<"non_indexed">>},
 
     %% 1. write KV data to non-indexed bucket
     Conn = yz_rt:select_random(PBConns),
@@ -275,17 +317,30 @@ verify_no_repair_for_non_indexed_data(Cluster, PBConns) ->
 
     %% 4. verify repair count is 0
     ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+    ok;
+verify_no_repair_for_non_indexed_data(_Cluster, _Bucket, _PBConns) ->
     ok.
 
-verify_num_match(Cluster, Num) ->
+verify_num_match(Cluster, Index, Num) ->
+    verify_num_match(yokozuna, Cluster, Index, Num).
+
+verify_num_match(Type, Cluster, Index, Num) ->
     F = fun(Node) ->
-                HP = hd(yz_rt:host_entries(rt:connection_info([Node]))),
-                yz_rt:search_expect(HP, ?INDEX, "text", "apricot", Num)
+            {Host, _Port} = HP = hd(yz_rt:host_entries(
+                                      rt:connection_info([Node]))),
+            if Type =:= solr ->
+                    Shards = [{N, yz_rt:node_solr_port(N)} || N <- Cluster],
+                    yz_rt:search_expect(Type, {Host, yz_rt:node_solr_port(Node)},
+                                        Index, "text", "apricot", Shards, Num);
+               true ->
+                    yz_rt:search_expect(Type, HP,
+                                        Index, "text", "apricot", Num)
+            end
         end,
     yz_rt:wait_until(Cluster, F).
 
 %% @doc Verify the repair count stored in the AAE info server matches
-%% what is expected.
+%%      what is expected.
 -spec verify_repair_count([node()], non_neg_integer()) -> ok.
 verify_repair_count(Cluster, ExpectedNumRepairs) ->
     RepairCount = get_cluster_repair_count(Cluster),
