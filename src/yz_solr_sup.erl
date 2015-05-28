@@ -47,11 +47,12 @@ start_link() ->
 
 init([]) ->
     Dir = ?YZ_ROOT_DIR,
+    TempDir = ?YZ_TEMP_DIR,
     SolrPort = yz_solr:port(),
     SolrJMXPort = yz_solr:jmx_port(),
 
     SolrProc = {yz_solr_proc,
-                {yz_solr_proc, start_link, [Dir, SolrPort, SolrJMXPort]},
+                {yz_solr_proc, start_link, [Dir, TempDir, SolrPort, SolrJMXPort]},
                 permanent, 5000, worker, [yz_solr_proc]},
 
     Children = [SolrProc],
