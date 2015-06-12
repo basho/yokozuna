@@ -106,7 +106,7 @@ exists(Name) ->
     OnDisk = lists:member(Name, DiskIndexNames),
     case yz_solr:is_up() of
         true ->
-            InMeta andalso OnDisk andalso yz_solr:ping(Name);
+            InMeta andalso OnDisk andalso yz_solr:ping(Name) =:= true;
         false ->
             InMeta andalso OnDisk
     end.
