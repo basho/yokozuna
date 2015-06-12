@@ -164,7 +164,7 @@ maybe_log({Index, Removed}) ->
 remove_index(Name) ->
     case yz_solr:ping(Name) of
         true -> ok = yz_index:local_remove(Name);
-        false -> ok
+        _ -> ok
     end.
 
 -spec remove_indexes(index_set()) -> ok.
@@ -208,8 +208,13 @@ sync_indexes() ->
     case yz_solr:cores() of
         {ok, IndexesFromSolr} ->
             IndexSetFromSolr = ordsets:from_list(IndexesFromSolr),
-            IndexSetFromMeta = ordsets:from_list(yz_index:get_indexes_from_meta()),
-            {Removed, Added, Same} = yz_misc:delta(IndexSetFromSolr, IndexSetFromMeta),
+            IndexSetFromMeta = ordsets:from_list(
+                                 yz_index:get_indexes_from_meta()),
+            {Removed, Added, Same} = yz_misc:delta(IndexSetFromSolr,
+                                                   IndexSetFromMeta),
+            lager:info("Delta: Removed: ~p Added: ~p Same: ~p", [Removed,
+                                                                 Added,
+                                                                 Same]),
             ok = sync_indexes(Removed, Added, Same);
         {error, _Reason} ->
             ok
