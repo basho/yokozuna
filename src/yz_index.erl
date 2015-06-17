@@ -183,8 +183,19 @@ local_create(Name) ->
             %% gets in a state where CREATE thinks the core already
             %% exists but RELOAD says no core exists.
             PropsFile = filename:join([IndexDir, "core.properties"]),
-            file:delete(PropsFile),
-
+            case file:delete(PropsFile) of
+                ok ->
+                    lager:info("Deleted Solr core properties file at path ~p", [PropsFile]);
+                {error, Reason} ->
+                    case Reason of
+                        enoent -> ok;
+                        _ ->
+                            lager:error(
+                                "Failed to delete Solr core properties file at path ~p; Reason: ~p.",
+                                [PropsFile, Reason]
+                            )
+                    end
+            end,
             core_create(Name, SchemaName, CoreProps);
         {error, _Reason} ->
             lager:error("Couldn't create index ~s because the schema ~s isn't found",
