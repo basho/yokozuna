@@ -375,7 +375,7 @@ confirm_bad_schema(Cluster) ->
     lager:info("give solr time to attempt to create core ~s", [Name]),
     timer:sleep(5000),
     lager:info("verify solr core ~s is not up", [Name]),
-    ?assertNot(yz_solr:ping(Name)),
+    ?assertEqual(yz_solr:ping(Name), error),
 
     lager:info("upload corrected schema ~s", [Name]),
     {ok, Status3, _, _} = http(put, URL, Headers, ?TEST_SCHEMA),
