@@ -29,7 +29,9 @@
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
                        {schema_file, schema},
-                       {delete_instance, deleteInstanceDir}]).
+                       {delete_instance, deleteInstanceDir},
+                       {delete_index, deleteIndex},
+                       {delete_data_dir, deleteDataDir}]).
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit,n}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
