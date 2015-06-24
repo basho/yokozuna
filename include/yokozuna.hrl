@@ -130,6 +130,7 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
+%% Default index creation timeout. Set at 60s to match default client timeouts.
 -define(DEFAULT_IDX_CREATE_TIMEOUT, 60000).
 
 -define(MAYBE(Check, Expression, Default),
