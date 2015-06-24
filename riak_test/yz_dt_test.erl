@@ -16,8 +16,7 @@
 -import(yz_rt, [
                 connection_info/1,
                 create_index/2,
-                search_expect/5,
-                wait_for_index/2
+                search_expect/5
                ]).
 
 -define(assertSearch(Solr, Index, Field, Query, Count),
@@ -34,7 +33,6 @@ confirm() ->
     [ begin
           %% Create an index for each type (default schema)
           create_index(Node, BType),
-          wait_for_index(Nodes, BType),
           %% Create bucket types for datatypes with given indexes
           rt:create_and_activate_bucket_type(Node, BType, [{datatype, Type},
                                                            {allow_mult, true},

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Build JAR file containing customer Solr request handlers.
 set -e
@@ -81,7 +81,7 @@ if [ ! -e "../priv/java_lib" ]; then
     mkdir ../priv/java_lib
 fi
 
-YZ_JAR_VSN=1
+YZ_JAR_VSN=2
 YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
 YZ_JAR_SHA=$YZ_JAR_NAME.sha
 
