@@ -65,7 +65,11 @@ confirm() ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
             lager:info("YZBenchDir: ~p", [YZBenchDir]),
-            Cluster = rt:build_cluster(lists:duplicate(3, {previous, ?CFG})),
+
+            TestMetaData = riak_test_runner:metadata(),
+            OldVsn = proplists:get_value(upgrade_version, TestMetaData, previous),
+
+            Cluster = rt:build_cluster(lists:duplicate(3, {OldVsn, ?CFG})),
 
             create_index(Cluster, riak_search),
             load_data(Cluster, YZBenchDir, 1000),
@@ -207,8 +211,7 @@ create_index([Node1|_]=Cluster, riak_search) ->
     yz_rt:wait_until(Cluster, F);
 create_index(Cluster, yokozuna) ->
     Idx = ?FRUIT_BUCKET,
-    yz_rt:create_index(hd(Cluster), Idx),
-    yz_rt:wait_for_index(Cluster, Idx).
+    yz_rt:create_index(hd(Cluster), Idx).
 
 close_pb_conn(PB) ->
     riakc_pb_socket:stop(PB).

@@ -11,6 +11,7 @@
 
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
+-define(IBROWSE_TIMEOUT, 60000).
 -define(CFG,
         [
          {riak_core,
@@ -138,10 +139,10 @@ confirm() ->
     rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_create_index_1(Cluster),
     confirm_create_index_2(Cluster),
-    confirm_409(Cluster),
-    confirm_create_index_bad_schema(Cluster),
+    confirm_not_409(Cluster),
     confirm_bad_name(Cluster),
     confirm_bad_n_val(Cluster),
+    confirm_create_index_bad_schema(Cluster),
     confirm_list(Cluster, [<<"test_index_1">>, <<"test_index_2">>, <<"test_index_409">>]),
     confirm_delete(Cluster, <<"test_index_1">>),
     confirm_get(Cluster, <<"test_index_2">>),
@@ -149,6 +150,8 @@ confirm() ->
     confirm_delete_409(Cluster, <<"delete_409">>),
     confirm_field_add(Cluster, <<"field_add">>),
     confirm_bad_bucket_associations(Cluster),
+    confirm_create_index_within_timeout(Cluster),
+    confirm_create_index_not_within_timeout(Cluster),
     pass.
 
 %% @doc Verify that bad n_val is rejected.
@@ -188,8 +191,7 @@ confirm_create_index_1(Cluster) ->
     lager:info("confirm_create_index_1 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, Status, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
-    ?assertEqual("204", Status),
-    yz_rt:wait_for_index(Cluster, Index).
+    ?assertEqual("204", Status).
 
 %% @doc Test index creation when passing schema name and n_val.
 confirm_create_index_2(Cluster) ->
@@ -201,23 +203,22 @@ confirm_create_index_2(Cluster) ->
     Body = <<"{\"schema\":\"_yz_default\", \"n_val\":2}">>,
     {ok, Status, _, _} = http(put, URL, Headers, Body),
     ?assertEqual("204", Status),
-    yz_rt:wait_for_index(Cluster, Index),
     {ok, GetStatus, _, GetBody} = http(get, URL, [], []),
     ?assertEqual("200", GetStatus),
     GetNVal = kvc:path([<<"n_val">>], mochijson2:decode(GetBody)),
     ?assertEqual(2, GetNVal),
     ok.
 
-confirm_409(Cluster) ->
+confirm_not_409(Cluster) ->
+    %% Check for idempotent create
     Index = <<"test_index_409">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_409 ~s [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, Status1, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status1),
-    yz_rt:wait_for_index(Cluster, Index),
     {ok, Status2, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
-    ?assertEqual("409", Status2).
+    ?assertEqual("204", Status2).
 
 %% @doc Test index creation with a broken schema
 confirm_create_index_bad_schema(Cluster) ->
@@ -231,19 +232,11 @@ confirm_create_index_bad_schema(Cluster) ->
     SchemaHeaders = [{"content-type", "application/xml"}],
     {ok, Status1, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELDS_DOUBLE),
     ?assertEqual("204", Status1),
-
     URL = index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     Body = <<"{\"schema\":\"",Schema/binary,"\"}">>,
     {ok, Status, _, _} = http(put, URL, Headers, Body),
-    ?assertEqual("204", Status),
-    %% wait for the index to fail to create
-    InitFailure = fun(Node) ->
-                      lager:info("Waiting for init failure of ~s [~p]", [Index, Node]),
-                      {ok,_,S} = rpc:call(Node, yz_solr, core, [status, [{wt,json},{core,Index}]]),
-                      {struct,[]} /= kvc:path([<<"initFailures">>], mochijson2:decode(S))
-                  end,
-    yz_rt:wait_until(Cluster, InitFailure),
+    ?assertEqual("400", Status),
     %% ensure index doesn't return
     {ok, GetStatus, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("404", GetStatus),
@@ -315,7 +308,6 @@ confirm_delete_409(Cluster, Index) ->
     lager:info("Verify that index ~s cannot be deleted b/c of associated buckets [~p]", [Index, HP]),
     URL = index_url(HP, Index),
     {ok, "204", _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
-    yz_rt:wait_for_index(Cluster, Index),
     H = [{"content-type", "application/json"}],
     B = <<"{\"props\":{\"search_index\":\"delete_409\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B),
@@ -326,7 +318,7 @@ confirm_delete_409(Cluster, Index) ->
 
     %% Verify associated_buckets is correct
     Node = select_random(Cluster),
-    lager:info("Verify associated buckets for index ~s [~p]", [Node]),
+    lager:info("Verify associated buckets for index ~s [~p]", [Index, Node]),
     Ring = rpc:call(Node, yz_misc, get_ring, [transformed]),
     Assoc = rpc:call(Node, yz_index, associated_buckets, [Index, Ring]),
     ?assertEqual([<<"b1">>, <<"b2">>], Assoc),
@@ -337,8 +329,6 @@ confirm_delete_409(Cluster, Index) ->
     %% Associate bucket with new index
     NewIndex = <<"new_index">>,
     ok = yz_rt:create_index(Node, NewIndex),
-    yz_rt:wait_for_index(Cluster, NewIndex),
-
     B2 = <<"{\"props\":{\"search_index\":\"",NewIndex/binary,"\"}}">>,
     {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B2),
 
@@ -372,8 +362,6 @@ confirm_field_add(Cluster, Index) ->
     {ok, Status2, _, _} = http(put, IndexURL, IndexHeaders, Body),
     ?assertEqual("204", Status2),
 
-    yz_rt:wait_for_index(Cluster, Index),
-
     Node = select_random(Cluster),
     FieldURL = field_url(yz_rt:solr_http(RandCI), Index, "my_new_field"),
     lager:info("verify index ~s doesn't have my_new_field [~p]", [Index, Node]),
@@ -396,11 +384,30 @@ confirm_bad_bucket_associations(Cluster) ->
     %% attempt to associate bucket with nonexistant index
     {error, [{search_index,_}]} = yz_rt:set_index(Node, Bucket, Index, 2),
     ok = yz_rt:create_index(Node, Index, ?YZ_DEFAULT_SCHEMA_NAME, 4),
-    yz_rt:wait_for_index(Cluster, Index),
     %% attempt to associate bucket with incongruent n_val
     {error, [{n_val,_}]} = yz_rt:set_index(Node, Bucket, Index, 2),
     %% sucessfully associate bucket with matchin n_val
     ok = yz_rt:set_index(Node, Bucket, Index, 4).
+
+confirm_create_index_within_timeout(Cluster) ->
+    Index = <<"test_index_within_timeout">>,
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_create_index_within_set_timeout ~s [~p]", [Index, HP]),
+    URL = index_url(HP, Index, 20000),
+    {ok, Status, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("204", Status),
+    ok.
+
+confirm_create_index_not_within_timeout(Cluster) ->
+    Index = <<"test_index_not_within_timeout">>,
+    HP = select_random(host_entries(rt:connection_info(Cluster))),
+    lager:info("confirm_create_index_not_within_set_timeout ~s [~p]", [Index, HP]),
+    URL = index_url(HP, Index, 10),
+    {ok, Status, _, Res} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    ?assertEqual("202", Status),
+    ?assertEqual("Index test_index_not_within_timeout not created on all the" ++
+                " nodes within 10 ms timeout", Res),
+    ok.
 
 %%%===================================================================
 %%% Helpers
@@ -439,13 +446,16 @@ host_entries(ClusterConnInfo) ->
 
 http(Method, URL, Headers, Body) ->
     Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
 
 index_list_url({Host, Port}) ->
     ?FMT("http://~s:~B/search/index", [Host, Port]).
 
-index_url({Host,Port}, Index) ->
+index_url({Host, Port}, Index) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
+index_url({Host, Port}, Index, Timeout) ->
+    ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
+                                                     Timeout]).
 
 schema_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).

@@ -125,7 +125,6 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
     ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
-    yz_rt:wait_for_index(Cluster, ?INDEX),
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL).
 
 wait_for(Ref) ->

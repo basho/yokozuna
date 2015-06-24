@@ -94,6 +94,7 @@ stats_map(true) ->
       {search_query_fail_count, {{?YZ_APP_NAME, 'query', fail}, count}, spiral},
       {search_query_fail_one, {{?YZ_APP_NAME, 'query', fail}, one}, spiral},
       {search_query_latency_min, {{?YZ_APP_NAME, 'query', latency}, min}, histogram},
+      {search_query_latency_mean, {{?YZ_APP_NAME, 'query', latency}, mean}, histogram},
       {search_query_latency_max, {{?YZ_APP_NAME, 'query', latency}, max}, histogram},
       {search_query_latency_median, {{?YZ_APP_NAME, 'query', latency}, median}, histogram},
       {search_query_latency_95, {{?YZ_APP_NAME, 'query', latency}, 95}, histogram_percentile},
@@ -102,10 +103,11 @@ stats_map(true) ->
 
       %% Index stats
       {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
-      {search_index_throughtput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
+      {search_index_throughput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
       {search_index_fail_count, {{?YZ_APP_NAME, index, fail}, count}, spiral},
       {search_index_fail_one, {{?YZ_APP_NAME, index, fail}, one}, spiral},
       {search_index_latency_min, {{?YZ_APP_NAME, index, latency}, min}, histogram},
+      {search_index_latency_mean, {{?YZ_APP_NAME, index, latency}, mean}, histogram},
       {search_index_latency_max, {{?YZ_APP_NAME, index, latency}, max}, histogram},
       {search_index_latency_median, {{?YZ_APP_NAME, index, latency}, median}, histogram},
       {search_index_latency_95, {{?YZ_APP_NAME, index, latency}, 95}, histogram_percentile},
@@ -148,7 +150,7 @@ stat_name(Name) ->
 
 %% @private
 %%
-%% @doc Notify specific metrics in folsom based on the `StatUpdate' term
+%% @doc Notify specific metrics in exometer based on the `StatUpdate' term
 %% passed in.
 -spec update(StatUpdate::term()) -> ok.
 update({index_end, Time}) ->
@@ -173,9 +175,10 @@ stats() ->
                                         {999   , search_index_latency_999},
                                         {max   , search_index_latency_max},
                                         {median, search_index_latency_median},
-                                        {min   , search_index_latency_min}]},
+                                        {min   , search_index_latency_min},
+                                        {mean  , search_index_latency_mean}]},
      {[index, throughput], spiral, [], [{count, search_index_throughput_count},
-                                        {one  , search_index_throughtput_one}]},
+                                        {one  , search_index_throughput_one}]},
      {['query', fail], spiral, [], [{count, search_query_fail_count},
                                     {one  , search_query_fail_one}]},
      {['query', latency], histogram, [], [{95    , search_query_latency_95},
@@ -183,7 +186,8 @@ stats() ->
                                           {999   , search_query_latency_999},
                                           {max   , search_query_latency_max},
                                           {median, search_query_latency_median},
-                                          {min   , search_query_latency_min}]},
+                                          {min   , search_query_latency_min},
+                                          {mean  , search_query_latency_mean}]},
      {['query', throughput], spiral, [], [{count,search_query_throughput_count},
                                           {one  ,search_query_throughput_one}]}
     ].

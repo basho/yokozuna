@@ -7,6 +7,7 @@
 
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
+-define(IBROWSE_TIMEOUT, 60000).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(TEST_SCHEMA,
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
@@ -366,7 +367,7 @@ confirm_bad_schema(Cluster) ->
     URL2 = index_url(HP, Name),
     Headers2 = [{"content-type", "application/json"}],
     Body = {struct, [{schema, Name}]},
-    lager:info("create ~s index using ~s schema", [Name, Name]),
+    lager:info("create ~s index using bad ~s schema", [Name, Name]),
     {ok, Status2, _, _} = http(put, URL2, Headers2, mochijson2:encode(Body)),
     %% This should return 204 because it simply adds an entry to the
     %% ring.  The actual Solr Core creation is async.
@@ -417,7 +418,7 @@ default_schema(Cluster) ->
 
 http(Method, URL, Headers, Body) ->
     Opts = [{response_format, binary}],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
 
 index_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Name]).

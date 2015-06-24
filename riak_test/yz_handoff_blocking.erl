@@ -20,7 +20,6 @@ confirm() ->
 
     %% create an index on one node and populate it with some data
     yz_rt:create_index(Node, ?INDEX),
-    ok = yz_rt:wait_for_index([Node], ?INDEX),
     ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
     ConnInfo = yz_rt:connection_info([Node]),
     {Host, Port} = yz_rt:riak_http(proplists:get_value(Node, ConnInfo)),

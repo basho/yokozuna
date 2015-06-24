@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Script to grab Solr and embed in priv dir. This script assumes it is
 # being called from root dir or tools dir.
@@ -38,12 +38,14 @@ download()
         wget --no-check-certificate --progress=dot:mega $1
     elif which curl > /dev/null; then
         curl --insecure --progress-bar -O $1
+    elif which fetch > /dev/null; then
+        fetch --no-verify-peer $1
     fi
 }
 
 get_solr()
 {
-        if [[ -z ${SOLR_PKG_DIR+x} ]]
+        if [ -z ${SOLR_PKG_DIR+x} ]
         then
             if [ -e $TMP_FILE ]; then
                 echo "Using cached copy of Solr $TMP_FILE"
@@ -107,7 +109,7 @@ then
 fi
 
 JAVA_LIB=../priv/java_lib
-YZ_JAR_VSN=1
+YZ_JAR_VSN=2
 YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
 
 if [ ! -e $JAVA_LIB/$YZ_JAR_NAME ]

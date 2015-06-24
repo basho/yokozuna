@@ -45,14 +45,13 @@
 %% to the caller how to interpret this.
 -spec get_ring_used() -> ring() | unknown.
 get_ring_used() ->
-    try gen_server:call(?MODULE, get_ring_used, 5000) of
-        undefined -> unknown;
-        Ring -> Ring
-    catch
-        _:_ ->
-            %% If the call failed then not sure what ring is
-            %% being used.
-            unknown
+    case riak_core_util:proxy_spawn(fun() -> gen_server:call(?MODULE, get_ring_used, 5000) end) of
+	{error, _} ->
+	    unknown;
+	undefined ->
+	    unknown;
+	Ring ->
+	    Ring
     end.
 
 -spec logical_partitions(ring(), ordset(p())) -> ordset(lp()).
@@ -63,8 +62,9 @@ logical_partitions(Ring, Partitions) ->
 %% @doc Get the coverage plan for `Index'.
 -spec plan(index_name()) -> {ok, plan()} | {error, term()}.
 plan(Index) ->
-    case mochiglobal:get(?BIN_TO_ATOM(Index), undefined) of
-        undefined -> calc_plan(Index, yz_misc:get_ring(transformed));
+    NVal = yz_index:get_n_val_from_index(Index),
+    case mochiglobal:get(?INT_TO_ATOM(NVal), undefined) of
+        undefined -> calc_plan(NVal, yz_misc:get_ring(transformed));
         Plan -> Plan
     end.
 
@@ -127,28 +127,28 @@ add_filtering(N, Q, LPI, PS) ->
 
 %% @private
 %%
-%% @doc Calculate a plan for the `Index' and then store an entry in
-%%      the plan cache.
+%% @doc Calculate a plan from the `Index' `NVal' and then store an entry
+%%      of the NVal's atom in the plan cache.
 -spec cache_plan(index_name(), ring()) -> ok.
 cache_plan(Index, Ring) ->
-    case calc_plan(Index, Ring) of
+    NVal = yz_index:get_n_val_from_index(Index),
+    case calc_plan(NVal, Ring) of
         {error, _} ->
-            mochiglobal:put(?BIN_TO_ATOM(Index), undefined);
+            mochiglobal:put(?INT_TO_ATOM(NVal), undefined);
         {ok, Plan} ->
-            mochiglobal:put(?BIN_TO_ATOM(Index), {ok, Plan})
+            mochiglobal:put(?INT_TO_ATOM(NVal), {ok, Plan})
     end,
     ok.
 
 %% @private
 %%
 %% @doc Calculate a plan for the `Index'.
--spec calc_plan(index_name(), ring()) -> {ok, plan()} | {error, term()}.
-calc_plan(Index, Ring) ->
+-spec calc_plan(n(), ring()) -> {ok, plan()} | {error, term()}.
+calc_plan(NVal, Ring) ->
     NumPartitions = riak_core_ring:num_partitions(Ring),
-    NVal = yz_index:get_n_val(yz_index:get_index_info(Index)),
     CoveragePlan = create_coverage_plan(NVal),
     maybe_filter_plan(CoveragePlan, Ring, NVal, NumPartitions).
-    
+
 %% @private
 %%
 %% @doc Create a Riak core coverage plan.

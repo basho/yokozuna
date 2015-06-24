@@ -139,10 +139,11 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
 %%
 %% `NumKeys' - The total number of keys to write.  The maximum values
 %% is 10 million.
--spec load_data(cluster(), bucket(), string(), integer()) ->
+%% `Operations` - Basho Bench operations to run.
+-spec load_data(cluster(), bucket(), string(), integer(), [tuple()]) ->
                        timeout |
                        {Status :: integer(), Output :: binary()}.
-load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
+load_data(Cluster, Bucket, YZBenchDir, NumKeys, Operations) ->
     lager:info("Load data into bucket ~p onto cluster ~p", [Bucket, Cluster]),
     Hosts = host_entries(rt:connection_info(Cluster)),
     KeyGen = {function, yz_driver, fruit_key_val_gen, [NumKeys]},
@@ -155,11 +156,17 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
            {http_conns, Hosts},
            {pb_conns, []},
            {key_generator, KeyGen},
-           {operations, [{load_fruit, 1}]},
+           {operations, Operations},
            {shutdown_on_error, true}],
     File = "load-data",
     write_terms(File, Cfg),
     run_bb(sync, File).
+
+-spec load_data(cluster(), bucket(), string(), integer()) ->
+                       timeout |
+                       {Status :: integer(), Output :: binary()}.
+load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
+    load_data(Cluster, Bucket, YZBenchDir, NumKeys, [{load_fruit, 1}]).
 
 %% @doc Load the BEAM for `Module' across the `Nodes'.  This allows
 %% use of higher order functions, defined in a riak test module, on
@@ -260,6 +267,16 @@ search_expect(Type, HP, Index, Name, Term, Expect) ->
     {ok, "200", _, R} = search(Type, HP, Index, Name, Term),
     verify_count(Expect, R).
 
+search_expect(solr, {Host, Port}, Index, Name0, Term0, Shards, Expect)
+  when is_list(Shards), length(Shards) > 0 ->
+    Name = quote_unicode(Name0),
+    Term = quote_unicode(Term0),
+    URL = internal_solr_url(Host, Port, Index, Name, Term, Shards),
+    lager:info("Run search ~s", [URL]),
+    Opts = [{response_format, binary}],
+    {ok, "200", _, R} = ibrowse:send_req(URL, [], get, [], Opts),
+    verify_count(Expect, R).
+
 search(HP, Index, Name, Term) ->
     search(yokozuna, HP, Index, Name, Term).
 
@@ -273,7 +290,7 @@ search(Type, {Host, Port}, Index, Name0, Term0) ->
                  solr ->
                      "http://~s:~s/internal_solr/~s/select?q=~s:~s&wt=json";
                  yokozuna ->
-                     "http://~s:~s/solr/~s/select?q=~s:~s&wt=json"
+                     "http://~s:~s/search/query/~s?q=~s:~s&wt=json"
              end,
     URL = ?FMT(FmtStr, [Host, Port, Index, Name, Term]),
     lager:info("Run search ~s", [URL]),
@@ -450,3 +467,19 @@ write_terms(File, Terms) ->
 wait_until(Nodes, F) ->
     [?assertEqual(ok, rt:wait_until(Node, F)) || Node <- Nodes],
     ok.
+
+-spec node_solr_port(node()) -> port().
+node_solr_port(Node) ->
+    {ok, P} = riak_core_util:safe_rpc(Node, application, get_env,
+                                      [yokozuna, solr_port]),
+    P.
+
+internal_solr_url(Host, Port, Index) ->
+    ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
+internal_solr_url(Host, Port, Index, Shards) ->
+    internal_solr_url(Host, Port, Index, Shards, <<"*">>, <<"*">>).
+internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
+    Ss = [internal_solr_url(Host, ShardPort, Index)
+          || {_, ShardPort} <- Shards],
+    ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
+         [Host, Port, Index, Name, Term, string:join(Ss, ",")]).

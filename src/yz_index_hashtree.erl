@@ -121,6 +121,10 @@ stop(Tree) ->
 destroy(Tree) ->
     gen_server:call(Tree, destroy, infinity).
 
+%% @doc For testing only, retrieve the hashtree data structures. It is
+%% not safe to tamper with these structures due to the LevelDB backend
+get_trees({test, Pid}) ->
+    gen_server:call(Pid, get_trees, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -155,7 +159,7 @@ init([Index, RPs]) ->
             BuiltImmediately = ([] == yz_index:get_indexes_from_meta()),
             _ = case BuiltImmediately of
                     true -> gen_server:cast(self(), build_finished);
-                    false -> ok
+                    false -> maybe_expire(S)
                 end,
             {ok, S2}
     end.
@@ -163,6 +167,9 @@ init([Index, RPs]) ->
 handle_call({insert, Id, BKey, Hash, Options}, _From, S) ->
     S2 = do_insert(Id, term_to_binary(BKey), Hash, Options, S),
     {reply, ok, S2};
+
+handle_call(get_trees, _From, #state{trees=Trees}=State) ->
+    {reply, Trees, State};
 
 handle_call({delete, IdxN, BKey}, _From, S) ->
     S2 = do_delete(IdxN, term_to_binary(BKey), S),
@@ -365,7 +372,7 @@ apply_tree(Id, Fun, S=#state{trees=Trees}) ->
 
 -spec do_build_finished(state()) -> state().
 do_build_finished(S=#state{index=Index, built=_Pid}) ->
-    lager:debug("Finished build: ~p", [Index]),
+    lager:debug("Finished YZ build: ~p", [Index]),
     {_,Tree0} = hd(S#state.trees),
     BuildTime = yz_kv:get_tree_build_time(Tree0),
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
@@ -481,7 +488,7 @@ maybe_expire(S=#state{lock=undefined, built=true}) ->
     Expire = ?YZ_ENTROPY_EXPIRE,
     case (Expire /= never) andalso (Diff > (Expire * 1000))  of
         true ->  S#state{expired=true};
-        false -> S
+        false -> maybe_expire_caps_check(S)
     end;
 
 maybe_expire(S) ->
@@ -489,7 +496,7 @@ maybe_expire(S) ->
 
 -spec clear_tree(state()) -> state().
 clear_tree(S=#state{index=Index}) ->
-    lager:debug("Clearing tree ~p", [S#state.index]),
+    lager:debug("Clearing YZ AAE tree: ~p", [S#state.index]),
     S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
     S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
@@ -544,14 +551,14 @@ build_or_rehash(Tree, S) ->
 build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
     case {Locked, Type} of
         {true, build} ->
-            lager:debug("Starting build: ~p", [Index]),
+            lager:debug("Starting YZ AAE tree build: ~p", [Index]),
             fold_keys(Index, Tree),
-            lager:debug("Finished build: ~p", [Index]),
+            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
             gen_server:cast(Tree, build_finished);
         {true, rehash} ->
-            lager:debug("Starting rehash: ~p", [Index]),
+            lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
-            lager:debug("Finished rehash: ~p", [Index]),
+            lager:debug("Finished YZ AAE tree rehash: ~p", [Index]),
             gen_server:cast(Tree, build_finished);
         {_, _} ->
             gen_server:cast(Tree, build_failed)
@@ -584,9 +591,21 @@ maybe_rebuild(S) ->
 get_all_locks(Type, Pid) ->
     %% NOTE: Yokozuna diverges from KV here. KV has notion of vnode
     %% fold to make sure handoff/aae don't fight each other. Yokozuna
-    %% has no vnodes. It would probably be a good idea to adda lock
+    %% has no vnodes. It would probably be a good idea to add a lock
     %% around Solr so that mutliple tree builds don't fight for the
     %% file page cache but the bg manager stuff is kind of convoluted
     %% and there isn't time to figure this all out for 2.0. Thus,
     %% Yokozuna will not bother with the Solr lock for now.
     ok == yz_entropy_mgr:get_lock(Type, Pid).
+
+%% @doc Maybe expire trees for rebuild depending on riak_core_capability
+%%      checks/changes. Used for possible upgrade path.
+-spec maybe_expire_caps_check(state()) -> state().
+maybe_expire_caps_check(S) ->
+    DefaultBTCapVersion = riak_core_capability:get(
+                            ?YZ_CAPS_HANDLE_LEGACY_DEFAULT_BUCKET_TYPE_AAE, v0),
+    case DefaultBTCapVersion =/= v1 of
+        true ->
+            S#state{expired=true};
+        false -> S
+    end.

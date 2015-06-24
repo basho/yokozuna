@@ -7,8 +7,10 @@
 -compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {default_field, fruits, pb_conns, index, bucket, iurls, surls}).
+-record(state, {default_field, fruits, pb_conns, index, bucket, bucket_type,
+                get_indexes, indexes, iurls, surls}).
 -define(DONT_VERIFY, dont_verify).
+-define(SPACER, "testfor spaces ").
 
 -define(M100,   100000000).
 -define(M10,    10000000).
@@ -69,6 +71,7 @@ new(_Id) ->
             ok
     end,
     Bucket = basho_bench_config:get(bucket, {<<"test">>, <<"test">>}),
+    BucketType = basho_bench_config:get(bucket_type, <<"test">>),
     Index = basho_bench_config:get(index, bucket_type(Bucket)),
     HTTP = basho_bench_config:get(http_conns, [{"127.0.0.1", 8098}]),
     PB = basho_bench_config:get(pb_conns, [{"127.0.0.1", 8087}]),
@@ -80,11 +83,25 @@ new(_Id) ->
     Conns = array:from_list(lists:map(make_conn(Secure, User, Password, Cert), PB)),
     N = length(HTTP),
     M = length(PB),
+    PBConns = {Conns, {0, M}},
+    GetIndexes = basho_bench_config:get(get_indexes, false),
+    SetIndexes = basho_bench_config:get(indexes, [Index]),
+    Indexes = if GetIndexes andalso SetIndexes =:= [Index] ->
+                      Conn = get_conn(PBConns),
+                      {ok, Idxs} = riakc_pb_socket:list_search_indexes(
+                                     Conn, [{timeout, 120000}]),
 
-    {ok, #state{pb_conns={Conns, {0,M}},
+                      [proplists:get_value(index, Idx) || Idx <- Idxs];
+                 true ->
+                      SetIndexes
+    end,
+
+    {ok, #state{pb_conns=PBConns,
                 bucket=Bucket,
+                bucket_type=BucketType,
                 default_field=DefaultField,
                 index=Index,
+                indexes=Indexes,
                 iurls={IURLs, {0,N}},
                 surls={SURLs, {0,N}}}}.
 
@@ -138,6 +155,11 @@ run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, 
     Query = string:join(TermList, " AND "),
     run({search, Query, FL, ExpectedNumFound}, K, V, S);
 
+run({random_fruit_search_per_index, FL, MaxTerms, MaxCardinality}, K, V, S=#state{indexes=Indexes}) ->
+    Index = lists:nth(random:uniform(length(Indexes)), Indexes),
+    S2 = S#state{fruits=gen_fruits(MaxCardinality), index=Index},
+    run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
+
 run({index, CT}, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Line} = ValGen(index),
@@ -159,6 +181,17 @@ run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
+run(load_fruit_plus_spaces, KeyValGen, _, S=#state{iurls=URLs}) ->
+    Base = get_base(URLs),
+    {Key, Val} = KeyValGen(),
+    Key2 = mochiweb_util:quote_plus(lists:concat([?SPACER, Key])),
+    URL = ?FMT("~s/~s", [Base, Key2]),
+    S2 = S#state{iurls=wrap(URLs)},
+    case http_put(URL, "text/plain", Val) of
+        ok -> {ok, S2};
+        {error, Reason} -> {error, Reason, S2}
+    end;
+
 run(load_fruit_pb, KeyValGen, _, S=#state{bucket=Bucket, pb_conns=Conns}) ->
     Conn = get_conn(Conns),
     {Key, Val} = KeyValGen(),
@@ -168,6 +201,32 @@ run(load_fruit_pb, KeyValGen, _, S=#state{bucket=Bucket, pb_conns=Conns}) ->
         ok -> {ok, S2};
         Err -> {error, Err, S2}
     end;
+
+run(load_indexes, KeyGen, _ValGen, S=#state{pb_conns=Conns}) ->
+    Conn = get_conn(Conns),
+    Index = KeyGen(),
+    S2 = S#state{pb_conns=wrap(Conns)},
+    case riakc_pb_socket:create_search_index(Conn, list_to_binary(Index), 120000) of
+        ok -> {ok, S2};
+        Err -> {error, Err, S2}
+    end;
+
+run(load_fruit_pb_per_index, KeyValGen, _ValGen, S=#state{bucket_type=BucketType,
+                                                          indexes=Indexes, pb_conns=Conns}) ->
+    Conn = get_conn(Conns),
+    {Key, Val} = KeyValGen(),
+    lists:foreach(
+      fun(Index) ->
+              Bucket = {BucketType, Index},
+              Obj = riakc_obj:new(Bucket, ?INT_TO_BIN(Key), list_to_binary(Val),
+                                  "text/plain"),
+              Props = [{search_index, Index}],
+              ok = riakc_pb_socket:set_bucket(Conn, Bucket, Props),
+              ok = riakc_pb_socket:put(Conn, Obj)
+      end, Indexes),
+
+    S2 = S#state{pb_conns=wrap(Conns)},
+    {ok, S2};
 
 run(load_pb, KeyGen, ValGen, S) ->
     Bucket = S#state.bucket,
@@ -195,10 +254,16 @@ run({random_fruit_search_pb, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruit
     Query = list_to_binary(string:join(TermList, " AND ")),
     run({search_pb, Query, FL, ExpectedNumFound}, K, V, S);
 
-run({search_pb, Query, FL, Expected}, _, _, S=#state{index=Index, pb_conns=Conns}) ->
+run({random_fruit_search_pb_per_index, FL, MaxTerms, MaxCardinality}, K, V, S=#state{indexes=Indexes}) ->
+    Index = lists:nth(random:uniform(length(Indexes)), Indexes),
+    S2 = S#state{fruits=gen_fruits(MaxCardinality), index=Index},
+    run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S2);
+
+run({search_pb, Query, FL, Expected}, _, _, S=#state{index=Index, pb_conns=Conns,
+                                                    default_field=DefaultField}) ->
     Conn = get_conn(Conns),
     S2 = S#state{pb_conns=wrap(Conns)},
-    case {Expected, search_pb(Conn, Index, Query, [{fl,FL}])} of
+    case {Expected, search_pb(Conn, Index, Query, [{fl,FL}, {df, DefaultField}])} of
         {?DONT_VERIFY, {ok, _, _, _}} ->
             {ok, S2};
         {_, {ok, _, _, NumFound}} ->
