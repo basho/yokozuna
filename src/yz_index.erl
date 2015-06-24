@@ -224,7 +224,7 @@ local_create(Name) ->
             %% gets in a state where CREATE thinks the core already
             %% exists but RELOAD says no core exists.
             PropsFile = filename:join([IndexDir, "core.properties"]),
-            file:delete(PropsFile),
+            delete_core_props_file(PropsFile),
 
             core_create(Name, SchemaName, CoreProps);
         {error, _Reason} ->
@@ -232,6 +232,26 @@ local_create(Name) ->
                         [Name, SchemaName]),
             ok
     end.
+
+%% @doc Wrapper around file:delete on the core properties file.
+%% Obeys the same return semantics as file:delete/1
+-spec delete_core_props_file(string()) -> ok | enoent | term().
+delete_core_props_file(PropsFile) ->
+    case file:delete(PropsFile) of
+        ok ->
+            lager:info("Deleted Solr core properties file at path ~p", [PropsFile]), ok;
+        {error, Reason} ->
+            case Reason of
+                enoent -> ok;
+                _ ->
+                    lager:error(
+                        "Failed to delete Solr core properties file at path ~p; Reason: ~p.",
+                        [PropsFile, Reason]
+                    )
+            end,
+            {error, Reason}
+    end.
+
 
 %% @doc
 -spec core_create(index_name(), schema_name(), [{name | index_dir | cfg_file | schema_file,

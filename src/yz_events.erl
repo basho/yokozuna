@@ -212,9 +212,12 @@ sync_indexes() ->
                                  yz_index:get_indexes_from_meta()),
             {Removed, Added, Same} = yz_misc:delta(IndexSetFromSolr,
                                                    IndexSetFromMeta),
-            lager:info("Delta: Removed: ~p Added: ~p Same: ~p", [Removed,
-                                                                 Added,
-                                                                 Same]),
+            case {Removed, Added} of
+                {[], []} -> ok;
+                _ ->
+                    lager:info("Delta: Removed: ~p Added: ~p Same: ~p",
+                        [Removed, Added, Same])
+            end,
             ok = sync_indexes(Removed, Added, Same);
         {error, _Reason} ->
             ok
