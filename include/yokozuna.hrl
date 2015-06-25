@@ -130,7 +130,8 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
--define(DEFAULT_IDX_CREATE_TIMEOUT, 60000).
+%% Default timeout for index (put) creation.
+-define(DEFAULT_IDX_CREATE_TIMEOUT, 45000).
 
 -define(MAYBE(Check, Expression, Default),
         case Check of
