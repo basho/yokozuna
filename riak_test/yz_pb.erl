@@ -293,9 +293,13 @@ confirm_multivalued_field_json_array(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
+<<<<<<< a1f5e7f85d72f8f42b7d597ca80f390890cd7d29
             {ok, {search_results, [], _Score, 0}} ->
                 lager:info("Search for multivalued_field_json_array has not yet yielded data"),
                 false
+=======
+            _ -> false
+>>>>>>> sure up results checks in yz_pb
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -326,9 +330,13 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
+<<<<<<< a1f5e7f85d72f8f42b7d597ca80f390890cd7d29
             {ok, {search_results, [], _Score, 0}} ->
                 lager:info("Search for multivalued_field_with_high_n_val has not yet yielded data"),
                 false
+=======
+            _ -> false
+>>>>>>> sure up results checks in yz_pb
             end
         end,
     yz_rt:wait_until(Cluster, F),
