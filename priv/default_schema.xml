@@ -95,13 +95,13 @@
 
    <!-- Riak datatypes default fields-->
    <field name="counter" type="int"    indexed="true" stored="true" multiValued="false" />
-   <field name="set"     type="string" indexed="true" stored="false" multiValued="true" />
+   <field name="set"     type="string" indexed="true" stored="true" multiValued="true" />
 
    <!-- Riak datatypes embedded fields -->
    <dynamicField name="*_flag"     type="boolean" indexed="true" stored="true" multiValued="false" />
    <dynamicField name="*_counter"  type="int"     indexed="true" stored="true" multiValued="false" />
    <dynamicField name="*_register" type="string"  indexed="true" stored="true" multiValued="false" />
-   <dynamicField name="*_set"      type="string"  indexed="true" stored="false" multiValued="true" />
+   <dynamicField name="*_set"      type="string"  indexed="true" stored="true" multiValued="true" />
 
    <!-- catch-all field -->
    <dynamicField name="*" type="ignored" />

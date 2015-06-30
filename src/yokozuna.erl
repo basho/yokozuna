@@ -191,7 +191,7 @@ extract_results(Docs, {TP, BP, KP}) ->
          {_, BName} = lists:nth(BP, Fields),
          {_, Key} = lists:nth(KP, Fields),
          {{BType, BName}, Key, []}
-     end|| {struct, Fields} <- Docs].
+     end || {struct, Fields} <- Docs].
 
 %% @private
 %%

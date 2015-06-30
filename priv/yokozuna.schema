@@ -51,3 +51,11 @@
   {datatype, directory},
   hidden
 ]}.
+
+%% @doc The temp directory for Search, under which the Solr webapp
+%% will be expanded and other temp data stored.
+{mapping, "search.temp_dir", "yokozuna.temp_dir", [
+  {default, "$(platform_data_dir)/yz_temp"},
+  {datatype, directory},
+  hidden
+]}.
