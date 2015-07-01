@@ -122,6 +122,7 @@
 -define(BIN_TO_FLOAT(B), list_to_float(binary_to_list(B))).
 -define(INT_TO_BIN(I), list_to_binary(integer_to_list(I))).
 -define(INT_TO_STR(I), integer_to_list(I)).
+-define(INT_TO_ATOM(I), list_to_atom(integer_to_list(I))).
 -define(FLOAT_TO_BIN(F), list_to_binary(float_to_list(F))).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 -define(HEAD_CTYPE, "content-type").
@@ -129,7 +130,8 @@
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
 
--define(DEFAULT_IDX_CREATE_TIMEOUT, 30000).
+%% Default timeout for index (put) creation.
+-define(DEFAULT_IDX_CREATE_TIMEOUT, 45000).
 
 -define(MAYBE(Check, Expression, Default),
         case Check of
@@ -156,6 +158,8 @@
 -define(YZ_ENABLED, app_helper:get_env(?YZ_APP_NAME, enabled, false)).
 -define(YZ_ROOT_DIR, app_helper:get_env(?YZ_APP_NAME, root_dir,
                         app_helper:get_env(riak_core, platform_data_dir)++"/yz")).
+-define(YZ_TEMP_DIR, app_helper:get_env(?YZ_APP_NAME, temp_dir,
+                        app_helper:get_env(riak_core, platform_data_dir)++"/yz_temp")).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
@@ -164,6 +168,10 @@
 -define(YZ_SVC_NAME, yokozuna).
 -define(YZ_META_INDEXES, {yokozuna, indexes}).
 -define(YZ_META_SCHEMAS, {yokozuna, schemas}).
+-define(YZ_META_EXTRACTORS, {yokozuna, extractors}).
+-define(YZ_CAPS_CMD_EXTRACTORS, {yokozuna, extractor_map_in_cmd}).
+-define(YZ_CAPS_HANDLE_LEGACY_DEFAULT_BUCKET_TYPE_AAE,
+        {yokozuna, handle_legacy_default_bucket_type_aae}).
 
 -define(YZ_ERR_NOT_ENOUGH_NODES,
         "Not enough nodes are up to service this request.").

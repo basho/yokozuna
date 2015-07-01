@@ -37,7 +37,7 @@ iterate_entropy_data(Index, Filter, Fun) ->
                        {limit, 100}|Filter],
             ED = yz_solr:entropy_data(Index, Filter2),
             iterate_entropy_data(Index, Filter2, Fun, ED);
-        false ->
+        _ ->
             ok
     end.
 
