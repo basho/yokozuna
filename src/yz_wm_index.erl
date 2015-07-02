@@ -191,7 +191,10 @@ create_index(RD, S) ->
     BodyProps = S#ctx.props,
     Timeout =
         case S#ctx.timeout of
-            undefined -> ?DEFAULT_IDX_CREATE_TIMEOUT;
+            undefined -> app_helper:get_env(
+                          yokozuna,
+                          index_put_timeout_ms,
+                          ?DEFAULT_IDX_CREATE_TIMEOUT);
             Set -> Set
         end,
 
