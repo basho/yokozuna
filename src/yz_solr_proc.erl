@@ -54,9 +54,9 @@
 %%% API
 %%%===================================================================
 
--spec start_link(string(), string(), string()) -> {ok, pid()} | ignore | {error, term()}.
-start_link(Dir, SolrPort, SolrJMXPort) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Dir, SolrPort, SolrJMXPort], []).
+-spec start_link(string(), string(), string(), string()) -> {ok, pid()} | ignore | {error, term()}.
+start_link(Dir, TempDir, SolrPort, SolrJMXPort) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Dir, TempDir, SolrPort, SolrJMXPort], []).
 
 %% @doc Get the operating system's PID of the Solr/JVM process.  May
 %%      return `undefined' if Solr failed to start.
@@ -69,7 +69,8 @@ getpid() ->
 %%%===================================================================
 
 %% NOTE: JVM startup is broken into two pieces:
-%%       1. ensuring the data dir exists, and spawning the JVM process
+%%       1. ensuring the data and temp dirs exist, and spawning the
+%%          JVM process
 %%       2. checking whether solr finished initialization
 %%
 %%       The first bit is done here, because if it take more than the
@@ -80,8 +81,9 @@ getpid() ->
 %%       the once-per second check is to get something in the log soon
 %%       after Solr is confirmed up, instead of waiting until the
 %%       timeout expires.
-init([Dir, SolrPort, SolrJMXPort]) ->
+init([Dir, TempDir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
+    ensure_temp_dir(TempDir),
     case get_java_path() of
         undefined ->
             %% This logging call is needed because the stop reason
@@ -92,7 +94,7 @@ init([Dir, SolrPort, SolrJMXPort]) ->
             {stop, "unable to locate `java` on the PATH"};
         JavaPath ->
             process_flag(trap_exit, true),
-            {Cmd, Args} = build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir),
+            {Cmd, Args} = build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir),
             ?INFO("Starting solr: ~p ~p", [Cmd, Args]),
             Port = run_cmd(Cmd, Args),
             schedule_solr_check(solr_startup_wait()),
@@ -163,20 +165,21 @@ terminate(_, S) ->
 %%%===================================================================
 
 %% @private
--spec build_cmd(filename(), non_neg_integer(), non_neg_integer(), string()) ->
+-spec build_cmd(filename(), non_neg_integer(), non_neg_integer(), string(), string()) ->
                        {string(), [string()]}.
-build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::") ->
+build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::", _TempDir) ->
     %% this will start an executable to keep yz_solr_proc's port
     %% happy, but will never respond to pings, so we can test the
     %% timeout capability
     {os:find_executable("grep"), ["foo"]};
-build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
+build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
     Headless = "-Djava.awt.headless=true",
     SolrHome = "-Dsolr.solr.home=" ++ filename:absname(Dir),
     HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
     JettyHome = "-Djetty.home=" ++ YZPrivSolr,
+    JettyTemp = "-Djetty.temp=" ++ filename:absname(TempDir),
     Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
     CP = "-cp",
     CP2 = filename:join([YZPrivSolr, "start.jar"]),
@@ -198,7 +201,7 @@ build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir) ->
             JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     end,
 
-    Args = [Headless, JettyHome, Port, SolrHome, HostContext, CP, CP2, Logging, LibDir]
+    Args = [Headless, JettyHome, JettyTemp, Port, SolrHome, HostContext, CP, CP2, Logging, LibDir]
         ++ string:tokens(solr_jvm_opts(), " ") ++ JMX ++ [Class],
     {JavaPath, Args}.
 
@@ -221,6 +224,14 @@ ensure_data_dir(Dir) ->
             {ok, _} = file:copy(?YZ_SOLR_CONFIG_TEMPLATE, SolrConfig),
             ok
     end.
+
+%% @private
+%%
+%% @doc Make sure that the temp directory (passed in as `TempDir')
+%% exists
+-spec ensure_temp_dir(string()) -> ok.
+ensure_temp_dir(TempDir) ->
+    filelib:ensure_dir(filename:join(TempDir, empty)).
 
 %% @private
 %%

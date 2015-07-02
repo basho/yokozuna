@@ -29,7 +29,9 @@
 -define(CORE_ALIASES, [{index_dir, instanceDir},
                        {cfg_file, config},
                        {schema_file, schema},
-                       {delete_instance, deleteInstanceDir}]).
+                       {delete_instance, deleteInstanceDir},
+                       {delete_index, deleteIndex},
+                       {delete_data_dir, deleteDataDir}]).
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit,n}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
@@ -240,12 +242,13 @@ partition_list(Core) ->
     end.
 
 %% @doc Return boolean based on ping response from Solr.
--spec ping(index_name()) -> boolean().
+-spec ping(index_name()) -> boolean()|error.
 ping(Core) ->
     URL = ?FMT("~s/~s/admin/ping", [base_url(), Core]),
     case ibrowse:send_req(URL, [], get) of
         {ok, "200", _, _} -> true;
-        _ -> false
+        {ok, "404", _, _} -> false;
+        _ -> error
     end.
 
 -spec port() -> non_neg_integer().
@@ -417,6 +420,10 @@ get_pairs(R) ->
     Docs = kvc:path([<<"response">>, <<"docs">>], R),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
+%% @doc Convert a doc struct into a pair. Remove the bucket_type to match
+%% kv trees when iterating over entropy data to build yz trees.
+to_pair({struct, [{_,_Vsn},{_,<<"default">>},{_,BName},{_,Key},{_,Base64Hash}]}) ->
+    {{BName,Key}, base64:decode(Base64Hash)};
 to_pair({struct, [{_,_Vsn},{_,BType},{_,BName},{_,Key},{_,Base64Hash}]}) ->
     {{{BType, BName},Key}, base64:decode(Base64Hash)}.
 
