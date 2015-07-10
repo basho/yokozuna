@@ -190,8 +190,12 @@ has_indexes(RemoteNode) ->
         _ -> false
     end.
 
+-spec is_enabled() -> boolean().
+is_enabled() ->
+    yokozuna:is_enabled(index) andalso ?YZ_ENABLED.
+
 index(Obj, Reason, P) ->
-    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
+    case is_enabled() of
         true ->
             Ring = yz_misc:get_ring(transformed),
             case is_owner_or_future_owner(P, node(), Ring) of
