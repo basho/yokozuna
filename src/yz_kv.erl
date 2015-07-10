@@ -194,7 +194,15 @@ has_indexes(RemoteNode) ->
 is_enabled() ->
     yokozuna:is_enabled(index) andalso ?YZ_ENABLED.
 
-index(Obj, Reason, P) ->
+index(B, K, Obj, Reason, P) when is_binary(Obj) ->
+    case is_enabled() of
+        true ->
+            RObj = riak_object:from_binary(B, K, Obj),
+            index(B, K, RObj, Reason, P);
+        _ ->
+            ok
+    end;
+index(_B, _K, Obj, Reason, P) ->
     case is_enabled() of
         true ->
             Ring = yz_misc:get_ring(transformed),
