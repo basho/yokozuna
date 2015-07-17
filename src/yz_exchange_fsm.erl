@@ -223,16 +223,25 @@ repair(Partition, {_Reason, KeyBin}) ->
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
-            case yz_kv:should_index(Index) of
-                true ->
-                    Ring = yz_misc:get_ring(transformed),
-                    yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
-                    full_repair;
-                false ->
-                    %% TODO: pass obj hash to repair fun to avoid
-                    %% object read just to update hash.
-                    yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                    tree_repair
+            try
+                case yz_kv:should_index(Index) of
+                    true ->
+                        Ring = yz_misc:get_ring(transformed),
+                        yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
+                        full_repair;
+                    false ->
+                        %% TODO: pass obj hash to repair fun to avoid
+                        %% object read just to update hash.
+                        yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                        tree_repair
+                end
+            catch _:Err ->
+                Trace = erlang:get_stacktrace(),
+                ?ERROR("failed to repair object ~p with error ~p because ~p",
+                       [BKey, Err, Trace]),
+                %% The key can't be indexed; just repair the tree
+                yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                tree_repair
             end;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
