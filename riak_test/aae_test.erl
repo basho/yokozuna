@@ -105,6 +105,9 @@ aae_run(Cluster, Bucket, Index) ->
 
             verify_no_repair_for_non_indexed_data(Cluster, Bucket, PBConns),
 
+            verify_count_and_repair_after_error_value(Cluster, Bucket, Index,
+                                                         PBConns),
+
             yz_rt:close_pb_conns(PBConns),
 
             verify_no_repair_after_restart(Cluster),
@@ -321,6 +324,39 @@ verify_no_repair_for_non_indexed_data(Cluster, {BType, _Bucket}, PBConns) ->
 verify_no_repair_for_non_indexed_data(_Cluster, _Bucket, _PBConns) ->
     ok.
 
+-spec verify_count_and_repair_after_error_value([node()], bucket(),
+                                                index_name(), [pid()])
+                                               -> ok.
+verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
+                                          PBConns) ->
+    lager:info("verify total count and repair occurred for failed-to-index (bad) data"),
+    Bucket = {BType, Index},
+
+    %% 1. write KV data to non-indexed bucket
+    Conn = yz_rt:select_random(PBConns),
+    lager:info("write 1 bad search field to bucket ~p", [Bucket]),
+    Obj = riakc_obj:new(Bucket, <<"akey_bad_data">>, <<"{\"date_register\":3333}">>,
+                        "application/json"),
+
+    ok = riakc_pb_socket:put(Conn, Obj),
+
+    %% 2. setup tracing to count repair calls
+    ok = yz_rt:count_calls(Cluster, ?REPAIR_MFA),
+
+    %% 3. wait for full exchange round
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+    ok = yz_rt:stop_tracing(),
+
+    %% 4. verify repair count is 0
+    ?assertEqual(?N * 1, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+
+    %% 5. verify count after expiration
+    verify_exchange_after_expire(Cluster, Index),
+
+    ok;
+verify_count_and_repair_after_error_value(_Cluster, _Bucket, _Index, _PBConns) ->
+    ok.
+
 verify_num_match(Cluster, Index, Num) ->
     verify_num_match(yokozuna, Cluster, Index, Num).
 
@@ -331,10 +367,10 @@ verify_num_match(Type, Cluster, Index, Num) ->
             if Type =:= solr ->
                     Shards = [{N, yz_rt:node_solr_port(N)} || N <- Cluster],
                     yz_rt:search_expect(Type, {Host, yz_rt:node_solr_port(Node)},
-                                        Index, "text", "apricot", Shards, Num);
+                                        Index, "*", "*", Shards, Num);
                true ->
                     yz_rt:search_expect(Type, HP,
-                                        Index, "text", "apricot", Num)
+                                        Index, "*", "*", Num)
             end
         end,
     yz_rt:wait_until(Cluster, F).
