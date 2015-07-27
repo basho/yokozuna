@@ -60,11 +60,13 @@ create_index(Node, Index, SchemaName, NVal) ->
                [Index, SchemaName, NVal, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName, NVal]).
 
+-spec create_index_http(nodes(), index_name()) -> ok.
 create_index_http(Cluster, Index) ->
     Node = yz_rt:select_random(Cluster),
     HP = hd(host_entries(rt:connection_info([Node]))),
     create_index_http(Cluster, HP, Index).
 
+-spec create_index_http(nodes(), {string(), portnum()}, index_name()) -> ok.
 create_index_http(Cluster, HP, Index) ->
     Node = hd(Cluster),
     URL = yz_rt:index_url(HP, Index),
