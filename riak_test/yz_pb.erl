@@ -6,8 +6,6 @@
 -include_lib("riak_pb/include/riak_yokozuna_pb.hrl").
 -include("yokozuna.hrl").
 
--define(NO_HEADERS, []).
--define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(CT_JSON, {"Content-Type", "application/json"}).
 
@@ -61,19 +59,9 @@ select_random(List) ->
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
 
-schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
-
-index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
-
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s",
          [Host, Port, BType, BName, Key]).
-
-http(Method, URL, Headers, Body) ->
-    Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 create_index(Cluster, BucketType, Index) ->
     create_index(Cluster, BucketType, Index, 3).

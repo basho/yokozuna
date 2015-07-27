@@ -4,6 +4,8 @@
 -include("yokozuna.hrl").
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
+-define(NO_BODY, <<>>).
+-define(IBROWSE_TIMEOUT, 60000).
 
 -type host() :: string().
 -type portnum() :: integer().
@@ -57,6 +59,20 @@ create_index(Node, Index, SchemaName, NVal) ->
     lager:info("Creating index ~s with schema ~s and n_val: ~p [~p]",
                [Index, SchemaName, NVal, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName, NVal]).
+
+create_index_http(Cluster, Index) ->
+    Node = yz_rt:select_random(Cluster),
+    HP = hd(host_entries(rt:connection_info([Node]))),
+    create_index_http(Cluster, HP, Index).
+
+create_index_http(Cluster, HP, Index) ->
+    Node = hd(Cluster),
+    URL = yz_rt:index_url(HP, Index),
+    Headers = [{"content-type", "application/json"}],
+    lager:info("create_index ~s [~p]", [Index, Node]),
+    {ok, "204", _, _} = yz_rt:http(put, URL, Headers, ?NO_BODY),
+    yz_rt:set_bucket_type_index(Node, Index),
+    yz_rt:wait_for_bucket_type(Cluster, Index).
 
 maybe_create_ets() ->
     case ets:info(?YZ_RT_ETS) of
@@ -116,6 +132,25 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
+-spec http(ibrowse:method(), string(), list(), string()) -> ibrowse:response().
+http(Method, URL, Headers, Body) ->
+    Opts = [],
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
+
+-spec http(ibrowse:method(), string(), list(), string(), list()|timeout())
+          -> ibrowse:response().
+http(Method, URL, Headers, Body, Opts) when is_list(Opts)  ->
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT);
+http(Method, URL, Headers, Body, Timeout) when is_integer(Timeout) ->
+    Opts = [],
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
+
+-spec http(ibrowse:method(), string(), list(), string(), list(), timeout())
+          -> ibrowse:response().
+http(Method, URL, Headers, Body, Opts, Timeout) when
+      is_list(Opts) andalso is_integer(Timeout) ->
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
+
 -spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
@@ -128,6 +163,21 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     Headers = [{"content-type", CT}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
+
+-spec schema_url({string(), portnum()}, schema_name()) -> ok.
+schema_url({Host,Port}, Name) ->
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
+
+-spec index_url({string(), portnum()}, index_name()) -> ok.
+index_url({Host,Port}, Index) ->
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
+index_url({Host, Port}, Index, Timeout) ->
+    ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
+                                                     Timeout]).
+
+-spec search_url({string(), portnum()}, index_name()) -> ok.
+search_url({Host, Port}, Index) ->
+    ?FMT("http://~s:~B/search/query/~s", [Host, Port, Index]).
 
 %% @doc Run basho bench job to load fruit data on `Cluster'.
 %%
