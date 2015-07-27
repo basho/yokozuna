@@ -387,9 +387,11 @@ set_bucket_type_index(Node, BucketType, Index) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
     create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]).
 
-set_bucket_type_index(Node, BucketType, Index, NVal) ->
+set_bucket_type_index(Node, BucketType, Index, NVal) when is_integer(NVal) ->
+    set_bucket_type_index(Node, BucketType, Index, [{n_val, NVal}]);
+set_bucket_type_index(Node, BucketType, Index, Props) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
-    create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index},{n_val,NVal}]).
+    create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index} | Props]).
 
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);

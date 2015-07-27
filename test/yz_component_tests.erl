@@ -6,7 +6,7 @@
 
 disable_index_test()->
   yokozuna:disable(index),
-  ?assertEqual(yz_kv:index({},delete,{}), ok).
+  ?assertEqual(yz_kv:index(dummy, dummy, {},delete,{}), ok).
 
 disable_search_test()->
     yokozuna:disable(search),
