@@ -129,7 +129,7 @@ create_obj_node_partition_tuple(Cluster, BKey={Bucket, Key}) ->
     N = riak_core_bucket:n_val(BProps),
     PL = rpc:call(hd(Cluster), yz_misc, primary_preflist, [BKey, Ring, N]),
     {P, Node} = hd(PL),
-    {Obj, Node, P}.
+    {Key, Obj, Node, P}.
 
 %% @doc Create postings for the given keys without storing
 %%      corresponding KV objects. This is used to simulate scenario where
@@ -145,8 +145,10 @@ create_orphan_postings(Cluster, Bucket, Keys) ->
     Keys2 = [{Bucket, ?INT_TO_BIN(K)} || K <- Keys],
     lager:info("Create orphan postings with keys ~p", [Keys]),
     ObjNodePs = [create_obj_node_partition_tuple(Cluster, Key) || Key <- Keys2],
-    [ok = rpc:call(Node, yz_kv, index, [Obj, put, P])
-     || {Obj, Node, P} <- ObjNodePs],
+    %% NB. The Bucket and Key are ignored if Obj is a plain Riak Object
+    %% (i.e., not the binary encoding of a Riak Object)
+    [ok = rpc:call(Node, yz_kv, index, [Bucket, Key, Obj, put, P])
+     || {Key, Obj, Node, P} <- ObjNodePs],
     ok.
 
 -spec delete_key_in_solr([node()], index_name(), bkey()) -> [ok].
