@@ -64,17 +64,18 @@ confirm() ->
     test_search_get_and_post_query(HP, URL, ?INDEX),
     test_post_as_get(URL),
     test_post_as_get_with_wrong_content_types(URL),
+    test_get_and_post_no_params(URL),
 
     pass.
 
 test_search_get_and_post_query(HP, URL, Index) ->
-    lager:info("Check post with content-type ~s and message body"),
     {ok, "200", _, _} = yz_rt:search(HP, Index, "*", "*"),
     ?assert(yz_rt:search_expect(yokozuna, HP, Index, "text", "F*", 1)),
     CT = {content_type, "application/x-www-form-urlencoded"},
     Headers = [CT],
     Params = [{q, "text:F*"}, {wt, "json"}],
     Body = mochiweb_util:urlencode(Params),
+    lager:info("Check post with content-type ~s and message body"),
     {ok, "200", _, R} = yz_rt:http(post, URL, Headers, Body),
     yz_rt:verify_count(1, R),
     ok.
@@ -102,3 +103,10 @@ test_post_as_get_with_wrong_content_types(URL) ->
     Body = mochiweb_util:urlencode(Params),
     {ok, Status2, _, _} = yz_rt:http(post, URL, Headers2, Body),
     ?assertEqual("415", Status2).
+
+test_get_and_post_no_params(URL) ->
+    {ok, "200", _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
+
+    CT = {content_type, "application/x-www-form-urlencoded"},
+    Headers = [CT],
+    {ok, "200", _, _} = yz_rt:http(post, URL, Headers, ?NO_BODY).

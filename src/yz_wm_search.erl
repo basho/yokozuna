@@ -120,8 +120,6 @@ search(Req, S) ->
     Params = wrq:req_qs(Req),
     search(Req, S, Params).
 
-search(Req, S, []) ->
-    search(Req, S);
 search(Req, S, Params) ->
     {FProf, FProfFile} = check_for_fprof(Req),
     ?IF(FProf, fprof:trace(start, FProfFile)),
@@ -188,7 +186,11 @@ decode_body_from_ctype(_CT, V) ->
 %%      `select search
 post_search(Req, S, CT) ->
     Body = wrq:req_body(Req),
-    Params = decode_body_from_ctype(CT, Body),
+    BodyParams = decode_body_from_ctype(CT, Body),
+    case BodyParams of
+        [] -> Params = wrq:req_qs(Req);
+        _ -> Params = BodyParams
+    end,
     case search(Req, S, Params) of
         {Val, Req2, S2} when is_binary(Val) ->
             Req3 = wrq:set_resp_body(Val, Req2),
