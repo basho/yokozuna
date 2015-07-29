@@ -11,7 +11,6 @@
 
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
--define(IBROWSE_TIMEOUT, 60000).
 -define(CFG,
         [
          {riak_core,
@@ -158,17 +157,17 @@ confirm() ->
 confirm_bad_n_val(Cluster) ->
     Index = <<"bad_n_val">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
-    URL = index_url(HP, Index),
+    URL = yz_rt:index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
 
     lager:info("verify n_val \"not_an_int\" is not accepted [~p]", [HP]),
     Body1 = <<"{\"n_val\":\"not_an_int\"}">>,
-    {ok, Status1, _, _} = http(put, URL, Headers, Body1),
+    {ok, Status1, _, _} = yz_rt:http(put, URL, Headers, Body1),
     ?assertEqual("400", Status1),
 
     lager:info("verify n_val -3 is not accepted [~p]", [HP]),
     Body2 = <<"{\"n_val\":-3}">>,
-    {ok, Status2, _, _} = http(put, URL, Headers, Body2),
+    {ok, Status2, _, _} = yz_rt:http(put, URL, Headers, Body2),
     ?assertEqual("400", Status2),
 
     ok.
@@ -177,10 +176,10 @@ confirm_bad_n_val(Cluster) ->
 confirm_bad_name(Cluster) ->
     Index = <<"bad%2Fname">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
-    URL = index_url(HP, Index),
+    URL = yz_rt:index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     lager:info("verify name \"bad/name\" is not accepted [~p]", [HP]),
-    {ok, Status1, _, _} = http(put, URL, Headers, <<"{}">>),
+    {ok, Status1, _, _} = yz_rt:http(put, URL, Headers, <<"{}">>),
     ?assertEqual("400", Status1),
     ok.
 
@@ -189,8 +188,8 @@ confirm_create_index_1(Cluster) ->
     Index = <<"test_index_1">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_1 ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    {ok, Status, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index),
+    {ok, Status, _, _} = yz_rt:http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status).
 
 %% @doc Test index creation when passing schema name and n_val.
@@ -198,12 +197,12 @@ confirm_create_index_2(Cluster) ->
     Index = <<"test_index_2">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_2 ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
+    URL = yz_rt:index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     Body = <<"{\"schema\":\"_yz_default\", \"n_val\":2}">>,
-    {ok, Status, _, _} = http(put, URL, Headers, Body),
+    {ok, Status, _, _} = yz_rt:http(put, URL, Headers, Body),
     ?assertEqual("204", Status),
-    {ok, GetStatus, _, GetBody} = http(get, URL, [], []),
+    {ok, GetStatus, _, GetBody} = yz_rt:http(get, URL, [], []),
     ?assertEqual("200", GetStatus),
     GetNVal = kvc:path([<<"n_val">>], mochijson2:decode(GetBody)),
     ?assertEqual(2, GetNVal),
@@ -214,10 +213,10 @@ confirm_not_409(Cluster) ->
     Index = <<"test_index_409">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_409 ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    {ok, Status1, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index),
+    {ok, Status1, _, _} = yz_rt:http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status1),
-    {ok, Status2, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, Status2, _, _} = yz_rt:http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status2).
 
 %% @doc Test index creation with a broken schema
@@ -228,17 +227,17 @@ confirm_create_index_bad_schema(Cluster) ->
     lager:info("confirm_create_index_bad_schema ~s [~p]", [Index, HP]),
 
     lager:info("upload schema ~s [~p]", [Schema, HP]),
-    SchemaURL = schema_url(HP, Schema),
+    SchemaURL = yz_rt:schema_url(HP, Schema),
     SchemaHeaders = [{"content-type", "application/xml"}],
-    {ok, Status1, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELDS_DOUBLE),
+    {ok, Status1, _, _} = yz_rt:http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELDS_DOUBLE),
     ?assertEqual("204", Status1),
-    URL = index_url(HP, Index),
+    URL = yz_rt:index_url(HP, Index),
     Headers = [{"content-type", "application/json"}],
     Body = <<"{\"schema\":\"",Schema/binary,"\"}">>,
-    {ok, Status, _, _} = http(put, URL, Headers, Body),
+    {ok, Status, _, _} = yz_rt:http(put, URL, Headers, Body),
     ?assertEqual("400", Status),
     %% ensure index doesn't return
-    {ok, GetStatus, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, GetStatus, _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("404", GetStatus),
     ok.
 
@@ -246,21 +245,21 @@ confirm_list(Cluster, Indexes) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_list ~p [~p]", [Indexes, HP]),
     URL = index_list_url(HP),
-    {ok, "200", _, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, "200", _, Body} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
     check_list(Indexes, Body).
 
 confirm_delete(Cluster, Index) ->
     confirm_get(Cluster, Index),
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_delete ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
+    URL = yz_rt:index_url(HP, Index),
 
     Suffix = "search/index/" ++ Index,
     Is200 = is_status("200", get, Suffix, ?NO_HEADERS, ?NO_BODY),
     [ ?assertEqual(ok, rt:wait_until(Node, Is200)) || Node <- Cluster],
 
     %% Only run DELETE on one node
-    {ok, Status2, _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, Status2, _, _} = yz_rt:http(delete, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status2),
 
     Is404 = is_status("404", get, Suffix, ?NO_HEADERS, ?NO_BODY),
@@ -276,7 +275,7 @@ is_status(ExpectedStatus, Method, URLSuffix, Headers, Body) ->
             URL = url(HP, URLSuffix),
             lager:info("checking for expected status ~p from ~p ~p",
                        [ExpectedStatus, Method, URL]),
-            {ok, Status, _, _} = http(Method, URL, Headers, Body),
+            {ok, Status, _, _} = yz_rt:http(Method, URL, Headers, Body),
             ExpectedStatus == Status
     end.
 
@@ -289,16 +288,16 @@ is_deleted(Dir) ->
 confirm_get(Cluster, Index) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_get ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    {ok, Status, Headers, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index),
+    {ok, Status, Headers, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("200", Status),
     ?assertEqual("application/json", ct(Headers)).
 
 confirm_404(Cluster, Index) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_404 ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index),
+    {ok, Status, _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("404", Status).
 
 %% @doc Confirm that an index with 1 or more buckets associated with
@@ -306,12 +305,12 @@ confirm_404(Cluster, Index) ->
 confirm_delete_409(Cluster, Index) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("Verify that index ~s cannot be deleted b/c of associated buckets [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    {ok, "204", _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index),
+    {ok, "204", _, _} = yz_rt:http(put, URL, ?NO_HEADERS, ?NO_BODY),
     H = [{"content-type", "application/json"}],
     B = <<"{\"props\":{\"search_index\":\"delete_409\"}}">>,
-    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B),
-    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B),
+    {ok, "204", _, _} = yz_rt:http(put, bucket_url(HP, <<"b1">>), H, B),
+    {ok, "204", _, _} = yz_rt:http(put, bucket_url(HP, <<"b2">>), H, B),
 
     %% Sleeping for bprops (TODO: convert to `wait_for_bprops')
     timer:sleep(4000),
@@ -324,22 +323,22 @@ confirm_delete_409(Cluster, Index) ->
     ?assertEqual([<<"b1">>, <<"b2">>], Assoc),
 
     %% Can't be deleted because of associated buckets
-    {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, "409", _, _} = yz_rt:http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 
     %% Associate bucket with new index
     NewIndex = <<"new_index">>,
     ok = yz_rt:create_index(Node, NewIndex),
     B2 = <<"{\"props\":{\"search_index\":\"",NewIndex/binary,"\"}}">>,
-    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b1">>), H, B2),
+    {ok, "204", _, _} = yz_rt:http(put, bucket_url(HP, <<"b1">>), H, B2),
 
     %% Still can't delete because of one associated bucket
-    {ok, "409", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, "409", _, _} = yz_rt:http(delete, URL, ?NO_HEADERS, ?NO_BODY),
 
     %% Associate second bucket with new index
-    {ok, "204", _, _} = http(put, bucket_url(HP, <<"b2">>), H, B2),
+    {ok, "204", _, _} = yz_rt:http(put, bucket_url(HP, <<"b2">>), H, B2),
 
     %% TODO: wait_for_index_delete?
-    {ok, "204", _, _} = http(delete, URL, ?NO_HEADERS, ?NO_BODY).
+    {ok, "204", _, _} = yz_rt:http(delete, URL, ?NO_HEADERS, ?NO_BODY).
 
 %% @doc Verify that an index's schema can have a field added to it and
 %% reloaded.
@@ -350,25 +349,25 @@ confirm_field_add(Cluster, Index) ->
     lager:info("confirm_field_add"),
 
     lager:info("upload schema ~s [~p]", [Index, HP]),
-    SchemaURL = schema_url(HP, Index),
+    SchemaURL = yz_rt:schema_url(HP, Index),
     SchemaHeaders = [{"content-type", "application/xml"}],
-    {ok, Status1, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA),
+    {ok, Status1, _, _} = yz_rt:http(put, SchemaURL, SchemaHeaders, ?SCHEMA),
     ?assertEqual("204", Status1),
 
     lager:info("create index ~s using schema ~s [~p]", [Index, Index, HP]),
-    IndexURL = index_url(HP, Index),
+    IndexURL = yz_rt:index_url(HP, Index),
     IndexHeaders = [{"content-type", "application/json"}],
     Body = <<"{\"schema\":\"field_add\"}">>,
-    {ok, Status2, _, _} = http(put, IndexURL, IndexHeaders, Body),
+    {ok, Status2, _, _} = yz_rt:http(put, IndexURL, IndexHeaders, Body),
     ?assertEqual("204", Status2),
 
     Node = select_random(Cluster),
     FieldURL = field_url(yz_rt:solr_http(RandCI), Index, "my_new_field"),
     lager:info("verify index ~s doesn't have my_new_field [~p]", [Index, Node]),
-    {ok, "404", _, _} = http(get, FieldURL, ?NO_HEADERS, ?NO_BODY),
+    {ok, "404", _, _} = yz_rt:http(get, FieldURL, ?NO_HEADERS, ?NO_BODY),
 
     lager:info("upload schema ~s with new field [~p]", [Index, HP]),
-    {ok, Status3, _, _} = http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELD_ADDED),
+    {ok, Status3, _, _} = yz_rt:http(put, SchemaURL, SchemaHeaders, ?SCHEMA_FIELD_ADDED),
     yz_rt:wait_for_schema(Cluster, Index, ?SCHEMA_FIELD_ADDED),
     ?assertEqual("204", Status3),
 
@@ -393,8 +392,8 @@ confirm_create_index_within_timeout(Cluster) ->
     Index = <<"test_index_within_timeout">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_within_set_timeout ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index, 20000),
-    {ok, Status, _, _} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index, 20000),
+    {ok, Status, _, _} = yz_rt:http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("204", Status),
     ok.
 
@@ -402,8 +401,8 @@ confirm_create_index_not_within_timeout(Cluster) ->
     Index = <<"test_index_not_within_timeout">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_index_not_within_set_timeout ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index, 10),
-    {ok, Status, _, Res} = http(put, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:index_url(HP, Index, 10),
+    {ok, Status, _, Res} = yz_rt:http(put, URL, ?NO_HEADERS, ?NO_BODY),
     ?assertEqual("202", Status),
     ?assertEqual("Index test_index_not_within_timeout not created on all the" ++
                 " nodes within 10 ms timeout", Res),
@@ -434,7 +433,7 @@ field_exists(Index, Field, ConnInfo) ->
             HP = yz_rt:solr_http(proplists:get_value(Node, ConnInfo)),
             URL = field_url(HP, Index, Field),
             lager:info("verify ~s added ~s", [Index, URL]),
-            {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+            {ok, Status, _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
             Status == "200"
     end.
 
@@ -444,21 +443,8 @@ field_url({Host,Port}, Index, FieldName) ->
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
 
-http(Method, URL, Headers, Body) ->
-    Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
-
 index_list_url({Host, Port}) ->
     ?FMT("http://~s:~B/search/index", [Host, Port]).
-
-index_url({Host, Port}, Index) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
-index_url({Host, Port}, Index, Timeout) ->
-    ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
-                                                     Timeout]).
-
-schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
 
 select_random(List) ->
     Length = length(List),
