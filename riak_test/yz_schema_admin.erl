@@ -7,7 +7,7 @@
 
 -define(NO_HEADERS, []).
 -define(NO_BODY, <<>>).
--define(IBROWSE_TIMEOUT, 60000).
+-define(HTTP_OPTS, [{response_format, binary}]).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(TEST_SCHEMA,
         <<"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
@@ -246,17 +246,18 @@ confirm() ->
 confirm_create_schema(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_create_schema ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, _} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, _} = yz_rt:http(put, URL, Headers, RawSchema, ?HTTP_OPTS),
     ?assertEqual("204", Status).
 
 %% @doc Confirm the schema stored under `Name' matches `RawSchema'.
 confirm_get_schema(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_get_schema ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
-    {ok, Status, Headers, Body} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:schema_url(HP, Name),
+    {ok, Status, Headers, Body} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY,
+                                             ?HTTP_OPTS),
     ?assertEqual("200", Status),
     ?assertEqual("application/xml", ct(Headers)),
     ?assertEqual(RawSchema, Body).
@@ -265,26 +266,27 @@ confirm_get_schema(Cluster, Name, RawSchema) ->
 confirm_not_found(Cluster, Name) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_not_found ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
-    {ok, Status, _, _} = http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    URL = yz_rt:schema_url(HP, Name),
+    {ok, Status, _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY, ?HTTP_OPTS),
     ?assertEqual("404", Status).
 
 %% @doc Confirm a 415 if an incorrect content-type is given.
 confirm_bad_ct(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_bad_ct ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/json"}],
-    {ok, Status, _, _Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, _Body} = yz_rt:http(put, URL, Headers, RawSchema,
+                                        ?HTTP_OPTS),
     ?assertEqual("415", Status).
 
 %% @doc Confirm that truncated schema fails, returning 400.
 confirm_truncated(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_truncated ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, "400", _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, "400", _, Body} = yz_rt:http(put, URL, Headers, RawSchema, ?HTTP_OPTS),
     %% ?assertEqual("400", Status),
     %% assert the body contains some kind of msg as to why the schema
     %% failed to parse
@@ -294,9 +296,10 @@ confirm_truncated(Cluster, Name, RawSchema) ->
 confirm_missing_yz_fields(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_missing_yz_fields ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, Body} = yz_rt:http(put, URL, Headers, RawSchema,
+                                       ?HTTP_OPTS),
     ?assertEqual("400", Status),
     ?assert(size(Body) > 0).
 
@@ -304,9 +307,10 @@ confirm_missing_yz_fields(Cluster, Name, RawSchema) ->
 confirm_bad_uk(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_bad_uk ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, Body} = yz_rt:http(put, URL, Headers, RawSchema,
+                                       ?HTTP_OPTS),
     ?assertEqual("400", Status),
     ?assert(size(Body) > 0).
 
@@ -314,9 +318,10 @@ confirm_bad_uk(Cluster, Name, RawSchema) ->
 confirm_bad_yz_field(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_bad_yz_field ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, Body} = yz_rt:http(put, URL, Headers, RawSchema,
+                                       ?HTTP_OPTS),
     ?assertEqual("400", Status),
     ?assert(size(Body) > 0).
 
@@ -324,9 +329,10 @@ confirm_bad_yz_field(Cluster, Name, RawSchema) ->
 confirm_bad_vsn(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm bad version attribute is rejected ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, Body} = yz_rt:http(put, URL, Headers, RawSchema,
+                                       ?HTTP_OPTS),
     ?assertEqual("400", Status),
     ?assert(size(Body) > 0).
 
@@ -334,9 +340,9 @@ confirm_bad_vsn(Cluster, Name, RawSchema) ->
 confirm_bad_name(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm schema name is rejected ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, Body} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, Body} = yz_rt:http(put, URL, Headers, RawSchema, ?HTTP_OPTS),
     ?assertEqual("400", Status),
     ?assert(size(Body) > 0).
 
@@ -347,9 +353,9 @@ confirm_bad_name(Cluster, Name, RawSchema) ->
 confirm_default_schema(Cluster, Name, RawSchema) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_default_schema ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, _} = http(put, URL, Headers, RawSchema),
+    {ok, Status, _, _} = yz_rt:http(put, URL, Headers, RawSchema, ?HTTP_OPTS),
     ?assertEqual("204", Status).
 
 %% @doc Confirm that an index created with a bad schema causing a Solr
@@ -359,21 +365,24 @@ confirm_bad_schema(Cluster) ->
     Name = <<"bad_class">>,
     HP = select_random(host_entries(rt:connection_info(Cluster))),
     lager:info("confirm_bad_schema ~s [~p]", [Name, HP]),
-    URL = schema_url(HP, Name),
+    URL = yz_rt:schema_url(HP, Name),
     Headers = [{"content-type", "application/xml"}],
-    {ok, Status, _, _} = http(put, URL, Headers, ?BAD_CLASS_SCHEMA),
+    {ok, Status, _, _} = yz_rt:http(put, URL, Headers, ?BAD_CLASS_SCHEMA,
+                                   ?HTTP_OPTS),
     ?assertEqual("204", Status),
 
-    URL2 = index_url(HP, Name),
+    URL2 = yz_rt:index_url(HP, Name),
     Headers2 = [{"content-type", "application/json"}],
     Body = {struct, [{schema, Name}]},
     lager:info("create ~s index using bad ~s schema", [Name, Name]),
-    {ok, Status2, _, _} = http(put, URL2, Headers2, mochijson2:encode(Body)),
+    {ok, Status2, _, _} = yz_rt:http(put, URL2, Headers2,
+                                     mochijson2:encode(Body), ?HTTP_OPTS),
     %% This should return 204 because it simply adds an entry to the
     ?assertEqual("400", Status2),
 
     lager:info("upload corrected schema ~s", [Name]),
-    {ok, Status3, _, _} = http(put, URL, Headers, ?TEST_SCHEMA),
+    {ok, Status3, _, _} = yz_rt:http(put, URL, Headers, ?TEST_SCHEMA,
+                                    ?HTTP_OPTS),
     ?assertEqual("204", Status3),
 
     lager:info("wait for yz to retry creation of core ~s", [Name]),
@@ -384,7 +393,8 @@ confirm_bad_schema(Cluster) ->
     yz_rt:wait_until(Cluster, F),
 
     lager:info("create ~s index using good ~s schema", [Name, Name]),
-    {ok, Status4, _, _} = http(put, URL2, Headers2, mochijson2:encode(Body)),
+    {ok, Status4, _, _} = yz_rt:http(put, URL2, Headers2,
+                                     mochijson2:encode(Body), ?HTTP_OPTS),
     %% This should return 204 because it simply adds an entry to the
     ?assertEqual("204", Status4).
 
@@ -414,13 +424,3 @@ default_schema(Cluster) ->
     lager:info("get default schema from ~p", [Node]),
     {ok, RawSchema} = rpc:call(Node, yz_schema, get, [<<"_yz_default">>]),
     RawSchema.
-
-http(Method, URL, Headers, Body) ->
-    Opts = [{response_format, binary}],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
-
-index_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Name]).
-
-schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).

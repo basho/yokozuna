@@ -42,7 +42,6 @@ routes() ->
             Routes1
     end.
 
-
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
@@ -93,9 +92,8 @@ resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
     end.
 
 
-
-%% Uses the riak_kv,secure_referer_check setting rather
-%% as opposed to a special yokozuna-specific config
+%% @doc Uses the riak_kv,secure_referer_check setting rather
+%%      as opposed to a special yokozuna-specific config
 forbidden(RD, Ctx=#ctx{security=undefined}) ->
     {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
 forbidden(RD, Ctx) ->
@@ -107,24 +105,26 @@ forbidden(RD, Ctx) ->
                                {?YZ_SECURITY_INDEX, wrq:path_info(index, RD)})
     end.
 
-%% Treat POST as GET in order to work with existing Solr clients.
-process_post(Req, S) ->
-    case search(Req, S) of
-        {Val, Req2, S2} when is_binary(Val) ->
-            Req3 = wrq:set_resp_body(Val, Req2),
-            {true, Req3, S2};
-        Other ->
-            %% In this case assume Val is `{halt,Code}' or
-            %% `{error,Term}'
-            Other
+%% @doc Handle POST to work with existing Solr clients and long queries
+%%      when the correct Content-Type is supplied.
+process_post(RD, Ctx) ->
+    CType = wrq:get_req_header(?HEAD_CTYPE, RD),
+    case CType of
+        "application/x-www-form-urlencoded" ->
+            post_search(RD, Ctx, CType);
+        _ ->
+            {{halt, 415}, RD, Ctx}
     end.
 
 search(Req, S) ->
+    Params = wrq:req_qs(Req),
+    search(Req, S, Params).
+
+search(Req, S, Params) ->
     {FProf, FProfFile} = check_for_fprof(Req),
     ?IF(FProf, fprof:trace(start, FProfFile)),
     T1 = os:timestamp(),
     Index = list_to_binary(wrq:path_info(index, Req)),
-    Params = wrq:req_qs(Req),
     try
         Result = yz_solr:dist_search(Index, Params),
         case Result of
@@ -174,3 +174,29 @@ resource_exists(RD, Context) ->
 %% ====================================================================
 %% Private
 %% ====================================================================
+
+-spec decode_body_from_ctype(string(), binary()) -> term().
+%% @doc Decode the req_body binary based on content type that can be used.
+decode_body_from_ctype("application/x-www-form-urlencoded", V) ->
+    mochiweb_util:parse_qs(V);
+decode_body_from_ctype(_CT, V) ->
+    V.
+
+%% @doc Treat POST as GET after decoding body as params for Solr
+%%      `select search
+post_search(Req, S, CT) ->
+    Body = wrq:req_body(Req),
+    BodyParams = decode_body_from_ctype(CT, Body),
+    case BodyParams of
+        [] -> Params = wrq:req_qs(Req);
+        _ -> Params = BodyParams
+    end,
+    case search(Req, S, Params) of
+        {Val, Req2, S2} when is_binary(Val) ->
+            Req3 = wrq:set_resp_body(Val, Req2),
+            {true, Req3, S2};
+        Other ->
+            %% In this case assume Val is `{halt,Code}' or
+            %% `{error,Term}'
+            Other
+    end.

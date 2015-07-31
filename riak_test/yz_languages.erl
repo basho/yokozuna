@@ -5,8 +5,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
--define(NO_HEADERS, []).
--define(NO_BODY, <<>>).
 -define(CFG,
         [
          {riak_core,
@@ -37,24 +35,9 @@ select_random(List) ->
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
 
-index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
-
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s",
          [Host, Port, BType, BName, Key]).
-
-http(Method, URL, Headers, Body) ->
-    Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
-
-create_index(Cluster, HP, Index) ->
-    lager:info("create_index ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    Headers = [{"content-type", "application/json"}],
-    {ok, Status, _, _} = http(put, URL, Headers, ?NO_BODY),
-    ok = yz_rt:set_bucket_type_index(hd(Cluster), Index),
-    ?assertEqual("204", Status).
 
 store_and_search(Cluster, Bucket, Index, CT, Body, Field, Term) ->
     Headers = [{"Content-Type", CT}],
@@ -65,7 +48,7 @@ store_and_search(Cluster, Bucket, Index, Headers, CT, Body, Field, Term) ->
 
 store_and_search(Cluster, Bucket, Index, Key, Headers, CT, Body, Field, Term) ->
     HP = select_random(host_entries(rt:connection_info(Cluster))),
-    create_index(Cluster, HP, Index),
+    yz_rt:create_index_http(Cluster, HP, Index),
     URL = bucket_url(HP, Bucket, Key),
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
