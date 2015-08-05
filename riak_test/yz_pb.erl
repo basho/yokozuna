@@ -43,6 +43,7 @@ confirm() ->
     confirm_admin_index(Cluster),
     confirm_admin_bad_index_name(Cluster),
     confirm_basic_search(Cluster),
+    confirm_w1c_search(Cluster),
     confirm_encoded_search(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
@@ -82,11 +83,12 @@ create_index(Cluster, BucketType, Index) ->
 
 create_index(Cluster, BucketType, Index, UseDefaultSchema) when
       is_boolean(UseDefaultSchema) ->
-    create_index(Cluster, BucketType, Index, 3, UseDefaultSchema);
+    create_index(Cluster, BucketType, Index, [{use_default_schema, UseDefaultSchema}]);
 create_index(Cluster, BucketType, Index, Nval) when is_integer(Nval) ->
-    create_index(Cluster, BucketType, Index, Nval, true).
-
-create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, [{n_val, Nval}]);
+create_index(Cluster, BucketType, Index, Props) when is_list(Props) ->
+    Nval = proplists:get_value(n_val, Props, 3),
+    UseDefaultSchema = proplists:get_value(use_default_schema, Props, true),
     Node = select_random(Cluster),
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("create_index ~s for bucket type ~s [~p]", [Index, BucketType, {Host, Port}]),
@@ -111,10 +113,13 @@ create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
     ?assertEqual([{index, Index}, {schema, SchemaName}, NvalT], IndexData),
 
     %% Add the index to the bucket props
-    yz_rt:set_bucket_type_index(Node, BucketType, Index, Nval),
+    yz_rt:set_bucket_type_index(Node, BucketType, Index, [{n_val, Nval} | Props]),
     yz_rt:wait_for_bucket_type(Cluster, BucketType),
     riakc_pb_socket:stop(Pid),
     ok.
+
+create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, [{n_val, Nval}, {use_default_schema, UseDefaultSchema}]).
 
 store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     store_and_search(Cluster, Bucket, Key, Body, "text/plain", Search, Params).
@@ -205,6 +210,15 @@ confirm_basic_search(Cluster) ->
     Index = <<"basic">>,
     Bucket = {Index, <<"b1">>},
     create_index(Cluster, Index, Index),
+    lager:info("confirm_basic_search ~p", [Bucket]),
+    Body = "herp derp",
+    Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
+    store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
+
+confirm_w1c_search(Cluster) ->
+    Index = <<"write_once">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index, [{write_once, true}]),
     lager:info("confirm_basic_search ~p", [Bucket]),
     Body = "herp derp",
     Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
