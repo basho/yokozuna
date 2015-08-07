@@ -77,16 +77,14 @@ test_search_get_and_post_query(HP, URL, Index) ->
     Body = mochiweb_util:urlencode(Params),
     lager:info("Check post with content-type ~s and message body"),
     {ok, "200", _, R} = yz_rt:http(post, URL, Headers, Body),
-    yz_rt:verify_count(1, R),
-    ok.
+    ?assert(yz_rt:verify_count(1, R)).
 
 test_post_as_get(URL) ->
     CT = {content_type, "application/x-www-form-urlencoded"},
     Headers = [CT],
     {ok, "200", _, R} = yz_rt:http(post, URL ++ "?q=text:F*&wt=json",
                                    Headers, ?NO_BODY),
-    yz_rt:verify_count(1, R),
-    ok.
+    ?assert(yz_rt:verify_count(1, R)).
 
 test_post_as_get_with_wrong_content_types(URL) ->
     CT1 = {content_type, "application/x-www-form-urlen"},
@@ -105,8 +103,10 @@ test_post_as_get_with_wrong_content_types(URL) ->
     ?assertEqual("415", Status2).
 
 test_get_and_post_no_params(URL) ->
-    {ok, "200", _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
+    {ok, Status1, _, _} = yz_rt:http(get, URL, ?NO_HEADERS, ?NO_BODY),
 
     CT = {content_type, "application/x-www-form-urlencoded"},
     Headers = [CT],
-    {ok, "200", _, _} = yz_rt:http(post, URL, Headers, ?NO_BODY).
+    {ok, Status2, _, _} = yz_rt:http(post, URL, Headers, ?NO_BODY),
+    ?assertEqual("200", Status1),
+    ?assertEqual("200", Status2).
