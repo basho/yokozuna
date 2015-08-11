@@ -62,10 +62,10 @@
         ]).
 
 confirm() ->
-    [Node1|_] = Cluster = rt:build_cluster(4, ?CONFIG),
+    Cluster = rt:build_cluster(4, ?CONFIG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
 
-    ok = yz_rt:create_indexed_bucket_type(Node1, ?TYPE, ?INDEX,
+    ok = yz_rt:create_indexed_bucket_type(Cluster, ?TYPE, ?INDEX,
                                           ?SCHEMANAME, ?FACETED_SCHEMA),
 
     put_restaurants(Cluster, ?BUCKET),
@@ -85,13 +85,13 @@ confirm() ->
 put_restaurants(Cluster, Bucket) ->
     Restaurants = [create_restaurant_json(Name, City, State, Price) ||
                    {Name, City, State, Price} <- ?RESTAURANTS],
-    Keys = yokozuna_rt:gen_keys(length(Restaurants)),
+    Keys = yz_rt:gen_keys(length(Restaurants)),
     Pid = rt:pbc(hd(Cluster)),
     lists:foreach(fun({Key, Restaurant}) ->
                           put_restaurant(Pid, Bucket, Key, Restaurant)
                   end,
                   lists:zip(Keys, Restaurants)),
-    yokozuna_rt:commit(Cluster, ?INDEX).
+    yz_rt:commit(Cluster, ?INDEX).
 
 -spec create_restaurant_json(binary(), binary(), binary(), integer()) -> binary().
 create_restaurant_json(Name, City, State, Price) ->

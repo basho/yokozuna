@@ -327,7 +327,7 @@ confirm_delete_409(Cluster, Index) ->
 
     %% Associate bucket with new index
     NewIndex = <<"new_index">>,
-    ok = yz_rt:create_index(Node, NewIndex),
+    ok = yz_rt:create_index(Cluster, NewIndex),
     B2 = <<"{\"props\":{\"search_index\":\"",NewIndex/binary,"\"}}">>,
     {ok, "204", _, _} = yz_rt:http(put, bucket_url(HP, <<"b1">>), H, B2),
 
@@ -383,7 +383,7 @@ confirm_bad_bucket_associations(Cluster) ->
     Bucket2 = <<"diff_n_val_part2">>,
     %% attempt to associate bucket with nonexistant index
     {error, [{search_index,_}]} = yz_rt:set_index(Node, Bucket1, Index, 2),
-    ok = yz_rt:create_index(Node, Index, ?YZ_DEFAULT_SCHEMA_NAME, 4),
+    ok = yz_rt:create_index(Cluster, Index, ?YZ_DEFAULT_SCHEMA_NAME, 4),
     %% attempt to associate bucket with incongruent n_val
     {error, [{n_val,_}]} = yz_rt:set_index(Node, Bucket1, Index, 2),
     %% attempt to associate w/ another bucket with incongruent n_val

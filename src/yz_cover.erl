@@ -82,6 +82,7 @@ start_link() ->
 
 init([]) ->
     schedule_tick(),
+    add_node_watcher_callback(),
     {ok, #state{ring_used=undefined}}.
 
 handle_cast(update_all_plans, S) ->
@@ -290,7 +291,25 @@ schedule_tick() ->
 %%      plan, and update the cache entry.
 -spec update_all_plans(ring()) -> ok.
 update_all_plans(Ring) ->
-    Indexes = yz_index:get_indexes_from_meta(),
-    NVals = lists:usort([yz_index:get_n_val_from_index(I) || I <- Indexes]),
+    NVals = get_index_nvals(),
     _ = [ok = cache_plan(N, Ring) || N <- NVals],
     ok.
+
+get_index_nvals() ->
+    Indexes = yz_index:get_indexes_from_meta(),
+    NVals = lists:usort([yz_index:get_n_val_from_index(I) || I <- Indexes]),
+    NVals.
+
+invalidate_plans() ->
+    NVals = get_index_nvals(),
+    _ = [mochiglobal:put(?INT_TO_ATOM(NVal), undefined) || NVal <- NVals].
+
+add_node_watcher_callback() ->
+    riak_core_node_watcher_events:add_guarded_callback(
+        fun(Changes) ->
+            case lists:member(?YZ_APP_NAME, Changes) of
+                true ->
+                    invalidate_plans();
+                false -> ok
+            end
+        end).
