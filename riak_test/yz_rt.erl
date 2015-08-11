@@ -5,8 +5,8 @@
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 
--type host() :: string().
--type portnum() :: integer().
+-type host() :: string()|atom().
+-type portnum() :: non_neg_integer().
 
 %% Copied from rt.erl, would be nice if there was a rt.hrl
 -type interface() :: {http, tuple()} | {pb, tuple()}.
@@ -116,7 +116,26 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
+-spec http(ibrowse:method(), string(), list(), binary()) -> ibrowse:response().
+http(Method, URL, Headers, Body) ->
+    Opts = [],
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
+
+-spec http(ibrowse:method(), string(), list(), string(), list()|timeout())
+          -> ibrowse:response().
+http(Method, URL, Headers, Body, Opts) when is_list(Opts)  ->
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT);
+http(Method, URL, Headers, Body, Timeout) when is_integer(Timeout) ->
+    Opts = [],
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
+
+-spec http(ibrowse:method(), string(), list(), string(), list(), timeout())
+          -> ibrowse:response().
+http(Method, URL, Headers, Body, Opts, Timeout) when
+      is_list(Opts) andalso is_integer(Timeout) ->
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
+
+-spec http_put({host(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
@@ -128,6 +147,21 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     Headers = [{"content-type", CT}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
+
+-spec schema_url({host(), portnum()}, schema_name()) -> string().
+schema_url({Host,Port}, Name) ->
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
+
+-spec index_url({host(), portnum()}, index_name()) -> string().
+index_url({Host,Port}, Index) ->
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
+index_url({Host, Port}, Index, Timeout) ->
+    ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
+                                                     Timeout]).
+
+-spec search_url({host(), portnum()}, index_name()) -> string().
+search_url({Host, Port}, Index) ->
+    ?FMT("http://~s:~B/search/query/~s", [Host, Port, Index]).
 
 %% @doc Run basho bench job to load fruit data on `Cluster'.
 %%
@@ -431,8 +465,9 @@ wait_for_schema(Cluster, Name, Content) ->
     ok.
 
 verify_count(Expected, Resp) ->
-    lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
-    Expected == get_count(Resp).
+    Count = get_count(Resp),
+    lager:info("E: ~p, A: ~p", [Expected, Count]),
+    Expected =:= Count.
 
 -spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
@@ -474,12 +509,45 @@ node_solr_port(Node) ->
                                       [yokozuna, solr_port]),
     P.
 
+-spec internal_solr_url(host(), portnum(), index_name()) -> string().
 internal_solr_url(Host, Port, Index) ->
     ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
+
+-spec internal_solr_url(host(), portnum(), index_name(), [{host(), portnum()}])
+                   -> string().
 internal_solr_url(Host, Port, Index, Shards) ->
-    internal_solr_url(Host, Port, Index, Shards, <<"*">>, <<"*">>).
+    internal_solr_url(Host, Port, Index, <<"*">>, <<"*">>, Shards).
+
+-spec internal_solr_url(host(), portnum(), index_name(), binary(), binary(),
+                        [{host(), portnum()}]) -> string().
 internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
     Ss = [internal_solr_url(Host, ShardPort, Index)
           || {_, ShardPort} <- Shards],
     ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
          [Host, Port, Index, Name, Term, string:join(Ss, ",")]).
+
+entropy_data_url({Host, Port}, Index, Params) ->
+    ?FMT("http://~s:~B/internal_solr/~s/entropy_data?~s",
+         [Host, Port, Index, mochiweb_util:urlencode(Params)]).
+
+-spec merge_config(proplist(), proplist()) -> proplist().
+merge_config(Change, Base) ->
+    lists:ukeymerge(1, lists:keysort(1, Change), lists:keysort(1, Base)).
+
+-spec write_objs([node()], bucket()) -> ok.
+write_objs(Cluster, Bucket) ->
+    lager:info("Writing 1000 objects"),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1,1000)).
+
+-spec write_obj([node()], bucket()) -> fun().
+write_obj(Cluster, Bucket) ->
+    fun(N) ->
+            PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
+            Key = list_to_binary(io_lib:format("key_~B", [N])),
+            Body = mochijson2:encode(PL),
+            HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(
+                                                          Cluster))),
+            CT = "application/json",
+            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
+            yz_rt:http_put(HP, Bucket, Key, CT, Body)
+    end.
