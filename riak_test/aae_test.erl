@@ -283,7 +283,6 @@ verify_no_repair_after_restart(Cluster) ->
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(0, Count),
-
     ok.
 
 %% @doc Verify that KV data written to a bucket with no associated
@@ -297,9 +296,9 @@ verify_no_repair_after_restart(Cluster) ->
 %%      data. However, in this test, the trees are not cleared and no
 %%      repair should hapen.
 -spec verify_no_repair_for_non_indexed_data([node()], bucket(),  [pid()]) -> ok.
-verify_no_repair_for_non_indexed_data(Cluster, {BType, _Bucket}, PBConns) ->
+verify_no_repair_for_non_indexed_data(Cluster, B, PBConns) ->
     lager:info("verify no repair occurred for non-indexed data"),
-    Bucket = {BType, <<"non_indexed">>},
+    Bucket = verify_default_bucket(B, <<"non_indexed">>),
 
     %% 1. write KV data to non-indexed bucket
     Conn = yz_rt:select_random(PBConns),
@@ -320,17 +319,15 @@ verify_no_repair_for_non_indexed_data(Cluster, {BType, _Bucket}, PBConns) ->
 
     %% 4. verify repair count is 0
     ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
-    ok;
-verify_no_repair_for_non_indexed_data(_Cluster, _Bucket, _PBConns) ->
     ok.
 
 -spec verify_count_and_repair_after_error_value([node()], bucket(),
                                                 index_name(), [pid()])
                                                -> ok.
-verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
+verify_count_and_repair_after_error_value(Cluster, B, Index,
                                           PBConns) ->
     lager:info("verify total count and repair occurred for failed-to-index (bad) data"),
-    Bucket = {BType, Index},
+    Bucket = verify_default_bucket(B, Index),
 
     %% 1. write KV data to non-indexed bucket
     Conn = yz_rt:select_random(PBConns),
@@ -353,8 +350,6 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
     %% 5. verify count after expiration
     verify_exchange_after_expire(Cluster, Index),
 
-    ok;
-verify_count_and_repair_after_error_value(_Cluster, _Bucket, _Index, _PBConns) ->
     ok.
 
 verify_num_match(Cluster, Index, Num) ->
@@ -386,3 +381,9 @@ verify_repair_count(Cluster, ExpectedNumRepairs) ->
 -spec add_space_to_key(binary()) -> binary().
 add_space_to_key(Key) ->
     list_to_binary(lists:concat([?SPACER, ?BIN_TO_INT(Key)])).
+
+-spec verify_default_bucket(bucket(), index_name()) -> bucket().
+verify_default_bucket(MB, DefaultBucket) when is_binary(MB) ->
+    DefaultBucket;
+verify_default_bucket({T, _B}, DefaultBucket) ->
+    {T, DefaultBucket}.
