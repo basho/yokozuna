@@ -127,11 +127,10 @@ add_filtering(N, Q, LPI, PS) ->
 
 %% @private
 %%
-%% @doc Calculate a plan from the `Index' `NVal' and then store an entry
+%% @doc Calculate a plan from the `NVal' and then store an entry
 %%      of the NVal's atom in the plan cache.
--spec cache_plan(index_name(), ring()) -> ok.
-cache_plan(Index, Ring) ->
-    NVal = yz_index:get_n_val_from_index(Index),
+-spec cache_plan(n(), ring()) -> ok.
+cache_plan(NVal, Ring) ->
     case calc_plan(NVal, Ring) of
         {error, _} ->
             mochiglobal:put(?INT_TO_ATOM(NVal), undefined);
@@ -292,5 +291,6 @@ schedule_tick() ->
 -spec update_all_plans(ring()) -> ok.
 update_all_plans(Ring) ->
     Indexes = yz_index:get_indexes_from_meta(),
-    _ = [ok = cache_plan(I, Ring) || I <- Indexes],
+    NVals = lists:usort([yz_index:get_n_val_from_index(I) || I <- Indexes]),
+    _ = [ok = cache_plan(N, Ring) || N <- NVals],
     ok.
