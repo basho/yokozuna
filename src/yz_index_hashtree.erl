@@ -312,7 +312,7 @@ load_built(#state{trees=Trees}) ->
         _ -> false
     end.
 
--spec fold_keys(p(), tree()) -> ok.
+-spec fold_keys(p(), tree()) -> [ok|timeout|not_available].
 fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
@@ -324,8 +324,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
-    ok.
+    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
 
 %% @see riak_kv_index_hashtree:do_new_tree/3
 -spec do_new_tree({p(),n()}, state(), mark_open|mark_empty) -> state().
@@ -589,9 +588,14 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
     case {Locked, Type} of
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
-            fold_keys(Index, Tree),
-            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
-            gen_server:cast(Tree, build_finished);
+            IterKeys = fold_keys(Index, Tree),
+            case lists:last(IterKeys) of
+                ok ->
+                    lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+                    gen_server:cast(Tree, build_finished);
+                _ ->
+                    gen_server:cast(Tree, build_failed)
+            end;
         {true, rehash} ->
             lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
