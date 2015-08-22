@@ -247,7 +247,7 @@ partition_list(Core) ->
 -spec ping(index_name()) -> boolean()|error.
 ping(Core) ->
     URL = ?FMT("~s/~s/admin/ping", [base_url(), Core]),
-    case ibrowse:send_req(URL, [], get) of
+    case ibrowse:send_req(URL, [], head) of
         {ok, "200", _, _} -> true;
         {ok, "404", _, _} -> false;
         _ -> error
