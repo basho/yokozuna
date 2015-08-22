@@ -241,11 +241,12 @@
                       {partition, lp()} |
                       {limit, pos_integer()}].
 -type ed_continuation() :: none | base64().
+-type ed_pairs() :: [{DocID::binary(), Hash::base64()}].
 
 -record(entropy_data, {
           more=false :: boolean(),
           continuation :: ed_continuation(),
-          pairs :: [{DocID::binary(), Hash::base64()}]
+          pairs :: ed_pairs()
          }).
 -type entropy_data() :: #entropy_data{}.
 -type keydiff() :: hashtree:keydiff().
@@ -292,6 +293,8 @@
 -define(ERROR(Fmt), lager:error(Fmt)).
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
+-define(NOTICE(Fmt, Args), lager:notice(Fmt, Args)).
+-define(NOTICE(Fmt), lager:notice(Fmt)).
 -define(WARN(Fmt, Args), lager:warning(Fmt, Args)).
 
 %%%===================================================================
