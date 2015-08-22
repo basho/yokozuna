@@ -32,6 +32,7 @@ DIALYZER_APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto in
 	xmerl webtool snmp public_key mnesia eunit syntax_tools compiler
 DIALYZER_FLAGS = -Wno_return
 TEST_PLT = .yokozuna_test_dialyzer_plt
+RIAK_TEST_PATH = riak_test
 
 include tools.mk
 
@@ -39,9 +40,9 @@ ${TEST_PLT}: compile-riak-test
 ifneq (,$(RIAK_TEST_PATH))
 ifneq (,$(wildcard $(TEST_PLT)))
 	dialyzer --check_plt --plt $(TEST_PLT) && \
-		dialyzer --add_to_plt --plt $(TEST_PLT) --apps edoc --output_plt $(TEST_PLT) ebin $(RIAK_TEST_PATH)/ebin $(RIAK_TEST_PATH)/deps/riakc/ebin ; test $$? -ne 1
+		dialyzer --add_to_plt --plt $(TEST_PLT) --apps edoc --output_plt $(TEST_PLT) ebin $(RIAK_TEST_PATH)/ebin ; test $$? -ne 1
 else
-	dialyzer --build_plt --apps edoc --output_plt $(TEST_PLT) ebin $(RIAK_TEST_PATH)/ebin $(RIAK_TEST_PATH)/deps/riakc ; test $$? -ne 1
+	dialyzer --build_plt --apps edoc --output_plt $(TEST_PLT) ebin $(RIAK_TEST_PATH)/ebin ; test $$? -ne 1
 endif
 else
 	@echo "Set RIAK_TEST_PATH"
