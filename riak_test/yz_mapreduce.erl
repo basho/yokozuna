@@ -11,7 +11,7 @@
 -include("yokozuna.hrl").
 
 -type host() :: string().
--type portnum() :: integer().
+-type portnum() :: non_neg_integer().
 
 -define(CFG,
         [{riak_core,
@@ -40,7 +40,7 @@ confirm() ->
     yz_rt:create_index(yz_rt:select_random(Cluster), Index),
     yz_rt:set_bucket_type_index(yz_rt:select_random(Cluster), Index),
     timer:sleep(500),
-    write_objs(Cluster, Bucket),
+    yz_rt:write_objs(Cluster, Bucket),
     verify_objs_mr(Cluster, Index),
     ok = yz_rt:load_module(Cluster, ?MODULE),
     %% NOTE: Deliberate choice not to use `wait_unil'.  The data is
@@ -122,23 +122,6 @@ verify_objs_mr(Cluster, Index) ->
                 1000 == A
         end,
     yz_rt:wait_until(Cluster, F).
-
--spec write_objs([node()], index_name()) -> ok.
-write_objs(Cluster, Bucket) ->
-    lager:info("Writing 1000 objects"),
-    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1,1000)).
-
--spec write_obj([node()], bucket()) -> fun().
-write_obj(Cluster, Bucket) ->
-    fun(N) ->
-            PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
-            Key = list_to_binary(io_lib:format("key_~B", [N])),
-            Body = mochijson2:encode(PL),
-            HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(Cluster))),
-            CT = "application/json",
-            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
-            yz_rt:http_put(HP, Bucket, Key, CT, Body)
-    end.
 
 -spec http_mr({host(), portnum()}, term()) -> binary().
 http_mr({Host,Port}, MR) ->
