@@ -343,7 +343,6 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
             {ok, {search_results, [], _Score, 0}} ->
                 lager:info("Search for multivalued_field_with_high_n_val has not yet yielded data"),
                 false
-            _ -> false
             end
         end,
     yz_rt:wait_until(Cluster, F),
