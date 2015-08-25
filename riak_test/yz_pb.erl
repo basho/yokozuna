@@ -240,7 +240,9 @@ confirm_multivalued_field(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
-            _ -> false
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search for multivalued_field has not yet yielded data"),
+                false
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -271,7 +273,9 @@ confirm_multivalued_field_json_array(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
-            _ -> false
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search for multivalued_field_json_array has not yet yielded data"),
+                false
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -303,7 +307,9 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
-            _ -> false
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search for multivalued_field_with_high_n_val has not yet yielded data"),
+                false
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -335,16 +341,20 @@ confirm_stored_fields(Cluster) ->
     Search = <<"float_tf:3.14">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
-                {ok,{search_results,[{Index,Fields}], _Score, Found}} =
-                    riakc_pb_socket:search(Pid, Index, Search, Params),
-                ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
-                ?assertEqual(3.14,
-                             ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
-                ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
-                ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
-                case Found of
-                    1 -> true;
-                    0 -> false
+                case riakc_pb_socket:search(Pid, Index, Search, Params) of
+                    {ok, {search_results,[{Index,Fields}], _Score, Found}} ->
+                        ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
+                        ?assertEqual(3.14,
+                            ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
+                        ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
+                        ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
+                        case Found of
+                            1 -> true;
+                            0 -> false
+                        end;
+                    {ok, {search_results, [], _Score, 0}} ->
+                        lager:info("Search for stored_fields has not yet yielded data"),
+                        false
                 end
         end,
     yz_rt:wait_until(Cluster, F),
