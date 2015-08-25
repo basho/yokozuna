@@ -60,6 +60,22 @@ create_index(Node, Index, SchemaName, NVal) ->
                [Index, SchemaName, NVal, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName, NVal]).
 
+-spec create_index_http(cluster(), index_name()) -> ok.
+create_index_http(Cluster, Index) ->
+    Node = yz_rt:select_random(Cluster),
+    HP = hd(host_entries(rt:connection_info([Node]))),
+    create_index_http(Cluster, HP, Index).
+
+-spec create_index_http(cluster(), {string(), portnum()}, index_name()) -> ok.
+create_index_http(Cluster, HP, Index) ->
+    Node = hd(Cluster),
+    URL = yz_rt:index_url(HP, Index),
+    Headers = [{"content-type", "application/json"}],
+    lager:info("create_index ~s [~p]", [Index, Node]),
+    {ok, "204", _, _} = yz_rt:http(put, URL, Headers, ?NO_BODY),
+    yz_rt:set_bucket_type_index(Node, Index),
+    yz_rt:wait_for_bucket_type(Cluster, Index).
+
 maybe_create_ets() ->
     case ets:info(?YZ_RT_ETS) of
         undefined ->
