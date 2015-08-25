@@ -4,6 +4,8 @@
 -include("yokozuna.hrl").
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
+-define(NO_BODY, <<>>).
+-define(IBROWSE_TIMEOUT, 60000).
 
 -type host() :: string()|atom().
 -type portnum() :: non_neg_integer().
