@@ -68,3 +68,12 @@
   {datatype, {duration, ms}},
   hidden
 ]}.
+
+%% @doc The timeout for ibrowse (ibrowse:send_req) requests to Solr's
+%% entrop_data endpoints. Defaults to 60 seconds. It will always round up to the
+%% nearest second, e.g. 1ms = 999 ms = 1s.
+{mapping, "search.solr.request_ed_timeout", "yokozuna.solr_request_ed_timeout", [
+  {default, "60s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
