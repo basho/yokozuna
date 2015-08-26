@@ -164,6 +164,10 @@
 -define(YZ_SOLR_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
                                                     solr_request_timeout,
                                                     60000)).
+%% The request timeout for Solr's entrop_data call. Defaults to 60 seconds.
+-define(YZ_SOLR_ED_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
+                                                    solr_ed_request_timeout,
+                                                    ?YZ_SOLR_REQUEST_TIMEOUT)).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
