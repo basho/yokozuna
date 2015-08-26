@@ -282,7 +282,6 @@ search(Core, Headers, Params) ->
     URL = ?FMT("~s/~s/select", [base_url(), Core]),
     Headers2 = [{content_type, "application/x-www-form-urlencoded"}|Headers],
     Opts = [{response_format, binary}],
-    lager:info("FuckME ~p", [?YZ_SOLR_REQUEST_TIMEOUT]),
     case ibrowse:send_req(URL, Headers2, post, Body, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
