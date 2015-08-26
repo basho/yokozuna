@@ -173,7 +173,7 @@ entropy_data(Core, Filter) ->
     Opts = [{response_format, binary}],
     URL = ?FMT("~s/~s/entropy_data?~s",
                [base_url(), Core, mochiweb_util:urlencode(Params2)]),
-    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_REQUEST_TIMEOUT) of
+    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_ED_REQUEST_TIMEOUT) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
             More = kvc:path([<<"more">>], R),
@@ -282,7 +282,6 @@ search(Core, Headers, Params) ->
     URL = ?FMT("~s/~s/select", [base_url(), Core]),
     Headers2 = [{content_type, "application/x-www-form-urlencoded"}|Headers],
     Opts = [{response_format, binary}],
-    lager:info("FuckME ~p", [?YZ_SOLR_REQUEST_TIMEOUT]),
     case ibrowse:send_req(URL, Headers2, post, Body, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
