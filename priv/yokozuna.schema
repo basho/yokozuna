@@ -77,3 +77,9 @@
   {datatype, {duration, ms}},
   hidden
 ]}.
+
+%% @doc To enable actual `index hook.
+{mapping, "search_actually_index", "yokozuna.index_call_enabled", [
+  {default, on},
+  {datatype, flag}
+]}.
