@@ -34,6 +34,9 @@
 %%%===================================================================
 
 start(_StartType, _StartArgs) ->
+ %% Ensure that the KV service has fully loaded.
+    riak_core:wait_for_service(riak_kv),
+
     initialize_atoms(),
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
