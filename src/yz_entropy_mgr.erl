@@ -80,7 +80,8 @@ exchange_status(Index, IndexN, Status) ->
 %% @doc Returns true of AAE is enabled, false otherwise.
 -spec enabled() -> boolean().
 enabled() ->
-    riak_kv_entropy_manager:enabled().
+    {Enabled, _} = settings(),
+    Enabled.
 
 %% @doc Set AAE to either `automatic' or `manual' mode. In automatic mode, the
 %%      entropy manager triggers all necessary hashtree exchanges. In manual
@@ -147,6 +148,7 @@ init([]) ->
                true -> manual;
                false -> automatic
            end,
+    set_debug(proplists:is_defined(debug, Opts)),
     S = #state{mode=Mode,
                trees=Trees,
                kv_trees=[],
@@ -307,9 +309,8 @@ settings() ->
         {off, Opts} ->
             {false, Opts};
         X ->
-            lager:warning("Invalid setting for riak_kv/anti_entropy: ~p", [X]),
+            lager:warning("Invalid setting for yz/riak_kv/anti_entropy: ~p", [X]),
             application:set_env(?YZ_APP_NAME, anti_entropy, {off, []}),
-            application:set_env(riak_kv, anti_entropy, {off, []}),
             {false, []}
     end.
 
@@ -673,3 +674,21 @@ requeue_exchange(Index, {StartIdx, N}, S) ->
             Exchanges = S#state.exchange_queue ++ [Exchange],
             S#state{exchange_queue=Exchanges}
     end.
+
+%% @TODO Create general debug function for modules used in riak_kv generally
+%% @doc Toggle debug mode, which prints verbose AAE information to the console.
+-spec set_debug(boolean()) -> ok.
+set_debug(Enabled) ->
+    Modules = [yz_index_hashtree,
+               yz_entropy_mgr,
+               yz_exchange_fsm],
+    case Enabled of
+        true ->
+            [lager:trace_console([{module, Mod}]) || Mod <- Modules];
+        false ->
+            [begin
+                 {ok, Trace} = lager:trace_console([{module, Mod}]),
+                 lager:stop_trace(Trace)
+             end || Mod <- Modules]
+    end,
+    ok.
