@@ -59,3 +59,27 @@
   {datatype, directory},
   hidden
 ]}.
+
+%% @doc To 'enable/disable' AAE for Search.
+%%      * active: out-of-sync keys will be repaired in the background
+%%      * passive: out-of-sync keys are only repaired on read
+%%      * active-debug: like active, but outputs verbose debugging
+%%        information
+{mapping, "search.anti_entropy", "yokozuna.anti_entropy", [
+  {datatype, {enum, [active, passive, 'active-debug']}},
+  {default, active},
+  hidden
+]}.
+
+{translation,
+ "yokozuna.anti_entropy",
+ fun(Conf) ->
+    Setting = cuttlefish:conf_get("search.anti_entropy", Conf),
+    case Setting of
+      active -> {on, []};
+      'active-debug' -> {on, [debug]};
+      passive -> {off, []};
+      _Default -> {on, []}
+    end
+  end
+}.
