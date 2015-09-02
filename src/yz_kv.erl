@@ -196,12 +196,7 @@ index(Obj, Reason, P) ->
         true ->
             BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
             Index = yz_kv:get_index(BKey),
-            case should_index(Index) of
-                true ->
-                    yz_solrq:index(Index, BKey, Obj, Reason, P);
-                _ ->
-                    ok
-            end;
+            yz_solrq:index(Index, BKey, Obj, Reason, P);
         false ->
             ok
     end.
