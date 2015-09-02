@@ -209,6 +209,17 @@ index(Core, Docs, DelOps) ->
             ok
     end.
 
+index_batch(Core, Ops) ->
+    JSON = mochijson2:encode({struct, Ops}),
+    URL = ?FMT("~s/~s/update", [base_url(), Core]),
+    Headers = [{content_type, "application/json"}],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
+        {ok, "200", _, _} -> ok;
+        Err -> throw({"Failed to index docs", Err})
+    end.
+
+
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().
 is_up() ->
