@@ -19,7 +19,7 @@
 -module(yz_solrq).
 
 %% api
--export([start_link/1, index/5, poll/2]).
+-export([start_link/1, index/5, poll/2, set_hwm/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,7 +28,7 @@
 -record(state, {helper_pid,
                 queue = queue:new(),
                 queue_len = 0, % otherwise Q module counts lists
-                queue_hwm = 10,
+                queue_hwm = 1000,
                 batch_size = 100,
                 pending_vnodes = [],
                 pending_helpers = []}).
@@ -50,6 +50,9 @@ index(Index, BKey, Obj, Reason, P) ->
 poll(QPid, HPid) ->
     gen_server:cast(QPid, {poll, HPid}).
 
+set_hwm(QPid, HWM) ->
+    gen_server:call(QPid, {set_hwm, HWM}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -68,7 +71,9 @@ handle_call({index, E}, From,
             {noreply, State3#state{pending_vnodes = [From | PendingVnodes]}};
         _ ->
             {reply, ok, State3}
-    end.
+    end;
+handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
+    {reply, {ok, OldHWM}, State#state{queue_hwm = NewHWM}}.
 
 handle_cast({poll, HPid}, #state{queue_len = L} = State) ->
     case L > 0 of
