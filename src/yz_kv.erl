@@ -193,36 +193,9 @@ has_indexes(RemoteNode) ->
 index(Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
-            Ring = yz_misc:get_ring(transformed),
-            case is_owner_or_future_owner(P, node(), Ring) of
-                true ->
-                    T1 = os:timestamp(),
-                    BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-                    try
-                        Index = get_index(BKey),
-                        ShortPL = riak_kv_util:get_index_n(BKey),
-                        case should_index(Index) of
-                            true ->
-                                index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
-                            false ->
-                                dont_index(Obj, Reason, P, BKey, ShortPL)
-                        end,
-                        yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
-                    catch _:Err ->
-                            yz_stat:index_fail(),
-                            Trace = erlang:get_stacktrace(),
-                            case Reason of
-                                delete ->
-                                    ?ERROR("failed to delete docid ~p with error ~p because ~p",
-                                           [BKey, Err, Trace]);
-                                _ ->
-                                    ?ERROR("failed to index object ~p with error ~p because ~p",
-                                           [BKey, Err, Trace])
-                            end
-                    end;
-                false ->
-                    ok
-            end;
+            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+            Index = yz_kv:get_index(BKey),
+            yz_solrq:index(Index, BKey, Obj, Reason, P);
         false ->
             ok
     end.
