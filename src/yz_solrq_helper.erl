@@ -93,22 +93,26 @@ update_solr(Entries, Ring) ->
         lists:foldl(fun({Index, BKey, Obj, Reason, P, ShortPL, Hash}, OpsByIndex0) ->
             case yz_kv:is_owner_or_future_owner(P, node(), Ring) of
                 true ->
-                    EncodedOps = case Reason of
-                        delete ->
-                            [{delete, yz_solr:encode_delete([{bkey, BKey}])}];
-                        _ ->
-                            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-                            LP = yz_cover:logical_partition(LI, P),
-                            AddOps = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-                            DeleteOps = yz_kv:delete_operation(Obj, Reason, AddOps, BKey, LP),
-                            [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps] ++
-                            [{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps]
-                    end,
-                    dict:merge(
-                        %% TODO: Could remove duplicat add ops here?
-                        fun(_Key, OldOps, NewOps) -> OldOps ++ NewOps end,
-                        OpsByIndex0,
-                        dict:from_list([{Index, EncodedOps}]));
+                    case yz_kv:should_index(Index) of
+                        true ->
+                            EncodedOps = case Reason of
+                                delete ->
+                                    [{delete, yz_solr:encode_delete([{bkey, BKey}])}];
+                                _ ->
+                                    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+                                    LP = yz_cover:logical_partition(LI, P),
+                                    AddOps = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+                                    DeleteOps = yz_kv:delete_operation(Obj, Reason, AddOps, BKey, LP),
+                                    [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps] ++
+                                    [{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps]
+                            end,
+                            dict:merge(
+                                %% TODO: Could remove duplicat add ops here?
+                                fun(_Key, OldOps, NewOps) -> OldOps ++ NewOps end,
+                                OpsByIndex0,
+                                dict:from_list([{Index, EncodedOps}]));
+                        _ -> OpsByIndex0
+                    end;
                 _ -> OpsByIndex0
             end
             end,
@@ -124,7 +128,7 @@ send_solr_ops(OpsByIndex) ->
         catch _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            {Index, Err, Trace}
+            {Index, {Err, Trace}}
         end
     end, OpsByIndex).
 
@@ -135,14 +139,21 @@ update_aae(SolrResults, Entries) ->
             delete -> delete;
             _ -> insert
         end,
-        case proplists:get_value(Index, SolrResults) of
-            ok ->
+        case should_update_aae(Index, SolrResults) of
+            true ->
                 yz_kv:update_hashtree({Reason, Hash}, P, ShortPL, BKey);
-            {_Err, _Trace} ->
+            _ ->
                 %% TODO: What do we do with a failed index batch? Index docs individually again?
                 ok
         end
         end, Entries).
+
+should_update_aae(Index, SolrResults) ->
+    case proplists:get_value(Index, SolrResults) of
+        ok -> true;
+        undefined -> true;
+        _ -> false
+    end.
 
 handle_info(_Msg, State) ->
     {noreply, State}.
