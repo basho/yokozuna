@@ -97,7 +97,7 @@ update_solr(Entries, Ring) ->
                         true ->
                             EncodedOps = case Reason of
                                 delete ->
-                                    [{delete, yz_solr:encode_delete([{bkey, BKey}])}];
+                                    [{delete, yz_solr:encode_delete({bkey, BKey})}];
                                 _ ->
                                     LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
                                     LP = yz_cover:logical_partition(LI, P),
@@ -135,13 +135,13 @@ send_solr_ops(OpsByIndex) ->
 
 update_aae(SolrResults, Entries) ->
     lists:foreach(fun({Index, BKey, _Obj, Reason0, P, ShortPL, Hash}) ->
-        Reason = case Reason0 of
+        Action = case Reason0 of
             delete -> delete;
-            _ -> insert
+            _ -> {insert, Hash}
         end,
         case should_update_aae(Index, SolrResults) of
             true ->
-                yz_kv:update_hashtree({Reason, Hash}, P, ShortPL, BKey);
+                yz_kv:update_hashtree(Action, P, ShortPL, BKey);
             _ ->
                 %% TODO: What do we do with a failed index batch? Index docs individually again?
                 ok
