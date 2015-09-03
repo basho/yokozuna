@@ -7,7 +7,8 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
--define(CFG, [{yokozuna, [{enabled, true}]}]).
+-define(CFG, [{yokozuna, [{enabled, true}]},
+              {riak_kv, [{delete_mode, immediate}]}]).
 
 confirm() ->
     random:seed(now()),
@@ -29,11 +30,14 @@ test_siblings(Cluster) ->
     yz_rt:create_index_http(Cluster, HP, Index),
     ok = allow_mult(Cluster, Index),
     ok = write_sibs(HP, Bucket, EncKey),
+    commit(Cluster, Index),
     %% Verify 10 times because of non-determinism in coverage
     [ok = verify_sibs(HP, Index) || _ <- lists:seq(1,10)],
     ok = reconcile_sibs(HP, Bucket, EncKey),
+    commit(Cluster, Index),
     [ok = verify_reconcile(HP, Index) || _ <- lists:seq(1,10)],
     ok = delete_key(HP, Bucket, EncKey),
+    commit(Cluster, Index),
     [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
     ok.
 
@@ -48,8 +52,6 @@ write_sibs({Host, Port}, Bucket, EncKey) ->
     Body4 = <<"This is value delta">>,
     [{ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, B, Opts)
      || B <- [Body1, Body2, Body3, Body4]],
-    %% Sleep for soft commit
-    timer:sleep(1000),
     ok.
 
 verify_sibs(HP, Index) ->
@@ -64,7 +66,7 @@ reconcile_sibs(HP, Bucket, EncKey) ->
     {VClock, _} = http_get(HP, Bucket, EncKey),
     NewValue = <<"This is value alpha, beta, charlie, and delta">>,
     ok = http_put(HP, Bucket, EncKey, VClock, NewValue),
-    timer:sleep(1100),
+
     ok.
 
 delete_key(HP, Bucket, EncKey) ->
@@ -75,7 +77,6 @@ delete_key(HP, Bucket, EncKey) ->
     Headers = [{"x-riak-vclock", VClock}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, delete, [], []),
     %% Wait for Riak delete timeout + Solr soft-commit
-    timer:sleep(4100),
     ok.
 
 verify_deleted(HP, Index) ->
@@ -117,3 +118,8 @@ allow_mult(Cluster, BType) ->
 
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).
+
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(1000),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]).

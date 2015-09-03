@@ -52,8 +52,10 @@ store_and_search(Cluster, Bucket, Index, Key, Headers, CT, Body, Field, Term) ->
     URL = bucket_url(HP, Bucket, Key),
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1000),
+
+    %% wait for commit
+    commit(Cluster, Index),
+
     {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     ?assertEqual(Body, list_to_binary(ReturnedBody)),
     lager:info("Verify values are indexed"),
@@ -92,3 +94,8 @@ confirm_reserved_word_safety(Cluster) ->
     Headers = [{"Content-Type", "text/plain"}],
     RKey = "OR",
     store_and_search(Cluster, Bucket, Index, RKey, Headers, "text/plain", Body, "text", "whatever").
+
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(1000),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]).

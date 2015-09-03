@@ -56,8 +56,8 @@ confirm() ->
     Value = <<"FOR YOU">>,
     ok = yz_rt:http_put(HP, ?BUCKET, Key, Value),
 
-    %% time for soft auto commit
-    timer:sleep(1100),
+    %% wait for commit
+    commit(Cluster, ?INDEX),
 
     URL = yz_rt:search_url(HP, ?INDEX),
 
@@ -110,3 +110,8 @@ test_get_and_post_no_params(URL) ->
     {ok, Status2, _, _} = yz_rt:http(post, URL, Headers, ?NO_BODY),
     ?assertEqual("200", Status1),
     ?assertEqual("200", Status2).
+
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(1000),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]).
