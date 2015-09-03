@@ -70,13 +70,11 @@ handle_cast({entries, Entries0}, #state{qpid = QPid,
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
         Ring = yz_misc:get_ring(transformed),
-        T1 = os:timestamp(),
         Entries = [{Index, BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
             {Index, BKey, Obj, Reason, P} <- Entries0],
         SolrUpdates = update_solr(Entries, Ring),
         update_aae(SolrUpdates, Entries),
         %% TODO: Since this is a batch now, do we need to do something different with the stat?
-        yz_stat:index_end(?YZ_TIME_ELAPSED(T1)),
         yz_solrq:poll(QPid, self()),
         {noreply, State}
     catch
@@ -107,7 +105,7 @@ update_solr(Entries, Ring) ->
                                     [{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps]
                             end,
                             dict:merge(
-                                %% TODO: Could remove duplicat add ops here?
+                                %% TODO: Could remove duplicate add ops here?
                                 fun(_Key, OldOps, NewOps) -> OldOps ++ NewOps end,
                                 OpsByIndex0,
                                 dict:from_list([{Index, EncodedOps}]));
@@ -123,7 +121,9 @@ update_solr(Entries, Ring) ->
 send_solr_ops(OpsByIndex) ->
     lists:map(fun({Index, Ops}) ->
         try
+            T1 = os:timestamp(),
             yz_solr:index_batch(Index, Ops),
+            yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
             {Index, ok}
         catch _:Err ->
             yz_stat:index_fail(),
