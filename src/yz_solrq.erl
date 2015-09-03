@@ -19,7 +19,7 @@
 -module(yz_solrq).
 
 %% api
--export([start_link/1, index/5, poll/2, set_hwm/2]).
+-export([start_link/1, index/5, poll/2, set_hwm/2, set_batch/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,8 +28,9 @@
 -record(state, {helper_pid,
                 queue = queue:new(),
                 queue_len = 0, % otherwise Q module counts lists
-                queue_hwm = 1000,
-                batch_size = 100,
+                queue_hwm = 10000,
+                batch_min = 100,
+                batch_max = 1000,
                 pending_vnodes = [],
                 pending_helpers = []}).
 
@@ -44,7 +45,7 @@ index(Index, BKey, Obj, Reason, P) ->
     %% Hash on the index and bkey to make sure all updates to an
     %% individual object in an index are serialized
     Hash = erlang:phash2({Index, BKey}),
-    gen_server:call(yz_solrq_sup:regname(Hash), 
+    gen_server:call(yz_solrq_sup:regname(Hash),
                     {index, {Index, BKey, Obj, Reason, P}}, infinity).
 
 poll(QPid, HPid) ->
@@ -53,12 +54,16 @@ poll(QPid, HPid) ->
 set_hwm(QPid, HWM) ->
     gen_server:call(QPid, {set_hwm, HWM}).
 
+set_batch(QPid, Min, Max) ->
+    gen_server:call(QPid, {set_batch, Min, Max}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 %% @private
 init([]) ->
+    schedule_tick(),
     {ok, Helper} = yz_solrq_helper:start_link(self()),
     {ok, #state{helper_pid = Helper}} .
 
@@ -73,16 +78,23 @@ handle_call({index, E}, From,
             {reply, ok, State3}
     end;
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
-    {reply, {ok, OldHWM}, State#state{queue_hwm = NewHWM}}.
+    {reply, {ok, OldHWM}, State#state{queue_hwm = NewHWM}};
+handle_call({set_batch, Min, Max}, _From,
+            #state{batch_min = OldMin, batch_max = OldMax} = State) ->
+    State2 = maybe_send_entries(State#state{batch_min = Min, batch_max = Max}),
+    {reply, {ok, {OldMin, OldMax}}, State2}.
 
-handle_cast({poll, HPid}, #state{queue_len = L} = State) ->
-    case L > 0 of
+
+handle_cast({poll, HPid}, #state{queue_len = L, batch_min = Min} = State) ->
+    case L >= Min of
         true ->
             {noreply, send_entries(HPid, State)};
         _ ->
             {noreply, State#state{pending_helpers = [HPid]}}
     end.
 
+handle_info(tick, State) ->
+    {noreply, tick(State)};
 handle_info(_Msg, State) ->
     {noreply, State}.
 
@@ -104,18 +116,21 @@ enqueue(E, #state{queue = Q, queue_len = L} = State) ->
 over_hwm(#state{queue_len = L, queue_hwm = HWM}) ->
     L > HWM.
 
-%% Send entries if the helper is available and return state
-maybe_send_entries(#state{pending_helpers = []} = State) ->
-    State;
-maybe_send_entries(#state{pending_helpers = [HPid]} = State) ->
-    send_entries(HPid, State#state{pending_helpers = []}).
+%% Send entries if the helper is available AND queue meets
+%% the minimum batch size, then return state
+maybe_send_entries(#state{pending_helpers = [HPid],
+                          queue_len = L,
+                          batch_min = Min} = State) when L >= Min ->
+    send_entries(HPid, State#state{pending_helpers = []});
+maybe_send_entries(State) ->
+    State.
 
 %% Send a batch of entries, reply to any blocked vnodes and
 %% return updated state
 send_entries(HPid, #state{queue = Q,
                           queue_len = L,
-                          batch_size = BatchSize} = State) ->
-    SendSize = min(L, BatchSize),
+                          batch_max = Max} = State) ->
+    SendSize = min(L, Max),
     {BatchQ, RestQ} = queue:split(SendSize, Q),
     yz_solrq_helper:queue_entries(HPid, queue:to_list(BatchQ)),
     maybe_reply(State#state{queue = RestQ,
@@ -133,3 +148,18 @@ maybe_reply(#state{pending_vnodes = PendingVnodes} = State) ->
             _ = [gen_server:reply(From, ok) || From <- PendingVnodes],
             State#state{pending_vnodes = []}
     end.
+
+%% Periodic tick, make sure we eventually deliver to SOLR
+%% even if the load stops.
+tick(#state{pending_helpers = Helpers} = State) ->
+    schedule_tick(),
+    case Helpers of
+        [] ->
+            State;
+        [HPid] ->
+            send_entries(HPid, State#state{pending_helpers = []})
+    end.
+
+schedule_tick() ->
+    Delay = application:get_env(yokozuna, solrq_tick, 5000),
+    timer:send_after(Delay, self(), tick).
