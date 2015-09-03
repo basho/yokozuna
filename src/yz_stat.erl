@@ -173,6 +173,8 @@ update({index_end, BatchSize, Time}) ->
     exometer:update([?PFX, ?APP, index, batchsize], BatchSize);
 update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
+update(blockedvnode) ->
+    exometer:update([?PFX, ?APP, index, blockedvnode], 1);
 update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
