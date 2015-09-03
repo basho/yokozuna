@@ -73,6 +73,7 @@ handle_call({index, E}, From,
     State3 = maybe_send_entries(State2),
     case over_hwm(State3) of % nicer to call maybe_reply, but saving list cons
         true ->
+            yz_stat:blocked_vnode(From),
             {noreply, State3#state{pending_vnodes = [From | PendingVnodes]}};
         _ ->
             {reply, ok, State3}
@@ -161,5 +162,7 @@ tick(#state{pending_helpers = Helpers} = State) ->
     end.
 
 schedule_tick() ->
-    Delay = application:get_env(yokozuna, solrq_tick, 5000),
-    timer:send_after(Delay, self(), tick).
+    timer:send_after(tick_delay(), self(), tick).
+
+tick_delay() ->
+    application:get_env(yokozuna, solrq_tick, 100).
