@@ -66,7 +66,7 @@ build_partition_delete_query(LPartitions) ->
 -spec commit(index_name()) -> ok.
 commit(Core) ->
     JSON = encode_commit(),
-    Params = [{commit, true}],
+    Params = [{commit, true}, {waitFlush, true}, {waitSearcher, true}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = ?FMT("~s/~s/update?~s", [base_url(), Core, Encoded]),
     Headers = [{content_type, "application/json"}],

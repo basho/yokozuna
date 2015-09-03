@@ -108,3 +108,8 @@ confirm_reserved_word_safety(Cluster) ->
     Headers = [{"Content-Type", "text/plain"}],
     RKey = "OR",
     store_and_search(Cluster, Bucket, Index, RKey, Headers, "text/plain", Body, "text", "whatever").
+
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(1000),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]).
