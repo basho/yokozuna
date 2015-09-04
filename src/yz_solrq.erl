@@ -19,7 +19,7 @@
 -module(yz_solrq).
 
 %% api
--export([start_link/1, index/5, poll/2, set_hwm/2, set_batch/3]).
+-export([start_link/1, status/1, index/5, poll/2, set_hwm/2, set_batch/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -40,6 +40,12 @@
 
 start_link(Name) ->
     gen_server:start_link({local, Name}, ?MODULE, [], []).
+
+status(QPid) ->
+    status(QPid, 5000).
+
+status(QPid, Timeout) ->
+    gen_server:call(QPid, status, Timeout).
 
 index(Index, BKey, Obj, Reason, P) ->
     %% Hash on the index and bkey to make sure all updates to an
@@ -63,6 +69,7 @@ set_batch(QPid, Min, Max) ->
 
 %% @private
 init([]) ->
+    random:seed(now()),
     schedule_tick(),
     {ok, Helper} = yz_solrq_helper:start_link(self()),
     {ok, #state{helper_pid = Helper}} .
@@ -78,6 +85,8 @@ handle_call({index, E}, From,
         _ ->
             {reply, ok, State3}
     end;
+handle_call(status, _From, #state{} = State) ->
+    {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, State#state{queue_hwm = NewHWM}};
 handle_call({set_batch, Min, Max}, _From,
@@ -108,6 +117,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+internal_status(State) ->
+    [{F, V} || {F, V} <- lists:zip(record_info(fields, state),
+                                   tl(tuple_to_list(State))),
+               lists:member(F, [queue_len, queue_hwm,
+                                batch_min, batch_max, helper_pid])].
+
 
 %% Enqueue the entry and return updated state.
 enqueue(E, #state{queue = Q, queue_len = L} = State) ->
@@ -165,4 +181,4 @@ schedule_tick() ->
     timer:send_after(tick_delay(), self(), tick).
 
 tick_delay() ->
-    application:get_env(yokozuna, solrq_tick, 100).
+    trunc(random:uniform() * application:get_env(yokozuna, solrq_tick, 1000)).
