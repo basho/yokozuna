@@ -81,6 +81,7 @@ handle_cast({entries, Entries0}, #state{qpid = QPid,
         _:Err ->
             Trace = erlang:get_stacktrace(),
             lager:info("index failed - ~p\nat: ~p", [Err, Trace]),
+            yz_solrq:poll(QPid, self()),
             {noreply, State}
     end.
 
