@@ -366,10 +366,8 @@ first_partition([{Partition, _}|_]) ->
 
 %% @private
 %%
-%% @doc Get the tree.
+%% @doc Get the tree if yz anti_entropy is enabled.
 %%
-%% NOTE: Relies on the fact that this code runs on the KV vnode
-%%       process.
 -spec get_tree(p()) -> tree() | not_registered.
 get_tree(Partition) ->
     case erlang:get({tree,Partition}) of
@@ -389,13 +387,19 @@ get_tree(Partition) ->
 %% @private
 -spec get_and_set_tree(p()) -> tree() | not_registered.
 get_and_set_tree(Partition) ->
-    case yz_entropy_mgr:get_tree(Partition) of
-        {ok, Tree} ->
-            erlang:put({tree,Partition}, Tree),
-            Tree;
-        not_registered ->
-            erlang:put({tree,Partition}, undefined),
+    case yz_entropy_mgr:enabled() of
+        true ->
+            case yz_entropy_mgr:get_tree(Partition) of
+                {ok, Tree} ->
+                    erlang:put({tree,Partition}, Tree),
+                    Tree;
+                not_registered ->
+                    erlang:put({tree,Partition}, undefined),
+                    not_registered
+            end;
+        false ->
             not_registered
+
     end.
 
 %% @private
