@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, regname/1, resize/1, set_hwm/1, set_batch/2]).
+-export([start_link/0, regname/1, resize/1, set_hwm/1, set_index/4]).
 -export([init/1]).
 
 -define(SOLRQS_TUPLE_KEY, solrqs_tuple).
@@ -48,35 +48,36 @@ regname(Hash) ->
 %% this will briefly cause the worker that queues remap to
 %% to change so updates may be out of order briefly.
 resize(NewSize) when NewSize > 0 ->
-    OldSize = supervisor:count_children(?MODULE),
+    OldSize =  proplists:get_value(workers, supervisor:count_children(?MODULE)),
     %% Shrink to single worker while we mess with the
     %% running workers
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(1)),
     Result =
         case NewSize of
             OldSize ->
                 same_size;
             NewSize when NewSize < OldSize ->
+                %% Reduce down to the new size before killing
+                mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
                 _ = [begin
                          Name = int_to_regname(I),
-                         _ = supervisor:terminate_child(Name),
-                         ok = supervisor:delete_child(Name)
+                         _ = supervisor:terminate_child(?MODULE, Name),
+                         ok = supervisor:delete_child(?MODULE, Name)
                      end || I <- lists:seq(NewSize + 1, OldSize)],
                 {shrank, OldSize - NewSize};
             NewSize when NewSize > OldSize ->
-                [supervisor:start_child(make_child(int_to_regname(I))) ||
+                [supervisor:start_child(?MODULE, make_child(int_to_regname(I))) ||
                     I <- lists:seq(OldSize + 1, NewSize)],
+                mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
                 {grew, NewSize - OldSize}
         end,
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
     Result.
 
 set_hwm(HWM) ->
     [{Name, catch yz_solrq:set_hwm(Name, HWM)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
-set_batch(Min, Max) ->
-    [{Name, catch yz_solrq:set_batch(Name, Min, Max)} ||
+set_index(Index, Min, Max, DelayMsMax) ->
+    [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
 
@@ -102,7 +103,7 @@ init([]) ->
 %%%===================================================================
 
 solrqs_tuple() ->
-    NumSolrQ =application:get_env(yokozuna, num_solrq, 100),
+    NumSolrQ =application:get_env(yokozuna, num_solrq, 10),
     solrqs_tuple(NumSolrQ).
 
 solrqs_tuple(NumSolrQ) ->
