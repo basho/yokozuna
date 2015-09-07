@@ -48,27 +48,28 @@ regname(Hash) ->
 %% this will briefly cause the worker that queues remap to
 %% to change so updates may be out of order briefly.
 resize(NewSize) when NewSize > 0 ->
-    OldSize = supervisor:count_children(?MODULE),
+    OldSize =  proplists:get_value(workers, supervisor:count_children(?MODULE)),
     %% Shrink to single worker while we mess with the
     %% running workers
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(1)),
     Result =
         case NewSize of
             OldSize ->
                 same_size;
             NewSize when NewSize < OldSize ->
+                %% Reduce down to the new size before killing
+                mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
                 _ = [begin
                          Name = int_to_regname(I),
-                         _ = supervisor:terminate_child(Name),
-                         ok = supervisor:delete_child(Name)
+                         _ = supervisor:terminate_child(?MODULE, Name),
+                         ok = supervisor:delete_child(?MODULE, Name)
                      end || I <- lists:seq(NewSize + 1, OldSize)],
                 {shrank, OldSize - NewSize};
             NewSize when NewSize > OldSize ->
-                [supervisor:start_child(make_child(int_to_regname(I))) ||
+                [supervisor:start_child(?MODULE, make_child(int_to_regname(I))) ||
                     I <- lists:seq(OldSize + 1, NewSize)],
+                mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
                 {grew, NewSize - OldSize}
         end,
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
     Result.
 
 set_hwm(HWM) ->
