@@ -19,7 +19,8 @@
 -module(yz_solrq).
 
 %% api
--export([start_link/1, status/1, index/5, poll/2, set_hwm/2, set_batch/3]).
+-export([start_link/1, status/1, index/5, poll/2, set_hwm/2, set_batch/3,
+         reload_appenv/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -63,6 +64,10 @@ set_hwm(QPid, HWM) ->
 set_batch(QPid, Min, Max) ->
     gen_server:call(QPid, {set_batch, Min, Max}).
 
+reload_appenv(QPid) ->
+    gen_server:call(QPid, reload_appenv).
+
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -72,7 +77,7 @@ init([]) ->
     random:seed(now()),
     schedule_tick(),
     {ok, Helper} = yz_solrq_helper:start_link(self()),
-    {ok, #state{helper_pid = Helper}} .
+    {ok, read_appenv(#state{helper_pid = Helper})} .
 
 handle_call({index, E}, From,
             #state{pending_vnodes = PendingVnodes} = State) ->
@@ -92,7 +97,9 @@ handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
 handle_call({set_batch, Min, Max}, _From,
             #state{batch_min = OldMin, batch_max = OldMax} = State) ->
     State2 = maybe_send_entries(State#state{batch_min = Min, batch_max = Max}),
-    {reply, {ok, {OldMin, OldMax}}, State2}.
+    {reply, {ok, {OldMin, OldMax}}, State2};
+handle_call(reload_appenv, _From, State) ->
+    {reply, ok, read_appenv(State)}.
 
 
 handle_cast({poll, HPid}, #state{queue_len = L, batch_min = Min} = State) ->
@@ -176,6 +183,15 @@ tick(#state{pending_helpers = Helpers} = State) ->
         [HPid] ->
             send_entries(HPid, State#state{pending_helpers = []})
     end.
+
+%% Read settings from the application environment
+read_appenv(State) ->
+    Min = app_helper:get_env(yokozuna, solrq_batch_min, 1000),
+    Max = app_helper:get_env(yokozuna, solrq_batch_max, 1000),
+    HWM = app_helper:get_env(yokozuna, solrq_queue_hwm, 10000),
+    maybe_send_entries(State#state{batch_min = Min, batch_max = Max,
+                                   queue_hwm = HWM}).
+
 
 schedule_tick() ->
     timer:send_after(tick_delay(), self(), tick).
