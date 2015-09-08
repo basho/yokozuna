@@ -109,7 +109,7 @@ then
 fi
 
 JAVA_LIB=../priv/java_lib
-YZ_JAR_VSN=2
+YZ_JAR_VSN=3
 YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
 
 if [ ! -e $JAVA_LIB/$YZ_JAR_NAME ]
