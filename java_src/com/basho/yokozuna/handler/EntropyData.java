@@ -18,7 +18,7 @@ package com.basho.yokozuna.handler;
 
 import java.io.IOException;
 
-import org.apache.commons.codec.binary.Base64;
+import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -117,14 +117,6 @@ public class EntropyData
                 tmp = te.next();
             }
 
-            String text;
-            String[] vals;
-            String docPartition;
-            String vsn;
-            String riakBType;
-            String riakBName;
-            String riakKey;
-            String hash;
             int count = 0;
             BytesRef current = null;
             final Bits liveDocs = rdr.getLiveDocs();
@@ -132,25 +124,34 @@ public class EntropyData
             while(!endOfItr(tmp) && count < n) {
                 if (isLive(liveDocs, te)) {
                     current = BytesRef.deepCopyOf(tmp);
-                    text = tmp.utf8ToString();
+                    final String text = tmp.utf8ToString();
                     if (log.isDebugEnabled()) {
                         log.debug("text: " + text);
                     }
-                    vals = text.split(" ");
+                    final String [] vals = text.split(" ");
 
-                    vsn = vals[0];
-                    docPartition = vals[1];
-                    riakBType = decodeBase64DocPart(vals[2]);
-                    riakBName = decodeBase64DocPart(vals[3]);
-                    riakKey = decodeBase64DocPart(vals[4]);
-                    hash = vals[5];
+                    final String docPartition = vals[1];
 
+                    /*
+                      If the partition matches the one we are looking for,
+                      parse the version, bkey, and object hash from the
+                      entropy data field (term).
+                    */
                     if (partition.equals(docPartition)) {
-                        SolrDocument tmpDoc = new SolrDocument();
+                        final String vsn = vals[0];
+
+                        final String [] decoded = decodeForVersion(vsn,
+                                                                   vals[2],
+                                                                   vals[3],
+                                                                   vals[4]);
+
+                        final String hash = vals[5];
+
+                        final SolrDocument tmpDoc = new SolrDocument();
                         tmpDoc.addField("vsn", vsn);
-                        tmpDoc.addField("riak_bucket_type", riakBType);
-                        tmpDoc.addField("riak_bucket_name", riakBName);
-                        tmpDoc.addField("riak_key", riakKey);
+                        tmpDoc.addField("riak_bucket_type", decoded[0]);
+                        tmpDoc.addField("riak_bucket_name", decoded[1]);
+                        tmpDoc.addField("riak_key", decoded[2]);
                         tmpDoc.addField("base64_hash", hash);
                         docs.add(tmpDoc);
                         count++;
@@ -163,7 +164,8 @@ public class EntropyData
                 rsp.add("more", false);
             } else {
                 rsp.add("more", true);
-                final String newCont = Base64.encodeBase64URLSafeString(current.bytes);
+                final String newCont =
+                    org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(current.bytes);
                 // The continue context for next req to start where
                 // this one finished.
                 rsp.add("continuation", newCont);
@@ -182,7 +184,7 @@ public class EntropyData
     }
 
     static BytesRef decodeCont(final String cont) {
-        final byte[] bytes = Base64.decodeBase64(cont);
+        final byte[] bytes = DatatypeConverter.parseBase64Binary(cont);
         return new BytesRef(bytes);
     }
 
@@ -210,11 +212,37 @@ public class EntropyData
     }
 
     /**
+       @param vsn a String vsn number referring to the item's ed handler version
+       @param riakBType riak bucket-type
+       @param riakBName riak bucket-name
+       @param riakKey riak key
+       @return a String array consisting of a Bucket Type, Bucket Name, and Riak Key
+    */
+    private String [] decodeForVersion(String vsn, String riakBType, String riakBName, String riakKey) {
+        final String [] bKeyInfo;
+        switch(Integer.parseInt(vsn)) {
+            case 1:
+                bKeyInfo = new String [] {riakBType, riakBName, riakKey};
+                break;
+            default:
+                bKeyInfo = new String []
+                    {
+                        decodeBase64DocPart(riakBType),
+                        decodeBase64DocPart(riakBName),
+                        decodeBase64DocPart(riakKey)
+                    };
+                break;
+        }
+        return bKeyInfo;
+    }
+
+    /**
        @param base64EncodedVal base64 encoded string
        @return a string of decoded base64 bytes
-     */
+    */
     private String decodeBase64DocPart(String base64EncodedVal) {
-        byte[] bytes = Base64.decodeBase64(base64EncodedVal);
-        return new String(bytes);
+        return new String(DatatypeConverter.parseBase64Binary(
+                              base64EncodedVal));
     }
 }
+
