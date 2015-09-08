@@ -194,7 +194,7 @@ index(Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
             Ring = yz_misc:get_ring(transformed),
-            case is_owner_or_future_owner(P, node(), Ring) of
+            case yz_cover:is_owner_or_future_owner(P) of
                 true ->
                     T1 = os:timestamp(),
                     BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},

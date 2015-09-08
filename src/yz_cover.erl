@@ -59,6 +59,12 @@ logical_partitions(Ring, Partitions) ->
     LI = logical_index(Ring),
     ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
 
+-spec is_owner_or_future_owner(p()) -> boolean().
+is_owner_or_future_owner(P) ->
+    {Bits, Owned} = mochiglobal:get(yz_cover_owned),
+    Index = (P bsr Bits) + 1, % Index is zero offset, elements are 1-offset
+    element(Index, Owned).
+
 %% @doc Get the coverage plan for `Index'.
 -spec plan(index_name()) -> {ok, plan()} | {error, term()}.
 plan(Index) ->
@@ -81,8 +87,10 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    schedule_tick(),
-    {ok, #state{ring_used=undefined}}.
+    %% Make sure coverage plans and ownership info is available
+    %% if we start up under load
+    {noreply, State} = handle_info(tick, #state{ring_used=undefined}),
+    {ok, State}.
 
 handle_cast(update_all_plans, S) ->
     Ring = yz_misc:get_ring(transformed),
@@ -92,6 +100,7 @@ handle_cast(update_all_plans, S) ->
 handle_info(tick, S) ->
     Ring = yz_misc:get_ring(transformed),
     ok = update_all_plans(Ring),
+    ok = update_owner_or_future_owner(Ring),
     schedule_tick(),
     {noreply, S#state{ring_used=Ring}};
 
@@ -294,3 +303,27 @@ update_all_plans(Ring) ->
     NVals = lists:usort([yz_index:get_n_val_from_index(I) || I <- Indexes]),
     _ = [ok = cache_plan(N, Ring) || N <- NVals],
     ok.
+
+%% @private
+%%
+%% @doc Precompute whether this node owns partitions by index
+-spec update_owner_or_future_owner(ring()) -> ok.
+update_owner_or_future_owner(Ring) ->
+    Owners = riak_core_ring:all_owners(Ring),
+    NextOwners = riak_core_ring:all_next_owners(Ring),
+    OwnedOrNext = [Owner == node() orelse Next == node() ||
+                      {{_P, Owner}, {_P, Next}} <- lists:zip(Owners, NextOwners)],
+    Bits = 160 - log2(length(OwnedOrNext)),
+    New = {Bits, list_to_tuple(OwnedOrNext)},
+    case mochiglobal:get(yz_cover_owned, undefined) of
+        New ->
+            ok; % no change
+        _ ->
+            mochiglobal:set(yz_cover_owned, New)
+    end.
+
+%% @private
+%%
+%% @doc compute base2 logarith on integer
+log2(X) ->
+    trunc(math:log(X) / math:log(X)).
