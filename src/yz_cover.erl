@@ -310,20 +310,20 @@ update_all_plans(Ring) ->
 -spec update_owner_or_future_owner(ring()) -> ok.
 update_owner_or_future_owner(Ring) ->
     Owners = riak_core_ring:all_owners(Ring),
-    NextOwners = riak_core_ring:all_next_owners(Ring),
-    OwnedOrNext = [Owner == node() orelse Next == node() ||
-                      {{_P, Owner}, {_P, Next}} <- lists:zip(Owners, NextOwners)],
+    Future = ordsets:from_list(riak_core_ring:future_indices(Ring, node())),
+    OwnedOrNext = [Owner == node() orelse ordsets:is_element(P, Future) ||
+                      {P, Owner} <- Owners],
     Bits = 160 - log2(length(OwnedOrNext)),
     New = {Bits, list_to_tuple(OwnedOrNext)},
     case mochiglobal:get(yz_cover_owned, undefined) of
         New ->
             ok; % no change
         _ ->
-            mochiglobal:set(yz_cover_owned, New)
+            mochiglobal:put(yz_cover_owned, New)
     end.
 
 %% @private
 %%
 %% @doc compute base2 logarith on integer
 log2(X) ->
-    trunc(math:log(X) / math:log(X)).
+    trunc(math:log(X) / math:log(2)).
