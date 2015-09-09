@@ -55,10 +55,7 @@ confirm() ->
     Key = <<"Problem">>,
     Value = <<"FOR YOU">>,
     ok = yz_rt:http_put(HP, ?BUCKET, Key, Value),
-
-    %% time for soft auto commit
-    timer:sleep(1100),
-
+    yz_rt:commit(Cluster, ?INDEX),
     URL = yz_rt:search_url(HP, ?INDEX),
 
     test_search_get_and_post_query(HP, URL, ?INDEX),
