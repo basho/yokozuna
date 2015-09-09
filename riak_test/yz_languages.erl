@@ -69,8 +69,7 @@ store_and_search(Cluster, Bucket, Index, Key, Headers, CT, Body, Field, Term) ->
     URL = bucket_url(HP, Bucket, Key),
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1000),
+    yz_rt:commit(Cluster, Index),
     {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     ?assertEqual(Body, list_to_binary(ReturnedBody)),
     lager:info("Verify values are indexed"),

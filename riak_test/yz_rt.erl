@@ -6,6 +6,7 @@
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 -define(NO_BODY, <<>>).
 -define(IBROWSE_TIMEOUT, 60000).
+-define(SOFTCOMMIT, 1000).
 
 -type host() :: string()|atom().
 -type portnum() :: non_neg_integer().
@@ -569,3 +570,12 @@ write_obj(Cluster, Bucket) ->
             lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
             yz_rt:http_put(HP, Bucket, Key, CT, Body)
     end.
+
+-spec commit([node()], index_name()) -> ok.
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(?SOFTCOMMIT),
+    lager:info("Commit search writes to ~s at softcommit (default) ~p",
+               [Index, ?SOFTCOMMIT]),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]),
+    ok.
