@@ -544,15 +544,6 @@ internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
     ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
          [Host, Port, Index, Name, Term, string:join(Ss, ",")]).
 
--spec commit([node()], index_name()) -> ok.
-commit(Nodes, Index) ->
-    %% Wait for yokozuna index to trigger, then force a commit
-    timer:sleep(?SOFTCOMMIT),
-    lager:info("Commit search writes to ~s at softcommit (default) ~p",
-               [Index, ?SOFTCOMMIT]),
-    rpc:multicall(Nodes, yz_solr, commit, [Index]),
-    ok.
-
 entropy_data_url({Host, Port}, Index, Params) ->
     ?FMT("http://~s:~B/internal_solr/~s/entropy_data?~s",
          [Host, Port, Index, mochiweb_util:urlencode(Params)]).
@@ -578,4 +569,12 @@ write_obj(Cluster, Bucket) ->
             lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
             yz_rt:http_put(HP, Bucket, Key, CT, Body)
     end.
->>>>>>> 8f6a478... Cherry pick of 969b32533e27b731afcff70a823f04d5c8db829e, required manual merge of yz_rt and yz_search_http
+
+-spec commit([node()], index_name()) -> ok.
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(?SOFTCOMMIT),
+    lager:info("Commit search writes to ~s at softcommit (default) ~p",
+               [Index, ?SOFTCOMMIT]),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]),
+    ok.
