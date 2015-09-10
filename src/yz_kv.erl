@@ -31,7 +31,8 @@
 -endif.
 
 -type write_reason() :: delete | handoff | put | anti_entropy.
-
+-type values() :: [riak_object:value()].
+-type delops() :: []|[{id, _}]|[{siblings, _}].
 
 %%%===================================================================
 %%% TODO: move to riak_core
@@ -260,14 +261,14 @@ index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
     case riak_object:get_values(Obj) of
         [notfound] ->
             ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
-        _ ->
+        Values ->
             LI = yz_cover:logical_index(Ring),
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
             Hash = hash_object(Obj),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-            ok = yz_solr:index(Index, Docs, delete_operation(Obj, Reason, Docs,
-                                                             BKey, LP)),
+            DelOps = delete_operation(Obj, Reason, Docs, BKey, LP, Values),
+            ok = solr_index(Index, Docs, DelOps, Values),
             ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
     end.
 
@@ -382,6 +383,11 @@ check_flag(Flag) ->
     true == erlang:get(Flag).
 
 %% @private
+%%
+%% TODO: deprecate in favor of generic solution for sibling value Objects
+%%       in cleanup/3.
+-spec cleanup(non_neg_integer(), {obj(), bkey(), lp()}) ->
+                     [{id, binary()}|{siblings, bkey()}].
 cleanup(1, {_Obj, BKey, _LP}) ->
     %% Delete any siblings
     [{siblings, BKey}];
@@ -393,6 +399,21 @@ cleanup(2, {Obj, _BKey, LP}) ->
     [{id, DocID}];
 cleanup(_, _) ->
     [].
+
+
+%% @private
+%%
+%% @doc Cleanup siblings
+-spec cleanup([doc()], bkey(), values()) -> [{siblings, bkey()}] |
+                                                   [{id, doc()}].
+cleanup([], _BKey, _Values) ->
+    [];
+cleanup([{doc, Fields}|T], BKey, Values) ->
+    case {proplists:is_defined(tombstone, Fields), Values =:= [<<>>]} of
+        {true, true} -> [{bkey, BKey}];
+        {true, false} -> [{siblings, BKey}];
+        {false, _} -> cleanup(T, BKey, Values)
+    end.
 
 %% @private
 %%
@@ -466,40 +487,68 @@ is_service_up(Service, Node) ->
 
 %% @private
 %%
-%% @doc Check if object has 2.0 CRDT datatype entry or property for
-%%      strong consistency.
--spec is_datatype_or_consistent(obj()) -> boolean()|{error, _}.
-is_datatype_or_consistent(Obj) ->
-    Bucket = riak_object:bucket(Obj),
-    case riak_core_bucket:get_bucket(Bucket) of
-        BProps when is_list(BProps) ->
-            is_datatype(BProps) orelse lists:member({consistent, true}, BProps);
-        {error, _}=Err ->
-            Err
-    end.
+%% @doc Check if bucket props have 2.0 CRDT datatype entry or
+%%      property for strong consistency.
+-spec is_datatype_or_consistent(riak_kv_bucket:props()) -> boolean().
+is_datatype_or_consistent(BProps) when is_list(BProps) ->
+    is_datatype(BProps) orelse lists:member({consistent, true}, BProps).
 
 %% @private
 %%
 %% @doc Check if Bucket Properties contain CRDT datatype.
 -spec is_datatype(riak_kv_bucket:props()) -> boolean().
-is_datatype(BProps) ->
+is_datatype(BProps) when is_list(BProps) ->
     Type = proplists:get_value(datatype, BProps),
     Mod = riak_kv_crdt:to_mod(Type),
     riak_kv_crdt:supported(Mod).
 
 %% @private
 %%
-%% @doc Set yz_solr:index delete operation(s) on write_reason.
--spec delete_operation(obj(), put|handoff|anti_entropy, [doc()], bkey(), lp()) ->
-                              []|[{id, _}]|[{siblings, _}].
-delete_operation(Obj, put, Docs, BKey, LP) ->
-    case is_datatype_or_consistent(Obj) of
-        true -> [];
-        false -> cleanup(length(Docs), {Obj, BKey, LP})
-    end;
-delete_operation(Obj, _Reason, Docs, BKey, LP) ->
-    cleanup(length(Docs), {Obj, BKey, LP}).
+%% @doc Check if bucket props allow for siblings.
+-spec has_siblings(riak_kv_bucket:props()) -> boolean().
+has_siblings(BProps) when is_list(BProps) ->
+    case {is_datatype_or_consistent(BProps),
+          proplists:get_bool(allow_mult, BProps),
+          proplists:get_bool(last_write_wins, BProps)} of
+        {true, _, _} -> false;
+        {false, _, true} -> false;
+        {false, false, _} -> false;
+        {_, _, _} -> true
+    end.
 
+%% @private
+%%
+%% @doc Set yz_solr:index delete operation(s).
+%%      If object relates to lww=true/allow_mult=false/datatype/sc
+%%      do cleanup of tombstones only.
+-spec delete_operation(obj(), put|handoff|anti_entropy, [doc()], bkey(), lp(),
+                       values()) -> delops().
+delete_operation(Obj, _Reason, Docs, BKey, LP, Values) ->
+    Bucket = riak_object:bucket(Obj),
+    case riak_core_bucket:get_bucket(Bucket) of
+        BProps when is_list(BProps) ->
+            case has_siblings(BProps) of
+                true -> cleanup(length(Docs), {Obj, BKey, LP});
+                false -> cleanup(Docs, BKey, Values)
+            end;
+        {error, _}=Err ->
+            Err
+    end.
+
+%% @private
+%%
+%% @doc Determine which docs/ops make it solr index call.
+-spec solr_index(index_name(), [doc()], delops(), values()) -> ok.
+solr_index(Index, _Docs, DelOps, [<<>>]) when length(DelOps) > 0 ->
+    %% handle cases where there's only a single tombstone value and provide
+    %% only the deletion operations
+    yz_solr:index(Index, [], DelOps);
+solr_index(Index, Docs, DelOps, Values) ->
+    %% remove docs which have tombstone, <<>>, values in preparation
+    %% for add updates
+    yz_solr:index(Index,
+                  [D ||  {D, V} <- lists:zip(Docs, Values), V =/= <<>>],
+                  DelOps).
 
 %%%===================================================================
 %%% Tests
@@ -507,7 +556,7 @@ delete_operation(Obj, _Reason, Docs, BKey, LP) ->
 
 -ifdef(TEST).
 
-is_datatype_or_consistent_test_() ->
+has_siblings_test_() ->
 {setup,
      fun() ->
              meck:new(riak_core_capability, []),
@@ -555,9 +604,13 @@ is_datatype_or_consistent_test_() ->
                  BTProps = riak_core_bucket:get_bucket(Bucket2),
                  ?assert(proplists:get_value(consistent, BTProps)),
                  ?assertEqual(Bucket2, proplists:get_value(name, BTProps)),
-                 [?assert(is_datatype_or_consistent(riak_object:new(B, K, V)))
-                  || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
-                                 {Bucket2, <<"k2">>, hey}]]
+                 [begin
+                      Object = riak_object:new(B, K, V),
+                      CheckBucket = riak_object:bucket(Object),
+                      CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
+                      ?assertNot(has_siblings(CheckBucketProps))
+                  end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                     {Bucket2, <<"k2">>, hey}]]
              end),
       ?_test(begin
                  BucketType1 = <<"counters">>,
@@ -572,24 +625,52 @@ is_datatype_or_consistent_test_() ->
                  BTProps2 = riak_core_bucket:get_bucket(Bucket2),
                  ?assertEqual(counter, proplists:get_value(datatype, BTProps1)),
                  ?assertEqual(map, proplists:get_value(datatype, BTProps2)),
-                 [?assert(is_datatype_or_consistent(riak_object:new(B, K, V)))
-                  || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
-                                 {Bucket2, <<"k2">>, hey}]]
+                 [begin
+                      Object = riak_object:new(B, K, V),
+                      CheckBucket = riak_object:bucket(Object),
+                      CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
+                      ?assertNot(has_siblings(CheckBucketProps))
+                  end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                     {Bucket2, <<"k2">>, hey}]]
+             end),
+      ?_test(begin
+                 Bucket1 = <<"lww">>,
+                 BucketType = <<"allow_multz">>,
+                 Bucket2 = {BucketType, <<"allowz">>},
+                 riak_core_bucket:set_bucket(Bucket1, [{last_write_wins, true}]),
+                 riak_core_bucket_type:create(BucketType, [{allow_mult, false}]),
+                 riak_core_bucket_type:activate(BucketType),
+                 BTProps1 = riak_core_bucket:get_bucket(Bucket1),
+                 BTProps2 = riak_core_bucket:get_bucket(Bucket2),
+                 ?assertEqual(true, proplists:get_bool(last_write_wins, BTProps1)),
+                 ?assertEqual(false, proplists:get_bool(allow_mult, BTProps2)),
+                 [begin
+                      Object = riak_object:new(B, K, V),
+                      CheckBucket = riak_object:bucket(Object),
+                      CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
+                      ?assertNot(has_siblings(CheckBucketProps))
+                  end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                     {Bucket2, <<"k2">>, hey}]]
              end),
       ?_test(begin
                  Bucket1 = <<"buckety">>,
                  BucketType = <<"typey">>,
                  Bucket2 = {BucketType, <<"bucketjumpy">>},
-                 riak_core_bucket:set_bucket(Bucket1, []),
+                 riak_core_bucket:set_bucket(Bucket1, [{allow_mult, true}]),
                  riak_core_bucket_type:create(BucketType, []),
                  riak_core_bucket_type:activate(BucketType),
-                 ?assertEqual([{name, Bucket1}],
-                              riak_core_bucket:get_bucket(Bucket1)),
-                 BTProps = riak_core_bucket:get_bucket(Bucket2),
-                 ?assertEqual(Bucket2, proplists:get_value(name, BTProps)),
-                 [?assertNot(is_datatype_or_consistent(riak_object:new(B, K, V)))
-                  || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
-                                 {Bucket2, <<"k2">>, hey}]]
+                 BTProps1 = riak_core_bucket:get_bucket(Bucket1),
+                 BTProps2 = riak_core_bucket:get_bucket(Bucket2),
+                 ?assertEqual(Bucket1, proplists:get_value(name, BTProps1)),
+                 ?assertEqual(Bucket2, proplists:get_value(name, BTProps2)),
+                 ?assertEqual(true, proplists:get_bool(allow_mult, BTProps2)),
+                 [begin
+                      Object = riak_object:new(B, K, V),
+                      CheckBucket = riak_object:bucket(Object),
+                      CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
+                      ?assert(has_siblings(CheckBucketProps))
+                  end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
+                                     {Bucket2, <<"k2">>, hey}]]
              end)]}.
 
 -endif.

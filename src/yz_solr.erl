@@ -395,7 +395,13 @@ encode_delete({id, Id}) ->
     {struct, [{id, Id}]}.
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]}.
+    Fields1 = lists:filter(fun remove_tombstone/1, Fields),
+    {struct, [{doc, lists:map(fun encode_field/1, Fields1)}]}.
+
+remove_tombstone({tombstone, _}) ->
+    false;
+remove_tombstone({_, _}) ->
+    true.
 
 encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};
