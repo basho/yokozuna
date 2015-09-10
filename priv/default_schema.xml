@@ -111,6 +111,9 @@
    <!-- Entropy Data: Data related to anti-entropy -->
    <field name="_yz_ed" type="_yz_str" indexed="true" stored="false" multiValued="false"/>
 
+   <!-- Riak Object hash -->
+   <field name="_yz_ha" type="_yz_str" indexed="false" stored="true" multiValued="false"/>
+
    <!-- Partition Number: Used as a filter query param -->
    <field name="_yz_pn" type="_yz_str" indexed="true" stored="false" multiValued="false"/>
 

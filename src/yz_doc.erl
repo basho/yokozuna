@@ -92,7 +92,7 @@ make_doc(O, Hash, LiveSiblings, {MD, V}, FPN, Partition) ->
             EntropyData = gen_ed(O, Hash, Partition),
             Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
             Fields = make_fields({DocId, Bkey, FPN,
-                                  Partition, Vtag, EntropyData}),
+                                  Partition, Vtag, EntropyData, Hash}),
             ExtractedFields = extract_fields({MD, V}),
             Tags = extract_tags(MD),
             {doc, lists:append([Tags, ExtractedFields, Fields])};
@@ -118,17 +118,18 @@ encode_doc_part([$% | Rest], Acc) ->
 encode_doc_part([C | Rest], Acc) ->
   encode_doc_part(Rest, [C | Acc]).
 
-make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData}) ->
+make_fields({DocId, {Bucket, Key}, FPN, Partition, none, EntropyData, Hash}) ->
     [{?YZ_ID_FIELD, DocId},
-     {?YZ_ED_FIELD, EntropyData},
+     {?YZ_ED_FIELD, EntropyData}, %% deprecated
+     {?YZ_HA_FIELD, base64:encode(Hash)},
      {?YZ_FPN_FIELD, FPN},
      {?YZ_PN_FIELD, Partition},
      {?YZ_RK_FIELD, Key},
      {?YZ_RT_FIELD, yz_kv:bucket_type(Bucket)},
      {?YZ_RB_FIELD, yz_kv:bucket_name(Bucket)}];
 
-make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
-    Fields = make_fields({DocId, BKey, FPN, Partition, none, EntropyData}),
+make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData, Hash}) ->
+    Fields = make_fields({DocId, BKey, FPN, Partition, none, EntropyData, Hash}),
     [{?YZ_VTAG_FIELD, Vtag}|Fields].
 
 %% @doc Get vtag for MetaData entry.
