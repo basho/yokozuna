@@ -184,7 +184,7 @@ public class EntropyData
     }
 
     static BytesRef decodeCont(final String cont) {
-        final byte[] bytes = DatatypeConverter.parseBase64Binary(cont);
+        final byte[] bytes = org.apache.commons.codec.binary.Base64.decodeBase64(cont);
         return new BytesRef(bytes);
     }
 
