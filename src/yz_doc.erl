@@ -113,7 +113,8 @@ get_vtag(O, MD) ->
         _ -> none
     end.
 
--spec extract_fields({obj_metadata(), term()}) ->  fields() | {error, any()}.
+-spec extract_fields({obj_metadata(), term()}) -> fields() | [{error, any()}] |
+                                                 [{tombstone, binary()}].
 extract_fields({MD, V}) ->
     case yz_kv:is_tombstone(MD) of
         false ->
@@ -135,7 +136,7 @@ extract_fields({MD, V}) ->
                     [{?YZ_ERR_FIELD_S, 1}]
             end;
         true ->
-            []
+            [{tombstone, <<>>}]
     end.
 
 
