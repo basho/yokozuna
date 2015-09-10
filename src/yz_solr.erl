@@ -34,6 +34,8 @@
                        {delete_data_dir, deleteDataDir}]).
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit,n}]).
+-define(CURSOR_FIELD_ALIASES, [{continuation, cursorMark},
+                        {limit, rows}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
 -define(SOLR_TIMEOUT, 60000).
 
@@ -167,11 +169,20 @@ delete(Index, Ops) ->
 -spec entropy_data(index_name(), ed_filter()) ->
                           ED::entropy_data() | {error, term()}.
 entropy_data(Core, Filter) ->
+    case app_helper:get_env(?YZ_APP_NAME, entropy_data_cursor, false) of
+        false ->
+            entropy_data_request_handler(Core, Filter);
+        true ->
+            entropy_data_cursor(Core, Filter)
+    end.
+
+
+entropy_data_request_handler(Core, Filter) ->
     Params = [{wt, json}|Filter] -- [{continuation, none}],
     Params2 = proplists:substitute_aliases(?FIELD_ALIASES, Params),
     Opts = [{response_format, binary}],
     URL = ?FMT("~s/~s/entropy_data?~s",
-               [base_url(), Core, mochiweb_util:urlencode(Params2)]),
+        [base_url(), Core, mochiweb_util:urlencode(Params2)]),
     case ibrowse:send_req(URL, [], get, [], Opts) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
@@ -179,6 +190,32 @@ entropy_data(Core, Filter) ->
             Continuation = get_continuation(More, R),
             Pairs = get_pairs(R),
             make_ed(More, Continuation, Pairs);
+        X ->
+            {error, X}
+    end.
+
+entropy_data_cursor(Core, Filter) ->
+    Continuation =
+        case proplists:get_value(continuation, Filter) of
+            none -> {cursorMark, "*"};
+            Any ->  {nextCursorMark, Any}
+        end,
+    Params = [Continuation |
+                proplists:delete(continuation, proplists:delete(partition, Filter))],
+    Params2 = proplists:substitute_aliases(?CURSOR_FIELD_ALIASES, Params),
+    URL = ?FMT("~s/~s/select?q=_yz_pn:~p&wt=json&sort=score+desc,_yz_id+asc&fl=_yz_rt,_yz_rb,_yz_rk,_yz_ha&~s",
+        [base_url(), Core, proplists:get_value(partition, Filter), mochiweb_util:urlencode(Params2)]),
+    lager:info("FDUSHIN> URL: ~s", [URL]),
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _Headers, Body} ->
+            R = mochijson2:decode(Body),
+            %lager:info("FDUSHIN> R: ~p", [R]),
+            More = kvc:path([<<"nextCursorMark">>], R) /= [],
+            lager:info("FDUSHIN> nextCursorMark: ~p", [kvc:path([<<"nextCursorMark">>], R)]),
+            Cursor = get_continuation_cursor(More, R),
+            Pairs = get_cursor_pairs(R),
+            make_ed(More, Cursor, Pairs);
         X ->
             {error, X}
     end.
@@ -416,15 +453,31 @@ get_continuation(false, _R) ->
 get_continuation(true, R) ->
     kvc:path([<<"continuation">>], R).
 
+get_continuation_cursor(false, _R) ->
+    none;
+get_continuation_cursor(true, R) ->
+    kvc:path([<<"nextCursorToken">>], R).
+
 get_pairs(R) ->
     Docs = kvc:path([<<"response">>, <<"docs">>], R),
     [to_pair(DocStruct) || DocStruct <- Docs].
+
+get_cursor_pairs(R) ->
+    Docs = kvc:path([<<"response">>, <<"docs">>], R),
+    [to_cursor_pair(DocStruct) || DocStruct <- Docs].
 
 %% @doc Convert a doc struct into a pair. Remove the bucket_type to match
 %% kv trees when iterating over entropy data to build yz trees.
 to_pair({struct, [{_,_Vsn},{_,<<"default">>},{_,BName},{_,Key},{_,Base64Hash}]}) ->
     {{BName,Key}, base64:decode(Base64Hash)};
 to_pair({struct, [{_,_Vsn},{_,BType},{_,BName},{_,Key},{_,Base64Hash}]}) ->
+    {{{BType, BName},Key}, base64:decode(Base64Hash)}.
+
+%% @doc Convert a doc struct into a pair. Remove the bucket_type to match
+%% kv trees when iterating over entropy data to build yz trees.
+to_cursor_pair({struct, [{_, Base64Hash}, {_, Key}, {_, <<"default">>}, {_, BName}]}) ->
+    {{BName,Key}, base64:decode(Base64Hash)};
+to_cursor_pair({struct, [{_, Base64Hash}, {_, Key}, {_, BType}, {_, BName}]}) ->
     {{{BType, BName},Key}, base64:decode(Base64Hash)}.
 
 get_doc_pairs(Resp) ->
