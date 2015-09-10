@@ -386,7 +386,7 @@ encode_delete({id, Id}) ->
     {struct, [{id, Id}]}.
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]}.
+    {struct, [{doc, lists:map(fun encode_field/1, Fields)}]}.
 
 encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};

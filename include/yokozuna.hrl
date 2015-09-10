@@ -301,6 +301,7 @@
 -type reload_opts() :: [reload_opt()].
 -type reload_errs() :: [{node(), {error, term()}}].
 
+-define(TOMBSTONE, <<>>).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
 -define(YZ_INDEX, search_index).
 
