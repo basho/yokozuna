@@ -210,7 +210,7 @@ entropy_data_cursor(Core, Filter) ->
     case ibrowse:send_req(URL, [], get, [], Opts) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
-            %lager:info("FDUSHIN> R: ~p", [R]),
+            lager:info("FDUSHIN> R: ~p", [R]),
             More = kvc:path([<<"nextCursorMark">>], R) /= [],
             lager:info("FDUSHIN> nextCursorMark: ~p", [kvc:path([<<"nextCursorMark">>], R)]),
             Cursor = get_continuation_cursor(More, R),
@@ -473,12 +473,18 @@ to_pair({struct, [{_,_Vsn},{_,<<"default">>},{_,BName},{_,Key},{_,Base64Hash}]})
 to_pair({struct, [{_,_Vsn},{_,BType},{_,BName},{_,Key},{_,Base64Hash}]}) ->
     {{{BType, BName},Key}, base64:decode(Base64Hash)}.
 
-%% @doc Convert a doc struct into a pair. Remove the bucket_type to match
-%% kv trees when iterating over entropy data to build yz trees.
-to_cursor_pair({struct, [{_, Base64Hash}, {_, Key}, {_, <<"default">>}, {_, BName}]}) ->
-    {{BName,Key}, base64:decode(Base64Hash)};
-to_cursor_pair({struct, [{_, Base64Hash}, {_, Key}, {_, BType}, {_, BName}]}) ->
-    {{{BType, BName},Key}, base64:decode(Base64Hash)}.
+to_cursor_pair({struct, Values}) when is_list(Values) ->
+    BucketType = proplists:get_value(?YZ_RT_FIELD_B, Values),
+    BucketName = proplists:get_value(?YZ_RB_FIELD_B, Values),
+    Key =        proplists:get_value(?YZ_RK_FIELD_B, Values),
+    Hash =       base64:decode(proplists:get_value(?YZ_HA_FIELD_B, Values)),
+    Bucket = case BucketName of
+        <<"default">> ->
+            BucketName;;
+        _ ->
+            {BucketType, BucketName}
+    end,
+    {{Bucket, Key}, Hash}.
 
 get_doc_pairs(Resp) ->
     Docs = kvc:path([<<"docs">>], Resp),
