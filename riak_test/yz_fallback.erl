@@ -23,7 +23,7 @@ confirm() ->
     rt:wait_for_cluster_service(Cluster, yokozuna),
     create_index(Cluster, ?INDEX),
     Cluster2 = take_node_down(Cluster),
-    write_obj(Cluster2, ?BUCKET, ?KEY),
+    write_obj(Cluster2, ?INDEX, ?BUCKET, ?KEY),
     check_fallbacks(Cluster2, ?INDEX, ?BUCKET, ?KEY),
     HP = riak_hp(yz_rt:select_random(Cluster2), Cluster2),
     ?assert(yz_rt:search_expect(yokozuna, HP, ?INDEX, "*", "*", 1)),
@@ -71,7 +71,7 @@ take_node_down(Cluster) ->
     timer:sleep(5000),
     Cluster -- [DownNode].
 
-write_obj(Cluster, {BType, BName}, Key) ->
+write_obj(Cluster, Index, {BType, BName}, Key) ->
     Node = yz_rt:select_random(Cluster),
     {Host, Port} = riak_hp(Node, Cluster),
     lager:info("write obj to node ~p", [Node]),
@@ -80,7 +80,7 @@ write_obj(Cluster, {BType, BName}, Key) ->
     Headers = [{"content-type", "text/plain"}],
     Body = <<"yokozuna">>,
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, []),
-    timer:sleep(1100).
+    yz_rt:commit(Cluster, Index).
 
 riak_hp(Node, Cluster) ->
     CI = yz_rt:connection_info(Cluster),
