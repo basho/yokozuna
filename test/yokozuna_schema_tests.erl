@@ -20,6 +20,8 @@ basic_schema_test() ->
                                   "./data/yolo/yz_anti_entropy"),
     cuttlefish_unit:assert_config(Config, "yokozuna.root_dir", "./data/yolo/yz"),
     cuttlefish_unit:assert_config(Config, "yokozuna.temp_dir", "./data/yolo/yz_temp"),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solr_request_timeout", 60000),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solr_request_ed_timeout", 60000),
     ok.
 
 override_schema_test() ->
@@ -34,7 +36,9 @@ override_schema_test() ->
             {["search", "solr", "jvm_options"], "-Xmx10G"},
             {["search", "anti_entropy", "data_dir"], "/data/aae/search"},
             {["search", "root_dir"], "/some/other/volume"},
-            {["search", "temp_dir"], "/some/other/volume_temp"}
+            {["search", "temp_dir"], "/some/other/volume_temp"},
+            {["search", "solr", "request_timeout"], "90s"},
+            {["search", "solr", "request_ed_timeout"], "90s"}
     ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
@@ -48,6 +52,8 @@ override_schema_test() ->
                                   "/data/aae/search"),
     cuttlefish_unit:assert_config(Config, "yokozuna.root_dir", "/some/other/volume"),
     cuttlefish_unit:assert_config(Config, "yokozuna.temp_dir", "/some/other/volume_temp"),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solr_request_timeout", 90000),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solr_request_ed_timeout", 90000),
     ok.
 
 %% this context() represents the substitution variables that rebar
