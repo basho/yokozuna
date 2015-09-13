@@ -521,7 +521,7 @@ has_siblings(BProps) when is_list(BProps) ->
 %% @doc Set yz_solr:index delete operation(s).
 %%      If object relates to lww=true/allow_mult=false/datatype/sc
 %%      do cleanup of tombstones only.
--spec delete_operation(obj(), put|handoff|anti_entropy, [doc()], bkey(), lp(),
+-spec delete_operation(obj(), write_reason(), [doc()], bkey(), lp(),
                        values()) -> delops().
 delete_operation(Obj, _Reason, Docs, BKey, LP, Values) ->
     Bucket = riak_object:bucket(Obj),
