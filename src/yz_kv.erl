@@ -257,7 +257,10 @@ index(_, delete, _, P, BKey, ShortPL, Index) ->
     ok = yz_solr:delete(Index, [{bkey, BKey}]),
     ok = update_hashtree(delete, P, ShortPL, BKey),
     ok;
-index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
+index(Obj0, Reason, Ring, P, BKey, ShortPL, Index) ->
+    {Bucket, _} = BKey,
+    BProps = riak_core_bucket:get_bucket(Bucket),
+    Obj = maybe_merge_siblings(BProps, Obj0),
     case riak_object:get_values(Obj) of
         [notfound] ->
             ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
@@ -265,9 +268,6 @@ index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
             LI = yz_cover:logical_index(Ring),
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
-            {Bucket, _} = BKey,
-            BProps = riak_core_bucket:get_bucket(Bucket),
-            Obj = maybe_merge_siblings(BProps, Obj),
             Hash = hash_object(Obj),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
             DelOps = delete_operation(BProps, Obj, Reason, Docs, BKey, LP, Values),
@@ -403,19 +403,17 @@ cleanup(2, {Obj, _BKey, LP}) ->
 cleanup(_, _) ->
     [].
 
-
 %% @private
 %%
-%% @doc Cleanup siblings
--spec cleanup([doc()], bkey(), values()) -> [{siblings, bkey()}] |
-                                                   [{id, doc()}].
+%% @doc Cleanup tombstones and siblings accordingly... cleanup/3
+%% TODO: make this work for allow_mult=true case
+-spec cleanup([doc()], bkey(), values()) -> [{bkey, bkey()}].
 cleanup([], _BKey, _Values) ->
     [];
-cleanup([{doc, Fields}|T], BKey, Values) ->
-    case {proplists:is_defined(tombstone, Fields), Values =:= [<<>>]} of
+cleanup([{doc, Fields}|T], BKey, [VH|VT]) ->
+    case {proplists:is_defined(tombstone, Fields), VH =:= ?TOMBSTONE} of
         {true, true} -> [{bkey, BKey}];
-        {true, false} -> [{siblings, BKey}];
-        {false, _} -> cleanup(T, BKey, Values)
+        {false, _} -> cleanup(T, BKey, VT)
     end.
 
 %% @private
@@ -510,8 +508,8 @@ is_datatype(_) -> false.
 %% @private
 %%
 %% @doc Check if bucket props allow for siblings.
--spec has_siblings(riak_kv_bucket:props()) -> boolean().
-has_siblings(BProps) when is_list(BProps) ->
+-spec should_have_siblings(riak_kv_bucket:props()) -> boolean().
+should_have_siblings(BProps) when is_list(BProps) ->
     case {is_datatype_or_consistent(BProps),
           proplists:get_bool(allow_mult, BProps),
           proplists:get_bool(last_write_wins, BProps)} of
@@ -520,7 +518,7 @@ has_siblings(BProps) when is_list(BProps) ->
         {false, false, _} -> false;
         {_, _, _} -> true
     end;
-has_siblings(_) -> true.
+should_have_siblings(_) -> true.
 
 %% @private
 %%
@@ -530,7 +528,7 @@ has_siblings(_) -> true.
 -spec delete_operation(riak_kv_bucket:props(), obj(), write_reason(), [doc()],
                        bkey(), lp(), values()) -> delops().
 delete_operation(BProps, Obj, _Reason, Docs, BKey, LP, Values) ->
-    case has_siblings(BProps) of
+    case should_have_siblings(BProps) of
         true -> cleanup(length(Docs), {Obj, BKey, LP});
         false -> cleanup(Docs, BKey, Values)
     end.
@@ -540,7 +538,7 @@ delete_operation(BProps, Obj, _Reason, Docs, BKey, LP, Values) ->
 %% @doc Merge siblings for objects that shouldn't have them.
 -spec maybe_merge_siblings(riak_kv_bucket:props(), obj()) -> obj().
 maybe_merge_siblings(BProps, Obj) ->
-    case has_siblings(BProps) of
+    case should_have_siblings(BProps) of
         true ->
             Obj;
         false ->
@@ -554,7 +552,7 @@ maybe_merge_siblings(BProps, Obj) ->
 %%
 %% @doc Determine which docs/ops make it solr index call.
 -spec solr_index(index_name(), [doc()], delops(), values()) -> ok.
-solr_index(Index, _Docs, DelOps, [<<>>]) when length(DelOps) > 0 ->
+solr_index(Index, _Docs, DelOps, [?TOMBSTONE]) when length(DelOps) > 0 ->
     %% handle cases where there's only a single tombstone value and provide
     %% only the deletion operations
     yz_solr:index(Index, [], DelOps);
@@ -562,7 +560,7 @@ solr_index(Index, Docs, DelOps, Values) ->
     %% remove docs which have tombstone, <<>>, values in preparation
     %% for add updates
     yz_solr:index(Index,
-                  [D ||  {D, V} <- lists:zip(Docs, Values), V =/= <<>>],
+                  [D ||  {D, V} <- lists:zip(Docs, Values), V =/= ?TOMBSTONE],
                   DelOps).
 
 %%%===================================================================
@@ -571,7 +569,7 @@ solr_index(Index, Docs, DelOps, Values) ->
 
 -ifdef(TEST).
 
-has_siblings_test_() ->
+should_have_siblings_test_() ->
 {setup,
      fun() ->
              meck:new(riak_core_capability, []),
@@ -623,7 +621,7 @@ has_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(has_siblings(CheckBucketProps))
+                      ?assertNot(should_have_siblings(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -644,7 +642,7 @@ has_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(has_siblings(CheckBucketProps))
+                      ?assertNot(should_have_siblings(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -663,7 +661,7 @@ has_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(has_siblings(CheckBucketProps))
+                      ?assertNot(should_have_siblings(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -683,7 +681,7 @@ has_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assert(has_siblings(CheckBucketProps))
+                      ?assert(should_have_siblings(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end)]}.
