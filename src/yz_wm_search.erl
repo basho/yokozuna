@@ -87,8 +87,10 @@ resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
            ),
     case Res of
         {false, Error, _} ->
+            riak_api_web_security:log_login_event(failure, RD, riak_core_security:get_username(Ctx#ctx.security), Error),
             {true, wrq:append_to_resp_body(Error, RD), Ctx};
         {true, _} ->
+            riak_api_web_security:log_login_event(success, RD, riak_core_security:get_username(Ctx#ctx.security)),
             {false, RD, Ctx}
     end.
 
@@ -111,9 +113,11 @@ forbidden(RD, Ctx) ->
 process_post(Req, S) ->
     case search(Req, S) of
         {Val, Req2, S2} when is_binary(Val) ->
+            riak_kv_wm_util:log_http_access(success, Req, riak_core_security:get_username(S#ctx.security)),
             Req3 = wrq:set_resp_body(Val, Req2),
             {true, Req3, S2};
         Other ->
+            riak_kv_wm_util:log_http_access(failure, Req, riak_core_security:get_username(S#ctx.security), Other),
             %% In this case assume Val is `{halt,Code}' or
             %% `{error,Term}'
             Other

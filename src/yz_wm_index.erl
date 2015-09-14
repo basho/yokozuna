@@ -156,8 +156,10 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
             Res = riak_core_security:check_permission(PermAndResource, Security),
             case Res of
                 {false, Error, _} ->
+                    riak_api_web_security:log_login_event(failure, RD, riak_core_security:get_username(Ctx#ctx.security), Error),
                     {true, wrq:append_to_resp_body(Error, RD), Ctx};
                 {true, _} ->
+                    riak_api_web_security:log_login_event(success, RD, riak_core_security:get_username(Ctx#ctx.security)),
                     {false, RD, Ctx}
             end
     end.
@@ -171,12 +173,15 @@ delete_resource(RD, S) ->
             case yz_index:associated_buckets(IndexName, S#ctx.ring) of
                 [] ->
                     ok = yz_index:remove(IndexName),
+                    riak_kv_wm_util:log_http_access(success, RD, riak_core_security:get_username(S#ctx.security)),
                     {true, RD, S};
                 Buckets ->
+                    riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), "can't delete with associated buckets"),
                     Msg = "Can't delete index with associate buckets ~p",
                     text_response({halt,409}, Msg, [Buckets], RD, S)
             end;
         false ->
+            riak_kv_wm_util:log_http_access(success, RD, riak_core_security:get_username(S#ctx.security)),
             {true, RD, S}
     end.
 
@@ -199,20 +204,26 @@ create_index(RD, S) ->
     NVal = proplists:get_value(<<"n_val">>, BodyProps, undefined),
     case maybe_create_index(IndexName, SchemaName, NVal, Timeout) of
         ok ->
+            riak_kv_wm_util:log_http_access(success, RD, riak_core_security:get_username(S#ctx.security)),
             {<<>>, RD, S};
         {error, index_not_created_within_timeout} ->
+            riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), index_not_created_within_timeout),
             Msg = "Index ~s not created on all the nodes within ~p ms timeout",
             text_response({halt, 202}, Msg, [IndexName, Timeout], RD, S);
         {error, schema_not_found} ->
+            riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), schema_not_found),
             Msg = "Cannot create index because schema ~s was not found~n",
             text_response({halt, 500}, Msg, [SchemaName], RD, S);
         {error, bad_n_val} ->
+            riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), bad_n_val),
             Msg = "Bad n_val given ~p~n",
             text_response({halt, 400}, Msg, [NVal], RD, S);
         {error, invalid_name} ->
+            riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), invalid_index_name),
             Msg = "Invalid character in index name ~s~n",
             text_response({halt, 400}, Msg, [IndexName], RD, S);
         {error, core_error_on_index_creation, Error} ->
+            riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), Error),
             text_response({halt, 400}, binary_to_list(Error), [], RD, S)
     end.
 
@@ -227,6 +238,7 @@ read_index(RD, S) ->
         IndexName ->
             Details = index_body(IndexName)
     end,
+    riak_kv_wm_util:log_http_access(success, RD, riak_core_security:get_username(S#ctx.security)),
     {mochijson2:encode(Details), RD, S}.
 
 text_response(Result, Message, Data, RD, S) ->
