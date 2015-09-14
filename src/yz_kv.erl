@@ -265,9 +265,12 @@ index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
             LI = yz_cover:logical_index(Ring),
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
+            {Bucket, _} = BKey,
+            BProps = riak_core_bucket:get_bucket(Bucket),
+            Obj = maybe_merge_siblings(BProps, Obj),
             Hash = hash_object(Obj),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-            DelOps = delete_operation(Obj, Reason, Docs, BKey, LP, Values),
+            DelOps = delete_operation(BProps, Obj, Reason, Docs, BKey, LP, Values),
             ok = solr_index(Index, Docs, DelOps, Values),
             ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
     end.
@@ -491,7 +494,8 @@ is_service_up(Service, Node) ->
 %%      property for strong consistency.
 -spec is_datatype_or_consistent(riak_kv_bucket:props()) -> boolean().
 is_datatype_or_consistent(BProps) when is_list(BProps) ->
-    is_datatype(BProps) orelse lists:member({consistent, true}, BProps).
+    is_datatype(BProps) orelse lists:member({consistent, true}, BProps);
+is_datatype_or_consistent(_) -> false.
 
 %% @private
 %%
@@ -500,7 +504,8 @@ is_datatype_or_consistent(BProps) when is_list(BProps) ->
 is_datatype(BProps) when is_list(BProps) ->
     Type = proplists:get_value(datatype, BProps),
     Mod = riak_kv_crdt:to_mod(Type),
-    riak_kv_crdt:supported(Mod).
+    riak_kv_crdt:supported(Mod);
+is_datatype(_) -> false.
 
 %% @private
 %%
@@ -514,25 +519,35 @@ has_siblings(BProps) when is_list(BProps) ->
         {false, _, true} -> false;
         {false, false, _} -> false;
         {_, _, _} -> true
-    end.
+    end;
+has_siblings(_) -> true.
 
 %% @private
 %%
 %% @doc Set yz_solr:index delete operation(s).
 %%      If object relates to lww=true/allow_mult=false/datatype/sc
 %%      do cleanup of tombstones only.
--spec delete_operation(obj(), write_reason(), [doc()], bkey(), lp(),
-                       values()) -> delops().
-delete_operation(Obj, _Reason, Docs, BKey, LP, Values) ->
-    Bucket = riak_object:bucket(Obj),
-    case riak_core_bucket:get_bucket(Bucket) of
-        BProps when is_list(BProps) ->
-            case has_siblings(BProps) of
-                true -> cleanup(length(Docs), {Obj, BKey, LP});
-                false -> cleanup(Docs, BKey, Values)
-            end;
-        {error, _}=Err ->
-            Err
+-spec delete_operation(riak_kv_bucket:props(), obj(), write_reason(), [doc()],
+                       bkey(), lp(), values()) -> delops().
+delete_operation(BProps, Obj, _Reason, Docs, BKey, LP, Values) ->
+    case has_siblings(BProps) of
+        true -> cleanup(length(Docs), {Obj, BKey, LP});
+        false -> cleanup(Docs, BKey, Values)
+    end.
+
+%% @private
+%%
+%% @doc Merge siblings for objects that shouldn't have them.
+-spec maybe_merge_siblings(riak_kv_bucket:props(), obj()) -> obj().
+maybe_merge_siblings(BProps, Obj) ->
+    case has_siblings(BProps) of
+        true ->
+            Obj;
+        false ->
+            case is_datatype(BProps) of
+                true -> riak_kv_crdt:merge(Obj);
+                false -> riak_object:reconcile([Obj], false)
+            end
     end.
 
 %% @private
