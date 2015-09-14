@@ -1,12 +1,10 @@
 %% @doc Ensure that sibling creations/searching workds.
 -module(yz_siblings).
 -compile(export_all).
--import(yz_rt, [run_bb/2]).
+-import(yz_rt, [search_expect/5]).
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
--define(NO_HEADERS, []).
--define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 
 confirm() ->
@@ -14,6 +12,7 @@ confirm() ->
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     ok = test_siblings(Cluster),
+    ok = test_no_siblings(Cluster),
     pass.
 
 %% The crazy looking key verifies that keys may contain characters
@@ -26,30 +25,43 @@ test_siblings(Cluster) ->
     Bucket = {Index, <<"b1">>},
     EncKey = mochiweb_util:quote_plus("test/λ/sibs{123}+-\\&&||!()[]^\"~*?:\\"),
     HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
-    create_index(Cluster, HP, Index),
-    ok = allow_mult(Cluster, Index),
-    ok = write_sibs(HP, Bucket, EncKey),
+    yz_rt:create_index_http(Cluster, HP, Index),
+    ok = allow_mult(Cluster, Index, true),
+    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey),
     %% Verify 10 times because of non-determinism in coverage
     [ok = verify_sibs(HP, Index) || _ <- lists:seq(1,10)],
-    ok = reconcile_sibs(HP, Bucket, EncKey),
+    ok = reconcile_sibs(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_reconcile(HP, Index) || _ <- lists:seq(1,10)],
-    ok = delete_key(HP, Bucket, EncKey),
+    ok = delete_key(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
     ok.
 
-write_sibs({Host, Port}, Bucket, EncKey) ->
+test_no_siblings(Cluster) ->
+    Index = <<"siblings_too">>,
+    Bucket = {Index, <<"b2">>},
+    EncKey = mochiweb_util:quote_plus("test/λ/sibs{123}+-\\&&||!()[]^\"~*?:\\"),
+    HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
+    yz_rt:create_index_http(Cluster, HP, Index),
+    ok = allow_mult(Cluster, Index, false),
+    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey),
+    %% Verify 10 times because of non-determinism in coverage
+    [ok = verify_no_sibs(HP, Index) || _ <- lists:seq(1,10)],
+    ok = delete_key(Cluster, HP, Index, Bucket, EncKey),
+    [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
+    ok.
+
+write_sibs(Cluster, {Host, Port}, Index, Bucket, EncKey) ->
     lager:info("Write siblings"),
     URL = bucket_url({Host, Port}, Bucket, EncKey),
     Opts = [],
     Headers = [{"content-type", "text/plain"}],
-    Body1 = <<"This is value alpha">>,
-    Body2 = <<"This is value beta">>,
-    Body3 = <<"This is value charlie">>,
-    Body4 = <<"This is value delta">>,
+    Bodies = [<<"This is value alpha">>,
+              <<"This is value beta">>,
+              <<"This is value charlie">>,
+              <<"This is value delta">>],
     [{ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, B, Opts)
-     || B <- [Body1, Body2, Body3, Body4]],
-    %% Sleep for soft commit
-    timer:sleep(1000),
+     || B <- Bodies],
+    yz_rt:commit(Cluster, Index),
     ok.
 
 verify_sibs(HP, Index) ->
@@ -59,15 +71,22 @@ verify_sibs(HP, Index) ->
     [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
     ok.
 
-reconcile_sibs(HP, Bucket, EncKey) ->
+verify_no_sibs(HP, Index) ->
+    lager:info("Verify no siblings are indexed"),
+    true = yz_rt:search_expect(HP, Index, "_yz_rk", "test*", 1),
+    Values = ["delta"],
+    [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
+    ok.
+
+reconcile_sibs(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Reconcile the siblings"),
     {VClock, _} = http_get(HP, Bucket, EncKey),
     NewValue = <<"This is value alpha, beta, charlie, and delta">>,
     ok = http_put(HP, Bucket, EncKey, VClock, NewValue),
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     ok.
 
-delete_key(HP, Bucket, EncKey) ->
+delete_key(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Delete the key"),
     URL = bucket_url(HP, Bucket, EncKey),
     {ok, "200", RH, _} = ibrowse:send_req(URL, [], get, [], []),
@@ -75,7 +94,8 @@ delete_key(HP, Bucket, EncKey) ->
     Headers = [{"x-riak-vclock", VClock}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, delete, [], []),
     %% Wait for Riak delete timeout + Solr soft-commit
-    timer:sleep(4100),
+    timer:sleep(3000),
+    yz_rt:commit(Cluster, Index),
     ok.
 
 verify_deleted(HP, Index) ->
@@ -105,29 +125,19 @@ http_get({Host, Port}, {BType, BName}, Key) ->
     VC = proplists:get_value("X-Riak-Vclock", RHeaders),
     {VC, Body}.
 
-allow_mult(Cluster, BType) ->
-    ok = rpc:call(hd(Cluster), riak_core_bucket_type, update, [BType, [{allow_mult, true}]]),
-    %% TODO: wait for allow_mult to gossip instead of sleep
-    timer:sleep(5000),
-    %% [begin
-    %%      BPs = rpc:call(N, riak_core_bucket, get_bucket, [Bucket]),
-    %%      ?assertEqual(true, proplists:get_bool(allow_mult, BPs))
-    %%  end || N <- Cluster],
-    ok.
+allow_mult(Cluster, BType, Allow) ->
+    ok = rpc:call(hd(Cluster), riak_core_bucket_type, update,
+                  [BType, [{allow_mult, Allow}]]),
+     IsAllowMultPropped =
+        fun(Node) ->
+                lager:info("Waiting for allow_mult update to be propagated to ~p",
+                           [Node]),
+                BPs = rpc:call(Node, riak_core_bucket_type, get, [BType]),
+                Allow == proplists:get_bool(allow_mult, BPs)
+        end,
 
-index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
+    [?assertEqual(ok, rt:wait_until(Node, IsAllowMultPropped)) || Node <- Cluster],
+    ok.
 
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).
-
-http(Method, URL, Headers, Body) ->
-    Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
-
-create_index(Cluster, HP, Index) ->
-    lager:info("create_index ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    Headers = [{"content-type", "application/json"}],
-    {ok, "204", _, _} = http(put, URL, Headers, ?NO_BODY),
-    ok = yz_rt:set_bucket_type_index(hd(Cluster), Index).

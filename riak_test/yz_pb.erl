@@ -239,8 +239,7 @@ confirm_multivalued_field(Cluster) ->
     {Host, Port} = HP,
     %% populate a value
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"name_ss:turner">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -270,8 +269,7 @@ confirm_multivalued_field_json_array(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -301,8 +299,7 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -343,7 +340,7 @@ confirm_stored_fields(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"float_tf:3.14">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
