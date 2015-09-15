@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, regname/1, resize/1, set_hwm/1, set_batch/2]).
+-export([start_link/0, regname/1, resize/1, set_hwm/1, set_index/4]).
 -export([init/1]).
 
 -define(SOLRQS_TUPLE_KEY, solrqs_tuple).
@@ -76,8 +76,8 @@ set_hwm(HWM) ->
     [{Name, catch yz_solrq:set_hwm(Name, HWM)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
-set_batch(Min, Max) ->
-    [{Name, catch yz_solrq:set_batch(Name, Min, Max)} ||
+set_index(Index, Min, Max, DelayMsMax) ->
+    [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
 
@@ -103,7 +103,7 @@ init([]) ->
 %%%===================================================================
 
 solrqs_tuple() ->
-    NumSolrQ =application:get_env(yokozuna, num_solrq, 100),
+    NumSolrQ =application:get_env(yokozuna, num_solrq, 10),
     solrqs_tuple(NumSolrQ).
 
 solrqs_tuple(NumSolrQ) ->

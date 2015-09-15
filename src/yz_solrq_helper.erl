@@ -21,10 +21,14 @@
 -include("yokozuna.hrl").
 
 %% api
--export([start_link/1, status/1, status/2, queue_entries/2]).
+-export([start_link/1, status/1, status/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+% solrq/helper interface
+-export([index_ready/3, index_batch/3]).
 
 -record(state, {qpid,
                 http_pid}).
@@ -33,8 +37,8 @@
 %%% API
 %%%===================================================================
 
-start_link(QPid) ->
-    gen_server:start_link(?MODULE, [QPid], []).
+start_link(Name) ->
+    gen_server:start_link({local, Name}, ?MODULE, [], []).
 
 status(Pid) ->
     status(Pid, 60000). % solr can block, long timeout by default
@@ -42,20 +46,29 @@ status(Pid) ->
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
 
-queue_entries(HPid, Entries) ->
-    gen_server:cast(HPid, {entries, Entries}).
+%% Mark the index as ready.  Separating into a two phase
+%% rather than just blindly sending from the solrq adds the
+%% backpressure on the KV vnode.
+index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
+    gen_server:cast(HPid, {ready, Index, QPid});
+index_ready(Hash, Index, QPid) ->
+    HPid = yz_solrq_helper_sup:regname(Hash),
+    index_ready(HPid, Index, QPid).
+
+%% Send a batch
+index_batch(HPid, Index, Entries) ->
+    gen_server:cast(HPid, {batch, Index, Entries}).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
-init([QPid]) ->
-    Host = "localhost",
-    Port = yz_solr:port(),
+init([]) ->
     %% TODO: Prolly need to monitor
-    {ok, HttpPid} = ibrowse_http_client:start({Host, Port}),
-    yz_solrq:poll(QPid, self()),
-    {ok, #state{qpid = QPid, http_pid = HttpPid}}.
+    %% Host = "localhost",
+    %% Port = yz_solr:port(),
+    %% {ok, HttpPid} = ibrowse_http_client:start({Host, Port}),
+    {ok, #state{}}.
 
 handle_call(status, _From, #state{qpid = QPid,
                                   http_pid = HttpPid}) ->
@@ -64,97 +77,96 @@ handle_call(status, _From, #state{qpid = QPid,
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
-handle_cast({entries, Entries0}, #state{qpid = QPid,
-                                       http_pid = _HttpPid} = State) ->
+
+handle_cast({ready, Index, QPid}, State) ->
+    yz_solrq:request_batch(QPid, Index, self()),
+    {noreply, State};
+handle_cast({batch, Index, Entries0}, State) ->
     try
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
-        Ring = yz_misc:get_ring(transformed),
-        Entries = [{Index, BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
-            {Index, BKey, Obj, Reason, P} <- Entries0],
-        SolrUpdates = update_solr(Entries, Ring),
-        update_aae(SolrUpdates, Entries),
-        %% TODO: Since this is a batch now, do we need to do something different with the stat?
-        yz_solrq:poll(QPid, self()),
+        %% Unique the entries and lookup things needed for SOLR/AAE
+        Entries = [{BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
+                      {BKey, Obj, Reason, P} <- lists:ukeysort(1, Entries0)],
+        case update_solr(Index, Entries) of
+            ok ->
+                update_aae(Entries);
+            {error, Reason} ->
+                %% SOLR Error, do not update AAE trees
+                ok
+        end,
         {noreply, State}
     catch
         _:Err ->
             Trace = erlang:get_stacktrace(),
             lager:info("index failed - ~p\nat: ~p", [Err, Trace]),
-            yz_solrq:poll(QPid, self()),
             {noreply, State}
     end.
 
 %% Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
-update_solr(Entries, Ring) ->
-    LI = yz_cover:logical_index(Ring),
-    OpsByIndex =
-        lists:foldl(fun({Index, BKey, Obj, Reason, P, ShortPL, Hash}, OpsByIndex0) ->
-            case yz_kv:is_owner_or_future_owner(P, node(), Ring) of
-                true ->
-                    case yz_kv:should_index(Index) of
-                        true ->
-                            EncodedOps = case Reason of
-                                delete ->
-                                    [{delete, yz_solr:encode_delete({bkey, BKey})}];
-                                _ ->
-                                    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-                                    LP = yz_cover:logical_partition(LI, P),
-                                    AddOps = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-                                    DeleteOps = yz_kv:delete_operation(Obj, Reason, AddOps, BKey, LP),
-                                    [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps] ++
-                                    [{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps]
-                            end,
-                            dict:merge(
-                                %% TODO: Could remove duplicate add ops here?
-                                fun(_Key, OldOps, NewOps) -> OldOps ++ NewOps end,
-                                OpsByIndex0,
-                                dict:from_list([{Index, EncodedOps}]));
-                        _ -> OpsByIndex0
-                    end;
-                _ -> OpsByIndex0
-            end
-            end,
-            dict:new(),
-            Entries),
-    send_solr_ops(dict:to_list(OpsByIndex)).
+update_solr(Index, Entries) ->
+    case yz_kv:should_index(Index) of
+        false ->
+            ok; % No need to send anything to SOLR, still need for AAE.
+        _ ->
+            send_solr_ops(Index, solr_ops(Entries))
+    end.
 
-send_solr_ops(OpsByIndex) ->
-    lists:map(fun({Index, Ops}) ->
-        try
-            T1 = os:timestamp(),
-            yz_solr:index_batch(Index, Ops),
-            yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
-            {Index, ok}
-        catch _:Err ->
+%% Build the SOLR query
+solr_ops(Entries) ->
+    Ring = yz_misc:get_ring(transformed),
+    LI = yz_cover:logical_index(Ring),
+    lists:reverse(
+      lists:foldl(
+        fun({BKey, Obj, Reason, P, ShortPL, Hash}, Ops) ->
+                %% TODO: This should be called in yz_solr:index
+                %% then the ring lookup can be removed
+                case yz_kv:is_owner_or_future_owner(P, node(), Ring) of
+                    true ->
+                        case Reason of
+                            delete ->
+                                [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                            _ ->
+                                LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+                                LP = yz_cover:logical_partition(LI, P),
+                                AddOps = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+                                DeleteOps = yz_kv:delete_operation(Obj, Reason, AddOps, BKey, LP),
+                                %% List will be reversed, so make sure deletes happen before adds
+                                lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                                              [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
+                                              Ops])
+                        end;
+                    false ->
+                        Ops
+                end
+        end, [], Entries)).
+
+
+send_solr_ops(Index, Ops) ->
+    try
+        T1 = os:timestamp(),
+        case yz_solr:index_batch(Index, Ops) of
+            ok ->
+                yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+                ok;
+            ER ->
+                yz_stat:index_fail(),
+                ER
+        end
+    catch _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            {Index, {Err, Trace}}
-        end
-    end, OpsByIndex).
-
-
-update_aae(SolrResults, Entries) ->
-    lists:foreach(fun({Index, BKey, _Obj, Reason0, P, ShortPL, Hash}) ->
-        Action = case Reason0 of
-            delete -> delete;
-            _ -> {insert, Hash}
-        end,
-        case should_update_aae(Index, SolrResults) of
-            true ->
-                yz_kv:update_hashtree(Action, P, ShortPL, BKey);
-            _ ->
-                %% TODO: What do we do with a failed index batch? Index docs individually again?
-                ok
-        end
-        end, Entries).
-
-should_update_aae(Index, SolrResults) ->
-    case proplists:get_value(Index, SolrResults) of
-        ok -> true;
-        undefined -> true;
-        _ -> false
+            {error, {Err, Trace}}
     end.
+
+update_aae(Entries) ->
+    lists:foreach(fun({BKey, _Obj, Reason0, P, ShortPL, Hash}) ->
+                          Action = case Reason0 of
+                                       delete -> delete;
+                                       _ -> {insert, Hash}
+                                   end,
+                          yz_kv:update_hashtree(Action, P, ShortPL, BKey)
+                  end, Entries).
 
 handle_info(_Msg, State) ->
     {noreply, State}.
