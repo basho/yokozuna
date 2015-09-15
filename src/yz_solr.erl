@@ -35,6 +35,7 @@
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit, n}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
+-define(SOLR_TIMEOUT, 30000).
 
 -type delete_op() :: {id, binary()}
                    | {bkey, bkey()}
@@ -214,9 +215,14 @@ index_batch(Core, Ops) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
-        {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Err})
+    case ?YZ_SOLR_ACTUALLY_INDEX of
+        true ->
+            case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
+                {ok, "200", _, _} -> ok;
+                Err -> throw({"Failed to index docs", Err})
+            end;
+        false  ->
+            ok
     end.
 
 
