@@ -81,7 +81,6 @@ set_index(Index, Min, Max, DelayMsMax) ->
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
 
-
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================

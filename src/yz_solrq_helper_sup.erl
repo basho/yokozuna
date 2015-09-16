@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, regname/1, resize/1, set_hwm/1, set_batch/2]).
+-export([start_link/0, regname/1, resize/1, set_hwm/1]).
 -export([init/1]).
 
 -define(SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple).
@@ -75,12 +75,6 @@ resize(NewSize) when NewSize > 0 ->
 set_hwm(HWM) ->
     [{Name, catch yz_solrq:set_hwm(Name, HWM)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY))].
-
-set_batch(Min, Max) ->
-    [{Name, catch yz_solrq:set_batch(Name, Min, Max)} ||
-        Name <- tuple_to_list(mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY))].
-
-
 
 %%%===================================================================
 %%% Supervisor callbacks
