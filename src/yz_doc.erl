@@ -79,15 +79,20 @@ make_docs(O, Hash, FPN, Partition) ->
 -spec make_doc(obj(), hash(), non_neg_integer(), {yz_dict(), yz_dict()}, binary(),
                binary()) -> doc().
 make_doc(O, Hash, LiveSiblings, {MD, V}, FPN, Partition) ->
-    Vtag = get_vtag(MD, LiveSiblings),
-    DocId = doc_id(O, Partition, Vtag),
-    EntropyData = gen_ed(O, Hash, Partition),
-    Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
-    Fields = make_fields({DocId, Bkey, FPN,
-                          Partition, Vtag, EntropyData}),
-    ExtractedFields = extract_fields({MD, V}),
-    Tags = extract_tags(MD),
-    {doc, lists:append([Tags, ExtractedFields, Fields])}.
+    case yz_kv:is_tombstone(MD) of
+        false ->
+            Vtag = get_vtag(MD, LiveSiblings),
+            DocId = doc_id(O, Partition, Vtag),
+            EntropyData = gen_ed(O, Hash, Partition),
+            Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
+            Fields = make_fields({DocId, Bkey, FPN,
+                                  Partition, Vtag, EntropyData}),
+            ExtractedFields = extract_fields({MD, V}),
+            Tags = extract_tags(MD),
+            {doc, lists:append([Tags, ExtractedFields, Fields])};
+        true ->
+            {doc, [{tombstone, ?TOMBSTONE}]}
+    end.
 
 %% @private
 %% @doc encode `*' as %1, and `%' as %2. This is so we can reasonably use
@@ -127,30 +132,24 @@ get_vtag(MD, LiveSiblings) ->
         _ -> none
     end.
 
--spec extract_fields({obj_metadata(), term()}) -> fields() | [{error, any()}] |
-                                                 [{tombstone, binary()}].
+-spec extract_fields({obj_metadata(), term()}) -> fields() | [{error, any()}].
 extract_fields({MD, V}) ->
-    case yz_kv:is_tombstone(MD) of
-        false ->
-            CT = yz_kv:get_obj_ct(MD),
-            ExtractorDef = yz_extractor:get_def(CT, [check_default]),
-            try
-                case yz_extractor:run(V, ExtractorDef) of
-                    {error, Reason} ->
-                        yz_stat:index_fail(),
-                        ?ERROR("failed to index fields from value with reason ~s~nValue: ~s", [Reason, V]),
-                        [{?YZ_ERR_FIELD_S, 1}];
-                    Fields ->
-                        Fields
-                end
-            catch _:Err ->
-                    yz_stat:index_fail(),
-                    Trace = erlang:get_stacktrace(),
-                    ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
-                    [{?YZ_ERR_FIELD_S, 1}]
-            end;
-        true ->
-            [{tombstone, ?TOMBSTONE}]
+    CT = yz_kv:get_obj_ct(MD),
+    ExtractorDef = yz_extractor:get_def(CT, [check_default]),
+    try
+        case yz_extractor:run(V, ExtractorDef) of
+            {error, Reason} ->
+                yz_stat:index_fail(),
+                ?ERROR("failed to index fields from value with reason ~s~nValue: ~s", [Reason, V]),
+                [{?YZ_ERR_FIELD_S, 1}];
+            Fields ->
+                Fields
+        end
+    catch _:Err ->
+            yz_stat:index_fail(),
+            Trace = erlang:get_stacktrace(),
+            ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
+            [{?YZ_ERR_FIELD_S, 1}]
     end.
 
 %% @private
@@ -206,6 +205,10 @@ strip_prefix(_) ->
     %% bad tag, silently discard
     ignore.
 
+-spec adding_docs([doc()]) -> [doc()].
+adding_docs(Docs) ->
+    [{doc, Fields} || {doc, Fields} <- Docs,
+                     not proplists:is_defined(tombstone, Fields)].
 
 %% @private
 %%
