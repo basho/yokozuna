@@ -167,6 +167,25 @@ switch_to_yokozuna() ->
     ok = webmachine_router:remove_resource(riak_solr_searcher_wm),
     ok.
 
+-spec create_fuse(index_name()|atom()) -> ok | reset | {error, _}.
+create_fuse(Index) when is_binary(Index) ->
+    create_fuse(?BIN_TO_ATOM(Index));
+create_fuse(Index) ->
+    MaxR = app_helper:get_env(yokozuna, melt_attempts, 3),
+    MaxT = app_helper:get_env(yokozuna, melt_time_window, 5000),
+    Refresh = {reset, app_helper:get_env(yokozuna, melt_reset_refresh, 30000)},
+    Strategy = {standard, MaxR, MaxT},
+    Opts = {Strategy, Refresh},
+    fuse:install(Index, Opts).
+
+-spec reset_fuse(index_name()) -> ok | {error, not_found}.
+reset_fuse(Index) ->
+    fuse:reset(?BIN_TO_ATOM(Index)).
+
+-spec fuse_context() -> async_dirty | sync.
+fuse_context() ->
+    app_helper:get_env(?YZ_APP_NAME, fuse_context, async_dirty).
+
 %%%===================================================================
 %%% Private
 %%%===================================================================

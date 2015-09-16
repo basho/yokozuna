@@ -89,6 +89,11 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
+%% index-write reasons
+-type repair() :: full_repair | tree_repair | failed_repair.
+-type write_reason() :: delete | handoff | put | anti_entropy |
+                        {delete, repair()} | {anti_entropy, repair()}.
+
 %% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is
 %%      disabled in a live, production cluster in order to isolate

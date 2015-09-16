@@ -34,7 +34,7 @@
 %%%===================================================================
 
 start(_StartType, _StartArgs) ->
- %% Ensure that the KV service has fully loaded.
+    %% Ensure that the KV service has fully loaded.
     riak_core:wait_for_service(riak_kv),
 
     initialize_atoms(),
@@ -78,6 +78,7 @@ maybe_setup(true) ->
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
+    setup_fuse(),
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],
                                        false),
@@ -89,6 +90,15 @@ maybe_setup(true) ->
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
     ok.
+
+%% @doc Start fuse and stats
+-spec setup_fuse() -> ok.
+setup_fuse() ->
+    ok = application:start(fuse),
+
+    %% Set up fuse stats
+    application:set_env(fuse, stats_plugin, fuse_stats_exometer).
+
 
 %% @doc Conditionally register PB service IFF Riak Search is not
 %%      enabled.

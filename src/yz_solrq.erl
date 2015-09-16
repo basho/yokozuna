@@ -198,9 +198,7 @@ maybe_request_worker(_Index, _Min, IndexQ) ->
 request_worker(Index, #indexq{pending_helper = false} = IndexQ) ->
     Hash = erlang:phash2({Index, self()}),
     yz_solrq_helper:index_ready(Hash, Index, self()),
-    IndexQ#indexq{pending_helper = true};
-request_worker(_Index, IndexQ) ->
-    IndexQ.
+    IndexQ#indexq{pending_helper = true}.
 
 %% Send a batch of entries, reply to any blocked vnodes and
 %% return updated state
@@ -272,13 +270,11 @@ new_indexq() ->
             batch_max = app_helper:get_env(yokozuna, solrq_batch_max, 100),
             delayms_max = app_helper:get_env(yokozuna, solrq_delayms_max, 1000)}.
 
-
 update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:store(Index, IndexQ, IndexQs)}.
 
 delete_indexq(Index, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:erase(Index, IndexQs)}.
-
 
 %% Read settings from the application environment
 read_appenv(State) ->
