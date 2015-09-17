@@ -241,7 +241,7 @@ index(Obj0, Reason, Ring, P, BKey, ShortPL, Index) ->
             LI = yz_cover:logical_index(Ring),
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
-            Hash = hash_object(Obj),
+            Hash = hash_object(Obj0),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
             DelOps = delete_operation(BProps, Obj, Reason, Docs, BKey, LP, Values),
             ok = solr_index(Index, Docs, DelOps, Values),
