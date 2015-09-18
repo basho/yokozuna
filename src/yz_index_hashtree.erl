@@ -371,14 +371,22 @@ apply_tree(Id, Fun, S=#state{trees=Trees}) ->
     end.
 
 -spec do_build_finished(state()) -> state().
-do_build_finished(S=#state{index=Index, built=_Pid}) ->
+do_build_finished(S=#state{index=Index, built=_Pid, trees=Trees0}) ->
     lager:debug("Finished YZ build: ~p", [Index]),
-    {_,Tree0} = hd(S#state.trees),
+    Trees = orddict:map(fun(_Id, Tree) ->
+                            try
+                                hashtree:flush_buffer(Tree)
+                            catch _:_ ->
+                                lager:warning("Failed to flush trees during build_finish"),
+                                Tree
+                            end
+                        end, Trees0),
+    {_, Tree0} = hd(Trees),
     BuildTime = yz_kv:get_tree_build_time(Tree0),
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
     hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
     yz_kv:update_aae_tree_stats(Index, BuildTime),
-    S#state{built=true, build_time=BuildTime, expired=false}.
+    S#state{built=true, build_time=BuildTime, expired=false, trees=Trees}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
