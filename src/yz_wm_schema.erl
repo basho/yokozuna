@@ -123,8 +123,10 @@ forbidden(RD, Ctx=#ctx{security=Security}) ->
             Res = riak_core_security:check_permission(PermAndResource, Security),
             case Res of
                 {false, Error, _} ->
+                    riak_api_web_security:log_login_event(failure, RD, riak_core_security:get_username(Ctx#ctx.security), Error),
                     {true, wrq:append_to_resp_body(Error, RD), Ctx};
                 {true, _} ->
+                    riak_api_web_security:log_login_event(success, RD, riak_core_security:get_username(Ctx#ctx.security)),
                     {false, RD, Ctx}
             end
     end.
@@ -135,8 +137,10 @@ store_schema(RD, S) ->
     Schema = wrq:req_body(RD),
     case yz_schema:store(list_to_binary(SchemaName), Schema) of
         ok  ->
+            riak_kv_wm_util:log_http_access(success, RD, riak_core_security:get_username(S#ctx.security)),
             {true, RD, S};
         {error, Reason} ->
+            riak_kv_wm_util:log_http_access(failure, RD, riak_core_security:get_username(S#ctx.security), Reason),
             Msg = io_lib:format("Error storing schema: ~s~n", [Reason]),
             RD2 = wrq:append_to_response_body(Msg, RD),
             RD3 = wrq:set_resp_header("Content-Type", "text/plain", RD2),
@@ -147,4 +151,5 @@ store_schema(RD, S) ->
 read_schema(RD, S) ->
     SchemaName = S#ctx.schema_name,
     {ok, RawSchema} = yz_schema:get(list_to_binary(SchemaName)),
+    riak_kv_wm_util:log_http_access(success, RD, riak_core_security:get_username(S#ctx.security)),
     {RawSchema, RD, S}.

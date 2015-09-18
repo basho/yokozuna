@@ -90,9 +90,11 @@ content_types_accepted(RD, S) ->
 extract(RD, S) ->
     case yz_extractor:run(S#state.content, S#state.extractor_name) of
         {error, Reason} ->
+            riak_kv_wm_util:log_http_access(failure, RD, unknown, Reason),
             RD2 = add_msg(RD, Reason),
             {{halt, 500}, RD2, S};
         Fields ->
+            riak_kv_wm_util:log_http_access(success, RD, unknown),
             Body = mochijson2:encode({struct, Fields}),
             RD2 = wrq:set_resp_header(?HEAD_CTYPE, "application/json", RD),
             RD3 = wrq:set_resp_body(Body, RD2),
