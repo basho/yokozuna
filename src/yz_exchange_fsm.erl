@@ -163,13 +163,19 @@ key_exchange(timeout, S=#state{index=Index,
 
     AccFun = fun(KeyDiff, Count) ->
                      lists:foldl(fun(Diff, InnerCount) ->
-                                         case repair(Index, Diff) of
-                                             full_repair -> InnerCount + 1;
-                                             _ -> InnerCount
-                                         end
+                                     case repair(Index, Diff) of
+                                         full_repair -> InnerCount + 1;
+                                         _ -> InnerCount
+                                     end
                                  end, Count, KeyDiff)
              end,
-    yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree),
+    case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
+        0 ->
+            yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
+        Count ->
+            lager:debug("Will repair ~b keys of partition ~p for preflist ~p",
+                        [Count, Index, IndexN])
+    end,
     {stop, normal, S}.
 
 %%%===================================================================
@@ -229,22 +235,6 @@ repair(Partition, {_Reason, KeyBin}) ->
             %% the meantime the KV object has since been deleted.  In
             %% the case of other errors just ignore them and let the
             %% next exchange retry the repair if it is still needed.
-            failed_repair
-    end.
-
-%% @private
-%%
-%% @doc Call into yz_kv:index/7 with same try/catch checking as done in
-%%      yz_kv:index/3.
-index(Obj, Reason, Ring, Partition, BKey, ShortPL, Index) ->
-    try
-        yz_kv:index(Obj, Reason, Ring, Partition, BKey, ShortPL, Index),
-        full_repair
-    catch _:Err ->
-            yz_stat:index_fail(),
-            Trace = erlang:get_stacktrace(),
-            ?ERROR("failed to repair ~p request for docid ~p with error ~p because ~p",
-                   [Reason, BKey, Err, Trace]),
             failed_repair
     end.
 
