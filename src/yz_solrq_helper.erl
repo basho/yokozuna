@@ -184,14 +184,14 @@ update_aae_and_repair_stats(Entries) ->
                       0 ->
                           yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
                       Count ->
-                          lager:info("Repaired ~b keys during active anti-entropy exchange "
-                                     "of partition ~p for preflist ~p",
+                          lager:info("Repaired ~b keys during active anti-entropy "
+                                     "exchange of partition ~p for preflist ~p",
                                      [Count, Index, IndexN]),
                           yz_kv:update_aae_exchange_stats(Index, IndexN, Count)
                   end
              end, Repairs).
 
--spec gather_counts({p(), {p(), n()}, write_reason}, yz_dict()) -> yz_dict().
+-spec gather_counts({p(), {p(), n()}, write_reason()}, yz_dict()) -> yz_dict().
 gather_counts({Index, IndexN, Reason}, StatsD) ->
     case Reason of
         {_, full_repair} ->
