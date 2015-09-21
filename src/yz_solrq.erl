@@ -248,7 +248,6 @@ maybe_start_timer(Index, #indexq{href = undefined, queue_len = L,
 maybe_start_timer(_Index, IndexQ) ->
     IndexQ.
 
-
 find_indexq(Index, #state{indexqs = IndexQs}) ->
     case dict:find(Index, IndexQs) of
         {ok, IndexQ} ->

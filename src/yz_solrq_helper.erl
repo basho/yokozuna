@@ -84,10 +84,9 @@ handle_cast({batch, Index, Entries0}, State) ->
     try
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
-        %% Unique the entries and lookup things needed for SOLR/AAE
         Entries = [{BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey),
                     yz_kv:hash_object(Obj)} ||
-                      {BKey, Obj, Reason, P} <- lists:ukeysort(1, Entries0)],
+                      {BKey, Obj, Reason, P} <- Entries0],
         case update_solr(Index, Entries) of
             ok ->
                 update_aae_and_repair_stats(Entries);
