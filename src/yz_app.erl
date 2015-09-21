@@ -94,7 +94,7 @@ maybe_setup(true) ->
 %% @doc Start fuse and stats
 -spec setup_fuse() -> ok.
 setup_fuse() ->
-    ok = application:start(fuse),
+    ok = yokozuna:ensure_started(fuse),
 
     %% Set up fuse stats
     application:set_env(fuse, stats_plugin, fuse_stats_exometer).
