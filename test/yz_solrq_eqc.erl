@@ -28,17 +28,61 @@ prop_ok() ->
                 meck:new(ibrowse, [non_strict]),
                 meck:expect(ibrowse, send_req, fun({_V, _I, _B, R}) -> R end),
                 try
-                    [index(E) || E <- Entries],
+                    Pids = send_entries(Entries),
+                    wait_for_vnodes(Pids, timer:seconds(20)),
 
                     %% For each vnode, spawn a process and start sending
                     %% Once all vnodes have sent, small delay to give async stuff time to catch up
                     %% Check all the objects that we expected were delivered.
-                    equals(Entries, ibrowse_requests())
+                    equals(lists:sort(Entries), lists:sort(ibrowse_requests()))
                 after
                     meck:unload(ibrowse)
                 end
             end).
 
+
+
+send_entries(Entries) -> % Vnode, Index, BKey, Result
+    VE = entries_by_vnode(Entries),
+    Self = self(),
+    [spawn_link(fun() -> send_vnode_entries(Self, E) end) || {_V, E} <- VE].
+
+entries_by_vnode(Entries) ->
+    lists:foldl(fun({V,_I,_B,_R}=E, Acc) ->
+                        orddict:append_list(V, [E], Acc)
+                end, orddict:new(), Entries).
+
+%% Wait for send_entries - should probably set a global timeout and
+%% and look for that instead
+wait_for_vnodes(Pids, Timeout) ->
+    RRef = make_ref(),
+    TRef = erlang:send_after(Timeout, self(), {timeout, RRef}),
+    wait_for_vnodes_msgs(Pids, RRef),
+    erlang:cancel_timer(TRef),
+    receive
+        {timeout, TRef} ->
+            ok
+    after
+        0 ->
+            ok
+    end.
+
+wait_for_vnodes_msgs([], _Ref) ->
+    ok;
+wait_for_vnodes_msgs([Pid | Pids], Ref) ->
+    receive
+        {Pid, done} ->
+            wait_for_vnodes_msgs(Pids, Ref);
+        {timeout, Ref} ->
+            throw(timeout);
+        {timeout, OldRef} ->
+            io:format(user, "Ignoring old timer ref ~p\n", [OldRef]),
+            wait_for_vnodes_msgs([Pid|Pids], Ref)
+    end.
+
+send_vnode_entries(Runner, Events)  ->
+    [ibrowse:send_req(E) || E <- Events],
+    Runner ! {self(), done}.
 
 %% Dummy
 index(E) ->
