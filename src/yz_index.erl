@@ -278,7 +278,6 @@ core_create(Name, SchemaName, CoreProps) ->
         {ok, _, _} ->
             lager:info("Created index ~s with schema ~s",
                        [Name, SchemaName]),
-            yokozuna:create_fuse(Name),
             ok;
         {error, exists} ->
             lager:notice("Index ~s already exists in Solr, "
@@ -302,8 +301,7 @@ local_remove(Name) ->
 local_remove(Name, CoreProps) ->
     case yz_solr:core(remove, CoreProps) of
         {ok, _, _} ->
-            lager:info("Unloaded previous instance of index ~s", [Name]),
-            yokozuna:reset_fuse(Name);
+            lager:info("Unloaded previous instance of index ~s", [Name]);
         {error, {ok, "400", _, Resp}} ->
             lager:info("Couldn't unload index ~s prior to creating "
                        "a new instance of it. This is likely the first "

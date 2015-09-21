@@ -109,11 +109,20 @@ update_solr(Index, Entries) ->
         false ->
             ok; % No need to send anything to SOLR, still need for AAE.
         _ ->
-            case fuse:ask(?BIN_TO_ATOM(Index), yokozuna:fuse_context()) of
-                ok -> send_solr_ops(Index, solr_ops(Entries));
+            IndexName = (?BIN_TO_ATOM(Index)),
+            case fuse:ask(IndexName, yokozuna:fuse_context()) of
+                ok ->
+                    send_solr_ops(Index, solr_ops(Entries));
                 blown ->
-                    ?INFO("Fuse Blown: holding off sending current batch for index ~s", [Index]),
-                    ok
+                    ?ERROR("Fuse Blown: can't current send solr "
+                           "operations for index ~s", [Index]),
+                    {error, fuse_blown};
+                _ ->
+                    %% fuse table creation is idempotent and occurs on
+                    %% add_index/1 on 1st creation or diff-check.
+                    %% We send entries until we can ask again for
+                    %% ok | error, as we wait for the tick.
+                    send_solr_ops(Index, solr_ops(Entries))
             end
     end.
 

@@ -95,6 +95,7 @@ maybe_setup(true) ->
 -spec setup_fuse() -> ok.
 setup_fuse() ->
     ok = application:start(fuse),
+
     %% Set up fuse stats
     application:set_env(fuse, stats_plugin, fuse_stats_exometer).
 
