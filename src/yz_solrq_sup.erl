@@ -80,7 +80,6 @@ set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
-
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
