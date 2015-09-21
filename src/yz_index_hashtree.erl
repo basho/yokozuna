@@ -555,13 +555,7 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
             IterKeys = fold_keys(Index, Tree),
-            case lists:last(IterKeys) of
-                ok ->
-                    lager:debug("Finished YZ AAE tree build: ~p", [Index]),
-                    gen_server:cast(Tree, build_finished);
-                _ ->
-                    gen_server:cast(Tree, build_failed)
-            end;
+            handle_iter_keys(Tree, Index, IterKeys);
         {true, rehash} ->
             lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
@@ -615,4 +609,19 @@ maybe_expire_caps_check(S) ->
         true ->
             S#state{expired=true};
         false -> S
+    end.
+
+-spec handle_iter_keys(pid(), p(), []| [ok|timeout|not_available]) -> ok.
+handle_iter_keys(Tree, Index, []) ->
+    lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+    gen_server:cast(Tree, build_finished),
+    ok;
+handle_iter_keys(Tree, Index, IterKeys) ->
+    case lists:last(IterKeys)  of
+        ok ->
+            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+            gen_server:cast(Tree, build_finished);
+        _ ->
+            lager:debug("YZ AAE tree build failed: ~p", [Index]),
+            gen_server:cast(Tree, build_failed)
     end.
