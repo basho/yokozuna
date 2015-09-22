@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, regname/1, resize/1, set_hwm/1]).
+-export([start_link/0,  start_link/1, regname/1, resize/1, set_hwm/1]).
 -export([init/1]).
 
 -define(SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple).
@@ -32,7 +32,10 @@
 -spec(start_link() ->
     {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    start_link(num_workers()).
+
+start_link(NumWorkers) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [NumWorkers]).
 
 %% From the hash, return the registered name of a queue
 regname(Hash) ->
@@ -85,8 +88,8 @@ set_hwm(HWM) ->
         MaxR :: non_neg_integer(), MaxT :: non_neg_integer()},
         [ChildSpec :: supervisor:child_spec()]
     }}).
-init([]) ->
-    SolrQHelpers = solrq_helpers_tuple(),
+init([NumWorkers]) ->
+    SolrQHelpers = solrq_helpers_tuple(NumWorkers),
     mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, SolrQHelpers),
     Children = [make_child(Name) ||
                    Name <- tuple_to_list(SolrQHelpers)],
@@ -96,9 +99,8 @@ init([]) ->
 %%% Internal functions
 %%%===================================================================
 
-solrq_helpers_tuple() ->
-    NumSolrQ =application:get_env(yokozuna, num_solrq_helpers, 10),
-    solrq_helpers_tuple(NumSolrQ).
+num_workers() ->
+    application:get_env(yokozuna, num_solrq_helpers, 10).
 
 solrq_helpers_tuple(NumSolrQ) ->
     list_to_tuple([int_to_regname(I) || I <- lists:seq(1, NumSolrQ)]).

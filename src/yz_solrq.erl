@@ -17,6 +17,8 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq).
+-compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 
 %% api
 -export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
@@ -55,14 +57,32 @@ status(QPid, Timeout) ->
     gen_server:call(QPid, status, Timeout).
 
 index(Index, BKey, Obj, Reason, P) ->
+
+    io:format("Called index - ~p ~p \n", [Index, BKey]),
+    self() ! idx1,
+    receive
+        idx1 ->
+            ok
+    end,
     %% TODO: Move this try/catch to the KV vnode, that's
     %%       what needs protecting.
     try
+        self() ! idx2,
+        receive
+            idx2 ->
+                ok
+        end,
         %% Hash on the index and partition to ensure updates to
         %% an index are serialized for all objects in the vnode.
         Hash = erlang:phash2({Index, P}),
-        gen_server:call(yz_solrq_sup:regname(Hash),
-                        {index, Index, {BKey, Obj, Reason, P}}, infinity)
+        Res = gen_server:call(yz_solrq_sup:regname(Hash),
+                        {index, Index, {BKey, Obj, Reason, P}}, infinity),
+        self() ! idx3,
+        receive
+            idx3 ->
+                ok
+        end,
+        Res
     catch
         _:Err ->
             {error, Err}
@@ -125,7 +145,7 @@ handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
         IndexQ ->
             case IndexQ#indexq.href of
                 HRef ->
-                    IndexQ2 = maybe_request_worker(Index, IndexQ),
+                    IndexQ2 = request_worker(Index, IndexQ),
                     {noreply, update_indexq(Index, IndexQ2, State)};
                 _ -> % out of date
                     {noreply, State}
