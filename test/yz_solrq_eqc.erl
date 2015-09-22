@@ -35,7 +35,7 @@ gen_reason() ->
     oneof([put, delete, handoff]).
 
 gen_solr_result() ->
-    frequency([{8, {ok, "200", some, crap}},
+    frequency([{98, {ok, "200", some, crap}},
                {1, {ok, "500", some, crap}},
                {1, {error, reqd_timeout}}]).
 
@@ -213,10 +213,16 @@ setup() ->
     meck:expect(yz_kv, update_aae_exchange_stats, fun(_P, _TreeId, _Count) -> ok end),
     %% pulseh:compile(yz_kv),
 
+    meck:new(fuse),
+    meck:expect(fuse, ask, fun(_IndexName, _Context) -> ok end),
+    meck:expect(fuse, melt, fun(_IndexName) -> ok end),
+
+
     %% Fake module to track solr responses - meck:history(solr_responses)
     meck:new(solr_responses, [non_strict]),
     meck:expect(solr_responses, record, fun(_Keys, _Response) -> ok end),
     %% pulseh:compile(solr_responses),
+
 
 %% TODO: Make dynamic
     %% Pulse compile solrq/solrq helper
