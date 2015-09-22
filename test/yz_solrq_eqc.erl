@@ -45,12 +45,12 @@ gen_entries() ->
 gen_params() ->
     ?LET({HWMSeed, MinSeed, MaxSeed},
          {nat(), nat(), nat()},
-         [1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed]).
+         {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
 
 prop_ok() ->
     ?SETUP(fun() -> setup(), fun() -> cleanup() end end,
            ?FORALL({Entries0, {HWM, Min, Max}},
-                   {gen_entries(), {10, 2, 2}}, %gen_params()},
+                   {gen_entries(), gen_params()},
                    begin
                        %% Reset the solrq/solrq helper processes
                        application:set_env(yokozuna, solrq_queue_hwm, HWM),
@@ -105,12 +105,22 @@ prop_ok() ->
                               HttpRespByKey = http_response_by_key(),
                               HashtreeHistory = hashtree_history(),
                               HashtreeExpect = hashtree_expect(Entries, HttpRespByKey),
-                              ?WHENFAIL(begin
-                                            eqc:format("Partition Entries\n=======\n~p\n\n", [PE])
-                                        end,
-                                        equals(HashtreeHistory, HashtreeExpect))
+                              collect(with_title('Queue HWM'), HWM,
+                              collect(with_title('Batch Min'), Min,
+                              collect(with_title('Batch Max'), Max,
+                                      conjunction([{solr,equals(solr_history(),
+                                                                solr_expect(Entries))},
+                                                   {hashtree, equals(HashtreeHistory,
+                                                                     HashtreeExpect)}]))))
                           end))
                    end)).
+
+%% Return the parsed solr history - which objects were dequeued and sent over HTTP
+solr_history() ->
+    lists:sort(dict:fetch_keys(http_response_by_key())).
+
+solr_expect(Entries) ->
+    lists:sort([Key || {_P, _Index, _Bucket, Key, _Op, _Result} <- Entries]).
 
 
 %% Return the hashtree history
@@ -184,45 +194,35 @@ setup() ->
 
     meck:new(exometer),
     meck:expect(exometer, update, fun(_,_) -> ok end),
-    %% pulseh:compile(exometer),
 
     meck:new(riak_kv_util),
     meck:expect(riak_kv_util, get_index_n, fun(BKey) -> {erlang:phash2(BKey) rem 16, 3} end),
-    %% pulseh:compile(exometer),
 
     meck:new(riak_core_bucket),
     meck:expect(riak_core_bucket, get_bucket, fun get_bucket/1),
-    %% pulseh:compile(riak_core_bucket),
 
     meck:new(yz_misc, [passthrough]),
     meck:expect(yz_misc, get_ring, fun(_) -> fake_ring_from_yz_solrq_eqc end),
-    %% pulseh:compile(yz_misc),
 
     meck:new(yz_cover, [passthrough]),
     meck:expect(yz_cover, logical_index, fun(_) -> fake_logical_index_from_yz_solrq_eqc end),
     meck:expect(yz_cover, logical_partition, fun(_, _) -> 4321 end),
-    %% pulseh:compile(yz_cover),
 
     meck:new(yz_extractor, [passthrough]),
     meck:expect(yz_extractor, get_def, fun(_,_) -> ?MODULE end), % dummy local module for extractor
-    %% pulseh:compile(yz_extractor),
 
     meck:new(yz_kv, [passthrough]),
     meck:expect(yz_kv, is_owner_or_future_owner, fun(_,_,_) -> true end),
     meck:expect(yz_kv, update_hashtree, fun(_Action, _Partition, _IdxN, _BKey) -> ok end),
     meck:expect(yz_kv, update_aae_exchange_stats, fun(_P, _TreeId, _Count) -> ok end),
-    %% pulseh:compile(yz_kv),
 
     meck:new(fuse),
     meck:expect(fuse, ask, fun(_IndexName, _Context) -> ok end),
     meck:expect(fuse, melt, fun(_IndexName) -> ok end),
 
-
     %% Fake module to track solr responses - meck:history(solr_responses)
     meck:new(solr_responses, [non_strict]),
     meck:expect(solr_responses, record, fun(_Keys, _Response) -> ok end),
-    %% pulseh:compile(solr_responses),
-
 
 %% TODO: Make dynamic
     %% Pulse compile solrq/solrq helper
