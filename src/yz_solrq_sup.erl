@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, regname/1, resize/1, set_hwm/1, set_index/4]).
+-export([start_link/0, start_link/1, regname/1, resize/1, set_hwm/1, set_index/4]).
 -export([init/1]).
 
 -define(SOLRQS_TUPLE_KEY, solrqs_tuple).
@@ -29,10 +29,13 @@
 %%% API functions
 %%%===================================================================
 
--spec(start_link() ->
-    {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+%% -spec(start_link() ->
+%%     {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    start_link(num_workers()).
+
+start_link(NumWorkers) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [NumWorkers]).
 
 %% From the hash, return the registered name of a queue
 regname(Hash) ->
@@ -80,6 +83,8 @@ set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
         Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
 
+
+
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
@@ -89,8 +94,8 @@ set_index(Index, Min, Max, DelayMsMax) ->
         MaxR :: non_neg_integer(), MaxT :: non_neg_integer()},
         [ChildSpec :: supervisor:child_spec()]
     }}).
-init([]) ->
-    SolrQs = solrqs_tuple(),
+init([NumWorkers]) ->
+    SolrQs = solrqs_tuple(NumWorkers),
     mochiglobal:put(?SOLRQS_TUPLE_KEY, SolrQs),
     Children = [make_child(Name) ||
                    Name <- tuple_to_list(SolrQs)],
@@ -100,9 +105,8 @@ init([]) ->
 %%% Internal functions
 %%%===================================================================
 
-solrqs_tuple() ->
-    NumSolrQ =application:get_env(yokozuna, num_solrq, 10),
-    solrqs_tuple(NumSolrQ).
+num_workers() ->
+    application:get_env(yokozuna, num_solrq, 10).
 
 solrqs_tuple(NumSolrQ) ->
     list_to_tuple([int_to_regname(I) || I <- lists:seq(1, NumSolrQ)]).
