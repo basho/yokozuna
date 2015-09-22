@@ -28,8 +28,8 @@ gen_partition() ->
 gen_index() ->
     oneof([<<"idx1">>,<<"idx2">>]).
 
-gen_bkey() ->
-    {{<<"default">>,<<"b">>}, oneof([<<"k1">>, <<"k2">>, <<"k3">>])}.
+gen_bucket() ->
+    {<<"default">>,<<"b">>}.
 
 gen_reason() ->
     oneof([put, delete, handoff]).
@@ -40,7 +40,7 @@ gen_solr_result() ->
                {1, {error, reqd_timeout}}]).
 
 gen_entries() ->
-    non_empty(list({gen_partition(), gen_index(), gen_bkey(), gen_reason(), gen_solr_result()})).
+    non_empty(list({gen_partition(), gen_index(), gen_bucket(), gen_reason(), gen_solr_result()})).
 
 gen_params() ->
     ?LET({HWMSeed, MinSeed, MaxSeed},
@@ -60,23 +60,25 @@ prop_ok() ->
 
                        %% Prepare the entries, and set up the ibrowse mock
                        %% to respond based on what was generated.
-                       Entries = add_vals(Entries0),
-                       SeqRes = make_seqres(Entries),
+                       Entries = add_keys(Entries0),
+                       KeyRes = make_keyres(Entries),
+                       PE = entries_by_vnode(Entries),
+
+
                        meck:expect(ibrowse, send_req,
                                    fun(_Url, _H, _M, B, _O, _T) ->
                                            %% TODO: Add check for index from URL
                                            SolrReq = parse_solr_reqs(mochijson2:decode(B)),
-                                           {Seqs, Res} = update_response(SolrReq, SeqRes),
-                                           solr_responses:record(Seqs, Res),
+                                           {Keys, Res} = update_response(SolrReq, KeyRes),
+                                           solr_responses:record(Keys, Res),
                                            Res
                                    end),
 
-                       %% Issue the requests under pulse
-                       PE = entries_by_vnode(Entries),
                        ?WHENFAIL(
                           begin
                               eqc:format("self = ~p  yz_solrq_0001 = ~p  yz_solrq_helper_0001 = ~p\n",
                                          [self(), whereis(yz_solrq_0001), whereis(yz_solrq_helper_0001)]),
+                              eqc:format("Partition/Entries\n~p\n", [PE]),
                               debug_history([ibrowse, solr_responses, yz_kv])
                           end,
                           ?PULSE(
@@ -88,6 +90,7 @@ prop_ok() ->
                               {ok,_SolrQ} = yz_solrq:start_link(yz_solrq_0001),
                               {ok,_Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
 
+                              %% Issue the requests under pulse
                               Pids = send_entries(PE),
                               wait_for_vnodes(Pids, timer:seconds(20)),
                               timer:sleep(500)
@@ -99,24 +102,15 @@ prop_ok() ->
                                                 %Expect = lists:sort(lists:flatten([Es || {_P,Es} <- PE])),
                                                 %equals(Expect, lists:sort(ibrowse_requests()))
 
-                              HttpRespBySeq = http_response_by_seq(),
+                              HttpRespByKey = http_response_by_key(),
                               HashtreeHistory = hashtree_history(),
-                              HashtreeExpect = hashtree_expect(Entries, HttpRespBySeq),
+                              HashtreeExpect = hashtree_expect(Entries, HttpRespByKey),
                               ?WHENFAIL(begin
                                             eqc:format("Partition Entries\n=======\n~p\n\n", [PE])
                                         end,
                                         equals(HashtreeHistory, HashtreeExpect))
                           end))
                    end)).
-
-%% expect(Entries) ->
-%%     RespBySeq = http_response_by_seqid(),
-%%     [x || {P, Index, BKey, Seq, Reason, Result} <- Entries],
-
-%%     %% If a successful delete, expect delete from AAE
-%%     %% If a successful put/handoff, expect insert to AAE
-%%     %% otherwise, do not expect anything
-%%     ok.
 
 
 %% Return the hashtree history
@@ -131,16 +125,16 @@ prop_ok() ->
 %%  {yz_kv,update_hashtree,[delete,3,{8,3},{{<<"default">>,<<"b">>},<<"k2">>}]},
 hashtree_history() ->
     Calls = [Args || {_Pid, {yz_kv, update_hashtree, Args}, ok} <- meck:history(yz_kv)],
-    Updates = [{P, BKey, case Op of {insert, _Hash} -> insert; _ -> Op end} ||
-                  [Op, P, _Tree, BKey] <- Calls],
+    Updates = [{P, Key, case Op of {insert, _Hash} -> insert; _ -> Op end} ||
+                  [Op, P, _Tree, {_Bucket,Key}] <- Calls],
     %% *STABLE* sort needed on P/BKey so that the order of operations on a key is correct
     lists:sort(Updates).
 
-hashtree_expect(Entries, RespBySeq) ->
+hashtree_expect(Entries, RespByKey) ->
     %% NB. foldr so no reverse, NB Result is per-entry result overridden because
     %% of batching.
-    Expect = lists:foldr(fun({_P, _Index, _BKey, Seq, _Op, _Result} = E, Acc) ->
-                                 case get_http_response(Seq, RespBySeq) of
+    Expect = lists:foldr(fun({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
+                                 case get_http_response(Key, RespByKey) of
                                      {ok, "200", _, _} ->
                                          [hashtree_expect_entry(E) | Acc];
                                      _ ->
@@ -150,29 +144,25 @@ hashtree_expect(Entries, RespBySeq) ->
     %% *STABLE* sort on P/BKey
     lists:sort(Expect).
 
-hashtree_expect_entry({P, _Index, BKey, _Seq, delete, _Result}) ->
+hashtree_expect_entry({P, _Index, _Bucket, Key, delete, _Result}) ->
     %% If a successful delete, expect delete from AAE
-    {P, BKey, delete};
-hashtree_expect_entry({P, _Index, BKey, _Seq, Op, _Result}) when Op == handoff;
+    {P, Key, delete};
+hashtree_expect_entry({P, _Index, _Bucket, Key, Op, _Result}) when Op == handoff;
                                                               Op == put ->
 
-    {P, BKey, insert}.
+    {P, Key, insert}.
 
 
-%% Expand to a dict of Seq -> ibrowse:send_req returns
-%% [{<0.11702.2>,{solr_responses,record,[[2],{ok,"200",some,crap}]},ok},
-%%  {<0.11743.2>,{solr_responses,record,[[2],{error,reqd_timeout}]},ok},
-%%  {<0.11759.2>,{solr_responses,record,[[2],{ok,"200",some,crap}]},ok},
-%%  {<0.11796.2>,{solr_responses,record,[[1,2],{ok,"200",some,crap}]},ok}]
-http_response_by_seq() ->
-    SeqsResp = [{Seqs, Resp} || {_Pid, {solr_responses, record, 
-                                        [Seqs, Resp]}, ok} <- meck:history(solr_responses)],
-    dict:from_list(lists:flatten([[{Seq, Resp} || Seq <- Seqs] || 
-                                     {Seqs, Resp} <- SeqsResp])).
+%% Expand to a dict of Key -> ibrowse:send_req returns
+http_response_by_key() ->
+    KeysResp = [{Keys, Resp} || {_Pid, {solr_responses, record,
+                                        [Keys, Resp]}, ok} <- meck:history(solr_responses)],
+    dict:from_list(lists:flatten([[{Key, Resp} || Key <- Keys] ||
+                                     {Keys, Resp} <- KeysResp])).
 
 %% Look up an http response by the sequence batch it was in
-get_http_response(Seq, RespBySeq) ->
-    dict:fetch(Seq, RespBySeq).
+get_http_response(Key, RespByKey) ->
+    dict:fetch(Key, RespByKey).
 
 
 setup() ->
@@ -225,7 +215,7 @@ setup() ->
 
     %% Fake module to track solr responses - meck:history(solr_responses)
     meck:new(solr_responses, [non_strict]),
-    meck:expect(solr_responses, record, fun(_Seqs, _Response) -> ok end),
+    meck:expect(solr_responses, record, fun(_Keys, _Response) -> ok end),
     %% pulseh:compile(solr_responses),
 
 %% TODO: Make dynamic
@@ -242,7 +232,7 @@ setup() ->
 
 %% Mocked extractor
 extract(Value) ->
-    [{seq, Value}].
+    [{yz_solrq_eqc, Value}].
 
     %% %% THE MOCKED FALLBACK
 %% If bt_no_index or bn_no_index
@@ -272,6 +262,8 @@ reset() ->
     %% restart(yz_solrq_sup, yz_solrq_0001),
     %% restart(yz_solrq_helper_sup, yz_solrq_helper_0001),
     meck:reset(ibrowse),
+    meck:reset(solr_responses),
+    meck:reset(yz_kv),
     ok.
 
 restart(Sup, Id) ->
@@ -288,21 +280,23 @@ unlink_kill(Name) ->
     end.
 
 
-add_vals(Entries) ->
-    [{P, Index, BKey, Seq, Reason, Result} ||
-        {Seq, {P, Index, BKey, Reason, Result}} <- lists:zip(lists:seq(1, length(Entries)),
-                                                     Entries)].
+add_keys(Entries) ->
+    [{P, Index, Bucket, make_key(Seq), Reason, Result} ||
+        {Seq, {P, Index, Bucket, Reason, Result}} <- lists:zip(lists:seq(1, length(Entries)),
+                                                               Entries)].
+make_key(Seq) ->
+    list_to_binary(["XKEYX"++integer_to_list(Seq)]).
 
-make_seqres(Entries) ->
-    [{Seq, Result} || {_P, _Index, _BKey, Seq, _Reason, Result} <- Entries].
+make_keyres(Entries) ->
+    [{Key, Result} || {_P, _Index, _Bucket, Key, _Reason, Result} <- Entries].
 
 send_entries(PE) ->
     Self = self(),
     [spawn_link(fun() -> send_vnode_entries(Self, P, E) end) || {P, E} <- PE].
 
 entries_by_vnode(Entries) ->
-    lists:foldl(fun({P, Index, BKey, Seq, Reason, Result}, Acc) ->
-                        orddict:append_list(P, [{Index, BKey, Seq, Reason, Result}], Acc)
+    lists:foldl(fun({P, Index, Bucket, Key, Reason, Result}, Acc) ->
+                        orddict:append_list(P, [{Index, Bucket, Key, Reason, Result}], Acc)
                 end, orddict:new(), Entries).
 
 %% Wait for send_entries - should probably set a global timeout and
@@ -336,15 +330,15 @@ wait_for_vnodes_msgs([Pid | Pids], Ref) ->
 %% Send the entries for a vnode
 send_vnode_entries(Runner, P, Events)  ->
     self() ! {ohai, length(Events)},
-    [yz_solrq:index(Index, BKey, make_obj(BKey, Seq), Reason, P) || {Index, BKey, Seq, Reason, _Result} <- Events],
+    [yz_solrq:index(Index, {Bucket, Key}, make_obj(Bucket, Key), Reason, P) || {Index, Bucket, Key, Reason, _Result} <- Events],
     receive
         {ohai, _Len} ->
             ok
     end,
     Runner ! {self(), done}.
 
-make_obj({B,K}, Seq) ->
-    riak_object:new(B, K, integer_to_binary(Seq), "application/yz_solrq_eqc").
+make_obj(B,K) ->
+    riak_object:new(B, K, K, "application/yz_solrq_eqc"). % Set Key as value
 
 %% ibrowse_requests() ->
 %%     [ibrowse_call_extract(Args, Res) || {_Pid, {ibrowse, send_req, Args, Res}} <- meck:history(ibrowse)].
@@ -357,29 +351,33 @@ debug_history(Mods) ->
     ok.
 
 
-%% Returns [{add, Seq}]
+%% Returns [{add, Key}, {delete, Key}]
 parse_solr_reqs({struct, Reqs}) ->
     [parse_solr_req(Req) || Req <- Reqs].
 
 parse_solr_req({<<"add">>, {struct, [{<<"doc">>, Doc}]}}) ->
-    {add, find_doc_seq(Doc)};
-parse_solr_req({<<"delete">>, _Query}) ->
-    {delete, could_parse_bkey};
+    {add, find_key_field(Doc)};
+parse_solr_req({<<"delete">>, {struct, [{<<"query">>, Query}]}}) ->
+    {delete, parse_delete_query(Query)};
 parse_solr_req({delete, _Query}) ->
     {delete, could_parse_bkey};
 parse_solr_req({Other, Thing}) ->
     {Other, Thing}.
 
-find_doc_seq({struct, Props}) ->
-    binary_to_integer(proplists:get_value(<<"seq">>, Props)).
+parse_delete_query(Query) ->
+    {match, [Key]} = re:run(Query, "(XKEYX[0-9]+)",[{capture,[1],binary}]),
+    Key.
+
+find_key_field({struct, Props}) ->
+    proplists:get_value(<<"yz_solrq_eqc">>, Props).
 
 
 %% Decide what to return for the request... If any of the seq
 %% numbers had failures generated, apply to all of them.
-update_response(SolrReqs, SeqRes) ->
-    Seqs = lists:usort([Seq || {add, Seq} <- SolrReqs]), % TODO: Fix parsing deletes
-    Responses = [Res || {Seq, Res} <- SeqRes, lists:member(Seq, Seqs)],
-    {Seqs, lists:foldl(fun update_response_folder/2, undefined, Responses)}.
+update_response(SolrReqs, KeyRes) ->
+    Keys = lists:usort([Key || {_Op, Key} <- SolrReqs]),
+    Responses = [Res || {Key, Res} <- KeyRes, lists:member(Key, Keys)],
+    {Keys, lists:foldl(fun update_response_folder/2, undefined, Responses)}.
 
 update_response_folder(_, {error, _Err}=R) ->
     R;
