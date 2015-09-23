@@ -29,9 +29,9 @@
 -export([fuse_context/0]).
 
 %% stats helpers
--export([aggregate_index_stats/2, stats/0]).
+-export([aggregate_index_stats/2, stats/0, get_stats_for_index/1]).
 
--define(APP, ?YZ_APP_NAME).
+-type fuse_check() :: ok | blown | melt.
 
 %%%===================================================================
 %%% Setup
@@ -108,7 +108,23 @@ stats() ->
                          {search_index_fuses_blown_one, yz_fuse,
                           aggregate_index_stats, [blown, one]}]].
 
+-spec aggregate_index_stats(fuse_check(), count|one) -> non_neg_integer().
 aggregate_index_stats(FuseCheck, Stat) ->
     proplists:get_value(Stat,
                         exometer:aggregate([{{[fuse, '_', FuseCheck],'_','_'},
                                              [], [true]}], [Stat])).
+
+-spec get_stats_for_index(atom()) -> ok.
+get_stats_for_index(Index) ->
+    case check(Index) of
+        {error, _} ->
+            io:format("No stats found for index ~s\n", [Index]);
+        _ ->
+            lists:foreach(
+              fun(Check) ->
+                      {ok, Stats} = exometer:get_value([fuse, Index, Check]),
+                      io:format("Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
+                                [Index, proplists:get_value(count, Stats),
+                                 proplists:get_value(one, Stats), Check])
+              end, [ok, melt, blown])
+    end.
