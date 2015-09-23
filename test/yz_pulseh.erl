@@ -1,6 +1,8 @@
 -module(yz_pulseh).
 -compile([export_all]).
 
+-ifdef(EQC).
+
 compile(Module) ->
     compile(Module, []).
 
@@ -23,7 +25,7 @@ do_compile_beam(Module,Beam,UserOptions) ->
     %% Extract the abstract format and apply the pulse instrument
     %% every executable line and, as a side effect, initiate
     %% the database
-    
+
     case get_abstract_code(Module, Beam) of
 	no_abstract_code=E ->
 	    {error,E};
@@ -68,3 +70,5 @@ get_source_info(Module, Beam) ->
 	_ ->
 		[]
     end.
+
+-endif.

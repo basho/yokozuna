@@ -300,7 +300,11 @@ local_remove(Name) ->
                                    index_name() | string()}]) -> ok.
 local_remove(Name, CoreProps) ->
     case yz_solr:ping(Name) of
-        true ->
+        false ->
+            ?INFO("Index ~s has already been removed/unloaded from Solr",
+                  [Name]);
+        _ ->
+            %% If an error (i.e. timeout) from ping, try to unload anyway
             case yz_solr:core(remove, CoreProps) of
                 {ok, _, _} ->
                     lager:info("Unloaded previous instance of index ~s", [Name]);
@@ -312,10 +316,7 @@ local_remove(Name, CoreProps) ->
                 {error, UnloadErr} ->
                     lager:error("Couldn't unload index ~s prior to creating "
                                 "a new instance of it: ~p", [Name, UnloadErr])
-            end;
-        false ->
-            ?INFO("Index ~s has already been removed/unloaded from Solr",
-                  [Name])
+            end
     end.
 
 %% @doc Reload the `Index' cluster-wide. By default this will also
