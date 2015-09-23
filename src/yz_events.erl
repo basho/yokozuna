@@ -112,12 +112,7 @@ add_index(Name) ->
         true -> ok;
         false -> ok = yz_index:local_create(Name)
     end,
-    IndexName = ?BIN_TO_ATOM(Name),
-    case fuse:ask(IndexName, yokozuna:fuse_context()) of
-        {error, not_found} ->
-            yokozuna:create_fuse(IndexName);
-        _ -> ok
-    end.
+    yz_fuse:create(Name).
 
 -spec add_indexes(index_set()) -> ok.
 add_indexes(Names) ->
@@ -171,7 +166,7 @@ remove_index(Name) ->
     case yz_solr:ping(Name) of
         true ->
             ok = yz_index:local_remove(Name),
-            yokozuna:reset_fuse(Name);
+            yz_fuse:reset(Name);
         _ -> ok
     end.
 
