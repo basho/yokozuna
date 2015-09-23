@@ -22,6 +22,7 @@
 
 -export([start_link/0, start_link/1, regname/1, resize/1, set_hwm/1, set_index/4]).
 -export([init/1]).
+-export([set_solrq_tuple/1]). % exported for testing
 
 -define(SOLRQS_TUPLE_KEY, solrqs_tuple).
 
@@ -60,7 +61,7 @@ resize(NewSize) when NewSize > 0 ->
                 same_size;
             NewSize when NewSize < OldSize ->
                 %% Reduce down to the new size before killing
-                mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
+                set_solrq_tuple(NewSize),
                 _ = [begin
                          Name = int_to_regname(I),
                          _ = supervisor:terminate_child(?MODULE, Name),
@@ -70,7 +71,7 @@ resize(NewSize) when NewSize > 0 ->
             NewSize when NewSize > OldSize ->
                 [supervisor:start_child(?MODULE, make_child(int_to_regname(I))) ||
                     I <- lists:seq(OldSize + 1, NewSize)],
-                mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(NewSize)),
+                set_solrq_tuple(NewSize),
                 {grew, NewSize - OldSize}
         end,
     Result.
@@ -95,15 +96,17 @@ set_index(Index, Min, Max, DelayMsMax) ->
         [ChildSpec :: supervisor:child_spec()]
     }}).
 init([NumWorkers]) ->
-    SolrQs = solrqs_tuple(NumWorkers),
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, SolrQs),
+    set_solrq_tuple(NumWorkers),
     Children = [make_child(Name) ||
-                   Name <- tuple_to_list(SolrQs)],
+                   Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))],
     {ok, {{one_for_one, 10, 10}, Children}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+set_solrq_tuple(Size) ->
+    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(Size)).
 
 num_workers() ->
     application:get_env(yokozuna, num_solrq, 10).

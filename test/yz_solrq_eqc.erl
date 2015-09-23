@@ -5,9 +5,9 @@
 -module(yz_solrq_eqc).
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("pulse/include/pulse.hrl").
--compile(export_all).
--compile({parse_transform,pulse_instrument}).
--include_lib("pulse_otp/include/pulse_otp.hrl").
+-compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+%-include_lib("pulse_otp/include/pulse_otp.hrl").
 
 
 run() ->
@@ -25,8 +25,18 @@ recheck() ->
 gen_partition() ->
     nat().
 
+cover(Secs) ->
+    cover:compile_beam(yz_solrq),
+    cover:compile_beam(yz_solrq_helper),
+    eqc:quickcheck(eqc:testing_time(Secs, prop_ok())),
+    cover:analyse_to_file(yz_solrq,[html]),
+    cover:analyse_to_file(yz_solrq_helper,[html]). 
+
+-ifndef(YZ_INDEX_TOMBSTONE).
+-define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
+-endif.
 gen_index() ->
-    oneof([<<"idx1">>,<<"idx2">>]).
+    oneof([<<"idx1">>,<<"idx2">>, ?YZ_INDEX_TOMBSTONE]).
 
 gen_bucket() ->
     {<<"default">>,<<"b">>}.
@@ -48,6 +58,9 @@ gen_params() ->
          {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
 
 prop_ok() ->
+    true = lists:member({'PULSE-REPLACE-MODULE',1}, ?MODULE:module_info(exports)),
+    true = lists:member({'PULSE-REPLACE-MODULE',1}, yz_solrq:module_info(exports)),
+    true = lists:member({'PULSE-REPLACE-MODULE',1}, yz_solrq_helper:module_info(exports)),
     ?SETUP(fun() -> setup(), fun() -> cleanup() end end,
            ?FORALL({Entries0, {HWM, Min, Max}},
                    {gen_entries(), gen_params()},
@@ -120,7 +133,7 @@ solr_history() ->
     lists:sort(dict:fetch_keys(http_response_by_key())).
 
 solr_expect(Entries) ->
-    lists:sort([Key || {_P, _Index, _Bucket, Key, _Op, _Result} <- Entries]).
+    lists:sort([Key || {_P, Index, _Bucket, Key, _Op, _Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE]).
 
 
 %% Return the hashtree history
@@ -143,7 +156,12 @@ hashtree_history() ->
 hashtree_expect(Entries, RespByKey) ->
     %% NB. foldr so no reverse, NB Result is per-entry result overridden because
     %% of batching.
-    Expect = lists:foldr(fun({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
+    Expect = lists:foldr(fun({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, delete, _Result}, Acc) ->
+                                 [{P, Key, delete} | Acc];
+                            ({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, Op, _Result}, Acc) when Op == put;
+                                                                                 Op == handoff ->
+                                 [{P, Key, insert} | Acc];
+                            ({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
                                  case get_http_response(Key, RespByKey) of
                                      {ok, "200", _, _} ->
                                          [hashtree_expect_entry(E) | Acc];
@@ -186,6 +204,9 @@ setup() ->
     application:start(lager),
 
     application:start(fuse),
+
+    yz_solrq_sup:set_solrq_tuple(1), % for yz_solrq_sup:regname
+    yz_solrq_helper_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
 
     meck:new(ibrowse),
     %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) -> 
