@@ -17,9 +17,8 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq_helper).
-%-compile([export_all]). % TODO: Replace with proper exports
--compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
--compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 
 -include("yokozuna.hrl").
 
