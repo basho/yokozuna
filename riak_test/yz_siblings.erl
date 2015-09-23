@@ -5,8 +5,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
--define(CFG, [{yokozuna, [{enabled, true}]},
-              {riak_kv, [{delete_mode, immediate}]}]).
+-define(CFG, [{yokozuna, [{enabled, true}]}]).
 
 confirm() ->
     random:seed(now()),
@@ -142,8 +141,3 @@ allow_mult(Cluster, BType, Allow) ->
 
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).
-
-commit(Nodes, Index) ->
-    %% Wait for yokozuna index to trigger, then force a commit
-    timer:sleep(1000),
-    rpc:multicall(Nodes, yz_solr, commit, [Index]).

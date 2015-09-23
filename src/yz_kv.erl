@@ -30,7 +30,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type write_reason() :: delete | handoff | put | anti_entropy.
 -type values() :: [riak_object:value()].
 -type delops() :: []|[{id, _}]|[{siblings, _}].
 
@@ -196,56 +195,10 @@ index(Obj, Reason, P) ->
         true ->
             BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
             Index = yz_kv:get_index(BKey),
+
             yz_solrq:index(Index, BKey, Obj, Reason, P);
         false ->
             ok
-    end.
-
-%% @private
-%%
-%% @doc Update the hashtree so that AAE works but don't create any
-%% indexes.  This is called when a bucket has no indexed defined.
--spec dont_index(obj(), write_reason(), p(), bkey(), short_preflist()) -> ok.
-dont_index(_, delete, P, BKey, ShortPL) ->
-    update_hashtree(delete, P, ShortPL, BKey),
-    ok;
-dont_index(Obj, _, P, BKey, ShortPL) ->
-    Hash = hash_object(Obj),
-    update_hashtree({insert, Hash}, P, ShortPL, BKey),
-    ok.
-
-%% @doc An object modified hook to create indexes as object data is
-%% written or modified.
-%%
-%% NOTE: For a normal update this hook runs on the vnode process.
-%%       During active anti-entropy runs on spawned process.
-%%
-%% NOTE: Index is doing double duty of index and delete.
-%%
-%% NOTE: A value of [notfound] is considered to be an ensemble
-%%       tombstone, or at least nonexistent, and acts as a delete
--spec index(obj(), write_reason(), ring(), p(), bkey(),
-            short_preflist(), index_name()) -> ok.
-index(_, delete, _, P, BKey, ShortPL, Index) ->
-    ok = yz_solr:delete(Index, [{bkey, BKey}]),
-    ok = update_hashtree(delete, P, ShortPL, BKey),
-    ok;
-index(Obj0, Reason, Ring, P, BKey, ShortPL, Index) ->
-    {Bucket, _} = BKey,
-    BProps = riak_core_bucket:get_bucket(Bucket),
-    Obj = maybe_merge_siblings(BProps, Obj0),
-    case riak_object:get_values(Obj) of
-        [notfound] ->
-            ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
-        Values ->
-            LI = yz_cover:logical_index(Ring),
-            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-            LP = yz_cover:logical_partition(LI, P),
-            Hash = hash_object(Obj),
-            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-            DelOps = delete_operation(BProps, Obj, Reason, Docs, BKey, LP, Values),
-            ok = solr_index(Index, Docs, DelOps, Values),
-            ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
     end.
 
 %% @doc Should the content be indexed?
@@ -360,10 +313,18 @@ check_flag(Flag) ->
 
 %% @private
 %%
-%% TODO: deprecate in favor of generic solution for sibling value Objects
-%%       in cleanup/3.
--spec cleanup(non_neg_integer(), {obj(), bkey(), lp()}) ->
-                     [{id, binary()}|{siblings, bkey()}].
+%% @doc Cleanup tombstones and siblings accordingly... cleanup/3
+%% TODO: deprecate 1/2 versions in favor of generic solution for sibling value
+%% Objects, focused on allow_mult=true case
+-spec cleanup(non_neg_integer()|[doc()], {obj(), bkey(), lp()}|bkey()) ->
+                     [{id, binary()}|{siblings, bkey()}|{bkey, bkey()}].
+cleanup([], _BKey) ->
+    [];
+cleanup([{doc, Fields}|T], BKey) ->
+    case proplists:is_defined(tombstone, Fields) of
+        true -> [{bkey, BKey}];
+        false -> cleanup(T, BKey)
+    end;
 cleanup(1, {_Obj, BKey, _LP}) ->
     %% Delete any siblings
     [{siblings, BKey}];
@@ -499,11 +460,11 @@ should_have_siblings(_) -> true.
 %%      If object relates to lww=true/allow_mult=false/datatype/sc
 %%      do cleanup of tombstones only.
 -spec delete_operation(riak_kv_bucket:props(), obj(), write_reason(), [doc()],
-                       bkey(), lp(), values()) -> delops().
-delete_operation(BProps, Obj, _Reason, Docs, BKey, LP, Values) ->
+                       bkey(), lp()) -> delops().
+delete_operation(BProps, Obj, _Reason, Docs, BKey, LP) ->
     case should_have_siblings(BProps) of
         true -> cleanup(length(Docs), {Obj, BKey, LP});
-        false -> cleanup(Docs, BKey, Values)
+        false -> cleanup(Docs, BKey)
     end.
 
 %% @private
@@ -520,21 +481,6 @@ maybe_merge_siblings(BProps, Obj) ->
                 false -> riak_object:reconcile([Obj], false)
             end
     end.
-
-%% @private
-%%
-%% @doc Determine which docs/ops make it solr index call.
--spec solr_index(index_name(), [doc()], delops(), values()) -> ok.
-solr_index(Index, _Docs, DelOps, [?TOMBSTONE]) when length(DelOps) > 0 ->
-    %% handle cases where there's only a single tombstone value and provide
-    %% only the deletion operations
-    yz_solr:index(Index, [], DelOps);
-solr_index(Index, Docs, DelOps, Values) ->
-    %% remove docs which have tombstone, <<>>, values in preparation
-    %% for add updates
-    yz_solr:index(Index,
-                  [D ||  {D, V} <- lists:zip(Docs, Values), V =/= ?TOMBSTONE],
-                  DelOps).
 
 %%%===================================================================
 %%% Tests

@@ -34,7 +34,7 @@
 %%%===================================================================
 
 start(_StartType, _StartArgs) ->
- %% Ensure that the KV service has fully loaded.
+    %% Ensure that the KV service has fully loaded.
     riak_core:wait_for_service(riak_kv),
 
     initialize_atoms(),
@@ -78,6 +78,7 @@ maybe_setup(true) ->
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
+    yz_fuse:setup(),
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],
                                        false),

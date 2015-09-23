@@ -30,7 +30,9 @@ iterate_entropy_data(Index, Filter, Fun) ->
     case yz_solr:ping(Index) of
         true ->
             Filter2 = [{continuation, none},
-                       {limit, app_helper:get_env(?YZ_APP_NAME, entropy_data_limit, 100)}|Filter],
+                       {limit,
+                        app_helper:get_env(?YZ_APP_NAME,
+                                           entropy_data_limit, 100)}|Filter],
             case get_entropy_data(Index, Filter2) of
                 {ok, ED} ->
                     iterate_entropy_data(Index, Filter2, Fun, ED);

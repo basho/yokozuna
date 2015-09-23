@@ -77,7 +77,6 @@ handle_call(status, _From, #state{qpid = QPid,
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
-
 handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
@@ -85,21 +84,21 @@ handle_cast({batch, Index, Entries0}, State) ->
     try
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
-        %% Unique the entries and lookup things needed for SOLR/AAE
-        Entries = [{BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
-                      {BKey, Obj, Reason, P} <- lists:ukeysort(1, Entries0)],
+        Entries = [{BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey),
+                    yz_kv:hash_object(Obj)} ||
+                      {BKey, Obj, Reason, P} <- Entries0],
         case update_solr(Index, Entries) of
             ok ->
-                update_aae(Entries);
+                update_aae_and_repair_stats(Entries);
             {error, Reason} ->
-                %% SOLR Error, do not update AAE trees
                 ok
         end,
         {noreply, State}
     catch
         _:Err ->
+            yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            lager:info("index failed - ~p\nat: ~p", [Err, Trace]),
+            ?ERROR("index failed - ~p\nat: ~p", [Err, Trace]),
             {noreply, State}
     end.
 
@@ -109,7 +108,21 @@ update_solr(Index, Entries) ->
         false ->
             ok; % No need to send anything to SOLR, still need for AAE.
         _ ->
-            send_solr_ops(Index, solr_ops(Entries))
+            IndexName = (?BIN_TO_ATOM(Index)),
+            case yz_fuse:check(IndexName) of
+                ok ->
+                    send_solr_ops(Index, solr_ops(Entries));
+                blown ->
+                    ?ERROR("Fuse Blown: can't current send solr "
+                           "operations for index ~s", [Index]),
+                    {error, fuse_blown};
+                _ ->
+                    %% fuse table creation is idempotent and occurs on
+                    %% add_index/1 on 1st creation or diff-check.
+                    %% We send entries until we can ask again for
+                    %% ok | error, as we wait for the tick.
+                    send_solr_ops(Index, solr_ops(Entries))
+            end
     end.
 
 %% Build the SOLR query
@@ -118,55 +131,87 @@ solr_ops(Entries) ->
     LI = yz_cover:logical_index(Ring),
     lists:reverse(
       lists:foldl(
-        fun({BKey, Obj, Reason, P, ShortPL, Hash}, Ops) ->
-                %% TODO: This should be called in yz_solr:index
-                %% then the ring lookup can be removed
-                case yz_kv:is_owner_or_future_owner(P, node(), Ring) of
-                    true ->
-                        case Reason of
-                            delete ->
-                                [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
-                            _ ->
-                                LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-                                LP = yz_cover:logical_partition(LI, P),
-                                AddOps = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-                                DeleteOps = yz_kv:delete_operation(Obj, Reason, AddOps, BKey, LP),
-                                %% List will be reversed, so make sure deletes happen before adds
-                                lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
-                                              [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
-                                              Ops])
-                        end;
-                    false ->
-                        Ops
-                end
+        fun({BKey, Obj0, Reason0, P, ShortPL, Hash}, Ops) ->
+            %% TODO: This should be called in yz_solr:index
+            %% then the ring lookup can be removed
+            case yz_kv:is_owner_or_future_owner(P, node(), Ring) of
+                true ->
+                    {Bucket, _} = BKey,
+                    BProps = riak_core_bucket:get_bucket(Bucket),
+                    Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
+                    ObjValues = riak_object:get_values(Obj),
+                    Reason = get_reason_action(Reason0),
+                    case {Reason, ObjValues} of
+                        {delete, _} ->
+                            [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                        {_, [notfound]} ->
+                            [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                        _ ->
+                            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+                            LP = yz_cover:logical_partition(LI, P),
+                            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+                            AddOps = yz_doc:adding_docs(Docs),
+                            DeleteOps = yz_kv:delete_operation(BProps, Obj, Reason, Docs, BKey, LP),
+                            %% List will be reversed, so make sure deletes happen before adds
+                            lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                                          [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
+                                          Ops])
+                    end;
+                false ->
+                    Ops
+            end
         end, [], Entries)).
-
 
 send_solr_ops(Index, Ops) ->
     try
         T1 = os:timestamp(),
-        case yz_solr:index_batch(Index, Ops) of
-            ok ->
-                yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
-                ok;
-            ER ->
-                yz_stat:index_fail(),
-                ER
-        end
+        ok = yz_solr:index_batch(Index, Ops),
+        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1))
     catch _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
+            ?ERROR("batch for index ~s failed - ~p\n with operations: ~p : ~p",
+                   [Index, Err, Ops, Trace]),
+            yz_fuse:melt(Index),
             {error, {Err, Trace}}
     end.
 
-update_aae(Entries) ->
-    lists:foreach(fun({BKey, _Obj, Reason0, P, ShortPL, Hash}) ->
-                          Action = case Reason0 of
-                                       delete -> delete;
-                                       _ -> {insert, Hash}
-                                   end,
-                          yz_kv:update_hashtree(Action, P, ShortPL, BKey)
-                  end, Entries).
+update_aae_and_repair_stats(Entries) ->
+    Repairs = lists:foldl(
+                fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
+                        ReasonAction = get_reason_action(Reason),
+                        Action = case ReasonAction of
+                                     delete -> delete;
+                                     _ -> {insert, Hash}
+                                 end,
+                        yz_kv:update_hashtree(Action, P, ShortPL, BKey),
+                        gather_counts({P, ShortPL, Reason}, StatsD)
+                end, dict:new(), Entries),
+    dict:map(fun({Index, IndexN}, Count) ->
+                  case Count of
+                      0 ->
+                          yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
+                      Count ->
+                          lager:info("Repaired ~b keys during active anti-entropy "
+                                     "exchange of partition ~p for preflist ~p",
+                                     [Count, Index, IndexN]),
+                          yz_kv:update_aae_exchange_stats(Index, IndexN, Count)
+                  end
+             end, Repairs).
+
+-spec gather_counts({p(), {p(), n()}, write_reason()}, yz_dict()) -> yz_dict().
+gather_counts({Index, IndexN, Reason}, StatsD) ->
+    case Reason of
+        {_, full_repair} ->
+            dict:update_counter({Index, IndexN}, 1, StatsD);
+        _ -> dict:update_counter({Index, IndexN}, 0, StatsD)
+    end.
+
+-spec get_reason_action(write_reason()) -> write_reason().
+get_reason_action(Reason) when is_tuple(Reason) ->
+    element(1, Reason);
+get_reason_action(Reason) ->
+    Reason.
 
 handle_info(_Msg, State) ->
     {noreply, State}.
