@@ -213,4 +213,4 @@ stats() ->
                                           {mean  , search_query_latency_mean}]},
      {['query', throughput], spiral, [], [{count,search_query_throughput_count},
                                           {one  ,search_query_throughput_one}]}
-    ].
+    ] ++ yz_fuse:stats().
