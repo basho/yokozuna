@@ -1,0 +1,190 @@
+%% -------------------------------------------------------------------
+%% Copyright (c) 2015 Basho Technologies, Inc. All Rights Reserved.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+%% -------------------------------------------------------------------
+-module(yz_solrq_sup).
+
+-behaviour(supervisor).
+
+-export([start_link/0, start_link/2,
+         queue_regname/1, helper_regname/1,
+         num_queue_specs/0, resize_queues/1,
+         num_helper_specs/0, resize_helpers/1,
+         set_hwm/1,
+         set_index/4]).
+-export([init/1]).
+-export([set_solrq_tuple/1, set_solrq_helper_tuple/1]). % exported for testing
+
+-define(SOLRQS_TUPLE_KEY, solrqs_tuple).
+-define(SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple).
+
+%%%===================================================================
+%%% API functions
+%%%===================================================================
+
+%% -spec(start_link() ->
+%%     {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link() ->
+    start_link(queue_procs(), helper_procs()).
+
+start_link(NumQueues, NumHelpers) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [NumQueues, NumHelpers]).
+
+%% From the hash, return the registered name of a queue
+queue_regname(Hash) ->
+    case mochiglobal:get(?SOLRQS_TUPLE_KEY) of
+        undefined ->
+            error(solrq_sup_not_started);
+        Names ->
+            Index = 1 + (Hash rem size(Names)),
+            element(Index, Names)
+    end.
+
+%% From the hash, return the registered name of a queue
+helper_regname(Hash) ->
+    case mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY) of
+        undefined ->
+            error(solrq_sup_not_started);
+        Names ->
+            Index = 1 + (Hash rem size(Names)),
+            element(Index, Names)
+    end.
+
+num_queue_specs() ->
+    length([true || {_,_,_,[yz_solrq]} <- supervisor:which_children(?MODULE)]).
+
+%% Resize the number of queues.  For debugging/testing only,
+%% this will briefly cause the worker that queues remap to
+%% to change so updates may be out of order briefly.
+resize_queues(NewSize) when NewSize > 0 ->
+    OldSize = num_queue_specs(),
+    %% Shrink to single worker while we mess with the
+    %% running workers
+    Result =
+        case NewSize of
+            OldSize ->
+                same_size;
+            NewSize when NewSize < OldSize ->
+                %% Reduce down to the new size before killing
+                set_solrq_tuple(NewSize),
+                _ = [begin
+                         Name = int_to_queue_regname(I),
+                         _ = supervisor:terminate_child(?MODULE, Name),
+                         ok = supervisor:delete_child(?MODULE, Name)
+                     end || I <- lists:seq(NewSize + 1, OldSize)],
+                {shrank, OldSize - NewSize};
+            NewSize when NewSize > OldSize ->
+                [supervisor:start_child(?MODULE, queue_child(int_to_queue_regname(I))) ||
+                    I <- lists:seq(OldSize + 1, NewSize)],
+                set_solrq_tuple(NewSize),
+                {grew, NewSize - OldSize}
+        end,
+    Result.
+
+%% Active helper count
+num_helper_specs() ->
+    length([true || {_,_,_,[yz_solrq_helper]} <- supervisor:which_children(?MODULE)]).
+
+%% Resize the number of queues.  For debugging/testing only,
+%% this will briefly cause the worker that queues remap to
+%% to change so updates may be out of order briefly.
+resize_helpers(NewSize) when NewSize > 0 ->
+    OldSize =  num_helper_specs(),
+    %% Shrink to single worker while we mess with the
+    %% running workers
+    Result =
+        case NewSize of
+            OldSize ->
+                same_size;
+            NewSize when NewSize < OldSize ->
+                %% Reduce down to the new size before killing
+                mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(NewSize)),
+                _ = [begin
+                         Name = int_to_helper_regname(I),
+                         _ = supervisor:terminate_child(?MODULE, Name),
+                         ok = supervisor:delete_child(?MODULE, Name)
+                     end || I <- lists:seq(NewSize + 1, OldSize)],
+                {shrank, OldSize - NewSize};
+            NewSize when NewSize > OldSize ->
+                [supervisor:start_child(?MODULE, helper_child(int_to_helper_regname(I))) ||
+                    I <- lists:seq(OldSize + 1, NewSize)],
+                mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(NewSize)),
+                {grew, NewSize - OldSize}
+        end,
+    Result.
+
+
+set_hwm(HWM) ->
+    [{Name, catch yz_solrq:set_hwm(Name, HWM)} ||
+        Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
+
+set_index(Index, Min, Max, DelayMsMax) ->
+    [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
+        Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
+
+%%%===================================================================
+%%% Supervisor callbacks
+%%%===================================================================
+
+-spec(init(Args :: term()) ->
+    {ok, {SupFlags :: {RestartStrategy :: supervisor:strategy(),
+        MaxR :: non_neg_integer(), MaxT :: non_neg_integer()},
+        [ChildSpec :: supervisor:child_spec()]
+    }}).
+
+init([NumQueues, NumHelpers]) ->
+    set_solrq_tuple(NumQueues),
+    set_solrq_helper_tuple(NumHelpers),
+    QueueChildren = [queue_child(Name) ||
+                        Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))],
+    HelperChildren = [helper_child(Name) ||
+                        Name <- tuple_to_list(mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY))],
+    {ok, {{one_for_all, 10, 10}, HelperChildren ++ QueueChildren}}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+set_solrq_tuple(Size) ->
+    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(Size)).
+
+set_solrq_helper_tuple(Size) ->
+    mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
+
+queue_procs() ->
+    application:get_env(yokozuna, num_solrq, 10).
+
+helper_procs() ->
+    application:get_env(yokozuna, num_solrq_helpers, 10).
+
+solrqs_tuple(Queues) ->
+    list_to_tuple([int_to_queue_regname(I) || I <- lists:seq(1, Queues)]).
+
+solrq_helpers_tuple(Helpers) ->
+    list_to_tuple([int_to_helper_regname(I) || I <- lists:seq(1, Helpers)]).
+
+int_to_queue_regname(I) ->
+    list_to_atom(lists:flatten(io_lib:format("yz_solrq_~4..0b", [I]))).
+
+int_to_helper_regname(I) ->
+    list_to_atom(lists:flatten(io_lib:format("yz_solrq_helper_~4..0b", [I]))).
+
+queue_child(Name) ->
+    {Name, {yz_solrq, start_link, [Name]}, permanent, 5000, worker, [yz_solrq]}.
+
+helper_child(Name) ->
+    {Name, {yz_solrq_helper, start_link, [Name]}, permanent, 5000, worker, [yz_solrq_helper]}.

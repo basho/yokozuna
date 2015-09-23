@@ -89,6 +89,11 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
+%% index-write reasons
+-type repair() :: full_repair | tree_repair | failed_repair.
+-type write_reason() :: delete | handoff | put | anti_entropy |
+                        {delete, repair()} | {anti_entropy, repair()}.
+
 %% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is
 %%      disabled in a live, production cluster in order to isolate
@@ -160,6 +165,14 @@
                         app_helper:get_env(riak_core, platform_data_dir)++"/yz")).
 -define(YZ_TEMP_DIR, app_helper:get_env(?YZ_APP_NAME, temp_dir,
                         app_helper:get_env(riak_core, platform_data_dir)++"/yz_temp")).
+%% The request timeout for Solr calls. Defaults to 60 seconds.
+-define(YZ_SOLR_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
+                                                    solr_request_timeout,
+                                                    60000)).
+%% The request timeout for Solr's entrop_data call. Defaults to 60 seconds.
+-define(YZ_SOLR_ED_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
+                                                    solr_ed_request_timeout,
+                                                    ?YZ_SOLR_REQUEST_TIMEOUT)).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
@@ -187,6 +200,9 @@
 -define(RS_SVC, riak_search).
 
 -define(SOLR_HOST_CONTEXT, "/internal_solr").
+
+-define(YZ_SOLR_ACTUALLY_INDEX, app_helper:get_env(?YZ_APP_NAME,
+                                                   index_call_enabled, true)).
 
 %%%===================================================================
 %%% Anti Entropy
@@ -237,11 +253,12 @@
                       {partition, lp()} |
                       {limit, pos_integer()}].
 -type ed_continuation() :: none | base64().
+-type ed_pairs() :: [{DocID::binary(), Hash::base64()}].
 
 -record(entropy_data, {
           more=false :: boolean(),
           continuation :: ed_continuation(),
-          pairs :: [{DocID::binary(), Hash::base64()}]
+          pairs :: ed_pairs()
          }).
 -type entropy_data() :: #entropy_data{}.
 -type keydiff() :: hashtree:keydiff().
@@ -288,6 +305,8 @@
 -define(ERROR(Fmt), lager:error(Fmt)).
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
+-define(NOTICE(Fmt, Args), lager:notice(Fmt, Args)).
+-define(NOTICE(Fmt), lager:notice(Fmt)).
 -define(WARN(Fmt, Args), lager:warning(Fmt, Args)).
 
 %%%===================================================================
@@ -301,6 +320,7 @@
 -type reload_opts() :: [reload_opt()].
 -type reload_errs() :: [{node(), {error, term()}}].
 
+-define(TOMBSTONE, <<>>).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
 -define(YZ_INDEX, search_index).
 

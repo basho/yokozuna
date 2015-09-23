@@ -299,17 +299,24 @@ local_remove(Name) ->
 -spec local_remove(index_name(), [{core | delete_instance | delete_index | delete_data_dir,
                                    index_name() | string()}]) -> ok.
 local_remove(Name, CoreProps) ->
-    case yz_solr:core(remove, CoreProps) of
-        {ok, _, _} ->
-            lager:info("Unloaded previous instance of index ~s", [Name]);
-        {error, {ok, "400", _, Resp}} ->
-            lager:info("Couldn't unload index ~s prior to creating "
-                       "a new instance of it. This is likely the first "
-                       "time this index has been created. Solr "
-                       "responded with ~s.", [Name, Resp]);
-        {error, UnloadErr} ->
-            lager:error("Couldn't unload index ~s prior to creating "
-                        "a new instance of it: ~p", [Name, UnloadErr])
+    case yz_solr:ping(Name) of
+        false ->
+            ?INFO("Index ~s has already been removed/unloaded from Solr",
+                  [Name]);
+        _ ->
+            %% If an error (i.e. timeout) from ping, try to unload anyway
+            case yz_solr:core(remove, CoreProps) of
+                {ok, _, _} ->
+                    lager:info("Unloaded previous instance of index ~s", [Name]);
+                {error, {ok, "400", _, Resp}} ->
+                    lager:info("Couldn't unload index ~s prior to creating "
+                               "a new instance of it. This is likely the first "
+                               "time this index has been created. Solr "
+                               "responded with ~s.", [Name, Resp]);
+                {error, UnloadErr} ->
+                    lager:error("Couldn't unload index ~s prior to creating "
+                                "a new instance of it: ~p", [Name, UnloadErr])
+            end
     end.
 
 %% @doc Reload the `Index' cluster-wide. By default this will also
