@@ -58,13 +58,17 @@ gen_params() ->
          {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
 
 prop_ok() ->
-    true = lists:member({'PULSE-REPLACE-MODULE',1}, ?MODULE:module_info(exports)),
-    true = lists:member({'PULSE-REPLACE-MODULE',1}, yz_solrq:module_info(exports)),
-    true = lists:member({'PULSE-REPLACE-MODULE',1}, yz_solrq_helper:module_info(exports)),
     ?SETUP(fun() -> setup(), fun() -> cleanup() end end,
            ?FORALL({Entries0, {HWM, Min, Max}},
                    {gen_entries(), gen_params()},
                    begin
+                       true = lists:member({'PULSE-REPLACE-MODULE',1},
+                                           ?MODULE:module_info(exports)),
+                       true = lists:member({'PULSE-REPLACE-MODULE',1},
+                                           yz_solrq:module_info(exports)),
+                       true = lists:member({'PULSE-REPLACE-MODULE',1},
+                                           yz_solrq_helper:module_info(exports)),
+
                        %% Reset the solrq/solrq helper processes
                        application:set_env(yokozuna, solrq_queue_hwm, HWM),
                        application:set_env(yokozuna, solrq_batch_min, Min),
@@ -104,7 +108,7 @@ prop_ok() ->
                               {ok,_Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
 
                               %% Issue the requests under pulse
-                              Pids = send_entries(PE),
+                              Pids = ?MODULE:send_entries(PE),
                               wait_for_vnodes(Pids, timer:seconds(20)),
                               timer:sleep(500)
                           end,
@@ -206,7 +210,7 @@ setup() ->
     application:start(fuse),
 
     yz_solrq_sup:set_solrq_tuple(1), % for yz_solrq_sup:regname
-    yz_solrq_helper_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
+    yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
 
     meck:new(ibrowse),
     %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) -> 
@@ -245,10 +249,14 @@ setup() ->
     meck:new(solr_responses, [non_strict]),
     meck:expect(solr_responses, record, fun(_Keys, _Response) -> ok end),
 
-%% TODO: Make dynamic
+    %% Apply the pulse transform to the modules in the test
     %% Pulse compile solrq/solrq helper
-    %% pulseh:compile(yz_solrq),
-    %% pulseh:compile(yz_solrq_helper),
+    Opts = [export_all,
+            {parse_transform,pulse_instrument},
+            {pulse_replace_module, [{gen_server, pulse_gen_server}]}],
+    yz_pulseh:compile(yz_solrq_eqc, Opts),
+    yz_pulseh:compile(yz_solrq, Opts),
+    yz_pulseh:compile(yz_solrq_helper, Opts),
 
     %% And start up supervisors to own the solrq/solrq helper
     %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
