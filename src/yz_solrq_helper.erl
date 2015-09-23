@@ -111,7 +111,7 @@ update_solr(Index, Entries) ->
             ok; % No need to send anything to SOLR, still need for AAE.
         _ ->
             IndexName = (?BIN_TO_ATOM(Index)),
-            case fuse:ask(IndexName, yokozuna:fuse_context()) of
+            case yz_fuse:check(IndexName) of
                 ok ->
                     send_solr_ops(Index, solr_ops(Entries));
                 blown ->
@@ -174,7 +174,7 @@ send_solr_ops(Index, Ops) ->
             Trace = erlang:get_stacktrace(),
             ?ERROR("batch for index ~s failed - ~p\n with operations: ~p : ~p",
                    [Index, Err, Ops, Trace]),
-            fuse:melt(?BIN_TO_ATOM(Index)),
+            yz_fuse:melt(Index),
             {error, {Err, Trace}}
     end.
 
