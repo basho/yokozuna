@@ -55,7 +55,7 @@ status(Pid, Timeout) ->
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
-    HPid = yz_solrq_helper_sup:regname(Hash),
+    HPid = yz_solrq_sup:helper_regname(Hash),
     index_ready(HPid, Index, QPid).
 
 %% Send a batch
