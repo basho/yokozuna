@@ -3,12 +3,14 @@
 %% If SOLR failed batch, none should be added.
 
 -module(yz_solrq_eqc).
+
+-ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
+
 -include_lib("pulse/include/pulse.hrl").
 -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
 -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 %-include_lib("pulse_otp/include/pulse_otp.hrl").
-
 
 run() ->
     run(10).
@@ -30,7 +32,7 @@ cover(Secs) ->
     cover:compile_beam(yz_solrq_helper),
     eqc:quickcheck(eqc:testing_time(Secs, prop_ok())),
     cover:analyse_to_file(yz_solrq,[html]),
-    cover:analyse_to_file(yz_solrq_helper,[html]). 
+    cover:analyse_to_file(yz_solrq_helper,[html]).
 
 -ifndef(YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
@@ -213,7 +215,7 @@ setup() ->
     yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
 
     meck:new(ibrowse),
-    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) -> 
+    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) ->
     %%                                     io:format("REQ: ~p\n", [{_A,_B,_C,_D,_E,_F}]),
     %%                                     {ok, "200", some, crap} end),
 
@@ -420,3 +422,5 @@ update_response_folder(_, {ok, "500", _Some, _Crap}=R) ->
     R;
 update_response_folder(R, _Acc) ->
     R.
+
+-endif.
