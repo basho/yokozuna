@@ -22,6 +22,7 @@
 
 -export([start_link/0,  start_link/1, regname/1, resize/1, set_hwm/1]).
 -export([init/1]).
+-export([set_solrq_helper_tuple/1]). % exported for testing
 
 -define(SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple).
 
@@ -60,7 +61,7 @@ resize(NewSize) when NewSize > 0 ->
                 same_size;
             NewSize when NewSize < OldSize ->
                 %% Reduce down to the new size before killing
-                mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(NewSize)),
+                set_solrq_helper_tuple(NewSize),
                 _ = [begin
                          Name = int_to_regname(I),
                          _ = supervisor:terminate_child(?MODULE, Name),
@@ -70,7 +71,7 @@ resize(NewSize) when NewSize > 0 ->
             NewSize when NewSize > OldSize ->
                 [supervisor:start_child(?MODULE, make_child(int_to_regname(I))) ||
                     I <- lists:seq(OldSize + 1, NewSize)],
-                mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(NewSize)),
+                set_solrq_helper_tuple(NewSize),
                 {grew, NewSize - OldSize}
         end,
     Result.
@@ -89,15 +90,17 @@ set_hwm(HWM) ->
         [ChildSpec :: supervisor:child_spec()]
     }}).
 init([NumWorkers]) ->
-    SolrQHelpers = solrq_helpers_tuple(NumWorkers),
-    mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, SolrQHelpers),
+    set_solrq_helper_tuple(NumWorkers),
     Children = [make_child(Name) ||
-                   Name <- tuple_to_list(SolrQHelpers)],
+                   Name <- tuple_to_list(mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY))],
     {ok, {{one_for_one, 10, 10}, Children}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+set_solrq_helper_tuple(Size) ->
+    mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
 
 num_workers() ->
     application:get_env(yokozuna, num_solrq_helpers, 10).
