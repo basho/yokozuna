@@ -127,8 +127,7 @@ handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
         IndexQ ->
             case IndexQ#indexq.href of
                 HRef ->
-                    IndexQ2 = request_worker(Index, IndexQ),
-                    {noreply, update_indexq(Index, IndexQ2, State)};
+                    {noreply, flush(Index, IndexQ#indexq{href = undefined}, State)};
                 _ -> % out of date
                     {noreply, State}
             end
@@ -180,6 +179,11 @@ enqueue(E, #indexq{queue = Q, queue_len = L} = IndexQ) ->
     IndexQ#indexq{queue = queue:in(E, Q),
                   queue_len = L + 1}.
 
+%% Trigger a flush and return state
+flush(Index, IndexQ, State) ->
+    IndexQ2 = request_worker(Index, IndexQ),
+    update_indexq(Index, IndexQ2, State).
+
 %% Return true if queue is over the high water mark
 over_hwm(#state{all_queue_len = L, queue_hwm = HWM}) ->
     L > HWM.
@@ -200,7 +204,10 @@ maybe_request_worker(_Index, _Min, IndexQ) ->
 request_worker(Index, #indexq{pending_helper = false} = IndexQ) ->
     Hash = erlang:phash2({Index, self()}),
     yz_solrq_helper:index_ready(Hash, Index, self()),
-    IndexQ#indexq{pending_helper = true}.
+    IndexQ#indexq{pending_helper = true};
+request_worker(_Index, IndexQ) ->
+    IndexQ.
+
 
 %% Send a batch of entries, reply to any blocked vnodes and
 %% return updated state
