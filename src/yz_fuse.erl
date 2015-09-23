@@ -117,13 +117,13 @@ aggregate_index_stats(FuseCheck, Stat) ->
 get_stats_for_index(Index) ->
     case check(Index) of
         {error, _} ->
-            io:format("No stats found for index ~s", [Index]);
+            io:format("No stats found for index ~s\n", [Index]);
         _ ->
             lists:foreach(
               fun(Check) ->
                       {ok, Stats} = exometer:get_value([fuse, Index, Check]),
-                      io:format("Index ~s: count: ~p | one: ~p for fuse stat `~s`\n",
+                      io:format("Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
                                 [Index, proplists:get_value(count, Stats),
                                  proplists:get_value(one, Stats), Check])
-              end, [ok, melt, blow])
+              end, [ok, melt, blown])
     end.

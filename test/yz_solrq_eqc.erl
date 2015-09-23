@@ -2,6 +2,8 @@
 %% If SOLR accepted batch, all should be added to AAE
 %% If SOLR failed batch, none should be added.
 
+-ifdef(EQC).
+
 -module(yz_solrq_eqc).
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("pulse/include/pulse.hrl").
@@ -30,7 +32,7 @@ cover(Secs) ->
     cover:compile_beam(yz_solrq_helper),
     eqc:quickcheck(eqc:testing_time(Secs, prop_ok())),
     cover:analyse_to_file(yz_solrq,[html]),
-    cover:analyse_to_file(yz_solrq_helper,[html]). 
+    cover:analyse_to_file(yz_solrq_helper,[html]).
 
 -ifndef(YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
@@ -213,7 +215,7 @@ setup() ->
     yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
 
     meck:new(ibrowse),
-    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) -> 
+    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) ->
     %%                                     io:format("REQ: ~p\n", [{_A,_B,_C,_D,_E,_F}]),
     %%                                     {ok, "200", some, crap} end),
 
@@ -420,3 +422,5 @@ update_response_folder(_, {ok, "500", _Some, _Crap}=R) ->
     R;
 update_response_folder(R, _Acc) ->
     R.
+
+-endif.
