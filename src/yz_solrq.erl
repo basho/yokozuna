@@ -63,7 +63,7 @@ index(Index, BKey, Obj, Reason, P) ->
         %% Hash on the index and partition to ensure updates to
         %% an index are serialized for all objects in the vnode.
         Hash = erlang:phash2({Index, P}),
-        gen_server:call(yz_solrq_sup:regname(Hash),
+        gen_server:call(yz_solrq_sup:solrq_regname(Hash),
                         {index, Index, {BKey, Obj, Reason, P}}, infinity)
     catch
         _:Err ->
