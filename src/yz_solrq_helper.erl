@@ -192,10 +192,10 @@ update_aae_and_repair_stats(Entries) ->
     dict:map(fun({Index, IndexN}, Count) ->
                   case Count of
                       0 ->
-                          yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
+                          ok;
                       Count ->
-                          lager:info("Repaired ~b keys during active anti-entropy "
-                                     "exchange of partition ~p for preflist ~p",
+                          lager:debug("Repaired ~b keys during active anti-entropy "
+                                      "exchange of partition ~p for preflist ~p",
                                      [Count, Index, IndexN]),
                           yz_kv:update_aae_exchange_stats(Index, IndexN, Count)
                   end

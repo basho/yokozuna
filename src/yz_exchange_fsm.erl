@@ -173,8 +173,8 @@ key_exchange(timeout, S=#state{index=Index,
         0 ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
-            lager:debug("Will repair ~b keys of partition ~p for preflist ~p",
-                        [Count, Index, IndexN])
+            lager:info("Will repair ~b keys of partition ~p for preflist ~p",
+                       [Count, Index, IndexN])
     end,
     {stop, normal, S}.
 
