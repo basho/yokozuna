@@ -17,7 +17,9 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq_helper).
--compile([export_all]). % TODO: Replace with proper exports
+%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+
 -include("yokozuna.hrl").
 
 %% api
@@ -52,7 +54,7 @@ status(Pid, Timeout) ->
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
-    HPid = yz_solrq_helper_sup:regname(Hash),
+    HPid = yz_solrq_sup:helper_regname(Hash),
     index_ready(HPid, Index, QPid).
 
 %% Send a batch
