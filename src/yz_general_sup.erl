@@ -44,7 +44,7 @@ start_link() ->
 init([]) ->
     SolrQ = {yz_solrq_sup,
              {yz_solrq_sup, start_link, []},
-             permanent, 5000, supervisor, [yz_solrq_sup]},
+             permanent, infinity, supervisor, [yz_solrq_sup]},
 
     Events = {yz_events,
               {yz_events, start_link, []},

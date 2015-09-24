@@ -95,7 +95,7 @@ handle_call({index, Index, E}, From, State) ->
 handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
-    {reply, {ok, OldHWM}, State#state{queue_hwm = NewHWM}};
+    {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
 handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
     IndexQ = get_indexq(Index, State),
     IndexQ2 = maybe_request_worker(Index,
@@ -237,7 +237,7 @@ maybe_unblock_vnodes(#state{pending_vnodes = PendingVnodes} = State) ->
         true ->
             State;
         _ ->
-            _ = [gen_server:reply(From, ok) || From <- PendingVnodes],
+            _ = [gen_server:reply(From, unblocked) || From <- PendingVnodes],
             State#state{pending_vnodes = []}
     end.
 

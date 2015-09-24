@@ -32,8 +32,7 @@
 % solrq/helper interface
 -export([index_ready/3, index_batch/3]).
 
--record(state, {qpid,
-                http_pid}).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
@@ -66,16 +65,10 @@ index_batch(HPid, Index, Entries) ->
 %%%===================================================================
 
 init([]) ->
-    %% TODO: Prolly need to monitor
-    %% Host = "localhost",
-    %% Port = yz_solr:port(),
-    %% {ok, HttpPid} = ibrowse_http_client:start({Host, Port}),
     {ok, #state{}}.
 
-handle_call(status, _From, #state{qpid = QPid,
-                                  http_pid = HttpPid}) ->
-    {reply, [{qpid, QPid},
-             {http_pid, HttpPid}]};
+handle_call(status, _From, #state{}) ->
+    {reply, []};
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
@@ -100,7 +93,7 @@ handle_cast({batch, Index, Entries0}, State) ->
         _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            ?ERROR("index failed - ~p\nat: ~p", [Err, Trace]),
+            ?ERROR("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
             {noreply, State}
     end.
 
@@ -120,7 +113,7 @@ update_solr(Index, Entries) ->
                     {error, fuse_blown};
                 _ ->
                     %% fuse table creation is idempotent and occurs on
-                    %% add_index/1 on 1st creation or diff-check.
+                    %% yz_index:add_index/1 on 1st creation or diff-check.
                     %% We send entries until we can ask again for
                     %% ok | error, as we wait for the tick.
                     send_solr_ops(Index, solr_ops(Entries))
