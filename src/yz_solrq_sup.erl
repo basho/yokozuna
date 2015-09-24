@@ -129,12 +129,12 @@ set_hwm(HWM) ->
 %% queue is empty).
 set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
-        Name <- tuple_to_list(get_solrq_helper_tuple())].
+        Name <- tuple_to_list(get_solrq_tuple())].
 
 %% Request each solrq reloads from appenv - currently only affects HWM
 reload_appenv() ->
     [{Name, catch yz_solrq:reload_appenv(Name)} ||
-        Name <- tuple_to_list(get_solrq_helper_tuple())].
+        Name <- tuple_to_list(get_solrq_tuple())].
 
 
 %%%===================================================================
