@@ -25,7 +25,8 @@
          num_queue_specs/0, resize_queues/1,
          num_helper_specs/0, resize_helpers/1,
          set_hwm/1,
-         set_index/4]).
+         set_index/4,
+         reload_appenv/0]).
 -export([init/1]).
 -export([set_solrq_tuple/1, set_solrq_helper_tuple/1]). % exported for testing
 
@@ -46,7 +47,7 @@ start_link(NumQueues, NumHelpers) ->
 
 %% From the hash, return the registered name of a queue
 queue_regname(Hash) ->
-    case mochiglobal:get(?SOLRQS_TUPLE_KEY) of
+    case get_solrq_tuple() of
         undefined ->
             error(solrq_sup_not_started);
         Names ->
@@ -54,9 +55,9 @@ queue_regname(Hash) ->
             element(Index, Names)
     end.
 
-%% From the hash, return the registered name of a queue
+%% From the hash, return the registered name of a helper
 helper_regname(Hash) ->
-    case mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY) of
+    case get_solrq_helper_tuple() of
         undefined ->
             error(solrq_sup_not_started);
         Names ->
@@ -72,28 +73,24 @@ num_queue_specs() ->
 %% to change so updates may be out of order briefly.
 resize_queues(NewSize) when NewSize > 0 ->
     OldSize = num_queue_specs(),
-    %% Shrink to single worker while we mess with the
-    %% running workers
-    Result =
-        case NewSize of
-            OldSize ->
-                same_size;
-            NewSize when NewSize < OldSize ->
-                %% Reduce down to the new size before killing
-                set_solrq_tuple(NewSize),
-                _ = [begin
-                         Name = int_to_queue_regname(I),
-                         _ = supervisor:terminate_child(?MODULE, Name),
-                         ok = supervisor:delete_child(?MODULE, Name)
-                     end || I <- lists:seq(NewSize + 1, OldSize)],
-                {shrank, OldSize - NewSize};
-            NewSize when NewSize > OldSize ->
-                [supervisor:start_child(?MODULE, queue_child(int_to_queue_regname(I))) ||
-                    I <- lists:seq(OldSize + 1, NewSize)],
-                set_solrq_tuple(NewSize),
-                {grew, NewSize - OldSize}
-        end,
-    Result.
+    case NewSize of
+        OldSize ->
+            same_size;
+        NewSize when NewSize < OldSize ->
+            %% Reduce down to the new size before killing
+            set_solrq_tuple(NewSize),
+            _ = [begin
+                     Name = int_to_queue_regname(I),
+                     _ = supervisor:terminate_child(?MODULE, Name),
+                     ok = supervisor:delete_child(?MODULE, Name)
+                 end || I <- lists:seq(NewSize + 1, OldSize)],
+            {shrank, OldSize - NewSize};
+        NewSize when NewSize > OldSize ->
+            [supervisor:start_child(?MODULE, queue_child(int_to_queue_regname(I))) ||
+                I <- lists:seq(OldSize + 1, NewSize)],
+            set_solrq_tuple(NewSize),
+            {grew, NewSize - OldSize}
+    end.
 
 %% Active helper count
 num_helper_specs() ->
@@ -104,37 +101,41 @@ num_helper_specs() ->
 %% to change so updates may be out of order briefly.
 resize_helpers(NewSize) when NewSize > 0 ->
     OldSize =  num_helper_specs(),
-    %% Shrink to single worker while we mess with the
-    %% running workers
-    Result =
-        case NewSize of
-            OldSize ->
-                same_size;
-            NewSize when NewSize < OldSize ->
-                %% Reduce down to the new size before killing
-                mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(NewSize)),
-                _ = [begin
-                         Name = int_to_helper_regname(I),
-                         _ = supervisor:terminate_child(?MODULE, Name),
-                         ok = supervisor:delete_child(?MODULE, Name)
-                     end || I <- lists:seq(NewSize + 1, OldSize)],
-                {shrank, OldSize - NewSize};
-            NewSize when NewSize > OldSize ->
-                [supervisor:start_child(?MODULE, helper_child(int_to_helper_regname(I))) ||
-                    I <- lists:seq(OldSize + 1, NewSize)],
-                mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(NewSize)),
-                {grew, NewSize - OldSize}
-        end,
-    Result.
+    case NewSize of
+        OldSize ->
+            same_size;
+        NewSize when NewSize < OldSize ->
+            %% Reduce down to the new size before killing
+            set_solrq_helper_tuple(NewSize),
+            _ = [begin
+                     Name = int_to_helper_regname(I),
+                     _ = supervisor:terminate_child(?MODULE, Name),
+                     ok = supervisor:delete_child(?MODULE, Name)
+                 end || I <- lists:seq(NewSize + 1, OldSize)],
+            {shrank, OldSize - NewSize};
+        NewSize when NewSize > OldSize ->
+            [supervisor:start_child(?MODULE, helper_child(int_to_helper_regname(I))) ||
+                I <- lists:seq(OldSize + 1, NewSize)],
+            set_solrq_helper_tuple(NewSize),
+            {grew, NewSize - OldSize}
+    end.
 
-
+%% Set the high water mark on all queues
 set_hwm(HWM) ->
     [{Name, catch yz_solrq:set_hwm(Name, HWM)} ||
-        Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
+        Name <- tuple_to_list(get_solrq_tuple())].
 
+%% Set the index parameters for all queues (note, index goes back to appenv
+%% queue is empty).
 set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
-        Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))].
+        Name <- tuple_to_list(get_solrq_helper_tuple())].
+
+%% Request each solrq reloads from appenv - currently only affects HWM
+reload_appenv() ->
+    [{Name, catch yz_solrq:reload_appenv(Name)} ||
+        Name <- tuple_to_list(get_solrq_helper_tuple())].
+
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -150,17 +151,23 @@ init([NumQueues, NumHelpers]) ->
     set_solrq_tuple(NumQueues),
     set_solrq_helper_tuple(NumHelpers),
     QueueChildren = [queue_child(Name) ||
-                        Name <- tuple_to_list(mochiglobal:get(?SOLRQS_TUPLE_KEY))],
+                        Name <- tuple_to_list(get_solrq_tuple())],
     HelperChildren = [helper_child(Name) ||
-                        Name <- tuple_to_list(mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY))],
+                        Name <- tuple_to_list(get_solrq_helper_tuple())],
     {ok, {{one_for_all, 10, 10}, HelperChildren ++ QueueChildren}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+get_solrq_tuple() ->
+    mochiglobal:get(?SOLRQS_TUPLE_KEY).
+
 set_solrq_tuple(Size) ->
     mochiglobal:put(?SOLRQS_TUPLE_KEY, solrqs_tuple(Size)).
+
+get_solrq_helper_tuple() ->
+    mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY).
 
 set_solrq_helper_tuple(Size) ->
     mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
