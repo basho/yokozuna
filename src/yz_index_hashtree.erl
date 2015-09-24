@@ -651,8 +651,8 @@ handle_iter_keys(Tree, Index, []) ->
     gen_server:cast(Tree, build_finished),
     ok;
 handle_iter_keys(Tree, Index, IterKeys) ->
-    case lists:last(IterKeys)  of
-        ok ->
+    case lists:all(fun(V) -> V =:= ok end, IterKeys)  of
+        true ->
             lager:debug("Finished YZ AAE tree build: ~p", [Index]),
             gen_server:cast(Tree, build_finished);
         _ ->

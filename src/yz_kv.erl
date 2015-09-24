@@ -480,10 +480,12 @@ delete_operation(BProps, Obj, _Reason, Docs, BKey, LP) ->
 %% @doc Merge siblings for objects that shouldn't have them.
 -spec maybe_merge_siblings(riak_kv_bucket:props(), obj()) -> obj().
 maybe_merge_siblings(BProps, Obj) ->
-    case siblings_permitted(BProps) of
-        true ->
+    case {siblings_permitted(BProps), riak_object:value_count(Obj)} of
+        {true, _} ->
             Obj;
-        false ->
+        {false, 1} ->
+            Obj;
+        _ ->
             case is_datatype(BProps) of
                 true -> riak_kv_crdt:merge(Obj);
                 false -> riak_object:reconcile([Obj], false)
