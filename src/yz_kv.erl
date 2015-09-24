@@ -191,14 +191,22 @@ has_indexes(RemoteNode) ->
     end.
 
 index(Obj, Reason, P) ->
-    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
-        true ->
-            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-            Index = yz_kv:get_index(BKey),
+    try
+        case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
+            true ->
+                BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+                Index = yz_kv:get_index(BKey),
 
-            yz_solrq:index(Index, BKey, Obj, Reason, P);
-        false ->
-            ok
+                yz_solrq:index(Index, BKey, Obj, Reason, P);
+            false ->
+                ok
+        end
+    catch
+        _:Err ->
+            yz_stat:index_fail(),
+            Trace = erlang:get_stacktrace(),
+            ?ERROR("Index failed - ~p\nat: ~p", [Err, Trace]),
+            {error, Err}
     end.
 
 %% @doc Should the content be indexed?
@@ -442,8 +450,8 @@ is_datatype(_) -> false.
 %% @private
 %%
 %% @doc Check if bucket props allow for siblings.
--spec should_have_siblings(riak_kv_bucket:props()) -> boolean().
-should_have_siblings(BProps) when is_list(BProps) ->
+-spec siblings_permitted(riak_kv_bucket:props()) -> boolean().
+siblings_permitted(BProps) when is_list(BProps) ->
     case {is_datatype_or_consistent(BProps),
           proplists:get_bool(allow_mult, BProps),
           proplists:get_bool(last_write_wins, BProps)} of
@@ -452,7 +460,7 @@ should_have_siblings(BProps) when is_list(BProps) ->
         {false, false, _} -> false;
         {_, _, _} -> true
     end;
-should_have_siblings(_) -> true.
+siblings_permitted(_) -> true.
 
 %% @private
 %%
@@ -462,7 +470,7 @@ should_have_siblings(_) -> true.
 -spec delete_operation(riak_kv_bucket:props(), obj(), write_reason(), [doc()],
                        bkey(), lp()) -> delops().
 delete_operation(BProps, Obj, _Reason, Docs, BKey, LP) ->
-    case should_have_siblings(BProps) of
+    case siblings_permitted(BProps) of
         true -> cleanup(length(Docs), {Obj, BKey, LP});
         false -> cleanup(Docs, BKey)
     end.
@@ -472,7 +480,7 @@ delete_operation(BProps, Obj, _Reason, Docs, BKey, LP) ->
 %% @doc Merge siblings for objects that shouldn't have them.
 -spec maybe_merge_siblings(riak_kv_bucket:props(), obj()) -> obj().
 maybe_merge_siblings(BProps, Obj) ->
-    case should_have_siblings(BProps) of
+    case siblings_permitted(BProps) of
         true ->
             Obj;
         false ->
@@ -488,7 +496,7 @@ maybe_merge_siblings(BProps, Obj) ->
 
 -ifdef(TEST).
 
-should_have_siblings_test_() ->
+siblings_permitted_test_() ->
 {setup,
      fun() ->
              meck:new(riak_core_capability, []),
@@ -540,7 +548,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(should_have_siblings(CheckBucketProps))
+                      ?assertNot(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -561,7 +569,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(should_have_siblings(CheckBucketProps))
+                      ?assertNot(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -580,7 +588,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(should_have_siblings(CheckBucketProps))
+                      ?assertNot(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -600,7 +608,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assert(should_have_siblings(CheckBucketProps))
+                      ?assert(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end)]}.
