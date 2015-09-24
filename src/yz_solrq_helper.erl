@@ -79,10 +79,19 @@ handle_cast({batch, Index, Entries0}, State) ->
     try
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
-        Entries = [{BKey, Obj, Reason, P, riak_kv_util:get_index_n(BKey),
-                    yz_kv:hash_object(Obj)} ||
-                      {BKey, Obj, Reason, P} <- Entries0],
-        case update_solr(Index, Entries) of
+        %% TODO: move the owned/next partition logic back up
+        %%       to yz_kv:index/3 once we efficiently cache
+        %%       owned and next rather than calculating per-object.
+        Ring = yz_misc:get_ring(transformed),
+        LI = yz_cover:logical_index(Ring),
+        OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
+
+        Entries = [{BKey, Obj, Reason, P,
+                    riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
+                      {BKey, Obj, Reason, P} <-
+                          filter_out_fallbacks(OwnedAndNext, Entries0)],
+
+        case update_solr(Index, LI, Entries) of
             ok ->
                 update_aae_and_repair_stats(Entries);
             {error, Reason} ->
@@ -97,8 +106,17 @@ handle_cast({batch, Index, Entries0}, State) ->
             {noreply, State}
     end.
 
+%% @doc Filter out all entries for partitions that are not currently owned or
+%%      this node is a future owner of.
+filter_out_fallbacks(OwnedAndNext, Entries) ->
+    lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
+                          ordsets:is_element(P, OwnedAndNext)
+                 end, Entries).
+
 %% Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
-update_solr(Index, Entries) ->
+update_solr(_Index, _LI, []) -> % nothing left after filtering fallbacks
+    ok;
+update_solr(Index, LI, Entries) ->
     case yz_kv:should_index(Index) of
         false ->
             ok; % No need to send anything to SOLR, still need for AAE.
@@ -106,7 +124,7 @@ update_solr(Index, Entries) ->
             IndexName = (?BIN_TO_ATOM(Index)),
             case yz_fuse:check(IndexName) of
                 ok ->
-                    send_solr_ops(Index, solr_ops(Entries));
+                    send_solr_ops(Index, solr_ops(LI, Entries));
                 blown ->
                     ?ERROR("Fuse Blown: can't current send solr "
                            "operations for index ~s", [Index]),
@@ -116,45 +134,36 @@ update_solr(Index, Entries) ->
                     %% yz_index:add_index/1 on 1st creation or diff-check.
                     %% We send entries until we can ask again for
                     %% ok | error, as we wait for the tick.
-                    send_solr_ops(Index, solr_ops(Entries))
+                    send_solr_ops(Index, solr_ops(LI, Entries))
             end
     end.
 
 %% Build the SOLR query
-solr_ops(Entries) ->
-    Ring = yz_misc:get_ring(transformed),
-    LI = yz_cover:logical_index(Ring),
+solr_ops(LI, Entries) ->
     lists:reverse(
       lists:foldl(
         fun({BKey, Obj0, Reason0, P, ShortPL, Hash}, Ops) ->
-            %% TODO: This should be called in yz_solr:index
-            %% then the ring lookup can be removed
-            case yz_kv:is_owner_or_future_owner(P, node(), Ring) of
-                true ->
-                    {Bucket, _} = BKey,
-                    BProps = riak_core_bucket:get_bucket(Bucket),
-                    Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
-                    ObjValues = riak_object:get_values(Obj),
-                    Reason = get_reason_action(Reason0),
-                    case {Reason, ObjValues} of
-                        {delete, _} ->
-                            [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
-                        {_, [notfound]} ->
-                            [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
-                        _ ->
-                            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-                            LP = yz_cover:logical_partition(LI, P),
-                            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-                            AddOps = yz_doc:adding_docs(Docs),
-                            DeleteOps = yz_kv:delete_operation(BProps, Obj, Reason, Docs, BKey, LP),
-                            %% List will be reversed, so make sure deletes happen before adds
-                            lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
-                                          [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
-                                          Ops])
-                    end;
-                false ->
-                    Ops
-            end
+                {Bucket, _} = BKey,
+                BProps = riak_core_bucket:get_bucket(Bucket),
+                Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
+                ObjValues = riak_object:get_values(Obj),
+                Reason = get_reason_action(Reason0),
+                case {Reason, ObjValues} of
+                    {delete, _} ->
+                        [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                    {_, [notfound]} ->
+                        [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                    _ ->
+                        LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+                        LP = yz_cover:logical_partition(LI, P),
+                        Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+                        AddOps = yz_doc:adding_docs(Docs),
+                        DeleteOps = yz_kv:delete_operation(BProps, Obj, Reason, Docs, BKey, LP),
+                        %% List will be reversed, so make sure deletes happen before adds
+                        lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                                      [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
+                                      Ops])
+                end
         end, [], Entries)).
 
 send_solr_ops(Index, Ops) ->
