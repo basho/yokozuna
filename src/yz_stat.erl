@@ -83,6 +83,21 @@ search_end(ElapsedTime) ->
 blocked_vnode(_From) ->
     update(blockedvnode).
 
+%% @doc Update fuse recovered statistic.
+-spec fuse_recovered(atom()) -> ok.
+fuse_recovered(Index) ->
+    update({fuse_recovered, Index}).
+
+%% @doc Create dynamic stats for search index.
+-spec create_dynamic_stats(atom(), [atom()]) -> [ok].
+create_dynamic_stats(Index, Stats) ->
+    [create({Stat, Index}) || Stat <- Stats].
+
+%% @doc Delete dynamic stats for search index.
+-spec delete_dynamic_stats(atom(), [atom()]) -> [ok].
+delete_dynamic_stats(Index, Stats) ->
+    [delete({Stat, Index}) || Stat <- Stats].
+
 %% @doc Optionally produce stats map based on ?YZ_ENABLED
 -spec stats_map() -> [] | proplists:proplist().
 stats_map() ->
@@ -164,6 +179,26 @@ stat_name(Name) ->
 
 %% @private
 %%
+%% @doc Create specific dynamic metrics in exometer based on the `StatUpdate'
+%%      term.
+-spec create(StatUpdate::term()) -> ok.
+create({fuse_recovered, Index}) ->
+    exometer:update_or_create([fuse, Index, recovered], 0, spiral, []);
+create(_Stat) ->
+    ok.
+
+%% @private
+%%
+%% @doc Delete specific dynamic metrics in exometer based on the `StatUpdate'
+%%      term.
+-spec delete(StatUpdate::term()) -> ok.
+delete({fuse_recovered, Index}) ->
+    exometer:delete([fuse, Index, recovered]);
+delete(_Stat) ->
+    ok.
+
+%% @private
+%%
 %% @doc Notify specific metrics in exometer based on the `StatUpdate' term
 %% passed in.
 -spec update(StatUpdate::term()) -> ok.
@@ -179,7 +214,9 @@ update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
 update(search_fail) ->
-    exometer:update([?PFX, ?APP, 'query', fail], 1).
+    exometer:update([?PFX, ?APP, 'query', fail], 1);
+update({fuse_recovered, Index}) ->
+    exometer:update([fuse, Index, recovered], 1).
 
 %% @private
 -spec stats() -> [{stat_name(), stat_type(), stat_opts(), stat_map()}].
