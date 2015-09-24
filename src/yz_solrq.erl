@@ -57,18 +57,11 @@ status(QPid, Timeout) ->
     gen_server:call(QPid, status, Timeout).
 
 index(Index, BKey, Obj, Reason, P) ->
-    %% TODO: Move this try/catch to the KV vnode, that's
-    %%       what needs protecting.
-    try
-        %% Hash on the index and partition to ensure updates to
-        %% an index are serialized for all objects in the vnode.
-        Hash = erlang:phash2({Index, P}),
-        gen_server:call(yz_solrq_sup:queue_regname(Hash),
-                        {index, Index, {BKey, Obj, Reason, P}}, infinity)
-    catch
-        _:Err ->
-            {error, Err}
-    end.
+    %% Hash on the index and partition to ensure updates to
+    %% an index are serialized for all objects in the vnode.
+    Hash = erlang:phash2({Index, P}),
+    gen_server:call(yz_solrq_sup:queue_regname(Hash),
+                    {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
 set_hwm(QPid, HWM) ->
     gen_server:call(QPid, {set_hwm, HWM}).
