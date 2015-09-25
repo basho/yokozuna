@@ -132,7 +132,7 @@ init([NumQueues, NumHelpers]) ->
 %%%===================================================================
 
 child_count(ChildType) ->
-    length([true || {_,_,_,[ChildType]} <- supervisor:which_children(?MODULE)]).
+    length([true || {_,_,_,[Type]} <- supervisor:which_children(?MODULE), Type == ChildType]).
 
 do_child_resize(NewSize, OldSize, SetTupleFun, RegnameFun, ChildSpecFun) ->
     case NewSize of
