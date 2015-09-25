@@ -44,7 +44,10 @@
            %% postings are deleted promptly. This makes sure that
            %% postings are removed concurrent to async query during
            %% join.
-           {events_full_check_after, 2}
+           {events_full_check_after, 2},
+           %% Adjust batching to force flushing ASAP
+           {solrq_batch_max, 1000000},
+           {delayms_max, 1}
           ]}
         ]).
 
