@@ -47,7 +47,7 @@
            {events_full_check_after, 2},
            %% Adjust batching to force flushing ASAP
            {solrq_batch_max, 1000000},
-           {delayms_max, 1}
+           {solrq_delayms_max, 1}
           ]}
         ]).
 
