@@ -88,8 +88,8 @@ handle_cast({batch, Index, Entries0}, State) ->
 
         Entries = [{BKey, Obj, Reason, P,
                     riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
-                      {BKey, Obj, Reason, P} <-
-                          filter_out_fallbacks(OwnedAndNext, Entries0)],
+                      {BKey, Obj, Reason, P} <- Entries0,
+                        ordsets:is_element(P, OwnedAndNext)],
 
         case update_solr(Index, LI, Entries) of
             ok ->
@@ -105,13 +105,6 @@ handle_cast({batch, Index, Entries0}, State) ->
             ?ERROR("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
             {noreply, State}
     end.
-
-%% @doc Filter out all entries for partitions that are not currently owned or
-%%      this node is a future owner of.
-filter_out_fallbacks(OwnedAndNext, Entries) ->
-    lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
-                          ordsets:is_element(P, OwnedAndNext)
-                 end, Entries).
 
 %% Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
 update_solr(_Index, _LI, []) -> % nothing left after filtering fallbacks
