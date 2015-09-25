@@ -51,8 +51,6 @@ confirm() ->
     confirm_stored_fields(Cluster),
     confirm_search_non_existent_index(Cluster),
     confirm_search_with_spaced_key(Cluster),
-    confirm_create_index_within_timeout(Cluster),
-    confirm_create_index_not_within_timeout(Cluster),
     pass.
 
 select_random(List) ->
@@ -241,8 +239,7 @@ confirm_multivalued_field(Cluster) ->
     {Host, Port} = HP,
     %% populate a value
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"name_ss:turner">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -272,8 +269,7 @@ confirm_multivalued_field_json_array(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -303,8 +299,7 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -345,7 +340,7 @@ confirm_stored_fields(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"float_tf:3.14">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -374,61 +369,3 @@ confirm_search_with_spaced_key(Cluster) ->
     Params = [{sort, <<"age_i asc">>}],
     store_and_search(Cluster, Bucket, Key,
                      Body, "application/json", <<"foo_i:5">>, Params).
-
-confirm_create_index_within_timeout(Cluster) ->
-    Index = <<"index_within_timeout">>,
-    Index1 = <<"index_within_infinity">>,
-    Bucket = {Index, <<"b1">>},
-    Node = select_random(Cluster),
-    [{Host, Port}] = host_entries(rt:connection_info([Node])),
-    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    lager:info("confirm_search_to_test_index_within_timeout ~p", [Bucket]),
-    NvalT = {n_val, 3},
-    Timeout = {timeout, 25000},
-    Timeout1 = {timeout, infinity},
-    ?assertEqual(ok,
-                 riakc_pb_socket:create_search_index(Pid, Index, [NvalT, Timeout])),
-    ?assertEqual(ok, element(1, riakc_pb_socket:get_search_index(Pid, Index, []))),
-
-    lager:info("confirm_search_to_test_index_within_infinity ~p", [Bucket]),
-    ?assertEqual(ok,
-                 riakc_pb_socket:create_search_index(Pid, Index1, [NvalT, Timeout1])),
-    ?assertEqual(ok,
-                 element(1, riakc_pb_socket:get_search_index(Pid, Index1, []))),
-
-    riakc_pb_socket:stop(Pid).
-
-confirm_create_index_not_within_timeout(Cluster) ->
-    Index = <<"index_not_within_timeout">>,
-    Bucket = {Index, <<"b1">>},
-    lager:info("confirm_search_to_test_index_not_within_timeout ~p", [Bucket]),
-    Node = select_random(Cluster),
-    [{Host, Port}] = host_entries(rt:connection_info([Node])),
-    {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
-    riakc_pb_socket:set_options(Pid, [queue_if_disconnected]),
-
-    SchemaName = ?YZ_DEFAULT_SCHEMA_NAME,
-    %% Test invalid n_val
-    NValT = {n_val, bbbbbb},
-    %% Test invalid timeout value
-    Timeout = {timeout, asdasdasd},
-
-    NValT1 = {n_val, 3},
-    Timeout1 = {timeout, 10},
-
-    ?assertError(badarg, riakc_pb_socket:create_search_index(Pid, Index,
-                                                             SchemaName,
-                                                             [NValT1, Timeout])),
-    ?assertError(badarg, riakc_pb_socket:create_search_index(Pid, Index,
-                                                             SchemaName,
-                                                             [NValT, Timeout1])),
-
-    {error, <<"Index index_not_within_timeout not created on all the nodes within 10 ms timeout\n">>} =
-        riakc_pb_socket:create_search_index(
-          Pid, Index, SchemaName,
-          [NValT1, Timeout1]),
-
-    ok = yz_rt:wait_for_index(Cluster, Index),
-    ?assertEqual(ok,
-                 element(1, riakc_pb_socket:get_search_index(Pid, Index, []))),
-    riakc_pb_socket:stop(Pid).

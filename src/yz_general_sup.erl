@@ -42,6 +42,10 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
+    SolrQ = {yz_solrq_sup,
+             {yz_solrq_sup, start_link, []},
+             permanent, infinity, supervisor, [yz_solrq_sup]},
+
     Events = {yz_events,
               {yz_events, start_link, []},
               permanent, 5000, worker, [yz_events]},
@@ -58,6 +62,6 @@ init([]) ->
              {yz_cover, start_link, []},
              permanent, 5000, worker, [yz_cover]},
 
-    Children = [Events, HashtreeSup, EntropyMgr, Cover],
+    Children = [SolrQ, Events, HashtreeSup, EntropyMgr, Cover],
 
     {ok, {{one_for_one, 5, 10}, Children}}.

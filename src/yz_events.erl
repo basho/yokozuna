@@ -111,7 +111,8 @@ add_index(Name) ->
     case yz_index:exists(Name) of
         true -> ok;
         false -> ok = yz_index:local_create(Name)
-    end.
+    end,
+    yz_fuse:create(Name).
 
 -spec add_indexes(index_set()) -> ok.
 add_indexes(Names) ->
@@ -163,7 +164,9 @@ maybe_log({Index, Removed}) ->
 -spec remove_index(index_name()) -> ok.
 remove_index(Name) ->
     case yz_solr:ping(Name) of
-        true -> ok = yz_index:local_remove(Name);
+        true ->
+            ok = yz_index:local_remove(Name),
+            yz_fuse:reset(Name);
         _ -> ok
     end.
 

@@ -2,9 +2,7 @@
 -module(yz_errors).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
-                run_bb/2, search_expect/5,
-                select_random/1, verify_count/2,
-                write_terms/2]).
+                run_bb/2, search_expect/5]).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -69,12 +67,9 @@ expect_bad_xml(Cluster) ->
     Headers = [{"content-type", CT}],
     Body = "<\"bad\" \"xml\"></",
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
-    %% Sleep for soft commit
-    timer:sleep(1100),
     ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
     ok.
 
@@ -90,8 +85,7 @@ expect_bad_query(Cluster) ->
     Headers = [{"content-type", CT}],
     Body = "",
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body, Opts),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% send a bad query

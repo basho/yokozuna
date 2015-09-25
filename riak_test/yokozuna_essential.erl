@@ -44,7 +44,10 @@
            %% postings are deleted promptly. This makes sure that
            %% postings are removed concurrent to async query during
            %% join.
-           {events_full_check_after, 2}
+           {events_full_check_after, 2},
+           %% Adjust batching to force flushing ASAP
+           {solrq_batch_max, 1000000},
+           {solrq_delayms_max, 1}
           ]}
         ]).
 
@@ -60,8 +63,7 @@ confirm() ->
             setup_indexing(Cluster, PBConns, YZBenchDir),
             verify_non_existent_index(Cluster, <<"froot">>),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
-            %% wait for soft-commit
-            timer:sleep(1100),
+            yz_rt:commit(Cluster, ?INDEX),
             Ref = async_query(Cluster, YZBenchDir),
             %% Verify data exists before running join
             timer:sleep(30000),
