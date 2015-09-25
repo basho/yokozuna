@@ -35,6 +35,7 @@
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit, n}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
+-define(SOLR_TIMEOUT, 30000).
 
 -type delete_op() :: {id, binary()}
                    | {bkey, bkey()}
@@ -66,7 +67,7 @@ build_partition_delete_query(LPartitions) ->
 -spec commit(index_name()) -> ok.
 commit(Core) ->
     JSON = encode_commit(),
-    Params = [{commit, true}],
+    Params = [{commit, true}, {waitFlush, true}, {waitSearcher, true}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = ?FMT("~s/~s/update?~s", [base_url(), Core, Encoded]),
     Headers = [{content_type, "application/json"}],
@@ -208,6 +209,22 @@ index(Core, Docs, DelOps) ->
         false ->
             ok
     end.
+
+index_batch(Core, Ops) ->
+    JSON = mochijson2:encode({struct, Ops}),
+    URL = ?FMT("~s/~s/update", [base_url(), Core]),
+    Headers = [{content_type, "application/json"}],
+    Opts = [{response_format, binary}],
+    case ?YZ_SOLR_ACTUALLY_INDEX of
+        true ->
+            case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
+                {ok, "200", _, _} -> ok;
+                Err -> throw({"Failed to index docs", Err})
+            end;
+        false  ->
+            ok
+    end.
+
 
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().

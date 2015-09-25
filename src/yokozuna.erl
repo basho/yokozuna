@@ -227,3 +227,15 @@ search_fold(Results, Start, Params, Positions, Index, Query, Filter, F, Acc) ->
     Docs = extract_docs(Body),
     E = extract_results(Docs, Positions),
     search_fold(E, Start2, Params, Positions, Index, Query, Filter, F, Acc2).
+
+-spec ensure_started(Application :: atom()) -> ok.
+%% @doc Start the named application if not already started.
+%%      Pulled from core, as it's not exported currently
+%% TODO: remove when fuse is started via boot in riak
+ensure_started(App) ->
+    case application:start(App) of
+	ok ->
+	    ok;
+	{error, {already_started, App}} ->
+	    ok
+    end.

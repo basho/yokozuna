@@ -30,7 +30,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type write_reason() :: delete | handoff | put | anti_entropy.
 -type values() :: [riak_object:value()].
 -type delops() :: []|[{id, _}]|[{siblings, _}].
 
@@ -192,87 +191,22 @@ has_indexes(RemoteNode) ->
     end.
 
 index(Obj, Reason, P) ->
-    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
-        true ->
-            Ring = yz_misc:get_ring(transformed),
-            case is_owner_or_future_owner(P, node(), Ring) of
-                true ->
-                    T1 = os:timestamp(),
-                    BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-                    try
-                        Index = get_index(BKey),
-                        ShortPL = riak_kv_util:get_index_n(BKey),
-                        case should_index(Index) of
-                            true ->
-                                index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
-                            false ->
-                                dont_index(Obj, Reason, P, BKey, ShortPL)
-                        end,
-                        yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
-                    catch _:Err ->
-                            yz_stat:index_fail(),
-                            Trace = erlang:get_stacktrace(),
-                            case Reason of
-                                delete ->
-                                    ?ERROR("failed to delete docid ~p with error ~p because ~p",
-                                           [BKey, Err, Trace]);
-                                _ ->
-                                    ?ERROR("failed to index object ~p with error ~p because ~p",
-                                           [BKey, Err, Trace])
-                            end
-                    end;
-                false ->
-                    ok
-            end;
-        false ->
-            ok
-    end.
+    try
+        case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
+            true ->
+                BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+                Index = yz_kv:get_index(BKey),
 
-%% @private
-%%
-%% @doc Update the hashtree so that AAE works but don't create any
-%% indexes.  This is called when a bucket has no indexed defined.
--spec dont_index(obj(), write_reason(), p(), bkey(), short_preflist()) -> ok.
-dont_index(_, delete, P, BKey, ShortPL) ->
-    update_hashtree(delete, P, ShortPL, BKey),
-    ok;
-dont_index(Obj, _, P, BKey, ShortPL) ->
-    Hash = hash_object(Obj),
-    update_hashtree({insert, Hash}, P, ShortPL, BKey),
-    ok.
-
-%% @doc An object modified hook to create indexes as object data is
-%% written or modified.
-%%
-%% NOTE: For a normal update this hook runs on the vnode process.
-%%       During active anti-entropy runs on spawned process.
-%%
-%% NOTE: Index is doing double duty of index and delete.
-%%
-%% NOTE: A value of [notfound] is considered to be an ensemble
-%%       tombstone, or at least nonexistent, and acts as a delete
--spec index(obj(), write_reason(), ring(), p(), bkey(),
-            short_preflist(), index_name()) -> ok.
-index(_, delete, _, P, BKey, ShortPL, Index) ->
-    ok = yz_solr:delete(Index, [{bkey, BKey}]),
-    ok = update_hashtree(delete, P, ShortPL, BKey),
-    ok;
-index(Obj0, Reason, Ring, P, BKey, ShortPL, Index) ->
-    {Bucket, _} = BKey,
-    BProps = riak_core_bucket:get_bucket(Bucket),
-    Obj = maybe_merge_siblings(BProps, Obj0),
-    case riak_object:get_values(Obj) of
-        [notfound] ->
-            ok = index(Obj, delete, Ring, P, BKey, ShortPL, Index);
-        Values ->
-            LI = yz_cover:logical_index(Ring),
-            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-            LP = yz_cover:logical_partition(LI, P),
-            Hash = hash_object(Obj0),
-            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-            DelOps = delete_operation(BProps, Obj, Reason, Docs, BKey, LP, Values),
-            ok = solr_index(Index, Docs, DelOps, Values),
-            ok = update_hashtree({insert, Hash}, P, ShortPL, BKey)
+                yz_solrq:index(Index, BKey, Obj, Reason, P);
+            false ->
+                ok
+        end
+    catch
+        _:Err ->
+            yz_stat:index_fail(),
+            Trace = erlang:get_stacktrace(),
+            ?ERROR("Index failed - ~p\nat: ~p", [Err, Trace]),
+            {error, Err}
     end.
 
 %% @doc Should the content be indexed?
@@ -387,10 +321,18 @@ check_flag(Flag) ->
 
 %% @private
 %%
-%% TODO: deprecate in favor of generic solution for sibling value Objects
-%%       in cleanup/3.
--spec cleanup(non_neg_integer(), {obj(), bkey(), lp()}) ->
-                     [{id, binary()}|{siblings, bkey()}].
+%% @doc Cleanup tombstones and siblings accordingly... cleanup/3
+%% TODO: deprecate 1/2 versions in favor of generic solution for sibling value
+%% Objects, focused on allow_mult=true case
+-spec cleanup(non_neg_integer()|[doc()], {obj(), bkey(), lp()}|bkey()) ->
+                     [{id, binary()}|{siblings, bkey()}|{bkey, bkey()}].
+cleanup([], _BKey) ->
+    [];
+cleanup([{doc, Fields}|T], BKey) ->
+    case proplists:is_defined(tombstone, Fields) of
+        true -> [{bkey, BKey}];
+        false -> cleanup(T, BKey)
+    end;
 cleanup(1, {_Obj, BKey, _LP}) ->
     %% Delete any siblings
     [{siblings, BKey}];
@@ -508,8 +450,8 @@ is_datatype(_) -> false.
 %% @private
 %%
 %% @doc Check if bucket props allow for siblings.
--spec should_have_siblings(riak_kv_bucket:props()) -> boolean().
-should_have_siblings(BProps) when is_list(BProps) ->
+-spec siblings_permitted(riak_kv_bucket:props()) -> boolean().
+siblings_permitted(BProps) when is_list(BProps) ->
     case {is_datatype_or_consistent(BProps),
           proplists:get_bool(allow_mult, BProps),
           proplists:get_bool(last_write_wins, BProps)} of
@@ -518,7 +460,7 @@ should_have_siblings(BProps) when is_list(BProps) ->
         {false, false, _} -> false;
         {_, _, _} -> true
     end;
-should_have_siblings(_) -> true.
+siblings_permitted(_) -> true.
 
 %% @private
 %%
@@ -526,11 +468,11 @@ should_have_siblings(_) -> true.
 %%      If object relates to lww=true/allow_mult=false/datatype/sc
 %%      do cleanup of tombstones only.
 -spec delete_operation(riak_kv_bucket:props(), obj(), write_reason(), [doc()],
-                       bkey(), lp(), values()) -> delops().
-delete_operation(BProps, Obj, _Reason, Docs, BKey, LP, Values) ->
-    case should_have_siblings(BProps) of
+                       bkey(), lp()) -> delops().
+delete_operation(BProps, Obj, _Reason, Docs, BKey, LP) ->
+    case siblings_permitted(BProps) of
         true -> cleanup(length(Docs), {Obj, BKey, LP});
-        false -> cleanup(Docs, BKey, Values)
+        false -> cleanup(Docs, BKey)
     end.
 
 %% @private
@@ -538,30 +480,17 @@ delete_operation(BProps, Obj, _Reason, Docs, BKey, LP, Values) ->
 %% @doc Merge siblings for objects that shouldn't have them.
 -spec maybe_merge_siblings(riak_kv_bucket:props(), obj()) -> obj().
 maybe_merge_siblings(BProps, Obj) ->
-    case should_have_siblings(BProps) of
-        true ->
+    case {siblings_permitted(BProps), riak_object:value_count(Obj)} of
+        {true, _} ->
             Obj;
-        false ->
+        {false, 1} ->
+            Obj;
+        _ ->
             case is_datatype(BProps) of
                 true -> riak_kv_crdt:merge(Obj);
                 false -> riak_object:reconcile([Obj], false)
             end
     end.
-
-%% @private
-%%
-%% @doc Determine which docs/ops make it solr index call.
--spec solr_index(index_name(), [doc()], delops(), values()) -> ok.
-solr_index(Index, _Docs, DelOps, [?TOMBSTONE]) when length(DelOps) > 0 ->
-    %% handle cases where there's only a single tombstone value and provide
-    %% only the deletion operations
-    yz_solr:index(Index, [], DelOps);
-solr_index(Index, Docs, DelOps, Values) ->
-    %% remove docs which have tombstone, <<>>, values in preparation
-    %% for add updates
-    yz_solr:index(Index,
-                  [D ||  {D, V} <- lists:zip(Docs, Values), V =/= ?TOMBSTONE],
-                  DelOps).
 
 %%%===================================================================
 %%% Tests
@@ -569,7 +498,7 @@ solr_index(Index, Docs, DelOps, Values) ->
 
 -ifdef(TEST).
 
-should_have_siblings_test_() ->
+siblings_permitted_test_() ->
 {setup,
      fun() ->
              meck:new(riak_core_capability, []),
@@ -621,7 +550,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(should_have_siblings(CheckBucketProps))
+                      ?assertNot(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -642,7 +571,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(should_have_siblings(CheckBucketProps))
+                      ?assertNot(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -661,7 +590,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(should_have_siblings(CheckBucketProps))
+                      ?assertNot(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -681,7 +610,7 @@ should_have_siblings_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assert(should_have_siblings(CheckBucketProps))
+                      ?assert(siblings_permitted(CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end)]}.

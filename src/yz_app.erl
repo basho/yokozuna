@@ -34,8 +34,21 @@
 %%%===================================================================
 
 start(_StartType, _StartArgs) ->
- %% Ensure that the KV service has fully loaded.
+
+    %% Disable indexing/searching from KV until properly started,
+    %% otherwise restarting under load generates large numbers
+    %% of failures in yz_kv:index/3.
+    yokozuna:disable(index),
+    yokozuna:disable(search),
+
+    %% TODO: Consider moving into maybe_setup and
+    %%  having any YZ components that interact with KV
+    %%  delay until KV is up, then get started (e.g. yz_entropy_mgr
+    %%  in manual mode, and then set to configured value later in
+    %%  startup).
+    %% Ensure that the KV service has fully loaded.
     riak_core:wait_for_service(riak_kv),
+
 
     initialize_atoms(),
     Enabled = ?YZ_ENABLED,
@@ -43,6 +56,10 @@ start(_StartType, _StartArgs) ->
         {ok, Pid} ->
             _ = application:set_env(ibrowse, inactivity_timeout, 600000),
             maybe_setup(Enabled),
+
+            %% Now everything is started, permit usage by KV/query
+            yokozuna:enable(index),
+            yokozuna:enable(search),
             {ok, Pid};
         Error ->
             Error
@@ -78,6 +95,7 @@ maybe_setup(true) ->
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
+    yz_fuse:setup(),
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],
                                        false),
