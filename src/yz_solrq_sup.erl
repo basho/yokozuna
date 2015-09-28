@@ -37,15 +37,13 @@
 %%% API functions
 %%%===================================================================
 
-%% -spec(start_link() ->
-%%     {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
     start_link(queue_procs(), helper_procs()).
 
 start_link(NumQueues, NumHelpers) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [NumQueues, NumHelpers]).
 
-%% From the hash, return the registered name of a queue
+%% @doc From the hash, return the registered name of a queue
 queue_regname(Hash) ->
     case get_solrq_tuple() of
         undefined ->
@@ -55,7 +53,7 @@ queue_regname(Hash) ->
             element(Index, Names)
     end.
 
-%% From the hash, return the registered name of a helper
+%% @doc From the hash, return the registered name of a helper
 helper_regname(Hash) ->
     case get_solrq_helper_tuple() of
         undefined ->
@@ -65,12 +63,13 @@ helper_regname(Hash) ->
             element(Index, Names)
     end.
 
+%% @doc Active queue count.
 num_queue_specs() ->
     length([true || {_,_,_,[yz_solrq]} <- supervisor:which_children(?MODULE)]).
 
-%% Resize the number of queues.  For debugging/testing only,
-%% this will briefly cause the worker that queues remap to
-%% to change so updates may be out of order briefly.
+%% @doc Resize the number of queues. For debugging/testing only,
+%%      this will briefly cause the worker that queues remap to
+%%      to change so updates may be out of order briefly.
 resize_queues(NewSize) when NewSize > 0 ->
     OldSize = num_queue_specs(),
     case NewSize of
@@ -92,13 +91,13 @@ resize_queues(NewSize) when NewSize > 0 ->
             {grew, NewSize - OldSize}
     end.
 
-%% Active helper count
+%% @doc Active helper count.
 num_helper_specs() ->
     length([true || {_,_,_,[yz_solrq_helper]} <- supervisor:which_children(?MODULE)]).
 
-%% Resize the number of queues.  For debugging/testing only,
-%% this will briefly cause the worker that queues remap to
-%% to change so updates may be out of order briefly.
+%% @doc Resize the number of queues. For debugging/testing only,
+%%      this will briefly cause the worker that queues remap to
+%%      to change so updates may be out of order briefly.
 resize_helpers(NewSize) when NewSize > 0 ->
     OldSize =  num_helper_specs(),
     case NewSize of

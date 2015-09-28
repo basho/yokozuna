@@ -201,9 +201,6 @@
 
 -define(SOLR_HOST_CONTEXT, "/internal_solr").
 
--define(YZ_SOLR_ACTUALLY_INDEX, app_helper:get_env(?YZ_APP_NAME,
-                                                   index_call_enabled, true)).
-
 %%%===================================================================
 %%% Anti Entropy
 %%%===================================================================
