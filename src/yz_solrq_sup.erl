@@ -37,6 +37,8 @@
 %%% API functions
 %%%===================================================================
 
+-spec(start_link() ->
+    {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
     start_link(queue_procs(), helper_procs()).
 
@@ -63,74 +65,44 @@ helper_regname(Hash) ->
             element(Index, Names)
     end.
 
-%% @doc Active queue count.
+%% @doc Active queue count
 num_queue_specs() ->
-    length([true || {_,_,_,[yz_solrq]} <- supervisor:which_children(?MODULE)]).
+    child_count(yz_solrq).
+
+%% @doc Active helper count
+num_helper_specs() ->
+    child_count(yz_solrq_helper).
 
 %% @doc Resize the number of queues. For debugging/testing only,
 %%      this will briefly cause the worker that queues remap to
 %%      to change so updates may be out of order briefly.
 resize_queues(NewSize) when NewSize > 0 ->
-    OldSize = num_queue_specs(),
-    case NewSize of
-        OldSize ->
-            same_size;
-        NewSize when NewSize < OldSize ->
-            %% Reduce down to the new size before killing
-            set_solrq_tuple(NewSize),
-            _ = [begin
-                     Name = int_to_queue_regname(I),
-                     _ = supervisor:terminate_child(?MODULE, Name),
-                     ok = supervisor:delete_child(?MODULE, Name)
-                 end || I <- lists:seq(NewSize + 1, OldSize)],
-            {shrank, OldSize - NewSize};
-        NewSize when NewSize > OldSize ->
-            [supervisor:start_child(?MODULE, queue_child(int_to_queue_regname(I))) ||
-                I <- lists:seq(OldSize + 1, NewSize)],
-            set_solrq_tuple(NewSize),
-            {grew, NewSize - OldSize}
-    end.
+    do_child_resize(NewSize, num_queue_specs(),
+        fun set_solrq_tuple/1,
+        fun int_to_queue_regname/1,
+        fun helper_child/1).
 
-%% @doc Active helper count.
-num_helper_specs() ->
-    length([true || {_,_,_,[yz_solrq_helper]} <- supervisor:which_children(?MODULE)]).
-
-%% @doc Resize the number of queues. For debugging/testing only,
+%% @doc Resize the number of helpers. For debugging/testing only,
 %%      this will briefly cause the worker that queues remap to
 %%      to change so updates may be out of order briefly.
 resize_helpers(NewSize) when NewSize > 0 ->
-    OldSize =  num_helper_specs(),
-    case NewSize of
-        OldSize ->
-            same_size;
-        NewSize when NewSize < OldSize ->
-            %% Reduce down to the new size before killing
-            set_solrq_helper_tuple(NewSize),
-            _ = [begin
-                     Name = int_to_helper_regname(I),
-                     _ = supervisor:terminate_child(?MODULE, Name),
-                     ok = supervisor:delete_child(?MODULE, Name)
-                 end || I <- lists:seq(NewSize + 1, OldSize)],
-            {shrank, OldSize - NewSize};
-        NewSize when NewSize > OldSize ->
-            [supervisor:start_child(?MODULE, helper_child(int_to_helper_regname(I))) ||
-                I <- lists:seq(OldSize + 1, NewSize)],
-            set_solrq_helper_tuple(NewSize),
-            {grew, NewSize - OldSize}
-    end.
+    do_child_resize(NewSize, num_helper_specs(),
+        fun set_solrq_helper_tuple/1,
+        fun int_to_helper_regname/1,
+        fun helper_child/1).
 
-%% Set the high water mark on all queues
+%% @doc Set the high water mark on all queues
 set_hwm(HWM) ->
     [{Name, catch yz_solrq:set_hwm(Name, HWM)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
 
-%% Set the index parameters for all queues (note, index goes back to appenv
-%% queue is empty).
+%% @doc Set the index parameters for all queues (note, index goes back to appenv
+%%      queue is empty).
 set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
 
-%% Request each solrq reloads from appenv - currently only affects HWM
+%% @doc Request each solrq reloads from appenv - currently only affects HWM
 reload_appenv() ->
     [{Name, catch yz_solrq:reload_appenv(Name)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
@@ -158,6 +130,29 @@ init([NumQueues, NumHelpers]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+child_count(ChildType) ->
+    length([true || {_,_,_,[Type]} <- supervisor:which_children(?MODULE), Type == ChildType]).
+
+do_child_resize(NewSize, OldSize, SetTupleFun, RegnameFun, ChildSpecFun) ->
+    case NewSize of
+        OldSize ->
+            same_size;
+        NewSize when NewSize < OldSize ->
+            %% Reduce down to the new size before killing
+            SetTupleFun(NewSize),
+            _ = [begin
+                     Name = RegnameFun(I),
+                     _ = supervisor:terminate_child(?MODULE, Name),
+                     ok = supervisor:delete_child(?MODULE, Name)
+                 end || I <- lists:seq(NewSize + 1, OldSize)],
+            {shrank, OldSize - NewSize};
+        NewSize when NewSize > OldSize ->
+            [supervisor:start_child(?MODULE, ChildSpecFun(RegnameFun(I))) ||
+                I <- lists:seq(OldSize + 1, NewSize)],
+            SetTupleFun(NewSize),
+            {grew, NewSize - OldSize}
+    end.
 
 get_solrq_tuple() ->
     mochiglobal:get(?SOLRQS_TUPLE_KEY).
