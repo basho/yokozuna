@@ -78,11 +78,11 @@ num_helper_specs() ->
 %% to change so updates may be out of order briefly.
 resize_queues(NewSize) when NewSize > 0 ->
     do_child_resize(NewSize, num_queue_specs(),
-        fun set_solrq_helper_tuple/1,
-        fun int_to_helper_regname/1,
+        fun set_solrq_tuple/1,
+        fun int_to_queue_regname/1,
         fun helper_child/1).
 
-%% Resize the number of queues.  For debugging/testing only,
+%% Resize the number of helpers.  For debugging/testing only,
 %% this will briefly cause the worker that queues remap to
 %% to change so updates may be out of order briefly.
 resize_helpers(NewSize) when NewSize > 0 ->
