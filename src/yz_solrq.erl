@@ -17,7 +17,11 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq).
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+
+-include("yokozuna.hrl").
+
+%%TODO: Dynamically add pulse. NOT PRODUCTION
+%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]).
 %% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 
 %% api
@@ -31,18 +35,28 @@
 % solrq/helper interface
 -export([request_batch/3]).
 
+-record(indexq, {queue = queue:new()    :: yz_queue(),   % {BKey, Docs, Delete}
+                 queue_len = 0          :: non_neg_integer(),
+                 href                   :: reference(),
+                 pending_helper = false :: boolean(),
+                 batch_min = 10         :: non_neg_integer(),
+                 batch_max = 100        :: non_neg_integer(),
+                 delayms_max = 100      :: non_neg_integer()}).
+-record(state, {indexqs = dict:new()    :: yz_dict(),
+                all_queue_len = 0       :: non_neg_integer(),
+                queue_hwm = 1000        :: non_neg_integer(),
+                pending_vnodes = []     :: [{pid(), atom()}]}).
 
--record(indexq, {queue = queue:new(), % {BKey, Docs, Delete}
-                 queue_len = 0,
-                 href,
-                 pending_helper = false, % true if requested helper
-                 batch_min = 10,
-                 batch_max = 100,
-                 delayms_max = 100}).
--record(state, {indexqs = dict:new(),
-                all_queue_len = 0,
-                queue_hwm = 1000,
-                pending_vnodes = []}).
+
+-type internal_status() :: [{atom()|indexqs,
+                             non_neg_integer() | [{pid(), atom()}] |
+                             [{index_name(), {atom(), non_neg_integer() |
+                                              reference() | boolean() |
+                                              [{pid(), atom()}]}}]}].
+
+-define(REC_PAIRS(Rec,Instance), lists:zip(record_info(fields, Rec),
+                                           tl(tuple_to_list(Instance)))).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -50,12 +64,15 @@
 start_link(Name) ->
     gen_server:start_link({local, Name}, ?MODULE, [], []).
 
+-spec status(pid()) -> internal_status().
 status(QPid) ->
     status(QPid, 5000).
 
+-spec status(pid(), timeout()) -> internal_status().
 status(QPid, Timeout) ->
     gen_server:call(QPid, status, Timeout).
 
+-spec index(index_name(), bkey(), obj(), write_reason(), p()) -> ok.
 index(Index, BKey, Obj, Reason, P) ->
     %% Hash on the index and partition to ensure updates to
     %% an index are serialized for all objects in the vnode.
@@ -63,18 +80,26 @@ index(Index, BKey, Obj, Reason, P) ->
     gen_server:call(yz_solrq_sup:queue_regname(Hash),
                     {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
+
+-spec set_hwm(pid, non_neg_integer()) -> #state{}.
 set_hwm(QPid, HWM) ->
     gen_server:call(QPid, {set_hwm, HWM}).
 
+-spec set_index(pid(), index_name(), non_neg_integer(), non_neg_integer(),
+                non_neg_integer()) -> {ok, {non_neg_integer(),
+                                           non_neg_integer(),
+                                           non_neg_integer()}}.
 set_index(QPid, Index, Min, Max, DelayMax) ->
     gen_server:call(QPid, {set_index, Index, Min, Max, DelayMax}).
 
+-spec reload_appenv(pid()) -> ok.
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
 
 %%%===================================================================
 %%% solrq/helper interface
 %%%===================================================================
+-spec request_batch(pid(), index_name(), pid()|atom()) -> ok.
 request_batch(QPid, Index, HPid) ->
     gen_server:cast(QPid, {request_batch, Index, HPid}).
 
@@ -138,9 +163,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Private
 %%%===================================================================
 
--define(REC_PAIRS(Rec,Instance), lists:zip(record_info(fields, Rec),
-                                           tl(tuple_to_list(Instance)))).
-
+-spec internal_status(#state{}) -> internal_status().
 internal_status(#state{indexqs = IndexQs} = State) ->
     [{F, V} || {F, V} <- ?REC_PAIRS(state, State), F /= indexqs] ++
         [{indexqs,
@@ -148,15 +171,14 @@ internal_status(#state{indexqs = IndexQs} = State) ->
             dict:fold(
               fun(Index, IndexQ, Acc) ->
                       [{Index, [{F, V} || {F, V} <- ?REC_PAIRS(indexq, IndexQ),
-                                          F /= queue]} | Acc]
+                                         F /= queue]} | Acc]
               end, [], IndexQs))}].
 
-%% @private
-%%
-%% Increment the aggregated queue length and see if the vnode needs to be
-%% stalled.
+%% @doc Increment the aggregated queue length and see if the vnode needs to be
+%%      stalled.
 inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
-                                         pending_vnodes = PendingVnodes} = State) ->
+                                              pending_vnodes = PendingVnodes}
+                                 = State) ->
     State2 = State#state{all_queue_len = AQL + 1},
     case over_hwm(State2) of
         true ->
@@ -167,33 +189,33 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
             State2
     end.
 
-%% Enqueue the entry and return updated state.
+%% @doc Enqueue the entry and return updated state.
 enqueue(E, #indexq{queue = Q, queue_len = L} = IndexQ) ->
     IndexQ#indexq{queue = queue:in(E, Q),
                   queue_len = L + 1}.
 
-%% Trigger a flush and return state
+%% @doc Trigger a flush and return state
 flush(Index, IndexQ, State) ->
     IndexQ2 = request_worker(Index, IndexQ),
     update_indexq(Index, IndexQ2, State).
 
-%% Return true if queue is over the high water mark
+%% @doc Return true if queue is over the high water mark
 over_hwm(#state{all_queue_len = L, queue_hwm = HWM}) ->
     L > HWM.
 
-%% Request aworker to pull the queue
+%% @doc Request a worker to pull the queue
 maybe_request_worker(Index, #indexq{batch_min = Min} = IndexQ) ->
     maybe_request_worker(Index, Min, IndexQ).
 
-%% Request a worker to pulll the queue with a provided minimum,
-%% as long as one has not already been requested.
+%% @doc Request a worker to pulll the queue with a provided minimum,
+%%      as long as one has not already been requested.
 maybe_request_worker(Index, Min, #indexq{pending_helper = false,
                                          queue_len = L} = IndexQ) when L >= Min ->
     request_worker(Index, IndexQ);
 maybe_request_worker(_Index, _Min, IndexQ) ->
     IndexQ.
 
-%% Notify the solrq workers the index is ready to be pulled.
+%% @doc Notify the solrq workers the index is ready to be pulled.
 request_worker(Index, #indexq{pending_helper = false} = IndexQ) ->
     Hash = erlang:phash2({Index, self()}),
     yz_solrq_helper:index_ready(Hash, Index, self()),
@@ -202,8 +224,8 @@ request_worker(_Index, IndexQ) ->
     IndexQ.
 
 
-%% Send a batch of entries, reply to any blocked vnodes and
-%% return updated state
+%% @doc Send a batch of entries, reply to any blocked vnodes and
+%%      return updated state
 send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     IndexQ = get_indexq(Index, State),
     {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
@@ -213,12 +235,14 @@ send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
         0 ->
             delete_indexq(Index, State2);
         _ ->
-            IndexQ3 = maybe_request_worker(Index, IndexQ2), % may be another full batch
-            IndexQ4 = maybe_start_timer(Index, IndexQ3), % if entries left, restart timer if batch not full
+            % may be another full batch
+            IndexQ3 = maybe_request_worker(Index, IndexQ2),
+            % if entries left, restart timer if batch not full
+            IndexQ4 = maybe_start_timer(Index, IndexQ3),
             update_indexq(Index, IndexQ4, State2)
     end.
 
-%% Get up to batch_max entries and reset the pending worker/timer href
+%% @doc Get up to batch_max entries and reset the pending worker/timer href
 get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max} = IndexQ) ->
     {BatchQ, RestQ} = queue:split(min(L,Max), Q),
     Batch = queue:to_list(BatchQ),
@@ -228,8 +252,8 @@ get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max} = IndexQ) ->
     {Batch, BatchLen, IndexQ2}.
 
 
-%% Send replies to blocked vnodes if under the high water mark
-%% and return updated state
+%% @doc Send replies to blocked vnodes if under the high water mark
+%%      and return updated state
 maybe_unblock_vnodes(#state{pending_vnodes = []} = State) ->
     State;
 maybe_unblock_vnodes(#state{pending_vnodes = PendingVnodes} = State) ->
@@ -277,7 +301,7 @@ update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
 delete_indexq(Index, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:erase(Index, IndexQs)}.
 
-%% Read settings from the application environment
+%% @doc Read settings from the application environment
 read_appenv(State) ->
     HWM = app_helper:get_env(yokozuna, solrq_queue_hwm, 10000),
     State#state{queue_hwm = HWM}.

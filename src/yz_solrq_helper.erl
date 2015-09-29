@@ -17,10 +17,12 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq_helper).
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
-%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 
 -include("yokozuna.hrl").
+
+%%TODO: Dynamically add pulse. NOT PRODUCTION
+%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]).
+%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 
 %% api
 -export([start_link/1, status/1, status/2]).
@@ -33,6 +35,11 @@
 -export([index_ready/3, index_batch/3]).
 
 -record(state, {}).
+
+-type solr_ops()     :: [{add, {struct, [{atom(), binary()}]}} |
+                         {delete, {struct, [{atom(), binary()}]}}].
+-type solr_entries() :: [{bkey(), obj(), write_reason(), p(), short_preflist(),
+                          hash()}].
 
 %%%===================================================================
 %%% API
@@ -47,16 +54,19 @@ status(Pid) ->
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
 
-%% Mark the index as ready.  Separating into a two phase
-%% rather than just blindly sending from the solrq adds the
-%% backpressure on the KV vnode.
+%% @doc Mark the index as ready.  Separating into a two phase
+%%      rather than just blindly sending from the solrq adds the
+%%      backpressure on the KV vnode.
+-spec index_ready(atom()|pid()|non_neg_integer(), index_name(), pid())
+                 -> ok.
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
     HPid = yz_solrq_sup:helper_regname(Hash),
     index_ready(HPid, Index, QPid).
 
-%% Send a batch
+%% @doc Index a batch
+-spec index_batch(atom()|pid(), index_name(), solr_entries()) -> ok.
 index_batch(HPid, Index, Entries) ->
     gen_server:cast(HPid, {batch, Index, Entries}).
 
@@ -108,12 +118,16 @@ handle_cast({batch, Index, Entries0}, State) ->
 
 %% @doc Filter out all entries for partitions that are not currently owned or
 %%      this node is a future owner of.
+-spec filter_out_fallbacks(ordset(p), solr_entries()) -> [{bkey(), obj(),
+                                                          write_reason(), p()}].
 filter_out_fallbacks(OwnedAndNext, Entries) ->
     lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
                           ordsets:is_element(P, OwnedAndNext)
                  end, Entries).
 
-%% Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
+%% @doc Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
+-spec update_solr(index_name(), logical_idx(), solr_entries()) ->
+                         ok | {error, fuse_blown} | {error, tuple()}.
 update_solr(_Index, _LI, []) -> % nothing left after filtering fallbacks
     ok;
 update_solr(Index, LI, Entries) ->
@@ -138,7 +152,8 @@ update_solr(Index, LI, Entries) ->
             end
     end.
 
-%% Build the SOLR query
+%% @doc Build the SOLR query
+-spec solr_ops(logical_idx(), solr_entries()) -> solr_ops().
 solr_ops(LI, Entries) ->
     lists:reverse(
       lists:foldl(
@@ -166,6 +181,7 @@ solr_ops(LI, Entries) ->
                 end
         end, [], Entries)).
 
+-spec send_solr_ops(index_name(), solr_ops()) -> ok | {error, tuple()}.
 send_solr_ops(Index, Ops) ->
     try
         T1 = os:timestamp(),
@@ -180,6 +196,7 @@ send_solr_ops(Index, Ops) ->
             {error, {Err, Trace}}
     end.
 
+-spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
     Repairs = lists:foldl(
                 fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
@@ -201,7 +218,8 @@ update_aae_and_repair_stats(Entries) ->
                                      [Count, Index, IndexN]),
                           yz_kv:update_aae_exchange_stats(Index, IndexN, Count)
                   end
-             end, Repairs).
+             end, Repairs),
+    ok.
 
 -spec gather_counts({p(), {p(), n()}, write_reason()}, yz_dict()) -> yz_dict().
 gather_counts({Index, IndexN, Reason}, StatsD) ->
