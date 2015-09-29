@@ -344,7 +344,8 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
 
     ok = riakc_pb_socket:put(Conn, Obj),
 
-    %% 2. setup tracing to count repair calls
+    %% 2. setup tracing to count repair calls, which should be 0, b/c
+    %% we catch the badrequest failure early (on batch and single retry).
     ok = yz_rt:count_calls(Cluster, ?REPAIR_MFA),
 
     %% 3. wait for full exchange round
@@ -352,7 +353,7 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
     ok = yz_rt:stop_tracing(),
 
     %% 4. verify repair count is 0
-    ?assertEqual(?N * 1, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+    ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
 
     %% 5. verify count after expiration
     verify_exchange_after_expire(Cluster, Index),

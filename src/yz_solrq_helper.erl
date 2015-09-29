@@ -32,6 +32,11 @@
 % solrq/helper interface
 -export([index_ready/3, index_batch/3]).
 
+-type solr_ops()     :: [{add, {struct, [{atom(), binary()}]}} |
+                         {delete, {struct, [{atom(), binary()}]}}].
+-type solr_entries() :: [{bkey(), obj(), write_reason(), p(), short_preflist(),
+                          hash()}].
+
 -record(state, {}).
 
 %%%===================================================================
@@ -95,6 +100,7 @@ handle_cast({batch, Index, Entries0}, State) ->
             ok ->
                 update_aae_and_repair_stats(Entries);
             {error, Reason} ->
+                lager:info("FUCK!"),
                 ok
         end,
         {noreply, State}
@@ -166,6 +172,7 @@ solr_ops(LI, Entries) ->
                 end
         end, [], Entries)).
 
+-spec send_solr_ops(index_name(), solr_ops()) -> ok.
 send_solr_ops(Index, Ops) ->
     try
         T1 = os:timestamp(),
@@ -176,14 +183,41 @@ send_solr_ops(Index, Ops) ->
             Trace = erlang:get_stacktrace(),
             ?ERROR("batch for index ~s failed - ~p\n with operations: ~p : ~p",
                    [Index, Err, Ops, Trace]),
-            yz_fuse:melt(Index),
-            {error, {Err, Trace}}
+            case Err of
+                {_, badrequest, _} ->
+                    send_solr_single_ops(Index, Ops),
+                    ok;
+                _ ->
+                    yz_fuse:melt(Index),
+                    {error, {Err, Trace}}
+            end
     end.
 
+%% @doc If solr batch fails on a `400' bad request, then retry individual ops
+%%      in the batch they would have passed, logging a second error for the
+%%      individual failure case(s), but ending with an ok to pass through.
+-spec send_solr_single_ops(index_name(), solr_ops()) -> ok.
+send_solr_single_ops(Index, Ops) ->
+    lists:foreach(
+      fun(Op) ->
+              try
+                  T1 = os:timestamp(),
+                  ok = yz_solr:index_batch(Index, [Op]),
+                  yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1))
+              catch _:Err ->
+                      yz_stat:index_fail(),
+                      Trace = erlang:get_stacktrace(),
+                      ?ERROR("update for index ~s failed - ~p\n with operation: ~p : ~p",
+                             [Index, Err, Op, Trace])
+              end
+      end, Ops).
+
+-spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
     Repairs = lists:foldl(
                 fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
                         ReasonAction = get_reason_action(Reason),
+                        lager:info("Reason: ~p", [Reason]),
                         Action = case ReasonAction of
                                      delete -> delete;
                                      _ -> {insert, Hash}
@@ -201,7 +235,8 @@ update_aae_and_repair_stats(Entries) ->
                                      [Count, Index, IndexN]),
                           yz_kv:update_aae_exchange_stats(Index, IndexN, Count)
                   end
-             end, Repairs).
+             end, Repairs),
+    ok.
 
 -spec gather_counts({p(), {p(), n()}, write_reason()}, yz_dict()) -> yz_dict().
 gather_counts({Index, IndexN, Reason}, StatsD) ->
