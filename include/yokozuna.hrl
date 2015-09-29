@@ -265,9 +265,11 @@
 %%%===================================================================
 
 -ifdef(namespaced_types).
--type yz_dict() :: dict:dict().
+-type yz_dict()  :: dict:dict().
+-type yz_queue() :: queue:queue().
 -else.
--type yz_dict() :: dict().
+-type yz_dict()  :: dict().
+-type yz_queue() :: queue().
 -endif.
 
 -type obj() :: riak_object:riak_object().
