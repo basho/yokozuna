@@ -1,7 +1,6 @@
 %% @doc Ensure that sibling creations/searching workds.
 -module(yz_siblings).
 -compile(export_all).
--import(yz_rt, [search_expect/5]).
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).

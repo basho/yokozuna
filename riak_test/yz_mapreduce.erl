@@ -10,9 +10,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 
--type host() :: string().
--type portnum() :: non_neg_integer().
-
 -define(CFG,
         [{riak_core,
           [
@@ -123,7 +120,7 @@ verify_objs_mr(Cluster, Index) ->
         end,
     yz_rt:wait_until(Cluster, F).
 
--spec http_mr({host(), portnum()}, term()) -> binary().
+-spec http_mr({yz_rt:host(), yz_rt:portnum()}, term()) -> binary().
 http_mr({Host,Port}, MR) ->
     URL = ?FMT("http://~s:~s/mapred", [Host, integer_to_list(Port)]),
     Opts = [],
