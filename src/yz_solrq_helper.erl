@@ -105,7 +105,6 @@ handle_cast({batch, Index, Entries0}, State) ->
             ok ->
                 update_aae_and_repair_stats(Entries);
             {error, Reason} ->
-                lager:info("FUCK!"),
                 ok
         end,
         {noreply, State}

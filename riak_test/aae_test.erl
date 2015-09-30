@@ -44,7 +44,7 @@ confirm() ->
     lager:info("Run test for custom bucket type"),
     aae_run(Cluster, ?BUCKETWITHTYPE, ?INDEX2).
 
--spec aae_run([node()], bucket(), index_name) -> pass | fail.
+-spec aae_run([node()], bucket(), index_name()) -> pass | fail.
 aae_run(Cluster, Bucket, Index) ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->

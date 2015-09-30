@@ -36,7 +36,7 @@ is_jvm_dead_yet(JvmPid) ->
     end.
 
 %% Call gen_server getpid to find OS PID of JVM process
--spec get_jvm_pid({string(), port()}) -> string().
+-spec get_jvm_pid(node()) -> string().
 get_jvm_pid(Node) ->
     Pid = rpc:call(Node, yz_solr_proc, getpid, []),
     integer_to_list(Pid).
