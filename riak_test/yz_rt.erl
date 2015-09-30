@@ -9,7 +9,13 @@
 -define(SOFTCOMMIT, 1000).
 
 -type host() :: string()|atom().
--type portnum() :: non_neg_integer().
+-type portnum() :: non_neg_integer()|port().
+-type method() :: get | post | head | options | put | delete | trace |
+                  mkcol | propfind | proppatch | lock | unlock | move | copy.
+-type response() :: {ok, string(), [{string(), string()}], string()|binary()} |
+                    {error, term()}.
+
+-export_type([host/0, portnum/0]).
 
 %% Copied from rt.erl, would be nice if there was a rt.hrl
 -type interface() :: {http, tuple()} | {pb, tuple()}.
@@ -135,30 +141,31 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http(ibrowse:method(), string(), list(), string()) -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[]) -> response().
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
 
--spec http(ibrowse:method(), string(), list(), string(), list()|timeout())
-          -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[], list()|timeout())
+          -> response().
 http(Method, URL, Headers, Body, Opts) when is_list(Opts)  ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT);
 http(Method, URL, Headers, Body, Timeout) when is_integer(Timeout) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http(ibrowse:method(), string(), list(), string(), list(), timeout())
-          -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[], list(), timeout())
+          -> response().
 http(Method, URL, Headers, Body, Opts, Timeout) when
       is_list(Opts) andalso is_integer(Timeout) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http_put({host(), portnum()}, bucket(), binary(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary()|string(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
--spec http_put({host(), portnum()}, bucket(), binary(), string(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary()|string(), string(),
+               binary()) -> ok.
 http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
                [Host, integer_to_list(Port), BType, BName, Key]),
@@ -431,7 +438,7 @@ wait_for_bucket_type(Cluster, BucketType) ->
 %% @doc Wait for a full exchange round since `Timestamp'.  This means
 %% that all `{Idx,N}' for all partitions must have exchanged after
 %% `Timestamp'.
--spec wait_for_full_exchange_round([node()], os:now()) -> ok.
+-spec wait_for_full_exchange_round([node()], timestamp()) -> ok.
 wait_for_full_exchange_round(Cluster, Timestamp) ->
     lager:info("wait for full AAE exchange round on cluster ~p", [Cluster]),
     MoreRecent =
@@ -536,8 +543,8 @@ internal_solr_url(Host, Port, Index) ->
 internal_solr_url(Host, Port, Index, Shards) ->
     internal_solr_url(Host, Port, Index, <<"*">>, <<"*">>, Shards).
 
--spec internal_solr_url(host(), portnum(), index_name(), binary(), binary(),
-                        [{host(), portnum()}]) -> string().
+-spec internal_solr_url(host(), portnum(), index_name(), binary()|string(),
+                        binary()|string(), [{host(), portnum()}]) -> string().
 internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
     Ss = [internal_solr_url(Host, ShardPort, Index)
           || {_, ShardPort} <- Shards],
