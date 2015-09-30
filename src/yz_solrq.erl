@@ -17,8 +17,12 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq).
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
-%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+
+-ifdef(TEST).
+-ifdef(EQC).
+-compile({parse_transform, eqc_cover}). %% Just for experiment branch
+-endif. %EQC
+-endif. %TEST
 
 %% api
 -export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
@@ -245,7 +249,7 @@ maybe_start_timer(Index, #indexq{href = undefined, queue_len = L,
                                  pending_helper = false,
                                  delayms_max = DelayMS} = IndexQ) when L > 0 ->
     HRef = make_ref(),
-    erlang:send_after(DelayMS, self(), {flush, Index, HRef}),
+    yz_solrq_timer:send_after(DelayMS, self(), {flush, Index, HRef}),
     IndexQ#indexq{href = HRef};
 maybe_start_timer(_Index, IndexQ) ->
     IndexQ.
