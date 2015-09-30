@@ -3,14 +3,15 @@
 %% If SOLR failed batch, none should be added.
 
 -module(yz_solrq_eqc).
-
--ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
-
 -include_lib("pulse/include/pulse.hrl").
--compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+-export([run/0, run/1, check/0, recheck/0, cover/1]).
+-export([send_entries/1, extract/1, send_vnode_entries/3]).
+-compile({parse_transform,pulse_instrument}).
+-compile({parse_transform, eqc_cover}). %%TODO: Dynamically add pulse. NOT PRODUCTION
 -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 %-include_lib("pulse_otp/include/pulse_otp.hrl").
+
 
 run() ->
     run(10).
@@ -25,14 +26,15 @@ recheck() ->
     eqc:recheck(prop_ok()).
 
 gen_partition() ->
-    nat().
+    choose(1,33). % bound so that we can meck the list of owned partitions to first 32
 
 cover(Secs) ->
-    cover:compile_beam(yz_solrq),
-    cover:compile_beam(yz_solrq_helper),
+    eqc_cover:start(),
     eqc:quickcheck(eqc:testing_time(Secs, prop_ok())),
-    cover:analyse_to_file(yz_solrq,[html]),
-    cover:analyse_to_file(yz_solrq_helper,[html]).
+    Data = eqc_cover:stop(),
+    eqc_cover:write_html(Data, []).
+
+
 
 -ifndef(YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
@@ -112,7 +114,7 @@ prop_ok() ->
                               %% Issue the requests under pulse
                               Pids = ?MODULE:send_entries(PE),
                               wait_for_vnodes(Pids, timer:seconds(20)),
-                              timer:sleep(500)
+                              timer:sleep(300)
                           end,
                           begin
                               %% For each vnode, spawn a process and start sending
@@ -139,7 +141,9 @@ solr_history() ->
     lists:sort(dict:fetch_keys(http_response_by_key())).
 
 solr_expect(Entries) ->
-    lists:sort([Key || {_P, Index, _Bucket, Key, _Op, _Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE]).
+    lists:sort([Key || {P, Index, _Bucket, Key, _Op, _Result} <- Entries, 
+                       Index /= ?YZ_INDEX_TOMBSTONE,
+                       P =< 32]).
 
 
 %% Return the hashtree history
@@ -162,10 +166,12 @@ hashtree_history() ->
 hashtree_expect(Entries, RespByKey) ->
     %% NB. foldr so no reverse, NB Result is per-entry result overridden because
     %% of batching.
-    Expect = lists:foldr(fun({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, delete, _Result}, Acc) ->
+    Expect = lists:foldr(fun({P, _Index, _Bucket, _Key, _Op, _Result}, Acc) when P > 32 ->
+                                 Acc;
+                            ({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, delete, _Result}, Acc) ->
                                  [{P, Key, delete} | Acc];
                             ({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, Op, _Result}, Acc) when Op == put;
-                                                                                 Op == handoff ->
+                                                                                            Op == handoff ->
                                  [{P, Key, insert} | Acc];
                             ({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
                                  case get_http_response(Key, RespByKey) of
@@ -196,7 +202,12 @@ http_response_by_key() ->
 
 %% Look up an http response by the sequence batch it was in
 get_http_response(Key, RespByKey) ->
-    dict:fetch(Key, RespByKey).
+    try
+        dict:fetch(Key, RespByKey)
+    catch
+        _:_ ->
+            error({no_request, Key})
+    end.
 
 
 setup() ->
@@ -215,7 +226,7 @@ setup() ->
     yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
 
     meck:new(ibrowse),
-    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) ->
+    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) -> 
     %%                                     io:format("REQ: ~p\n", [{_A,_B,_C,_D,_E,_F}]),
     %%                                     {ok, "200", some, crap} end),
 
@@ -230,6 +241,9 @@ setup() ->
 
     meck:new(yz_misc, [passthrough]),
     meck:expect(yz_misc, get_ring, fun(_) -> fake_ring_from_yz_solrq_eqc end),
+    %% Assume a fake ring where 1-32 are owned, rest fallbacks
+    meck:expect(yz_misc, owned_and_next_partitions,
+                fun(_Node, _Ring) -> ordsets:from_list(lists:seq(1,32)) end),
 
     meck:new(yz_cover, [passthrough]),
     meck:expect(yz_cover, logical_index, fun(_) -> fake_logical_index_from_yz_solrq_eqc end),
@@ -239,7 +253,6 @@ setup() ->
     meck:expect(yz_extractor, get_def, fun(_,_) -> ?MODULE end), % dummy local module for extractor
 
     meck:new(yz_kv, [passthrough]),
-    meck:expect(yz_kv, is_owner_or_future_owner, fun(_,_,_) -> true end),
     meck:expect(yz_kv, update_hashtree, fun(_Action, _Partition, _IdxN, _BKey) -> ok end),
     meck:expect(yz_kv, update_aae_exchange_stats, fun(_P, _TreeId, _Count) -> ok end),
 
@@ -253,12 +266,12 @@ setup() ->
 
     %% Apply the pulse transform to the modules in the test
     %% Pulse compile solrq/solrq helper
-    Opts = [export_all,
-            {parse_transform,pulse_instrument},
-            {pulse_replace_module, [{gen_server, pulse_gen_server}]}],
-    yz_pulseh:compile(yz_solrq_eqc, Opts),
-    yz_pulseh:compile(yz_solrq, Opts),
-    yz_pulseh:compile(yz_solrq_helper, Opts),
+    %% Opts = [export_all,
+    %%         {parse_transform,pulse_instrument},
+    %%         {pulse_replace_module, [{gen_server, pulse_gen_server}]}],
+    %% yz_pulseh:compile(yz_solrq_eqc, Opts),
+    %% yz_pulseh:compile(yz_solrq, Opts),
+    %% yz_pulseh:compile(yz_solrq_helper, Opts),
 
     %% And start up supervisors to own the solrq/solrq helper
     %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
@@ -303,9 +316,9 @@ reset() ->
     meck:reset(yz_kv),
     ok.
 
-restart(Sup, Id) ->
-    catch supervisor:terminate_child(Sup, Id),
-    {ok, _} = supervisor:restart_child(Sup, Id).
+%% restart(Sup, Id) ->
+%%     catch supervisor:terminate_child(Sup, Id),
+%%     {ok, _} = supervisor:restart_child(Sup, Id).
 
 unlink_kill(Name) ->
     try
@@ -422,5 +435,3 @@ update_response_folder(_, {ok, "500", _Some, _Crap}=R) ->
     R;
 update_response_folder(R, _Acc) ->
     R.
-
--endif.

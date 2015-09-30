@@ -17,8 +17,13 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq_helper).
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
-%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-ifdef(TEST).
+-ifdef(EQC).
+-compile({parse_transform,pulse_instrument}). %%TODO: Dynamically add pulse. NOT PRODUCTION
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-compile({parse_transform, eqc_cover}).
+-endif. % EQC
+-endif. % TEST
 
 -include("yokozuna.hrl").
 
