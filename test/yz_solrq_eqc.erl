@@ -33,7 +33,7 @@ features(Secs) ->
     eqc_suite:feature_based(eqc:testing_time(Secs, prop_solrq())).
 
 check() ->
-    eqc:check(prop_solrq()).
+    eqc:check(eqc_statem:show_states(prop_solrq())).
 
 
 cover(Secs) ->
