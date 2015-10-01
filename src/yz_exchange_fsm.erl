@@ -191,6 +191,11 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
 %% @private
+%%
+%% @doc If Yokozuna gets {remote_missing, _} b/c yz has it, but kv doesn't.
+%%      If Yokozuna gets any other repair, then it's either b/c
+%%      yz is missing the key or the hash doesn't match. For those cases,
+%%      we must reindex.
 -spec repair(p(), keydiff()) -> repair().
 repair(Partition, {remote_missing, KeyBin}) ->
     BKey = binary_to_term(KeyBin),

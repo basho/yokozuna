@@ -30,7 +30,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type values() :: [riak_object:value()].
 -type delops() :: []|[{id, _}]|[{siblings, _}].
 
 %%%===================================================================
@@ -347,19 +346,6 @@ cleanup(_, _) ->
 
 %% @private
 %%
-%% @doc Cleanup tombstones and siblings accordingly... cleanup/3
-%% TODO: make this work for allow_mult=true case
--spec cleanup([doc()], bkey(), values()) -> [{bkey, bkey()}].
-cleanup([], _BKey, _Values) ->
-    [];
-cleanup([{doc, Fields}|T], BKey, [VH|VT]) ->
-    case {proplists:is_defined(tombstone, Fields), VH =:= ?TOMBSTONE} of
-        {true, true} -> [{bkey, BKey}];
-        {false, _} -> cleanup(T, BKey, VT)
-    end.
-
-%% @private
-%%
 %% @doc Get first partition from a preflist.
 first_partition([{Partition, _}|_]) ->
     Partition.
@@ -471,9 +457,9 @@ siblings_permitted(_) -> true.
 %% @doc Set yz_solr:index delete operation(s).
 %%      If object relates to lww=true/allow_mult=false/datatype/sc
 %%      do cleanup of tombstones only.
--spec delete_operation(riak_kv_bucket:props(), obj(), write_reason(), [doc()],
+-spec delete_operation(riak_kv_bucket:props(), obj(), [doc()],
                        bkey(), lp()) -> delops().
-delete_operation(BProps, Obj, _Reason, Docs, BKey, LP) ->
+delete_operation(BProps, Obj, Docs, BKey, LP) ->
     case siblings_permitted(BProps) of
         true -> cleanup(length(Docs), {Obj, BKey, LP});
         false -> cleanup(Docs, BKey)
