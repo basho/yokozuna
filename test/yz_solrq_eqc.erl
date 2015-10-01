@@ -130,7 +130,9 @@ index_callouts(#tstate{hwm = HWM, batch_min = BatchMin} = S,
     ?WHEN(queued_index(Index, S) == 0 andalso BatchMin > 1, % if first entry and not large enough to batch
           send_after_callout()),
     ?WHEN(WillBlock, %% If blocks, expect stats update and block
-          ?BLOCK({solrq_index, Call})).
+         ?SEQ([ ?APPLY(add_blocked, [?SELF]),
+                ?BLOCK,
+                ?APPLY(del_blocked, [?SELF])])).
 
 index_ready_callout(Index) ->
     ?CALLOUTS(
@@ -146,11 +148,10 @@ send_after_callout() ->
 
 
 index_next(#tstate{pending_by_index = Pending, inserted_by_index = Inserted} = S, _Value,
-           [Call, Index, Obj, Reason, Partition]) ->
-    update_blocked(Call,
-                   S#tstate{index_call = Call + 1,
+           [Index, {K, _Obj}, Reason, Partition]) ->
+    S#tstate{index_call = S#tstate.index_call + 1,
                             pending_by_index = orddict:update_counter(Index, 1, Pending),
-                            inserted_by_index = orddict:append_list(Index, [{Obj, Reason, Partition}], Inserted)}).
+             inserted_by_index = orddict:append_list(Index, [{K, Reason, Partition}], Inserted)}.
 
 index_post(_S, _Args, _Res) ->
     true.
@@ -298,13 +299,11 @@ delay(Res) ->
 over_hwm(#tstate{hwm = HWM} = S) ->
     queued_total(S) > HWM.
 
-update_blocked(Call, #tstate{blocked = Blocked} = S) ->
-    case over_hwm(S) of
-        true ->
-            S#tstate{blocked = [{solrq_index, Call} | Blocked]};
-        _ ->
-            S
-    end.
+add_blocked_next(#tstate{blocked = Blocked} = S, _, [Pid]) ->
+    S#tstate{blocked = Blocked ++ [Pid]}.
+
+del_blocked_next(#tstate{blocked = Blocked} = S, _, [Pid]) ->
+    S#tstate{blocked = Blocked -- [Pid]}.
 
 queued_index(Index, #tstate{pending_by_index = Pending}) ->
     case orddict:find(Index, Pending) of
