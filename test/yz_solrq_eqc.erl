@@ -21,7 +21,8 @@
                  batched_by_index = orddict:new(),
                  timers = [],
                  ready = [],
-                 pending_by_index = orddict:new()}).
+                 pending_by_index = orddict:new(),
+                 vnodes = []}).
 
 run() ->
     run(20).
@@ -86,6 +87,26 @@ precondition_common(_S, _Call) ->
 postcondition_common(_S, _Call, _Res) ->
     true.
 
+%% --- Operation: new_vnode ---
+new_vnode_pre(S) ->
+  length(S#tstate.vnodes) < 3.
+
+new_vnode_args(_S) ->
+  [].
+
+new_vnode() ->
+  ok.
+
+new_vnode_callouts(_S, []) ->
+  ?APPLY(add_vnode,[?SELF]).
+
+new_vnode_process(_S, []) ->
+  spawn.
+
+add_vnode_next(S, _, [Pid]) ->
+  S#tstate{vnodes = S#tstate.vnodes ++ [Pid]}.
+
+
 %% --- Operation: start ---
 start_args(_S) ->
     ?LET({HWMSeed, MinSeed, MaxSeed},
@@ -113,15 +134,23 @@ start_next(S, _Value, [HWM, Min, Max]) ->
 
 
 %% ------ Grouped operator: op
-index_args(#tstate{index_call = Call}) -> [Call, gen_index(), gen_obj(), gen_reason(), gen_partition()].
 
-index(_Call, Index, Obj, Reason, Partition) ->
+index_pre(S) ->
+  S#tstate.vnodes =/= [].
+
+index_args(S) -> 
+    [elements(S#tstate.vnodes), gen_index(), gen_obj(), gen_reason(), gen_partition()].
+
+index_pre(#tstate{blocked = Pids}, [Pid, _, _, _, _]) ->
+  not lists:member(Pid, Pids).
+
+index(_, Index, Obj, Reason, Partition) ->
     BKey = bkey(Obj),
     delay(yz_solrq:index(Index, BKey, Obj, Reason, Partition)).
 
 
 index_callouts(#tstate{hwm = HWM, batch_min = BatchMin} = S,
-               [Call, Index, _Obj, _Reason, _Partition]) ->
+               [_, Index, _Obj, _Reason, _Partition]) ->
     WillBlock = (queued_total(S) >= HWM),
     ?PAR(?WHEN(WillBlock, %% If blocks, expect stats update and block
                ?CALLOUT(exometer, update, [[riak, yokozuna, index, blockedvnode], 1], ok)),
@@ -146,12 +175,18 @@ send_after_callout() ->
               ?CALLOUT(yz_solrq_timer, send_after, [?WILDCARD, ?VAR, ?VAR], ok)),
        ?APPLY(send_after, [Pid, Msg])).
 
+send_after_features(_, _, _) ->
+    [send_after].
+
 
 index_next(#tstate{pending_by_index = Pending, inserted_by_index = Inserted} = S, _Value,
-           [Index, {K, _Obj}, Reason, Partition]) ->
+           [_, Index, Obj, Reason, Partition]) ->
     S#tstate{index_call = S#tstate.index_call + 1,
-                            pending_by_index = orddict:update_counter(Index, 1, Pending),
-             inserted_by_index = orddict:append_list(Index, [{K, Reason, Partition}], Inserted)}.
+             pending_by_index = orddict:update_counter(Index, 1, Pending),
+             inserted_by_index = orddict:append_list(Index, [{Obj, Reason, Partition}], Inserted)}.
+
+index_process(_S, [Pid, _, _, _, _]) ->
+    Pid.
 
 index_post(_S, _Args, _Res) ->
     true.
@@ -250,7 +285,6 @@ weight(_S, _Cmd) -> 1.
 
 prop_solrq() ->
     with_parameter(print_counterexample, false,
-    with_parameter(default_process, worker,
     ?SETUP(fun() -> setup(), fun() -> teardown() end end,
     ?FORALL(Cmds, commands(?MODULE),
             begin
@@ -258,11 +292,12 @@ prop_solrq() ->
                 features([{work_pending, {S#tstate.index_call, work_pending(S)}}],
                 pretty_commands(?MODULE, Cmds, {H, S, Res},
                                 aggregate(command_names(Cmds),
+                                aggregate(call_features(H),
                                 conjunction([{result, equals(Res, ok)},
                                              {sent, (work_pending(S) orelse
                                                      equals(inserted_by_index(S),
-                                                            batched_by_index(S)))}]))))
-            end)))).
+                                                            batched_by_index(S)))}])))))
+            end))).
 
 
 %% Helpers
@@ -301,6 +336,9 @@ over_hwm(#tstate{hwm = HWM} = S) ->
 
 add_blocked_next(#tstate{blocked = Blocked} = S, _, [Pid]) ->
     S#tstate{blocked = Blocked ++ [Pid]}.
+
+add_blocked_features(S, _, _) ->
+    [{blocked_vnodes, length(S#tstate.blocked)+1}].
 
 del_blocked_next(#tstate{blocked = Blocked} = S, _, [Pid]) ->
     S#tstate{blocked = Blocked -- [Pid]}.
