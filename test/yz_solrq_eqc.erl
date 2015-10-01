@@ -292,7 +292,7 @@ batched_by_index(#tstate{batched_by_index = Batched}) ->
 
 
 delay(Res) ->
-    timer:sleep(5),
+    % timer:sleep(5),
     Res.
 
 over_hwm(#tstate{hwm = HWM} = S) ->
