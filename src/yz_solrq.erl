@@ -200,6 +200,7 @@ maybe_request_worker(_Index, _Min, IndexQ) ->
 %% Notify the solrq workers the index is ready to be pulled.
 request_worker(Index, #indexq{pending_helper = false} = IndexQ) ->
     Hash = erlang:phash2({Index, self()}),
+    eqc:format("Calling yz_solrq_helper:index_ready(~p, ~p, ~p)\n", [Hash, Index, self()]),
     yz_solrq_helper:index_ready(Hash, Index, self()),
     IndexQ#indexq{pending_helper = true};
 request_worker(_Index, IndexQ) ->
@@ -211,6 +212,8 @@ request_worker(_Index, IndexQ) ->
 send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     IndexQ = get_indexq(Index, State),
     {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
+    eqc:format("Calling yz_solrq_helper:index_batch(~p, ~p, ~p)\n", [HPid, Index, Batch]),
+
     yz_solrq_helper:index_batch(HPid, Index, Batch),
     State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
@@ -249,6 +252,7 @@ maybe_start_timer(Index, #indexq{href = undefined, queue_len = L,
                                  pending_helper = false,
                                  delayms_max = DelayMS} = IndexQ) when L > 0 ->
     HRef = make_ref(),
+    eqc:format("Calling yz_solrq_timer:send_after(~p, ~p, ~p)\n", [DelayMS, self(), {flush, Index, HRef}]),
     yz_solrq_timer:send_after(DelayMS, self(), {flush, Index, HRef}),
     IndexQ#indexq{href = HRef};
 maybe_start_timer(_Index, IndexQ) ->

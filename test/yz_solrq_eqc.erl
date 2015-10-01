@@ -215,11 +215,9 @@ request_batch_pre(S, [{_Index, _QPid} = Req]=_A) -> % for shrinking
 request_batch_callouts(#tstate{hwm = HWM, blocked = Blocked, batch_min = Min} = S,
                        [{Index, _QPid}]) ->
     Remainder = queued_index(Index, S) - expected_batch_size(Index, S),
-    ?MATCH({Docs, _Res},
+    ?MATCH({Docs, _Res}, %TODO: Add check for min/max lengths
            ?CALLOUT(yz_solrq_helper, index_batch, [?WILDCARD, Index, ?VAR], ok)),
     ?APPLY(index_batch, [Index, Docs]),
-    %% ?MATCH({Docs, _Result}, %TODO: Add check for min/max lengths
-    %%        ?CALLOUT(yz_solrq_helper, index_batch, [?WILDCARD, Index, ?VAR], ok)),
     ?WHEN(Remainder >= Min,
           index_ready_callout(Index)),
     ?WHEN(0 < Remainder andalso Remainder < Min,
