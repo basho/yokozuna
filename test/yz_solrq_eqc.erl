@@ -337,7 +337,8 @@ unlink_kill(Name) ->
 
 %% Setup things...
 setup() ->
-    yz_solrq_sup:start_link(1, 1),
+    {ok, Pid} = yz_solrq_sup:start_link(1, 1),
+    unlink(Pid),  %% We observe a crash of the supervisor differently
     eqc_mocking:start_mocking(api_spec()).
 
 teardown() ->
