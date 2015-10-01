@@ -44,19 +44,19 @@ cover(Secs) ->
 
 
 gen_index() ->
-    oneof(["index1","index2"]). % TODO: Convert back to binaries
+    elements(["index1","index2"]). % TODO: Convert back to binaries
 
 gen_bt() ->
-    oneof([<<"bt1">>,<<"bt2">>, <<"bt_no_index">>]).
+    elements([<<"bt1">>,<<"bt2">>, <<"bt_no_index">>]).
 
 gen_bucket() ->
-    oneof([<<"bn1">>, <<"bn2">>, <<"bn_no_index">>]).
+    elements([<<"bn1">>, <<"bn2">>, <<"bn_no_index">>]).
 
 gen_key() ->
-    oneof([<<"k1">>,<<"k2">>,<<"k3">>,<<"k4">>,<<"k5">>]).
+    elements([<<"k1">>,<<"k2">>,<<"k3">>,<<"k4">>,<<"k5">>]).
 
 gen_val() ->
-    non_empty(binary()).
+    noshrink(non_empty(binary())).
 
 gen_obj() ->
     ?LET({BT,BN,K,V},{gen_bt(), gen_bucket(), gen_key(), gen_val()},
