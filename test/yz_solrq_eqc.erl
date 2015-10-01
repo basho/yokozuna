@@ -248,17 +248,20 @@ fire_timer_next(#tstate{timers = Timers} = S, _Value, [{_Pid, _Msg}] = Requested
 weight(_S, _Cmd) -> 1.
 
 prop_solrq() ->
+    with_parameter(print_counterexample, false,
+    with_parameter(default_process, worker,
     ?SETUP(fun() -> setup(), fun() -> teardown() end end,
     ?FORALL(Cmds, commands(?MODULE),
             begin
                 {H, S, Res} = run_commands(?MODULE,Cmds),
                 features([{work_pending, {S#tstate.index_call, work_pending(S)}}],
                 pretty_commands(?MODULE, Cmds, {H, S, Res},
+                                aggregate(command_names(Cmds),
                                 conjunction([{result, equals(Res, ok)},
                                              {sent, (work_pending(S) orelse
                                                      equals(inserted_by_index(S),
-                                                            batched_by_index(S)))}])))
-            end)).
+                                                            batched_by_index(S)))}]))))
+            end)))).
 
 
 %% Helpers
