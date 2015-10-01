@@ -140,7 +140,7 @@ update_solr(Index, LI, Entries) ->
                 ok ->
                     send_solr_ops(Index, solr_ops(LI, Entries));
                 blown ->
-                    ?ERROR("Fuse Blown: can't current send solr "
+                    ?ERROR("Fuse Blown: can't currently send solr "
                            "operations for index ~s", [Index]),
                     {error, fuse_blown};
                 _ ->
@@ -173,7 +173,7 @@ solr_ops(LI, Entries) ->
                         LP = yz_cover:logical_partition(LI, P),
                         Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
                         AddOps = yz_doc:adding_docs(Docs),
-                        DeleteOps = yz_kv:delete_operation(BProps, Obj, Reason, Docs, BKey, LP),
+                        DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey, LP),
                         %% List will be reversed, so make sure deletes happen before adds
                         lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
                                       [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
