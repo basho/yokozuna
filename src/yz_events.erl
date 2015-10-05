@@ -93,9 +93,7 @@ handle_event({Index, blown}, S) ->
 handle_event({Index, ok}, S) ->
     handle_index_recovered(Index, up),
     {ok, S};
-handle_event({Index, reset}, S) ->
-    %% TODO: We are currently using reset when an Index is removed, but there
-    %% should be a true removal of fuse eventually.
+handle_event({Index, removed}, S) ->
     handle_index_recovered(Index, removed),
     {ok, S};
 handle_event(_Msg, S) ->
@@ -206,7 +204,7 @@ remove_index(Name) ->
     case yz_solr:ping(Name) of
         true ->
             ok = yz_index:local_remove(Name),
-            yz_fuse:reset(Name);
+            yz_fuse:remove(Name);
         _ -> ok
     end.
 
