@@ -23,7 +23,7 @@
 -export([setup/0]).
 
 %% api
--export([create/1, check/1, melt/1, reset/1]).
+-export([create/1, check/1, melt/1, remove/1, reset/1]).
 
 %% helpers
 -export([fuse_context/0]).
@@ -71,13 +71,17 @@ create(Index) ->
         _ -> ok
 end.
 
-%% TODO: We are currently using reset when an Index is removed, but there should
-%% be a true removal of fuse eventually.
+-spec remove(index_name()) -> ok | {error, not_found}.
+remove(Index) ->
+    IndexName = ?BIN_TO_ATOM(Index),
+    fuse:remove(IndexName),
+    yz_stat:delete_dynamic_stats(IndexName, ?DYNAMIC_STATS),
+    ok.
+
 -spec reset(index_name()) -> ok | {error, not_found}.
 reset(Index) ->
     IndexName = ?BIN_TO_ATOM(Index),
     fuse:reset(IndexName),
-    yz_stat:delete_dynamic_stats(IndexName, ?DYNAMIC_STATS),
     ok.
 
 -spec check(index_name()|atom()) -> ok | blown | {error, not_found}.
