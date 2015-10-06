@@ -60,10 +60,6 @@ doc_id(O, Partition, Sibling) ->
             iolist_to_binary([IODocId,?YZ_ID_SEP,Sibling])
     end.
 
-% @doc `true' if this Object has multiple contents
--spec has_siblings(obj()) -> boolean().
-has_siblings(O) -> riak_object:value_count(O) > 1.
-
 % @doc count of Object contents that are siblings and not tombstones
 -spec live_siblings([{riak_object_dict(), riak_object:value()}]) -> non_neg_integer().
 live_siblings(Cs) -> length([1 || {MD, _V} <- Cs, not yz_kv:is_tombstone(MD)]).
