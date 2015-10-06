@@ -4,7 +4,18 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
--define(CFG, [{yokozuna, [{enabled, true}]}]).
+-define(CFG, [
+              {riak_kv,
+               [{delete_mode, keep}]},
+              {yokozuna,
+               [{enabled, true}]}
+             ]).
+-define(BODIES,
+        [<<"This is value alpha">>,
+         <<"This is value beta">>,
+         <<"This is value charlie">>,
+         <<"This is value delta">>]).
+-define(VALUES, ["alpha", "beta", "charlie", "delta"]).
 
 confirm() ->
     random:seed(now()),
@@ -12,6 +23,7 @@ confirm() ->
     rt:wait_for_cluster_service(Cluster, yokozuna),
     ok = test_siblings(Cluster),
     ok = test_no_siblings(Cluster),
+    ok = test_siblings_with_partition(Cluster),
     pass.
 
 %% The crazy looking key verifies that keys may contain characters
@@ -26,9 +38,9 @@ test_siblings(Cluster) ->
     HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
     yz_rt:create_index_http(Cluster, HP, Index),
     ok = allow_mult(Cluster, Index, true),
-    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey),
+    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey, ?BODIES),
     %% Verify 10 times because of non-determinism in coverage
-    [ok = verify_sibs(HP, Index) || _ <- lists:seq(1,10)],
+    [ok = verify_sibs(HP, Index, ?VALUES) || _ <- lists:seq(1,10)],
     ok = reconcile_sibs(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_reconcile(HP, Index) || _ <- lists:seq(1,10)],
     ok = delete_key(Cluster, HP, Index, Bucket, EncKey),
@@ -42,45 +54,82 @@ test_no_siblings(Cluster) ->
     HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
     yz_rt:create_index_http(Cluster, HP, Index),
     ok = allow_mult(Cluster, Index, false),
-    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey),
+    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey, ?BODIES),
     %% Verify 10 times because of non-determinism in coverage
-    [ok = verify_no_sibs(HP, Index) || _ <- lists:seq(1,10)],
+    LastVal = [lists:last(?VALUES)],
+    [ok = verify_no_sibs(HP, Index, LastVal) || _ <- lists:seq(1,10)],
     ok = delete_key(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
     ok.
 
-write_sibs(Cluster, {Host, Port}, Index, Bucket, EncKey) ->
+test_siblings_with_partition(Cluster) ->
+    Index = <<"siblings_three">>,
+    Bucket = {Index, <<"b3">>},
+    EncKey = mochiweb_util:quote_plus("test/λ/sibs{123}+-\\&&||!()[]^\"~*?:\\"),
+    HPStart = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
+    yz_rt:create_index_http(Cluster, HPStart, Index),
+    ok = allow_mult(Cluster, Index, true),
+
+    {P1, P2} = lists:split(1, Cluster),
+    lager:info("Creation partition: ~p | ~p", [P1, P2]),
+    Partition = rt:partition(P1, P2),
+    try
+        HP1 = hd(yz_rt:host_entries(rt:connection_info(P1))),
+        HP2 = hd(yz_rt:host_entries(rt:connection_info(P2))),
+
+        lager:info("Write siblings to both partitions"),
+        write_sibs(P1, HP1, Index, Bucket, EncKey, [<<"This is value one">>,
+                                                    <<"This is value two">>]),
+        write_sibs(P2, HP2, Index, Bucket, EncKey, ?BODIES),
+
+        lager:info("Delete on second side of partition"),
+        ok = delete_key(P2, HP2, Index, Bucket, EncKey)
+    after
+        rt:heal(Partition)
+    end,
+
+    rt:wait_until_transfers_complete(Cluster),
+    yz_rt:commit(Cluster, Index),
+
+    %% Verify
+    [true = yz_rt:search_expect(HPStart, Index, "_yz_rk", "test*", 2) ||
+        _ <- lists:seq(1, 10)],
+    ok = delete_key(Cluster, HPStart, Index, Bucket, EncKey),
+    [ok = verify_deleted(HPStart, Index) || _ <- lists:seq(1,10)],
+    ok = yz_rt:http_put(HPStart, Bucket, EncKey, <<"erlang is fun">>),
+    yz_rt:commit(Cluster, Index),
+    [true = yz_rt:search_expect(HPStart, Index, "_yz_rk", "test*", 1) ||
+        _ <- lists:seq(1, 10)],
+    ok.
+
+
+write_sibs(Cluster, {Host, Port}, Index, Bucket, EncKey, Bodies) ->
     lager:info("Write siblings"),
     URL = bucket_url({Host, Port}, Bucket, EncKey),
     Opts = [],
     Headers = [{"content-type", "text/plain"}],
-    Bodies = [<<"This is value alpha">>,
-              <<"This is value beta">>,
-              <<"This is value charlie">>,
-              <<"This is value delta">>],
     [{ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, B, Opts)
      || B <- Bodies],
     yz_rt:commit(Cluster, Index),
     ok.
 
-verify_sibs(HP, Index) ->
+verify_sibs(HP, Index, Values) ->
     lager:info("Verify siblings are indexed"),
     true = yz_rt:search_expect(HP, Index, "_yz_rk", "test*", 4),
-    Values = ["alpha", "beta", "charlie", "delta"],
     [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
     ok.
 
-verify_no_sibs(HP, Index) ->
+verify_no_sibs(HP, Index, Values) ->
     lager:info("Verify no siblings are indexed"),
     true = yz_rt:search_expect(HP, Index, "_yz_rk", "test*", 1),
-    Values = ["delta"],
+    lager:info("HI ~p", [Values]),
     [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
     ok.
 
 reconcile_sibs(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Reconcile the siblings"),
     {VClock, _} = http_get(HP, Bucket, EncKey),
-    NewValue = <<"This is value alpha, beta, charlie, and delta">>,
+    NewValue = <<"This is value reconcile">>,
     ok = http_put(HP, Bucket, EncKey, VClock, NewValue),
     yz_rt:commit(Cluster, Index),
     ok.
@@ -88,7 +137,8 @@ reconcile_sibs(Cluster, HP, Index, Bucket, EncKey) ->
 delete_key(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Delete the key"),
     URL = bucket_url(HP, Bucket, EncKey),
-    {ok, "200", RH, _} = ibrowse:send_req(URL, [], get, [], []),
+    {ok, Status, RH, _} = ibrowse:send_req(URL, [], get, [], []),
+    ?assert(Status == "200" orelse Status == "300"),
     VClock = proplists:get_value("X-Riak-Vclock", RH),
     Headers = [{"x-riak-vclock", VClock}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, delete, [], []),
