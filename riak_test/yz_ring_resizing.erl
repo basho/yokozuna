@@ -52,8 +52,7 @@ confirm() ->
             %% Index and load data
             setup_indexing(Cluster, PBConns, YZBenchDir),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
-            %% wait for soft-commit
-            timer:sleep(1000),
+            yz_rt:commit(Cluster, ?INDEX),
 
             %% Start a query and wait for it to start
             Ref1 = async_query(Cluster, YZBenchDir),
