@@ -6,6 +6,7 @@
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 -define(NO_BODY, <<>>).
 -define(IBROWSE_TIMEOUT, 60000).
+-define(SOFTCOMMIT, 1000).
 
 -type host() :: string().
 -type portnum() :: integer().
@@ -537,3 +538,12 @@ internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
           || {_, ShardPort} <- Shards],
     ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
          [Host, Port, Index, Name, Term, string:join(Ss, ",")]).
+
+-spec commit([node()], index_name()) -> ok.
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(?SOFTCOMMIT),
+    lager:info("Commit search writes to ~s at softcommit (default) ~p",
+               [Index, ?SOFTCOMMIT]),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]),
+    ok.

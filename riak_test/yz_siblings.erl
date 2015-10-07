@@ -28,16 +28,16 @@ test_siblings(Cluster) ->
     HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
     yz_rt:create_index_http(Cluster, HP, Index),
     ok = allow_mult(Cluster, Index),
-    ok = write_sibs(HP, Bucket, EncKey),
+    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey),
     %% Verify 10 times because of non-determinism in coverage
     [ok = verify_sibs(HP, Index) || _ <- lists:seq(1,10)],
-    ok = reconcile_sibs(HP, Bucket, EncKey),
+    ok = reconcile_sibs(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_reconcile(HP, Index) || _ <- lists:seq(1,10)],
-    ok = delete_key(HP, Bucket, EncKey),
+    ok = delete_key(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
     ok.
 
-write_sibs({Host, Port}, Bucket, EncKey) ->
+write_sibs(Cluster, {Host, Port}, Index, Bucket, EncKey) ->
     lager:info("Write siblings"),
     URL = bucket_url({Host, Port}, Bucket, EncKey),
     Opts = [],
@@ -48,8 +48,7 @@ write_sibs({Host, Port}, Bucket, EncKey) ->
     Body4 = <<"This is value delta">>,
     [{ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, B, Opts)
      || B <- [Body1, Body2, Body3, Body4]],
-    %% Sleep for soft commit
-    timer:sleep(1000),
+    yz_rt:commit(Cluster, Index),
     ok.
 
 verify_sibs(HP, Index) ->
@@ -59,15 +58,15 @@ verify_sibs(HP, Index) ->
     [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
     ok.
 
-reconcile_sibs(HP, Bucket, EncKey) ->
+reconcile_sibs(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Reconcile the siblings"),
     {VClock, _} = http_get(HP, Bucket, EncKey),
     NewValue = <<"This is value alpha, beta, charlie, and delta">>,
     ok = http_put(HP, Bucket, EncKey, VClock, NewValue),
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     ok.
 
-delete_key(HP, Bucket, EncKey) ->
+delete_key(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Delete the key"),
     URL = bucket_url(HP, Bucket, EncKey),
     {ok, "200", RH, _} = ibrowse:send_req(URL, [], get, [], []),
@@ -75,7 +74,8 @@ delete_key(HP, Bucket, EncKey) ->
     Headers = [{"x-riak-vclock", VClock}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, delete, [], []),
     %% Wait for Riak delete timeout + Solr soft-commit
-    timer:sleep(4100),
+    timer:sleep(3000),
+    yz_rt:commit(Cluster, Index),
     ok.
 
 verify_deleted(HP, Index) ->
