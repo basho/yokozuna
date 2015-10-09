@@ -36,8 +36,6 @@
          process_stream/3]).
 -compile(export_all).
 
--import(riak_pb_search_codec, [encode_search_doc/1]).
-
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().
 init() ->
@@ -148,15 +146,26 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
                |Params1],
     {ok, Params2}.
 
+%% @private
+%%
+%% @doc function for FieldList (FL) defaults and necessary conversions.
+%%      * and score are defaults if none are provided. Score is currently always
+%%      provided.
+%%
+%% TODO: once we fix our erlang_protobufs impl. around handling of fields
+%%       (esp. optionals) and decoding to erlang records, we can remove the need
+%%       to always return `score', as its currently needed for `maxScore'.
+-spec default(undefined|[string()]|binary(), binary()) -> binary().
 default(undefined, Default) ->
     Default;
 default([], Default) ->
     Default;
 default([H|T], _) ->
-    unicode:characters_to_binary(
-      string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ","));
+    B1 = unicode:characters_to_binary(
+          string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ",")),
+    <<B1/binary,<<",score">>/binary>>;
 default(Value, _) ->
-    Value.
+    <<Value/binary,<<",score">>/binary>>.
 
 %% @private
 %%

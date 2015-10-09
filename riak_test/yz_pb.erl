@@ -41,6 +41,7 @@ confirm() ->
     confirm_admin_index(Cluster),
     confirm_admin_bad_index_name(Cluster),
     confirm_basic_search(Cluster),
+    confirm_fl_search_without_score(Cluster),
     confirm_encoded_search(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
@@ -195,6 +196,16 @@ confirm_basic_search(Cluster) ->
     Body = "herp derp",
     Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
     store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
+
+confirm_fl_search_without_score(Cluster) ->
+    Index = <<"fl_search_without_score">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_fl_search_without_score ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{sort, <<"age_i asc">>}, {fl, ["*"]}],
+    store_and_search(Cluster, Bucket, "test_fl_search_without_score", Body,
+                     "application/json", <<"age_i:5">>, Params).
 
 confirm_encoded_search(Cluster) ->
     Index = <<"encoded">>,
