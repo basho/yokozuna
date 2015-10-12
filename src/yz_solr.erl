@@ -200,7 +200,9 @@ index(Core, Docs, DelOps) ->
     case ibrowse:send_req(URL, Headers, post, JSON, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Err})
+        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
+                                         ErrBody});
+        Err -> throw({"Failed to index docs", other, Err})
     end.
 
 %% @doc Determine if Solr is running.
