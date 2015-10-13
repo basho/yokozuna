@@ -7,8 +7,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
--define(NO_HEADERS, []).
--define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 
 confirm() ->
@@ -28,18 +26,18 @@ test_siblings(Cluster) ->
     Bucket = {Index, <<"b1">>},
     EncKey = mochiweb_util:quote_plus("test/λ/sibs{123}+-\\&&||!()[]^\"~*?:\\"),
     HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
-    create_index(Cluster, HP, Index),
+    yz_rt:create_index_http(Cluster, HP, Index),
     ok = allow_mult(Cluster, Index),
-    ok = write_sibs(HP, Bucket, EncKey),
+    ok = write_sibs(Cluster, HP, Index, Bucket, EncKey),
     %% Verify 10 times because of non-determinism in coverage
     [ok = verify_sibs(HP, Index) || _ <- lists:seq(1,10)],
-    ok = reconcile_sibs(HP, Bucket, EncKey),
+    ok = reconcile_sibs(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_reconcile(HP, Index) || _ <- lists:seq(1,10)],
-    ok = delete_key(HP, Bucket, EncKey),
+    ok = delete_key(Cluster, HP, Index, Bucket, EncKey),
     [ok = verify_deleted(HP, Index) || _ <- lists:seq(1,10)],
     ok.
 
-write_sibs({Host, Port}, Bucket, EncKey) ->
+write_sibs(Cluster, {Host, Port}, Index, Bucket, EncKey) ->
     lager:info("Write siblings"),
     URL = bucket_url({Host, Port}, Bucket, EncKey),
     Opts = [],
@@ -50,8 +48,7 @@ write_sibs({Host, Port}, Bucket, EncKey) ->
     Body4 = <<"This is value delta">>,
     [{ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, B, Opts)
      || B <- [Body1, Body2, Body3, Body4]],
-    %% Sleep for soft commit
-    timer:sleep(1000),
+    yz_rt:commit(Cluster, Index),
     ok.
 
 verify_sibs(HP, Index) ->
@@ -61,15 +58,15 @@ verify_sibs(HP, Index) ->
     [true = yz_rt:search_expect(HP, Index, "text", S, 1) || S <- Values],
     ok.
 
-reconcile_sibs(HP, Bucket, EncKey) ->
+reconcile_sibs(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Reconcile the siblings"),
     {VClock, _} = http_get(HP, Bucket, EncKey),
     NewValue = <<"This is value alpha, beta, charlie, and delta">>,
     ok = http_put(HP, Bucket, EncKey, VClock, NewValue),
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     ok.
 
-delete_key(HP, Bucket, EncKey) ->
+delete_key(Cluster, HP, Index, Bucket, EncKey) ->
     lager:info("Delete the key"),
     URL = bucket_url(HP, Bucket, EncKey),
     {ok, "200", RH, _} = ibrowse:send_req(URL, [], get, [], []),
@@ -77,7 +74,8 @@ delete_key(HP, Bucket, EncKey) ->
     Headers = [{"x-riak-vclock", VClock}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, delete, [], []),
     %% Wait for Riak delete timeout + Solr soft-commit
-    timer:sleep(4100),
+    timer:sleep(3000),
+    yz_rt:commit(Cluster, Index),
     ok.
 
 verify_deleted(HP, Index) ->
@@ -117,19 +115,5 @@ allow_mult(Cluster, BType) ->
     %%  end || N <- Cluster],
     ok.
 
-index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
-
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s", [Host, Port, BType, BName, Key]).
-
-http(Method, URL, Headers, Body) ->
-    Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
-
-create_index(Cluster, HP, Index) ->
-    lager:info("create_index ~s [~p]", [Index, HP]),
-    URL = index_url(HP, Index),
-    Headers = [{"content-type", "application/json"}],
-    {ok, "204", _, _} = http(put, URL, Headers, ?NO_BODY),
-    ok = yz_rt:set_bucket_type_index(hd(Cluster), Index).

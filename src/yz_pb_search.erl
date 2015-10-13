@@ -75,26 +75,32 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
                         ErrMsg = io_lib:format(?YZ_ERR_INDEX_NOT_FOUND, [Index]),
                         {error, ErrMsg, State};
                     false ->
-			Result = yz_solr:dist_search(Index, Params),
-			case Result of
-			    {error, insufficient_vnodes_available} ->
-				yz_stat:search_fail(),
-				{error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
-			    {_Headers, Body} ->
-				R = mochijson2:decode(Body),
-				Resp = yz_solr:get_response(R),
-				Pairs = yz_solr:get_doc_pairs(Resp),
-				MaxScore = kvc:path([<<"maxScore">>], Resp),
-				NumFound = kvc:path([<<"numFound">>], Resp),
+                        Result = yz_solr:dist_search(Index, Params),
+                        case Result of
+                            {error, insufficient_vnodes_available} ->
+                                yz_stat:search_fail(),
+                                {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
+                            {error, Error} ->
+                                yz_stat:search_fail(),
+                                TraceErr = erlang:get_stacktrace(),
+                                ?ERROR("~p ~p~n", [Error, TraceErr]),
+                                {error, ?YZ_ERR_QUERY_FAILURE, State};
+                            {_Headers, Body} ->
+                                R = mochijson2:decode(Body),
+                                Resp = yz_solr:get_response(R),
+                                Pairs = yz_solr:get_doc_pairs(Resp),
+                                MaxScore = kvc:path([<<"maxScore">>], Resp),
+                                NumFound = kvc:path([<<"numFound">>], Resp),
 
-				RPBResp = #rpbsearchqueryresp{
-				  docs = [encode_doc(Doc) || Doc <- Pairs],
-				  max_score = MaxScore,
-				  num_found = NumFound
-				 },
-				yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
-				{reply, RPBResp, State}
-			end
+                                RPBResp = #rpbsearchqueryresp{
+                                             docs = [encode_doc(Doc) ||
+                                                        Doc <- Pairs],
+                                             max_score = MaxScore,
+                                             num_found = NumFound
+                                            },
+                                yz_stat:search_end(?YZ_TIME_ELAPSED(T1)),
+                                {reply, RPBResp, State}
+                        end
                 end
             catch
                 throw:{Message, URL, Err} ->
