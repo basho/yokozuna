@@ -560,7 +560,11 @@ merge_config(Change, Base) ->
 -spec write_objs([node()], bucket()) -> ok.
 write_objs(Cluster, Bucket) ->
     lager:info("Writing 1000 objects"),
-    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1,1000)).
+    write_objs(Cluster, Bucket, 1000).
+
+write_objs(Cluster, Bucket, NumObjects) ->
+    lager:info("Writing ~B objects", [NumObjects]),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1, NumObjects)).
 
 -spec write_obj([node()], bucket()) -> fun().
 write_obj(Cluster, Bucket) ->
