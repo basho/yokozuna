@@ -224,15 +224,25 @@ repair(Partition, {_Reason, KeyBin}) ->
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
             case yz_kv:should_index(Index) of
-                true ->
-                    Ring = yz_misc:get_ring(transformed),
-                    yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
-                    full_repair;
-                false ->
-                    %% TODO: pass obj hash to repair fun to avoid
-                    %% object read just to update hash.
-                    yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                    tree_repair
+                    true ->
+                        Ring = yz_misc:get_ring(transformed),
+                    try
+                        yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
+                        full_repair
+                    catch _:_Err ->
+                            %% The key can't be indexed; just repair the tree
+                            %% We already track the 'failed to index'
+                            %% error trace in yz_kv:index/3
+                            lager:notice("failed to repair object ~p, as it failed to index properly",
+                                         [BKey]),
+                            yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                            tree_repair
+                    end;
+                    false ->
+                        %% TODO: pass obj hash to repair fun to avoid
+                        %% object read just to update hash.
+                        yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                        tree_repair
             end;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which

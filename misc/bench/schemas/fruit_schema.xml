@@ -6,6 +6,8 @@
 
    <field name="text" type="text_ws" indexed="true" stored="false" multiValued="true"/>
 
+   <field name="date_register" type="tdate" indexed="true" stored="true" multiValued="false" />
+
    <field name="_version_" type="long" indexed="true" stored="true"/>
 
    <!-- Entropy Data: Data related to anti-entropy -->
@@ -41,6 +43,10 @@
     <fieldType name="_yz_str" class="solr.StrField" sortMissingLast="true" />
 
     <fieldType name="long" class="solr.TrieLongField" precisionStep="0" positionIncrementGap="0"/>
+
+    <fieldType name="date" class="solr.TrieDateField" precisionStep="0" positionIncrementGap="0"/>
+    <!-- A Trie based date field for faster date range queries and date faceting. -->
+    <fieldType name="tdate" class="solr.TrieDateField" precisionStep="6" positionIncrementGap="0"/>
 
     <!-- A text field that only splits on whitespace for exact matching of words -->
     <fieldType name="text_ws" class="solr.TextField" positionIncrementGap="100">

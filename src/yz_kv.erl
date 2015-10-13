@@ -190,35 +190,53 @@ has_indexes(RemoteNode) ->
         _ -> false
     end.
 
+
+%% @doc Index the data supplied in the Riak Object.
+%% The Riak Object should be a serialized object (a binary,
+%% which has been serialized using riak_object:to_binary/1)
+-spec index_binary(bucket(), key(), binary(), write_reason(), p()) -> ok.
+index_binary(Bucket, Key, Obj, Reason, P) ->
+    index_internal(
+        Bucket, Key, Obj, Reason, P
+    ).
+
+%% @doc Index the data supplied in the Riak Object.
+-spec index(riak_object:riak_object(), write_reason(), p()) -> ok.
 index(Obj, Reason, P) ->
+    index_internal(
+        riak_object:bucket(Obj), riak_object:key(Obj), Obj, Reason, P
+    ).
+
+%% @private
+index_internal(Bucket, Key, Obj, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
             Ring = yz_misc:get_ring(transformed),
             case is_owner_or_future_owner(P, node(), Ring) of
                 true ->
                     T1 = os:timestamp(),
-                    BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+                    BKey = {Bucket, Key},
                     try
                         Index = get_index(BKey),
                         ShortPL = riak_kv_util:get_index_n(BKey),
                         case should_index(Index) of
                             true ->
-                                index(Obj, Reason, Ring, P, BKey, ShortPL, Index);
+                                index(robj(Bucket, Key, Obj), Reason, Ring, P, BKey, ShortPL, Index);
                             false ->
-                                dont_index(Obj, Reason, P, BKey, ShortPL)
+                                dont_index(robj(Bucket, Key, Obj), Reason, P, BKey, ShortPL)
                         end,
                         yz_stat:index_end(?YZ_TIME_ELAPSED(T1))
                     catch _:Err ->
-                            yz_stat:index_fail(),
-                            Trace = erlang:get_stacktrace(),
-                            case Reason of
-                                delete ->
-                                    ?ERROR("failed to delete docid ~p with error ~p because ~p",
-                                           [BKey, Err, Trace]);
-                                _ ->
-                                    ?ERROR("failed to index object ~p with error ~p because ~p",
-                                           [BKey, Err, Trace])
-                            end
+                        yz_stat:index_fail(),
+                        Trace = erlang:get_stacktrace(),
+                        case Reason of
+                            delete ->
+                                ?ERROR("failed to delete docid ~p with error ~p because ~p",
+                                    [BKey, Err, Trace]);
+                            _ ->
+                                ?ERROR("failed to index object ~p with error ~p because ~p",
+                                    [BKey, Err, Trace])
+                        end
                     end;
                 false ->
                     ok
@@ -226,6 +244,12 @@ index(Obj, Reason, P) ->
         false ->
             ok
     end.
+
+%% @private
+robj(Bucket, Key, Obj) when is_binary(Obj) ->
+    riak_object:from_binary(Bucket, Key, Obj);
+robj(_Bucket, _Key, Obj) ->
+    Obj.
 
 %% @private
 %%
