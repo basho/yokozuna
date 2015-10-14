@@ -484,8 +484,9 @@ wait_for_schema(Cluster, Name, Content) ->
     ok.
 
 verify_count(Expected, Resp) ->
-    lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
-    Expected == get_count(Resp).
+    Count = get_count(Resp),
+    lager:info("E: ~p, A: ~p", [Expected, Count]),
+    Expected =:= get_count(Resp).
 
 -spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
@@ -545,3 +546,33 @@ commit(Nodes, Index) ->
                [Index, ?SOFTCOMMIT]),
     rpc:multicall(Nodes, yz_solr, commit, [Index]),
     ok.
+
+entropy_data_url({Host, Port}, Index, Params) ->
+    ?FMT("http://~s:~B/internal_solr/~s/entropy_data?~s",
+         [Host, Port, Index, mochiweb_util:urlencode(Params)]).
+
+-spec merge_config(proplist(), proplist()) -> proplist().
+merge_config(Change, Base) ->
+    lists:ukeymerge(1, lists:keysort(1, Change), lists:keysort(1, Base)).
+
+-spec write_objs([node()], bucket()) -> ok.
+write_objs(Cluster, Bucket) ->
+    lager:info("Writing 1000 objects"),
+    write_objs(Cluster, Bucket, 1000).
+
+write_objs(Cluster, Bucket, NumObjects) ->
+    lager:info("Writing ~B objects", [NumObjects]),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1, NumObjects)).
+
+-spec write_obj([node()], bucket()) -> fun().
+write_obj(Cluster, Bucket) ->
+    fun(N) ->
+            PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
+            Key = list_to_binary(io_lib:format("key_~B", [N])),
+            Body = mochijson2:encode(PL),
+            HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(
+                                                          Cluster))),
+            CT = "application/json",
+            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
+            yz_rt:http_put(HP, Bucket, Key, CT, Body)
+    end.
