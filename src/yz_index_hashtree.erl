@@ -295,7 +295,7 @@ load_built(#state{trees=Trees}) ->
         _ -> false
     end.
 
--spec fold_keys(p(), tree()) -> ok.
+-spec fold_keys(p(), tree()) -> [ok|timeout|not_available].
 fold_keys(Partition, Tree) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
@@ -307,8 +307,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
-    ok.
+    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
 
 -spec do_new_tree({p(),n()}, state()) -> state().
 do_new_tree(Id, S=#state{trees=Trees, path=Path}) ->
@@ -552,9 +551,8 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
     case {Locked, Type} of
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
-            fold_keys(Index, Tree),
-            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
-            gen_server:cast(Tree, build_finished);
+            IterKeys = fold_keys(Index, Tree),
+            handle_iter_keys(Tree, Index, IterKeys);
         {true, rehash} ->
             lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
@@ -608,4 +606,19 @@ maybe_expire_caps_check(S) ->
         true ->
             S#state{expired=true};
         false -> S
+    end.
+
+-spec handle_iter_keys(pid(), p(), []| [ok|timeout|not_available]) -> ok.
+handle_iter_keys(Tree, Index, []) ->
+    lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+    gen_server:cast(Tree, build_finished),
+    ok;
+handle_iter_keys(Tree, Index, IterKeys) ->
+    case lists:all(fun(V) -> V =:= ok end, IterKeys)  of
+        true ->
+            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+            gen_server:cast(Tree, build_finished);
+        _ ->
+            lager:debug("YZ AAE tree build failed: ~p", [Index]),
+            gen_server:cast(Tree, build_failed)
     end.

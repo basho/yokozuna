@@ -207,8 +207,7 @@ repair(Partition, {remote_missing, KeyBin}) ->
     %% assume that Yokozuna is enabled and current node is owner.
     case yz_kv:should_index(Index) of
         true ->
-            yz_kv:index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index),
-            full_repair;
+            index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index);
         false ->
             yz_kv:dont_index(FakeObj, delete, Partition, BKey, ShortPL),
             tree_repair
@@ -226,18 +225,8 @@ repair(Partition, {_Reason, KeyBin}) ->
             case yz_kv:should_index(Index) of
                     true ->
                         Ring = yz_misc:get_ring(transformed),
-                    try
-                        yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
-                        full_repair
-                    catch _:_Err ->
-                            %% The key can't be indexed; just repair the tree
-                            %% We already track the 'failed to index'
-                            %% error trace in yz_kv:index/3
-                            lager:notice("failed to repair object ~p, as it failed to index properly",
-                                         [BKey]),
-                            yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                            tree_repair
-                    end;
+                        index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL,
+                              Index);
                     false ->
                         %% TODO: pass obj hash to repair fun to avoid
                         %% object read just to update hash.
@@ -253,6 +242,28 @@ repair(Partition, {_Reason, KeyBin}) ->
             %% the case of other errors just ignore them and let the
             %% next exchange retry the repair if it is still needed.
             failed_repair
+    end.
+
+%% @private
+%%
+%% @doc Call into yz_kv:index/7 with same try/catch checking as done in
+%%      yz_kv:index/3, but distinguishing between badrequest vs other errors.
+index(Obj, Reason, Ring, Partition, BKey, ShortPL, Index) ->
+    try
+        yz_kv:index(Obj, Reason, Ring, Partition, BKey, ShortPL, Index),
+        full_repair
+    catch _:Err ->
+            yz_stat:index_fail(),
+            Trace = erlang:get_stacktrace(),
+            ?ERROR("failed to repair ~p request for docid ~p with error ~p because ~p",
+                   [Reason, BKey, Err, Trace]),
+            case Err of
+                {_, badrequest, _} ->
+                    yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
+                    tree_repair;
+                _ ->
+                    failed_repair
+            end
     end.
 
 %% @private

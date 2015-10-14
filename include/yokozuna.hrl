@@ -160,6 +160,10 @@
                         app_helper:get_env(riak_core, platform_data_dir)++"/yz")).
 -define(YZ_TEMP_DIR, app_helper:get_env(?YZ_APP_NAME, temp_dir,
                         app_helper:get_env(riak_core, platform_data_dir)++"/yz_temp")).
+%% The request timeout for Solr calls. Defaults to 60 seconds.
+-define(YZ_SOLR_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
+                                                    solr_request_timeout,
+                                                    60000)).
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
@@ -237,11 +241,12 @@
                       {partition, lp()} |
                       {limit, pos_integer()}].
 -type ed_continuation() :: none | base64().
+-type ed_pairs() :: [{DocID::binary(), Hash::base64()}].
 
 -record(entropy_data, {
           more=false :: boolean(),
           continuation :: ed_continuation(),
-          pairs :: [{DocID::binary(), Hash::base64()}]
+          pairs :: ed_pairs()
          }).
 -type entropy_data() :: #entropy_data{}.
 -type keydiff() :: hashtree:keydiff().
@@ -288,6 +293,8 @@
 -define(ERROR(Fmt), lager:error(Fmt)).
 -define(ERROR(Fmt, Args), lager:error(Fmt, Args)).
 -define(INFO(Fmt, Args), lager:info(Fmt, Args)).
+-define(NOTICE(Fmt, Args), lager:notice(Fmt, Args)).
+-define(NOTICE(Fmt), lager:notice(Fmt)).
 -define(WARN(Fmt, Args), lager:warning(Fmt, Args)).
 
 %%%===================================================================
