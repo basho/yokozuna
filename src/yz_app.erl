@@ -95,7 +95,7 @@ maybe_setup(true) ->
 	yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
-    ok = yz_events:add_handler(yz_events, []),
+    ok = yz_events:add_guarded_handler(yz_events, []),
     yz_fuse:setup(),
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],
