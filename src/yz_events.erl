@@ -39,9 +39,13 @@
          init/1,
          terminate/2]).
 
+%% other
+-export([create_table/0]).
+
 -include("yokozuna.hrl").
 
 -define(NUM_TICKS_START, 1).
+-define(ETS, ets_yz_events).
 
 -record(state, {
           %% The number of ticks since the last time this value was
@@ -67,8 +71,7 @@ start_link() ->
     gen_event:start_link({local, ?MODULE}).
 
 add_handler(Handler, Args) ->
-    gen_event:add_handler(?MODULE, Handler, Args),
-    create_table().
+    gen_event:add_handler(?MODULE, Handler, Args).
 
 add_sup_handler(Handler, Args) ->
     gen_event:add_sup_handler(?MODULE, Handler, Args).
@@ -138,7 +141,7 @@ terminate(_Reason, _S) ->
 %% is already up for yz_events.
 -spec create_table() -> ok.
 create_table() ->
-    _ = ets:new(?MODULE, [named_table, public, set,
+    _ = ets:new(?ETS, [named_table, public, set,
                           {write_concurrency, true},
                           {read_concurrency, true},
                           {keypos, 1}]),
@@ -280,15 +283,15 @@ sync_indexes(Removed, Added, Same) ->
 %% @doc Check and update `yz_events' ETS if the index has recovered from it's
 %%      fuse being blown or has been reset/removed.
 handle_index_recovered(Index, down) ->
-    ets:insert(?MODULE, {Index, {state, down}});
+    ets:insert(?ETS, {Index, {state, down}});
 handle_index_recovered(Index, removed) ->
-    ets:delete(Index);
+    ets:delete(?ETS, Index);
 handle_index_recovered(Index, up) ->
-    Recovered = ets:lookup(?MODULE, Index),
+    Recovered = ets:lookup(?ETS, Index),
     case proplists:get_value(Index, Recovered, []) of
         {state, down} ->
             yz_stat:fuse_recovered(Index),
-            ets:insert(?MODULE, {Index, {state, up}});
+            ets:insert(?ETS, {Index, {state, up}});
         _ ->
-            ets:insert(?MODULE, {Index, {state, up}})
+            ets:insert(?ETS, {Index, {state, up}})
     end.
