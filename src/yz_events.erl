@@ -18,8 +18,8 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc Functionality related to events.  This is the single producer of
-%% writes to the ETS table `yz_events'.
+%% @doc Functionality related to events. This is the single producer of
+%%      writes to the ETS table `yz_events'.
 
 -module(yz_events).
 -behavior(gen_event).
@@ -27,9 +27,11 @@
 %% API
 -export([start_link/0,
          add_handler/2,
-         add_sup_handler/2,
          add_callback/1,
-         add_sup_callback/1]).
+         add_guarded_callback/1,
+         add_guarded_handler/2,
+         add_sup_callback/1,
+         add_sup_handler/2]).
 
 %% gen_event callbacks
 -export([code_change/3,
@@ -76,11 +78,18 @@ add_handler(Handler, Args) ->
 add_sup_handler(Handler, Args) ->
     gen_event:add_sup_handler(?MODULE, Handler, Args).
 
+add_guarded_handler(Handler, Args) ->
+    yz_eventhandler_sup:start_guarded_handler(?MODULE, Handler, Args).
+
 add_callback(Fn) when is_function(Fn) ->
     gen_event:add_handler(?MODULE, {?MODULE, make_ref()}, [Fn]).
 
 add_sup_callback(Fn) when is_function(Fn) ->
     gen_event:add_sup_handler(?MODULE, {?MODULE, make_ref()}, [Fn]).
+
+add_guarded_callback(Fn) when is_function(Fn) ->
+    yz_eventhandler_sup:start_guarded_handler(?MODULE, {?MODULE, make_ref()},
+                                          [Fn]).
 
 %%%===================================================================
 %%% Callbacks
@@ -282,6 +291,7 @@ sync_indexes(Removed, Added, Same) ->
 %% @private
 %% @doc Check and update `yz_events' ETS if the index has recovered from it's
 %%      fuse being blown or has been reset/removed.
+-spec handle_index_recovered(index_name(), down|removed|up) -> true.
 handle_index_recovered(Index, down) ->
     ets:insert(?ETS, {Index, {state, down}});
 handle_index_recovered(Index, removed) ->
