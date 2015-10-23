@@ -23,13 +23,15 @@
 -export([setup/0]).
 
 %% api
--export([create/1, check/1, melt/1, reset/1]).
+-export([create/1, check/1, melt/1, remove/1, reset/1]).
 
 %% helpers
 -export([fuse_context/0]).
 
 %% stats helpers
 -export([aggregate_index_stats/2, stats/0, get_stats_for_index/1]).
+
+-define(DYNAMIC_STATS, [fuse_recovered]).
 
 -type fuse_check() :: ok | blown | melt.
 
@@ -40,7 +42,10 @@
 %% @doc Start fuse and stats
 -spec setup() -> ok.
 setup() ->
+    %% TODO: move application:start to riak boot.
     ok = yokozuna:ensure_started(fuse),
+
+    ok = fuse_event:add_handler(yz_events, []),
 
     %% Set up fuse stats
     application:set_env(fuse, stats_plugin, fuse_stats_exometer).
@@ -60,13 +65,24 @@ create(Index) ->
             Refresh = {reset, app_helper:get_env(yokozuna, melt_reset_refresh, 30000)},
             Strategy = {standard, MaxR, MaxT},
             Opts = {Strategy, Refresh},
-            fuse:install(IndexName, Opts);
+            fuse:install(IndexName, Opts),
+            yz_stat:create_dynamic_stats(IndexName, ?DYNAMIC_STATS),
+            ok;
         _ -> ok
 end.
 
+-spec remove(index_name()) -> ok | {error, not_found}.
+remove(Index) ->
+    IndexName = ?BIN_TO_ATOM(Index),
+    fuse:remove(IndexName),
+    yz_stat:delete_dynamic_stats(IndexName, ?DYNAMIC_STATS),
+    ok.
+
 -spec reset(index_name()) -> ok | {error, not_found}.
 reset(Index) ->
-    fuse:reset(?BIN_TO_ATOM(Index)).
+    IndexName = ?BIN_TO_ATOM(Index),
+    fuse:reset(IndexName),
+    ok.
 
 -spec check(index_name()|atom()) -> ok | blown | {error, not_found}.
 check(Index) when is_binary(Index) ->
@@ -106,7 +122,11 @@ stats() ->
                          {search_index_fuses_blown_count, yz_fuse,
                           aggregate_index_stats, [blown, count]},
                          {search_index_fuses_blown_one, yz_fuse,
-                          aggregate_index_stats, [blown, one]}]].
+                          aggregate_index_stats, [blown, one]},
+                         {search_index_fuses_recovered_count, yz_fuse,
+                          aggregate_index_stats, [recovered, count]},
+                         {search_index_fuses_recovered_one, yz_fuse,
+                          aggregate_index_stats, [recovered, one]}]].
 
 -spec aggregate_index_stats(fuse_check(), count|one) -> non_neg_integer().
 aggregate_index_stats(FuseCheck, Stat) ->
@@ -126,5 +146,5 @@ get_stats_for_index(Index) ->
                       io:format("Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
                                 [Index, proplists:get_value(count, Stats),
                                  proplists:get_value(one, Stats), Check])
-              end, [ok, melt, blown])
+              end, [ok, melt, blown, recovered])
     end.

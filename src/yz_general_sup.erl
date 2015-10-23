@@ -42,9 +42,16 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
+    %% Create yz_events ETS table
+    yz_events:create_table(),
+
     SolrQ = {yz_solrq_sup,
              {yz_solrq_sup, start_link, []},
              permanent, infinity, supervisor, [yz_solrq_sup]},
+
+    EventHandlerSup = {yz_eventhandler_sup,
+                       {yz_eventhandler_sup, start_link, []},
+                      permanent, infinity, supervisor, [yz_eventhandler_sup]},
 
     Events = {yz_events,
               {yz_events, start_link, []},
@@ -62,6 +69,6 @@ init([]) ->
              {yz_cover, start_link, []},
              permanent, 5000, worker, [yz_cover]},
 
-    Children = [SolrQ, Events, HashtreeSup, EntropyMgr, Cover],
+    Children = [SolrQ, EventHandlerSup, Events, HashtreeSup, EntropyMgr, Cover],
 
     {ok, {{one_for_one, 5, 10}, Children}}.
