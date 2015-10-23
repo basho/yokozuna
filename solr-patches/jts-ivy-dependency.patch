@@ -1,0 +1,12 @@
+diff -Naur solr-4.7.0/solr/core/ivy.xml solr-4.7.0-yz/solr/core/ivy.xml
+--- solr-4.7.0/solr/core/ivy.xml	2014-02-14 12:17:21.000000000 -0500
++++ solr-4.7.0-yz/solr/core/ivy.xml	2015-09-14 15:01:10.000000000 -0400
+@@ -29,6 +29,8 @@
+   </configurations>
+ 
+   <dependencies>
++    <dependency org="com.vividsolutions" name="jts" rev="1.13"/>
++
+     <dependency org="commons-codec" name="commons-codec" rev="${/commons-codec/commons-codec}" conf="compile->*"/>
+     <dependency org="commons-fileupload" name="commons-fileupload" rev="${/commons-fileupload/commons-fileupload}" conf="compile->*"/>
+     <dependency org="commons-cli" name="commons-cli" rev="${/commons-cli/commons-cli}" conf="compile->*"/>
