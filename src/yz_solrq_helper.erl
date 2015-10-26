@@ -171,12 +171,16 @@ solr_ops(LI, Entries) ->
                 _ ->
                     LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
                     LP = yz_cover:logical_partition(LI, P),
-                    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
+                    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
+                                            ?INT_TO_BIN(LP)),
                     AddOps = yz_doc:adding_docs(Docs),
-                    DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey, LP),
-                    %% List will be reversed, so make sure deletes happen before adds
+                    DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
+                                                       LP),
+                    %% List will be reversed, so make sure deletes happen
+                    %% before adds
                     lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
-                                  [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
+                                  [{delete, yz_solr:encode_delete(DeleteOp)} ||
+                                      DeleteOp <- DeleteOps],
                                   Ops])
             end
         end, [], Entries)).
