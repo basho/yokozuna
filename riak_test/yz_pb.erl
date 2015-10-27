@@ -42,6 +42,7 @@ confirm() ->
     confirm_admin_bad_index_name(Cluster),
     confirm_basic_search(Cluster),
     confirm_fl_search_without_score(Cluster),
+    confirm_fl_search_without_score_without_sort(Cluster),
     confirm_encoded_search(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
@@ -206,6 +207,16 @@ confirm_fl_search_without_score(Cluster) ->
     Params = [{sort, <<"age_i asc">>}, {fl, ["*"]}],
     store_and_search(Cluster, Bucket, "test_fl_search_without_score", Body,
                      "application/json", <<"age_i:5">>, Params).
+
+confirm_fl_search_without_score_without_sort(Cluster) ->
+    Index = <<"fl_search_without_score_without_sort">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_fl_search_without_score ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{fl, ["age_i", "_yz_rk"]}],
+    store_and_search(Cluster, Bucket, "test_fl_search_without_score_without_sort",
+                     Body, "application/json", <<"age_i:5">>, Params).
 
 confirm_encoded_search(Cluster) ->
     Index = <<"encoded">>,

@@ -135,7 +135,7 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
     MaybeParams = [{'q.op', DefaultOp},
                    {sort, Sort},
                    {fq, Filter},
-                   {fl, default(FieldList, <<"*,score">>)},
+                   {fl, check_sort_on_fl(Sort, default(FieldList, <<"*,score">>))},
                    {df, DefaultField},
                    {start, Start},
                    {rows, Rows}],
@@ -149,23 +149,31 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
 %% @private
 %%
 %% @doc function for FieldList (FL) defaults and necessary conversions.
-%%      * and score are defaults if none are provided. Score is currently always
-%%      provided.
+%%      * and score are defaults if none are provided.
 %%
-%% TODO: once we fix our erlang_protobufs impl. around handling of fields
-%%       (esp. optionals) and decoding to erlang records, we can remove the need
-%%       to always return `score', as its currently needed for `maxScore'.
 -spec default(undefined|[string()]|binary(), binary()) -> binary().
 default(undefined, Default) ->
     Default;
 default([], Default) ->
     Default;
 default([H|T], _) ->
-    B1 = unicode:characters_to_binary(
-          string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ",")),
-    <<B1/binary,<<",score">>/binary>>;
+    unicode:characters_to_binary(
+     string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ","));
 default(Value, _) ->
-    <<Value/binary,<<",score">>/binary>>.
+    Value.
+
+%% @private
+%%
+%% @doc Temp solution to handle sort without score bug.
+%% TODO: once we fix our erlang_protobufs impl. around handling of fields
+%%       (esp. optionals) and decoding to erlang records, we can remove the need
+%%       to return `score' when there's a sort, as its currently needed for
+%%       `maxScore'.
+-spec check_sort_on_fl(undefined|binary()|string(), binary()) -> binary().
+check_sort_on_fl(undefined, FL) ->
+    FL;
+check_sort_on_fl(_Sort, FL) ->
+    <<FL/binary,<<",score">>/binary>>.
 
 %% @private
 %%
