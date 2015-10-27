@@ -158,27 +158,31 @@ solr_ops(LI, Entries) ->
     lists:reverse(
       lists:foldl(
         fun({BKey, Obj0, Reason0, P, ShortPL, Hash}, Ops) ->
-                {Bucket, _} = BKey,
-                BProps = riak_core_bucket:get_bucket(Bucket),
-                Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
-                ObjValues = riak_object:get_values(Obj),
-                Reason = get_reason_action(Reason0),
-                case {Reason, ObjValues} of
-                    {delete, _} ->
-                        [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
-                    {_, [notfound]} ->
-                        [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
-                    _ ->
-                        LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-                        LP = yz_cover:logical_partition(LI, P),
-                        Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
-                        AddOps = yz_doc:adding_docs(Docs),
-                        DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey, LP),
-                        %% List will be reversed, so make sure deletes happen before adds
-                        lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
-                                      [{delete, yz_solr:encode_delete(DeleteOp)} || DeleteOp <- DeleteOps],
-                                      Ops])
-                end
+            {Bucket, _} = BKey,
+            BProps = riak_core_bucket:get_bucket(Bucket),
+            Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
+            ObjValues = riak_object:get_values(Obj),
+            Reason = get_reason_action(Reason0),
+            case {Reason, ObjValues} of
+                {delete, _} ->
+                    [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                {_, [notfound]} ->
+                    [{delete, yz_solr:encode_delete({bkey, BKey})} | Ops];
+                _ ->
+                    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+                    LP = yz_cover:logical_partition(LI, P),
+                    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
+                                            ?INT_TO_BIN(LP)),
+                    AddOps = yz_doc:adding_docs(Docs),
+                    DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
+                                                       LP),
+                    %% List will be reversed, so make sure deletes happen
+                    %% before adds
+                    lists:append([[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                                  [{delete, yz_solr:encode_delete(DeleteOp)} ||
+                                      DeleteOp <- DeleteOps],
+                                  Ops])
+            end
         end, [], Entries)).
 
 -spec send_solr_ops(index_name(), solr_ops()) -> ok.
@@ -226,7 +230,6 @@ update_aae_and_repair_stats(Entries) ->
     Repairs = lists:foldl(
                 fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
                         ReasonAction = get_reason_action(Reason),
-                        lager:info("Reason: ~p", [Reason]),
                         Action = case ReasonAction of
                                      delete -> delete;
                                      _ -> {insert, Hash}

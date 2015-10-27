@@ -320,29 +320,47 @@ check_flag(Flag) ->
 
 %% @private
 %%
-%% @doc Cleanup tombstones and siblings accordingly... cleanup/3
-%% TODO: deprecate 1/2 versions in favor of generic solution for sibling value
-%% Objects, focused on allow_mult=true case
--spec cleanup(non_neg_integer()|[doc()], {obj(), bkey(), lp()}|bkey()) ->
-                     [{id, binary()}|{siblings, bkey()}|{bkey, bkey()}].
+%% @doc General cleanup for non-sibling-permitted documents,
+%%      setting up a delete operation of the bkey if the field
+%%      contains a tombstone.
+%%      e.g. for allow_mult=false/lww=true/datatype/sc
+-spec cleanup([doc()], bkey()) -> [{bkey, bkey()}].
 cleanup([], _BKey) ->
     [];
 cleanup([{doc, Fields}|T], BKey) ->
     case proplists:is_defined(tombstone, Fields) of
         true -> [{bkey, BKey}];
         false -> cleanup(T, BKey)
+    end.
+
+%% @private
+%% @doc Cleanup for siblings-permitted objects.
+%%      `Last-case' if single-document and has no tombstones is to cleanup
+%%      possible siblings on reconcilation.
+%%
+%%      If there's a tombstone, remove w/ bkey Query.
+%%
+%%      For Docs > 1, we start w/ & remove the original doc_id (ODocID) in order
+%%      to preserve vtag-based ids used for sibling writes, but just remove
+%%      via BKey if there's at least 1 tombstone.
+%%
+%%      Tombstone tuples come through as {tombstone, <<>>}.
+-spec cleanup_for_sibs([doc()], bkey(), binary()|[{id, binary()}])
+                      -> [{id, binary()}|{siblings, bkey()}].
+cleanup_for_sibs(Docs, BKey, ODocID) when is_binary(ODocID) ->
+    case length(Docs) > 1 of
+        true -> cleanup_for_sibs(Docs, BKey, [{id, ODocID}]);
+        false -> cleanup_for_sibs(Docs, BKey, [])
     end;
-cleanup(1, {_Obj, BKey, _LP}) ->
-    %% Delete any siblings
+cleanup_for_sibs([{doc, Fields}|T], BKey, Ops) ->
+    case proplists:is_defined(tombstone, Fields) of
+        true -> [{bkey, BKey}];
+        false -> cleanup_for_sibs(T, BKey, Ops)
+    end;
+cleanup_for_sibs([], BKey, []) ->
     [{siblings, BKey}];
-cleanup(2, {Obj, _BKey, LP}) ->
-    %% An object has crossed the threshold from
-    %% being a single value Object, to a sibling
-    %% value Object, delete the non-sibling ID
-    DocID = yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)),
-    [{id, DocID}];
-cleanup(_, _) ->
-    [].
+cleanup_for_sibs([], _BKey, Ops) ->
+    Ops.
 
 %% @private
 %%
@@ -461,8 +479,10 @@ siblings_permitted(_) -> true.
                        bkey(), lp()) -> delops().
 delete_operation(BProps, Obj, Docs, BKey, LP) ->
     case siblings_permitted(BProps) of
-        true -> cleanup(length(Docs), {Obj, BKey, LP});
-        false -> cleanup(Docs, BKey)
+        true -> cleanup_for_sibs(Docs,
+                                BKey,
+                                yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)));
+        _ -> cleanup(Docs, BKey)
     end.
 
 %% @private
