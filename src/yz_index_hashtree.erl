@@ -151,7 +151,7 @@ init([Index, RPs]) ->
                        built=false,
                        expired=false,
                        path=Path},
-            S2 = init_trees(RPs, S),
+            S2 = init_trees(RPs, false, S),
 
             %% If no indexes exist then mark tree as built
             %% immediately. This allows exchange to start immediately
@@ -188,10 +188,13 @@ handle_call({update_tree, Id}, From, S) ->
     apply_tree(Id,
                fun(Tree) ->
                        {SnapTree, Tree2} = hashtree:update_snapshot(Tree),
-                       spawn_link(fun() ->
-                                          hashtree:update_perform(SnapTree),
-                                          gen_server:reply(From, ok)
-                                  end),
+                       Self = self(),
+                       spawn_link(
+                         fun() ->
+                                 hashtree:update_perform(SnapTree),
+                                 gen_server:cast(Self, {updated, Id}),
+                                 gen_server:reply(From, ok)
+                         end),
                        {noreply, Tree2}
                end,
                S);
@@ -241,6 +244,12 @@ handle_cast(stop, S) ->
     S2 = close_trees(S),
     {stop, normal, S2};
 
+handle_cast({updated, Id}, State) ->
+    Fun = fun(Tree) ->
+              {noreply, hashtree:set_next_rebuild(Tree, incremental)}
+          end,
+    apply_tree(Id, Fun, State);
+
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
@@ -280,11 +289,19 @@ determine_data_root() ->
             end
     end.
 
--spec init_trees([{p(),n()}], state()) -> state().
-init_trees(RPs, S) ->
-    S2 = lists:foldl(fun(Id, SAcc) ->
-                                 do_new_tree(Id, SAcc)
-                         end, S, RPs),
+%% @doc Init the trees.
+%%
+%% MarkEmpty is a boolean dictating whether we're marking the tree empty for the
+%% the first creation or just marking it open instead.
+-spec init_trees([{p(),n()}], boolean(), state()) -> state().
+init_trees(RPs, MarkEmpty, S) ->
+    S2 = lists:foldl(
+           fun(Id, SAcc) ->
+               case MarkEmpty of
+                   true  -> do_new_tree(Id, SAcc, mark_empty);
+                   false -> do_new_tree(Id, SAcc, mark_open)
+               end
+           end, S, RPs),
     S2#state{built=false, closed=false, expired=false}.
 
 -spec load_built(state()) -> boolean().
@@ -310,17 +327,22 @@ fold_keys(Partition, Tree) ->
     [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
     ok.
 
--spec do_new_tree({p(),n()}, state()) -> state().
-do_new_tree(Id, S=#state{trees=Trees, path=Path}) ->
+%% @see riak_kv_index_hashtree:do_new_tree/3
+-spec do_new_tree({p(),n()}, state(), mark_open|mark_empty) -> state().
+do_new_tree(Id, S=#state{trees=Trees, path=Path}, MarkType) ->
     Index = S#state.index,
     IdBin = tree_id(Id),
-    NewTree = case Trees of
+    NewTree0 = case Trees of
                   [] ->
                       hashtree:new({Index,IdBin}, [{segment_path, Path}]);
                   [{_,Other}|_] ->
                       hashtree:new({Index,IdBin}, Other)
-              end,
-    Trees2 = orddict:store(Id, NewTree, Trees),
+               end,
+    NewTree1 = case MarkType of
+                   mark_empty -> hashtree:mark_open_empty(Id, NewTree0);
+                   mark_open  -> hashtree:mark_open_and_check(Id, NewTree0)
+               end,
+    Trees2 = orddict:store(Id, NewTree1, Trees),
     S#state{trees=Trees2}.
 
 -spec do_get_lock(term(), pid(), state()) ->
@@ -371,14 +393,17 @@ apply_tree(Id, Fun, S=#state{trees=Trees}) ->
     end.
 
 -spec do_build_finished(state()) -> state().
-do_build_finished(S=#state{index=Index, built=_Pid}) ->
+do_build_finished(S=#state{index=Index, built=_Pid, trees=Trees0}) ->
     lager:debug("Finished YZ build: ~p", [Index]),
-    {_,Tree0} = hd(S#state.trees),
+    Trees = orddict:map(fun(_Id, Tree) ->
+                            hashtree:flush_buffer(Tree)
+                        end, Trees0),
+    {_, Tree0} = hd(Trees),
     BuildTime = yz_kv:get_tree_build_time(Tree0),
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
     hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
     yz_kv:update_aae_tree_stats(Index, BuildTime),
-    S#state{built=true, build_time=BuildTime, expired=false}.
+    S#state{built=true, build_time=BuildTime, expired=false, trees=Trees}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
@@ -443,7 +468,7 @@ handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
                     %% be resolved whenever trees are eventually rebuilt, either
                     %% after normal expiration or after a future unexpected value
                     %% triggers the alternate case clause above.
-                    do_new_tree(Id, S)
+                    do_new_tree(Id, S, mark_open)
             end
     end.
 
@@ -499,13 +524,13 @@ clear_tree(S=#state{index=Index}) ->
     lager:debug("Clearing YZ AAE tree: ~p", [S#state.index]),
     S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
-    S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
+    S3 = init_trees(IndexN, true, S2#state{trees=orddict:new()}),
     ok = yz_kv:update_aae_tree_stats(Index, undefined),
     S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->
     S2 = close_trees(S),
-    {_,Tree0} = hd(S2#state.trees),
+    {_,Tree0} = hd(S#state.trees), % deliberately using state with live db ref
     hashtree:destroy(Tree0),
     S2.
 
@@ -526,9 +551,21 @@ close_trees(S=#state{trees=Trees, closed=false}) ->
     Trees2 = [begin
                   NewTree =
                       try
-                          hashtree:flush_buffer(Tree)
-                      catch _:_ ->
-                              lager:warning("Failed to flush trees during close"),
+                          case hashtree:next_rebuild(Tree) of
+                              %% Not marking close cleanly to avoid the
+                              %% cost of a full rebuild on shutdown.
+                              full ->
+                                  lager:info("Deliberately marking YZ hashtree ~p"
+                                             ++ " for full rebuild on next restart",
+                                             [IdxN]),
+                                  hashtree:flush_buffer(Tree);
+                              incremental ->
+                                  HT = hashtree:update_tree(Tree),
+                                  hashtree:mark_clean_close(IdxN, HT)
+                          end
+                      catch _:Err ->
+                              lager:warning("Failed to flush/update trees"
+                                            ++ " during close | Error: ~p", [Err]),
                               Tree
                       end,
                   {IdxN, NewTree}
