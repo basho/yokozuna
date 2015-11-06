@@ -89,6 +89,9 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
+%% @doc
+-type schema_err() :: {error, string()}.
+
 %% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is
 %%      disabled in a live, production cluster in order to isolate
@@ -105,7 +108,6 @@
 %%    action to manually index the missing data or wait for AAE to
 %%    take care of it.
 -type component() :: search | index.
-
 %%%===================================================================
 %%% Macros
 %%%===================================================================
