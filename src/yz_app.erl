@@ -20,7 +20,7 @@
 
 -module(yz_app).
 -behaviour(application).
--export([start/2, stop/1]). % prevent compile warnings
+-export([start/2, stop/1, prep_stop/1]).
 -compile(export_all).
 -include("yokozuna.hrl").
 
@@ -65,9 +65,22 @@ start(_StartType, _StartArgs) ->
             Error
     end.
 
+prep_stop(State) ->
+    try %% wrap with a try/catch - application carries on regardless,
+        %% no error message or logging about the failure otherwise.
+        lager:info("Stopping application yokozuna.\n", []),
+        ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
+        ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
+        ok
+    catch
+        Type:Reason ->
+            lager:error("Stopping application yokozuna - ~p:~p.\n",
+                        [Type, Reason])
+    end,
+    State.
+
 stop(_State) ->
-    ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
-    ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
+    lager:info("Stopped application yokozuna.\n", []),
     ok.
 
 %% @private
