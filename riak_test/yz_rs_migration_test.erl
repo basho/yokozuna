@@ -224,8 +224,7 @@ create_pb_conn(Node) ->
 load_data(Cluster, YZBenchDir, NumKeys) ->
     {ExitCode, _} = yz_rt:load_data(Cluster, ?FRUIT_BUCKET, YZBenchDir, NumKeys),
     ?assertEqual(0,ExitCode),
-    % Sleep for soft-commit.
-    timer:sleep(1100).
+    yz_rt:commit(Cluster, ?FRUIT_BUCKET).
 
 query_data(Cluster, YZBenchDir, NumKeys, Time, DefaultField) ->
     lager:info("Run query against cluster ~p", [Cluster]),

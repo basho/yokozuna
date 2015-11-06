@@ -4,6 +4,9 @@
 -include("yokozuna.hrl").
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
+-define(NO_BODY, <<>>).
+-define(IBROWSE_TIMEOUT, 60000).
+-define(SOFTCOMMIT, 1000).
 
 -type host() :: string().
 -type portnum() :: integer().
@@ -57,6 +60,22 @@ create_index(Node, Index, SchemaName, NVal) ->
     lager:info("Creating index ~s with schema ~s and n_val: ~p [~p]",
                [Index, SchemaName, NVal, Node]),
     ok = rpc:call(Node, yz_index, create, [Index, SchemaName, NVal]).
+
+-spec create_index_http(cluster(), index_name()) -> ok.
+create_index_http(Cluster, Index) ->
+    Node = yz_rt:select_random(Cluster),
+    HP = hd(host_entries(rt:connection_info([Node]))),
+    create_index_http(Cluster, HP, Index).
+
+-spec create_index_http(cluster(), {string(), portnum()}, index_name()) -> ok.
+create_index_http(Cluster, HP, Index) ->
+    Node = hd(Cluster),
+    URL = yz_rt:index_url(HP, Index),
+    Headers = [{"content-type", "application/json"}],
+    lager:info("create_index ~s [~p]", [Index, Node]),
+    {ok, "204", _, _} = yz_rt:http(put, URL, Headers, ?NO_BODY),
+    yz_rt:set_bucket_type_index(Node, Index),
+    yz_rt:wait_for_bucket_type(Cluster, Index).
 
 maybe_create_ets() ->
     case ets:info(?YZ_RT_ETS) of
@@ -116,6 +135,25 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
+-spec http(ibrowse:method(), string(), list(), string()) -> ibrowse:response().
+http(Method, URL, Headers, Body) ->
+    Opts = [],
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
+
+-spec http(ibrowse:method(), string(), list(), string(), list()|timeout())
+          -> ibrowse:response().
+http(Method, URL, Headers, Body, Opts) when is_list(Opts)  ->
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT);
+http(Method, URL, Headers, Body, Timeout) when is_integer(Timeout) ->
+    Opts = [],
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
+
+-spec http(ibrowse:method(), string(), list(), string(), list(), timeout())
+          -> ibrowse:response().
+http(Method, URL, Headers, Body, Opts, Timeout) when
+      is_list(Opts) andalso is_integer(Timeout) ->
+    ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
+
 -spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
@@ -128,6 +166,21 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     Headers = [{"content-type", CT}],
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
+
+-spec schema_url({string(), portnum()}, schema_name()) -> ok.
+schema_url({Host,Port}, Name) ->
+    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
+
+-spec index_url({string(), portnum()}, index_name()) -> ok.
+index_url({Host,Port}, Index) ->
+    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
+index_url({Host, Port}, Index, Timeout) ->
+    ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
+                                                     Timeout]).
+
+-spec search_url({string(), portnum()}, index_name()) -> ok.
+search_url({Host, Port}, Index) ->
+    ?FMT("http://~s:~B/search/query/~s", [Host, Port, Index]).
 
 %% @doc Run basho bench job to load fruit data on `Cluster'.
 %%
@@ -334,9 +387,11 @@ set_bucket_type_index(Node, BucketType, Index) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
     create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index}]).
 
-set_bucket_type_index(Node, BucketType, Index, NVal) ->
+set_bucket_type_index(Node, BucketType, Index, NVal) when is_integer(NVal) ->
+    set_bucket_type_index(Node, BucketType, Index, [{n_val, NVal}]);
+set_bucket_type_index(Node, BucketType, Index, Props) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
-    create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index},{n_val,NVal}]).
+    create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index} | Props]).
 
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);
@@ -431,8 +486,9 @@ wait_for_schema(Cluster, Name, Content) ->
     ok.
 
 verify_count(Expected, Resp) ->
-    lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
-    Expected == get_count(Resp).
+    Count = get_count(Resp),
+    lager:info("E: ~p, A: ~p", [Expected, Count]),
+    Expected =:= get_count(Resp).
 
 -spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
@@ -483,3 +539,42 @@ internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
           || {_, ShardPort} <- Shards],
     ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
          [Host, Port, Index, Name, Term, string:join(Ss, ",")]).
+
+-spec commit([node()], index_name()) -> ok.
+commit(Nodes, Index) ->
+    %% Wait for yokozuna index to trigger, then force a commit
+    timer:sleep(?SOFTCOMMIT),
+    lager:info("Commit search writes to ~s at softcommit (default) ~p",
+               [Index, ?SOFTCOMMIT]),
+    rpc:multicall(Nodes, yz_solr, commit, [Index]),
+    ok.
+
+entropy_data_url({Host, Port}, Index, Params) ->
+    ?FMT("http://~s:~B/internal_solr/~s/entropy_data?~s",
+         [Host, Port, Index, mochiweb_util:urlencode(Params)]).
+
+-spec merge_config(proplist(), proplist()) -> proplist().
+merge_config(Change, Base) ->
+    lists:ukeymerge(1, lists:keysort(1, Change), lists:keysort(1, Base)).
+
+-spec write_objs([node()], bucket()) -> ok.
+write_objs(Cluster, Bucket) ->
+    lager:info("Writing 1000 objects"),
+    write_objs(Cluster, Bucket, 1000).
+
+write_objs(Cluster, Bucket, NumObjects) ->
+    lager:info("Writing ~B objects", [NumObjects]),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1, NumObjects)).
+
+-spec write_obj([node()], bucket()) -> fun().
+write_obj(Cluster, Bucket) ->
+    fun(N) ->
+            PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
+            Key = list_to_binary(io_lib:format("key_~B", [N])),
+            Body = mochijson2:encode(PL),
+            HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(
+                                                          Cluster))),
+            CT = "application/json",
+            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
+            yz_rt:http_put(HP, Bucket, Key, CT, Body)
+    end.

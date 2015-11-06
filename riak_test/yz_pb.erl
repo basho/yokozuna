@@ -6,8 +6,6 @@
 -include_lib("riak_pb/include/riak_yokozuna_pb.hrl").
 -include("yokozuna.hrl").
 
--define(NO_HEADERS, []).
--define(NO_BODY, <<>>).
 -define(CFG, [{yokozuna, [{enabled, true}]}]).
 -define(CT_JSON, {"Content-Type", "application/json"}).
 
@@ -43,6 +41,7 @@ confirm() ->
     confirm_admin_index(Cluster),
     confirm_admin_bad_index_name(Cluster),
     confirm_basic_search(Cluster),
+    confirm_w1c_search(Cluster),
     confirm_encoded_search(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
@@ -63,30 +62,21 @@ select_random(List) ->
 host_entries(ClusterConnInfo) ->
     [proplists:get_value(http, I) || {_,I} <- ClusterConnInfo].
 
-schema_url({Host,Port}, Name) ->
-    ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
-
-index_url({Host,Port}, Index) ->
-    ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
-
 bucket_url({Host,Port}, {BType, BName}, Key) ->
     ?FMT("http://~s:~B/types/~s/buckets/~s/keys/~s",
          [Host, Port, BType, BName, Key]).
-
-http(Method, URL, Headers, Body) ->
-    Opts = [],
-    ibrowse:send_req(URL, Headers, Method, Body, Opts).
 
 create_index(Cluster, BucketType, Index) ->
     create_index(Cluster, BucketType, Index, 3).
 
 create_index(Cluster, BucketType, Index, UseDefaultSchema) when
       is_boolean(UseDefaultSchema) ->
-    create_index(Cluster, BucketType, Index, 3, UseDefaultSchema);
+    create_index(Cluster, BucketType, Index, [{use_default_schema, UseDefaultSchema}]);
 create_index(Cluster, BucketType, Index, Nval) when is_integer(Nval) ->
-    create_index(Cluster, BucketType, Index, Nval, true).
-
-create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, [{n_val, Nval}]);
+create_index(Cluster, BucketType, Index, Props) when is_list(Props) ->
+    Nval = proplists:get_value(n_val, Props, 3),
+    UseDefaultSchema = proplists:get_value(use_default_schema, Props, true),
     Node = select_random(Cluster),
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("create_index ~s for bucket type ~s [~p]", [Index, BucketType, {Host, Port}]),
@@ -111,10 +101,13 @@ create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
     ?assertEqual([{index, Index}, {schema, SchemaName}, NvalT], IndexData),
 
     %% Add the index to the bucket props
-    yz_rt:set_bucket_type_index(Node, BucketType, Index, Nval),
+    yz_rt:set_bucket_type_index(Node, BucketType, Index, [{n_val, Nval} | Props]),
     yz_rt:wait_for_bucket_type(Cluster, BucketType),
     riakc_pb_socket:stop(Pid),
     ok.
+
+create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, [{n_val, Nval}, {use_default_schema, UseDefaultSchema}]).
 
 store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     store_and_search(Cluster, Bucket, Key, Body, "text/plain", Search, Params).
@@ -210,6 +203,15 @@ confirm_basic_search(Cluster) ->
     Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
     store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
 
+confirm_w1c_search(Cluster) ->
+    Index = <<"write_once">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index, [{write_once, true}]),
+    lager:info("confirm_basic_search ~p", [Bucket]),
+    Body = "herp derp",
+    Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
+    store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
+
 confirm_encoded_search(Cluster) ->
     Index = <<"encoded">>,
     Bucket = {Index, <<"b1">>},
@@ -241,8 +243,7 @@ confirm_multivalued_field(Cluster) ->
     {Host, Port} = HP,
     %% populate a value
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"name_ss:turner">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -254,7 +255,9 @@ confirm_multivalued_field(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
-            _ -> false
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search for multivalued_field has not yet yielded data"),
+                false
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -272,8 +275,7 @@ confirm_multivalued_field_json_array(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -285,7 +287,9 @@ confirm_multivalued_field_json_array(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
-            _ -> false
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search for multivalued_field_json_array has not yet yielded data"),
+                false
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -303,8 +307,7 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    %% Sleep for soft commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"groups_s:3304cf79">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
@@ -317,7 +320,9 @@ confirm_multivalued_field_with_high_n_val(Cluster) ->
                     1 -> true;
                     0 -> false
                 end;
-            _ -> false
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search for multivalued_field_with_high_n_val has not yet yielded data"),
+                false
             end
         end,
     yz_rt:wait_until(Cluster, F),
@@ -345,20 +350,24 @@ confirm_stored_fields(Cluster) ->
     lager:info("Storing to bucket ~s", [URL]),
     {Host, Port} = HP,
     {ok, "204", _, _} = ibrowse:send_req(URL, [?CT_JSON], put, Body),
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, Index),
     Search = <<"float_tf:3.14">>,
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
-                {ok,{search_results,[{Index,Fields}], _Score, Found}} =
-                    riakc_pb_socket:search(Pid, Index, Search, Params),
-                ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
-                ?assertEqual(3.14,
-                             ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
-                ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
-                ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
-                case Found of
-                    1 -> true;
-                    0 -> false
+                case riakc_pb_socket:search(Pid, Index, Search, Params) of
+                    {ok, {search_results,[{Index,Fields}], _Score, Found}} ->
+                        ?assertEqual(<<"true">>, proplists:get_value(<<"bool_b">>, Fields)),
+                        ?assertEqual(3.14,
+                            ?BIN_TO_FLOAT(proplists:get_value(<<"float_tf">>, Fields))),
+                        ?assertEqual(Index, proplists:get_value(<<"_yz_rt">>, Fields)),
+                        ?assertEqual(<<"b1">>, proplists:get_value(<<"_yz_rb">>, Fields)),
+                        case Found of
+                            1 -> true;
+                            0 -> false
+                        end;
+                    {ok, {search_results, [], _Score, 0}} ->
+                        lager:info("Search for stored_fields has not yet yielded data"),
+                        false
                 end
         end,
     yz_rt:wait_until(Cluster, F),

@@ -27,7 +27,7 @@
 -define(MD_VTAG, <<"X-Riak-VTag">>).
 -define(YZ_ID_SEP, "*").
 -define(YZ_ID_VER, "1").
--define(YZ_ED_VER, <<"2">>).
+-define(YZ_ED_VER, <<"3">>).
 
 %%%===================================================================
 %%% API
