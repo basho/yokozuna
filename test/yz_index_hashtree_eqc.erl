@@ -67,15 +67,11 @@ insert_method() ->
     oneof([sync, async]).
 
 index_hashtree_test_() ->
-    {setup,
-     fun setup/0,
-     fun (_) -> cleanup() end,
-     {timeout, 60,
-      fun() ->
-              ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(29,
-                  prop_correct()))))
-      end
-     }}.
+    {timeout, 60,
+     fun() ->
+         ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(29, prop_correct()))))
+     end
+    }.
 
 %% We want to constrain all data to fit in the last portion of our
 %% hash space so that it maps to partition 0.
@@ -108,12 +104,11 @@ cleanup() ->
 test() ->
     test(100).
 
+check() ->
+    eqc:check(prop_correct()).
+
 test(N) ->
-    setup(),
-    try eqc:quickcheck(numtests(N, prop_correct()))
-    after
-        cleanup()
-    end.
+    eqc:quickcheck(numtests(N, prop_correct())).
 
 %% Use General State Record
 %% TODO: Move to sets/ordsets as this expands
@@ -184,7 +179,7 @@ start_kv_tree_pre(S) ->
                          Args :: [term()]) -> eqc_statem:symbolic_state().
 start_kv_tree_next(S, V, _Args) ->
     S#state{kv_idx_tree=V, kv_idx_objects=dict:store(?TEST_INDEX_N, dict:new(),
-                                               S#state.kv_idx_objects)}.
+                                                     S#state.kv_idx_objects)}.
 
 %% @doc start_kv_tree_post - Postcondition for start_kv_tree
 -spec start_kv_tree_post(S :: eqc_statem:dynamic_state(),
@@ -440,6 +435,7 @@ compare({ok, YZTreePid}, {ok, KVTreePid}) ->
 
 %% Property Test
 prop_correct() ->
+    ?SETUP(fun() -> setup(), fun() -> cleanup() end end,
     ?FORALL(Cmds,commands(?MODULE, #state{}),
             aggregate(command_names(Cmds),
                       ?TRAPEXIT(begin
@@ -454,7 +450,7 @@ prop_correct() ->
                                                     Cmds,
                                                     {H, S, Res},
                                                     Res == ok)
-                                end))).
+                                end)))).
 
 %% Private
 -spec set_treedata(obj(), dict()) -> dict().
