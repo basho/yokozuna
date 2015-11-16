@@ -29,6 +29,8 @@
 -define(QUERY_SERVICES, [{yz_pb_search, 27, 28}]).
 -define(ADMIN_SERVICES, [{yz_pb_admin, 54, 60}]).
 
+-define(YZ_COMPONENTS, [index, search]).
+
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
@@ -38,8 +40,7 @@ start(_StartType, _StartArgs) ->
     %% Disable indexing/searching from KV until properly started,
     %% otherwise restarting under load generates large numbers
     %% of failures in yz_kv:index/3.
-    yokozuna:disable(index),
-    yokozuna:disable(search),
+    disable_components(),
 
     %% TODO: Consider moving into maybe_setup and
     %%  having any YZ components that interact with KV
@@ -58,8 +59,7 @@ start(_StartType, _StartArgs) ->
             maybe_setup(Enabled),
 
             %% Now everything is started, permit usage by KV/query
-            yokozuna:enable(index),
-            yokozuna:enable(search),
+            enable_components(),
             {ok, Pid};
         Error ->
             Error
@@ -71,6 +71,7 @@ prep_stop(State) ->
         lager:info("Stopping application yokozuna.\n", []),
         ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
         ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
+        disable_components(),
         ok
     catch
         Type:Reason ->
@@ -81,6 +82,22 @@ prep_stop(State) ->
 
 stop(_State) ->
     lager:info("Stopped application yokozuna.\n", []),
+    ok.
+
+%% @private
+%%
+%% @doc Enable all Yokozuna components.
+-spec enable_components() -> ok.
+enable_components() ->
+    lists:foreach(fun yokozuna:enable/1, ?YZ_COMPONENTS),
+    ok.
+
+%% @private
+%%
+%% @doc Disable all Yokozuna components.
+-spec disable_components() -> ok.
+disable_components() ->
+    lists:foreach(fun yokozuna:disable/1, ?YZ_COMPONENTS),
     ok.
 
 %% @private
@@ -105,7 +122,7 @@ maybe_setup(true) ->
     RSEnabled = yz_rs_migration:is_riak_search_enabled(),
     yz_rs_migration:strip_rs_hooks(RSEnabled, Ring),
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
-	yz_wm_index:routes() ++ yz_wm_schema:routes(),
+        yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
     ok = yz_events:add_guarded_handler(yz_events, []),
