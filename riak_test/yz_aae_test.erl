@@ -1,4 +1,4 @@
--module(aae_test).
+-module(yz_aae_test).
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
