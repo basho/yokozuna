@@ -202,14 +202,14 @@ robj(_Bucket, _Key, Obj) ->
 -spec index_binary(bucket(), key(), obj(), write_reason(), p()) -> ok.
 index_binary(Bucket, Key, Obj, Reason, P) ->
     index_internal(
-        Bucket, Key, Obj, Reason, P
+      Bucket, Key, robj(Bucket, Key, Obj), Reason, P
     ).
 
 %% @doc Index the data supplied in the Riak Object.
 -spec index(riak_object:riak_object(), write_reason(), p()) -> ok.
 index(Obj, Reason, P) ->
     index_internal(
-        riak_object:bucket(Obj), riak_object:key(Obj), Obj, Reason, P
+      riak_object:bucket(Obj), riak_object:key(Obj), Obj, Reason, P
     ).
 
 -spec index_internal(bucket(), key(), obj(), write_reason(), p()) -> ok.
