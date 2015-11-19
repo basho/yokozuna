@@ -66,7 +66,7 @@ build_partition_delete_query(LPartitions) ->
 -spec commit(index_name()) -> ok.
 commit(Core) ->
     JSON = encode_commit(),
-    Params = [{commit, true}],
+    Params = [{commit, true}, {waitFlush, true}, {waitSearcher, true}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = ?FMT("~s/~s/update?~s", [base_url(), Core, Encoded]),
     Headers = [{content_type, "application/json"}],
@@ -173,7 +173,7 @@ entropy_data(Core, Filter) ->
     Opts = [{response_format, binary}],
     URL = ?FMT("~s/~s/entropy_data?~s",
                [base_url(), Core, mochiweb_util:urlencode(Params2)]),
-    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_REQUEST_TIMEOUT) of
+    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_ED_REQUEST_TIMEOUT) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
             More = kvc:path([<<"more">>], R),
@@ -203,6 +203,18 @@ index(Core, Docs, DelOps) ->
         {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
                                          ErrBody});
         Err -> throw({"Failed to index docs", other, Err})
+    end.
+
+index_batch(Core, Ops) ->
+    JSON = mochijson2:encode({struct, Ops}),
+    URL = ?FMT("~s/~s/update", [base_url(), Core]),
+    Headers = [{content_type, "application/json"}],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?YZ_SOLR_REQUEST_TIMEOUT) of
+        {ok, "200", _, _} -> ok;
+        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
+                                         ErrBody});
+        Err -> throw({"Failed to index docs", Err})
     end.
 
 %% @doc Determine if Solr is running.
@@ -391,7 +403,7 @@ encode_delete({id, Id}) ->
     {struct, [{id, Id}]}.
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]}.
+    {struct, [{doc, lists:map(fun encode_field/1, Fields)}]}.
 
 encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};

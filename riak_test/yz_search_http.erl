@@ -28,15 +28,19 @@
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+
+-define(RING_SIZE, 8).
+-define(DEFAULT_TIMEOUT, 60000).
 -define(CFG,
         [
          {riak_core,
           [
-           {ring_creation_size, 8}
+           {ring_creation_size, ?RING_SIZE}
           ]},
          {yokozuna,
           [
-           {enabled, true}
+           {enabled, true},
+           {solr_request_timeout, ?DEFAULT_TIMEOUT}
           ]}
         ]).
 -define(NO_HEADERS, []).

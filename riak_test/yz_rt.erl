@@ -8,8 +8,8 @@
 -define(IBROWSE_TIMEOUT, 60000).
 -define(SOFTCOMMIT, 1000).
 
--type host() :: string().
--type portnum() :: integer().
+-type host() :: string()|atom().
+-type portnum() :: non_neg_integer().
 
 %% Copied from rt.erl, would be nice if there was a rt.hrl
 -type interface() :: {http, tuple()} | {pb, tuple()}.
@@ -135,7 +135,7 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http(ibrowse:method(), string(), list(), string()) -> ibrowse:response().
+-spec http(ibrowse:method(), string(), list(), binary()) -> ibrowse:response().
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
@@ -154,7 +154,7 @@ http(Method, URL, Headers, Body, Opts, Timeout) when
       is_list(Opts) andalso is_integer(Timeout) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
@@ -167,18 +167,18 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
--spec schema_url({string(), portnum()}, schema_name()) -> ok.
+-spec schema_url({host(), portnum()}, schema_name()) -> string().
 schema_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
 
--spec index_url({string(), portnum()}, index_name()) -> ok.
+-spec index_url({host(), portnum()}, index_name()) -> string().
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 index_url({Host, Port}, Index, Timeout) ->
     ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
                                                      Timeout]).
 
--spec search_url({string(), portnum()}, index_name()) -> ok.
+-spec search_url({host(), portnum()}, index_name()) -> string().
 search_url({Host, Port}, Index) ->
     ?FMT("http://~s:~B/search/query/~s", [Host, Port, Index]).
 
@@ -488,7 +488,7 @@ wait_for_schema(Cluster, Name, Content) ->
 verify_count(Expected, Resp) ->
     Count = get_count(Resp),
     lager:info("E: ~p, A: ~p", [Expected, Count]),
-    Expected =:= get_count(Resp).
+    Expected =:= Count.
 
 -spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
@@ -530,10 +530,17 @@ node_solr_port(Node) ->
                                       [yokozuna, solr_port]),
     P.
 
+-spec internal_solr_url(host(), portnum(), index_name()) -> string().
 internal_solr_url(Host, Port, Index) ->
     ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
+
+-spec internal_solr_url(host(), portnum(), index_name(), [{host(), portnum()}])
+                   -> string().
 internal_solr_url(Host, Port, Index, Shards) ->
-    internal_solr_url(Host, Port, Index, Shards, <<"*">>, <<"*">>).
+    internal_solr_url(Host, Port, Index, <<"*">>, <<"*">>, Shards).
+
+-spec internal_solr_url(host(), portnum(), index_name(), binary(), binary(),
+                        [{host(), portnum()}]) -> string().
 internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
     Ss = [internal_solr_url(Host, ShardPort, Index)
           || {_, ShardPort} <- Shards],

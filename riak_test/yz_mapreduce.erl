@@ -11,7 +11,7 @@
 -include("yokozuna.hrl").
 
 -type host() :: string().
--type portnum() :: integer().
+-type portnum() :: non_neg_integer().
 
 -define(CFG,
         [{riak_core,
