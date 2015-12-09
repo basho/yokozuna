@@ -20,6 +20,11 @@
 
 -type cluster() :: [node()].
 
+%% @doc Get {Host, Port} from `Cluster'.
+-spec host_port(cluster()) -> {host(), portnum()}.
+host_port(Cluster) ->
+    hd(yz_rt:host_entries(rt:connection_info(Cluster))).
+
 %% @doc Given a list of protobuff connections, close each one.
 %%
 %% @see open_pb_conns/1
@@ -43,6 +48,23 @@ create_bucket_type(Node, BucketType) ->
 create_bucket_type(Node, BucketType, Props) ->
     rt:create_and_activate_bucket_type(Node, BucketType, Props),
     rt:wait_until_bucket_type_status(BucketType, active, Node).
+
+-spec create_indexed_bucket_type(node(), binary(), index_name()) -> ok.
+create_indexed_bucket_type(Node, BucketType, IndexName) ->
+    ok = create_index(Node, IndexName),
+    ok = create_bucket_type(Node, BucketType, [{?YZ_INDEX, IndexName}]).
+
+-spec create_indexed_bucket_type(node(), binary(), index_name(), schema_name()) -> ok.
+create_indexed_bucket_type(Node, BucketType, IndexName, SchemaName) ->
+    ok = create_index(Node, IndexName, SchemaName),
+    ok = create_bucket_type(Node, BucketType, [{?YZ_INDEX, IndexName}]).
+
+-spec create_indexed_bucket_type(node(), binary(), index_name(), schema_name(), raw_schema()) -> ok.
+create_indexed_bucket_type(Node, BucketType, IndexName, SchemaName, RawSchema) ->
+    Pid = rt:pbc(Node),
+    ok = store_schema(Pid, SchemaName, RawSchema),
+    ok = create_index(Node, IndexName, SchemaName),
+    ok = create_bucket_type(Node, BucketType, [{?YZ_INDEX, IndexName}]).
 
 -spec create_index(node(), index_name()) -> ok.
 create_index(Node, Index) ->
@@ -180,7 +202,16 @@ index_url({Host, Port}, Index, Timeout) ->
 
 -spec search_url({string(), portnum()}, index_name()) -> ok.
 search_url({Host, Port}, Index) ->
-    ?FMT("http://~s:~B/search/query/~s", [Host, Port, Index]).
+    search_url({Host, Port}, Index, "").
+
+-spec search_url({string(), portnum()}, index_name(), string()) -> ok.
+search_url({Host, Port}, Index, Params) ->
+    FmtStr = "http://~s:~B/search/query/~s",
+    FmtParams = case Params of
+                    "" -> "";
+                    _ -> "?" ++ Params
+                end,
+    ?FMT(FmtStr ++ FmtParams, [Host, Port, Index]).
 
 %% @doc Run basho bench job to load fruit data on `Cluster'.
 %%
@@ -331,24 +362,44 @@ search_expect(solr, {Host, Port}, Index, Name0, Term0, Shards, Expect)
     verify_count(Expect, R).
 
 search(HP, Index, Name, Term) ->
-    search(yokozuna, HP, Index, Name, Term).
+    search(HP, Index, Name, Term, "").
 
+search({Host, Port}, Index, Name, Term, Params) ->
+    search(yokozuna, {Host, Port}, Index, Name, Term, Params);
 search(Type, {Host, Port}, Index, Name, Term) when is_integer(Port) ->
     search(Type, {Host, integer_to_list(Port)}, Index, Name, Term);
+search(Type, {Host, Port}, Index, Name, Term) ->
+    search(Type, {Host, Port}, Index, Name, Term, "").
 
-search(Type, {Host, Port}, Index, Name0, Term0) ->
+search(Type, {Host, Port}, Index, Name0, Term0, Params0) ->
     Name = quote_unicode(Name0),
     Term = quote_unicode(Term0),
-    FmtStr = case Type of
-                 solr ->
-                     "http://~s:~s/internal_solr/~s/select?q=~s:~s&wt=json";
-                 yokozuna ->
-                     "http://~s:~s/search/query/~s?q=~s:~s&wt=json"
-             end,
-    URL = ?FMT(FmtStr, [Host, Port, Index, Name, Term]),
+    Params = "q=" ++ Name ++ ":" ++ Term ++ "&wt=json&" ++
+             urlencode_params(Params0),
+    URL = case Type of
+              solr ->
+                  ?FMT("http://~s:~s/internal_solr/~s/select?~s",
+                       [Host, Port, Index, Params]);
+              yokozuna ->
+                  search_url({Host, integer_portnum(Port)}, Index, Params)
+          end,
     lager:info("Run search ~s", [URL]),
     Opts = [{response_format, binary}],
     ibrowse:send_req(URL, [], get, [], Opts).
+
+integer_portnum(Port) when is_integer(Port) ->
+    Port;
+integer_portnum(Port) when is_list(Port) ->
+    list_to_integer(Port).
+
+%% @doc Encodes the proplist argument as a URL query string. If the argument
+%% is not a proplist, this function assumes that it is already a URL-encoded
+%% string and returns it unmodified.
+-spec urlencode_params([proplists:property()] | string()) -> string().
+urlencode_params([{_Key, _Value}|_Rest] = Params) ->
+    mochiweb_util:urlencode(Params);
+urlencode_params(String) ->
+    String.
 
 quote_unicode(Value) ->
     mochiweb_util:quote_plus(binary_to_list(unicode:characters_to_binary(Value))).
