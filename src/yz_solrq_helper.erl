@@ -228,7 +228,8 @@ send_solr_ops_for_entries(Index, Ops, Entries) ->
     try
         T1 = os:timestamp(),
         ok = yz_solr:index_batch(Index, Ops),
-        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1))
+        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+        ok
     catch _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),

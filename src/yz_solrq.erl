@@ -168,7 +168,7 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
     ),
     {noreply, State#state{indexqs = NewIndexQs, drain_info = {DPid, Token}}};
 
-handle_cast({drain_complete, Index, Result}, #state{drain_info = DrainInfo} = State) ->
+handle_cast({drain_complete, Index, Result}, #state{all_queue_len = AQL, drain_info = DrainInfo} = State) ->
     case DrainInfo of
         undefined ->
             {noreply, State};
@@ -181,21 +181,23 @@ handle_cast({drain_complete, Index, Result}, #state{drain_info = DrainInfo} = St
             IndexQ3 =
                 case Result of
                     ok ->
+                        QueueLen = queue:len(AuxQueue),
                         IndexQ2#indexq{
                             queue = AuxQueue,
-                            queue_len = queue:len(AuxQueue),
+                            queue_len = QueueLen,
                             aux_queue = queue:new()
                         };
                     {error, Undelivered} ->
                         NewQueue = queue:join(queue:from_list(Undelivered), AuxQueue),
+                        QueueLen = queue:len(NewQueue),
                         IndexQ2#indexq{
                             queue = NewQueue,
-                            queue_len = queue:len(NewQueue),
+                            queue_len = QueueLen,
                             aux_queue = queue:new()
                         }
                 end,
             yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            {noreply, update_indexq(Index, IndexQ3, State)}
+            {noreply, update_indexq(Index, IndexQ3, State#state{all_queue_len = AQL + QueueLen})}
     end.
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -301,6 +303,7 @@ send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     #indexq{batch_max = BatchMax} = IndexQ,
     {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
+    true = (AQL =< BatchLen),
     State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
         0 ->
