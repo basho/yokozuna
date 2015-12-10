@@ -33,19 +33,30 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([request_batch/3]).
+-export([request_batch/3, drain/1, drain_complete/3]).
 
--record(indexq, {queue = queue:new()    :: yz_queue(),   % {BKey, Docs, Delete}
-                 queue_len = 0          :: non_neg_integer(),
-                 href                   :: reference(),
-                 pending_helper = false :: boolean(),
-                 batch_min = 1          :: non_neg_integer(),
-                 batch_max = 100        :: non_neg_integer(),
-                 delayms_max = 100      :: non_neg_integer()}).
--record(state, {indexqs = dict:new()    :: yz_dict(),
-                all_queue_len = 0       :: non_neg_integer(),
-                queue_hwm = 1000        :: non_neg_integer(),
-                pending_vnodes = []     :: [{pid(), atom()}]}).
+-record(
+    indexq, {
+        queue = queue:new()     :: yz_queue(),   % {BKey, Docs, Reason, P}
+        queue_len = 0           :: non_neg_integer(),
+        href                    :: reference(),
+        pending_helper = false  :: boolean(),
+        batch_min = 1           :: non_neg_integer(),
+        batch_max = 100         :: non_neg_integer(),
+        delayms_max = 100       :: non_neg_integer(),
+        aux_queue = queue:new() :: yz_queue(),
+        draining = false        :: boolean()
+    }
+).
+-record(
+    state, {
+        indexqs = dict:new()    :: yz_dict(),
+        all_queue_len = 0       :: non_neg_integer(),
+        queue_hwm = 1000        :: non_neg_integer(),
+        pending_vnodes = []     :: [{pid(), atom()}],
+        drain_info              :: {pid(), reference()}
+    }
+).
 
 
 -type internal_status() :: [{atom()|indexqs,
@@ -96,6 +107,15 @@ set_index(QPid, Index, Min, Max, DelayMax) ->
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
 
+-spec drain(pid()) -> reference().
+drain(QPid) ->
+    Token = make_ref(),
+    gen_server:cast(QPid, {drain, self(), Token}),
+    Token.
+
+drain_complete(QPid, Index, Result) ->
+    gen_server:cast(QPid, {drain_complete, Index, Result}).
+
 %%%===================================================================
 %%% solrq/helper interface
 %%%===================================================================
@@ -136,7 +156,41 @@ handle_call(reload_appenv, _From, State) ->
 
 handle_cast({request_batch, Index, HPid}, State) ->
     State2 = send_entries(HPid, Index, State),
-    {noreply, maybe_unblock_vnodes(State2)}.
+    {noreply, maybe_unblock_vnodes(State2)};
+
+handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
+    NewIndexQs = dict:fold(
+        fun(Index, IndexQ, IndexQsAccum) ->
+            drain(Index, IndexQ, IndexQsAccum)
+        end,
+        IndexQs,
+        IndexQs
+    ),
+    {noreply, State#state{indexqs = NewIndexQs, drain_info = {DPid, Token}}};
+
+handle_cast({drain_complete, Index, Result}, #state{drain_info = {DPid, Token}} = State) ->
+    IndexQ = get_indexq(Index, State),
+    #indexq{queue = Queue, aux_queue = AuxQueue} = IndexQ2 = IndexQ#indexq{draining = false},
+    %% assert the current queue is empty, because we would have drained the queue
+    %%if we had gotten a drain_complete back from the helper.
+    true = queue:is_empty(Queue),
+    IndexQ3 = case Result of
+        ok ->
+            IndexQ2#indexq{
+                queue = AuxQueue,
+                queue_len = queue:len(AuxQueue),
+                aux_queue = queue:new()
+            };
+        {error, Undelivered} ->
+            NewQueue = queue:join(queue:from_list(Undelivered), AuxQueue),
+            IndexQ2#indexq{
+                queue = NewQueue,
+                queue_len = queue:len(NewQueue),
+                aux_queue = queue:new()
+            }
+    end,
+    yz_solrq_drain_fsm:drain_complete(DPid, Token),
+    {noreply, update_indexq(Index, IndexQ3, State)}.
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
     case find_indexq(Index, State) of
@@ -162,6 +216,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+
+drain(Index, IndexQ, IndexQs) ->
+    % TODO What do we do if there is already a pending worker? (We might be okay)
+    IndexQ2 = request_worker(Index, IndexQ),
+    dict:store(Index, IndexQ2#indexq{draining = true}, IndexQs).
 
 -spec internal_status(#state{}) -> internal_status().
 internal_status(#state{indexqs = IndexQs} = State) ->
@@ -190,9 +250,13 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
     end.
 
 %% @doc Enqueue the entry and return updated state.
-enqueue(E, #indexq{queue = Q, queue_len = L} = IndexQ) ->
-    IndexQ#indexq{queue = queue:in(E, Q),
-                  queue_len = L + 1}.
+enqueue(E, #indexq{queue = Q, queue_len = L, draining = Draining} = IndexQ) ->
+    case Draining of
+        true ->
+            IndexQ#indexq{aux_queue = queue:in(E, Q)};
+        false ->
+            IndexQ#indexq{queue = queue:in(E, Q), queue_len = L + 1}
+    end.
 
 %% @doc Trigger a flush and return state
 flush(Index, IndexQ, State) ->
@@ -228,8 +292,9 @@ request_worker(_Index, IndexQ) ->
 %%      return updated state
 send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     IndexQ = get_indexq(Index, State),
+    #indexq{batch_max = BatchMax} = IndexQ,
     {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
-    yz_solrq_helper:index_batch(HPid, Index, Batch),
+    yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
     State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
         0 ->
@@ -243,8 +308,14 @@ send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     end.
 
 %% @doc Get up to batch_max entries and reset the pending worker/timer href
-get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max} = IndexQ) ->
-    {BatchQ, RestQ} = queue:split(min(L,Max), Q),
+get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max, draining = Draining} = IndexQ) ->
+    {BatchQ, RestQ} =
+        case Draining of
+            true ->
+                {Q, queue:new()};
+            _ ->
+                queue:split(min(L,Max), Q)
+        end,
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
     IndexQ2 = IndexQ#indexq{queue = RestQ, queue_len = L - BatchLen,
