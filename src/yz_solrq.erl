@@ -54,7 +54,7 @@
         all_queue_len = 0       :: non_neg_integer(),
         queue_hwm = 1000        :: non_neg_integer(),
         pending_vnodes = []     :: [{pid(), atom()}],
-        drain_info              :: {pid(), reference()}
+        drain_info = undefined  :: {pid(), reference()} | undefined
     }
 ).
 
@@ -168,29 +168,35 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
     ),
     {noreply, State#state{indexqs = NewIndexQs, drain_info = {DPid, Token}}};
 
-handle_cast({drain_complete, Index, Result}, #state{drain_info = {DPid, Token}} = State) ->
-    IndexQ = get_indexq(Index, State),
-    #indexq{queue = Queue, aux_queue = AuxQueue} = IndexQ2 = IndexQ#indexq{draining = false},
-    %% assert the current queue is empty, because we would have drained the queue
-    %%if we had gotten a drain_complete back from the helper.
-    true = queue:is_empty(Queue),
-    IndexQ3 = case Result of
-        ok ->
-            IndexQ2#indexq{
-                queue = AuxQueue,
-                queue_len = queue:len(AuxQueue),
-                aux_queue = queue:new()
-            };
-        {error, Undelivered} ->
-            NewQueue = queue:join(queue:from_list(Undelivered), AuxQueue),
-            IndexQ2#indexq{
-                queue = NewQueue,
-                queue_len = queue:len(NewQueue),
-                aux_queue = queue:new()
-            }
-    end,
-    yz_solrq_drain_fsm:drain_complete(DPid, Token),
-    {noreply, update_indexq(Index, IndexQ3, State)}.
+handle_cast({drain_complete, Index, Result}, #state{drain_info = DrainInfo} = State) ->
+    case DrainInfo of
+        undefined ->
+            {noreply, State};
+        {DPid, Token} ->
+            IndexQ = get_indexq(Index, State),
+            #indexq{queue = Queue, aux_queue = AuxQueue} = IndexQ2 = IndexQ#indexq{draining = false},
+            %% assert the current queue is empty, because we would have drained the queue
+            %%if we had gotten a drain_complete back from the helper.
+            true = queue:is_empty(Queue),
+            IndexQ3 =
+                case Result of
+                    ok ->
+                        IndexQ2#indexq{
+                            queue = AuxQueue,
+                            queue_len = queue:len(AuxQueue),
+                            aux_queue = queue:new()
+                        };
+                    {error, Undelivered} ->
+                        NewQueue = queue:join(queue:from_list(Undelivered), AuxQueue),
+                        IndexQ2#indexq{
+                            queue = NewQueue,
+                            queue_len = queue:len(NewQueue),
+                            aux_queue = queue:new()
+                        }
+                end,
+            yz_solrq_drain_fsm:drain_complete(DPid, Token),
+            {noreply, update_indexq(Index, IndexQ3, State)}
+    end.
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
     case find_indexq(Index, State) of
