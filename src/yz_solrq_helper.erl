@@ -32,7 +32,7 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([index_ready/3, index_batch/3]).
+-export([index_ready/3, index_batch/5]).
 
 -record(state, {}).
 -type solr_op()      :: {add, {struct, [{atom(), binary()}]}} |
@@ -73,9 +73,9 @@ index_ready(Hash, Index, QPid) ->
     index_ready(HPid, Index, QPid).
 
 %% @doc Index a batch
--spec index_batch(atom()|pid(), index_name(), solr_entries()) -> ok.
-index_batch(HPid, Index, Entries) ->
-    gen_server:cast(HPid, {batch, Index, Entries}).
+-spec index_batch(atom()|pid(), index_name(), non_neg_integer(), pid(), solr_entries()) -> ok.
+index_batch(HPid, Index, BatchMax, QPid, Entries) ->
+    gen_server:cast(HPid, {batch, Index, BatchMax, QPid, Entries}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -92,7 +92,26 @@ handle_call(BadMsg, _From, State) ->
 handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
-handle_cast({batch, Index, Entries0}, State) ->
+handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
+    Result = do_batches(Index, BatchMax, Entries),
+    yz_solrq:drain_complete(QPid, Index, Result),
+    {noreply, State}.
+
+
+-spec do_batches(index_name(), non_neg_integer(), solr_entries()) -> ok | {error, Undelivered :: solr_entries()}.
+do_batches(_Index, _BatchMax, []) ->
+    ok;
+do_batches(Index, BatchMax, Entries) ->
+    {Entries1, Rest} = lists:split(min(length(Entries), BatchMax), Entries),
+    case do_batch(Index, Entries1) of
+        ok ->
+            do_batches(Index, BatchMax, Rest);
+        {error, _Reason} ->
+            {error, Entries}
+    end.
+
+-spec do_batch(index_name(), solr_entries()) -> ok | {error, term()}.
+do_batch(Index, Entries0) ->
     try
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
@@ -113,15 +132,14 @@ handle_cast({batch, Index, Entries0}, State) ->
             {ok, Entries2} ->
                 update_aae_and_repair_stats(Entries2);
             {error, Reason} ->
-                ok
-        end,
-        {noreply, State}
+                {error, Reason}
+        end
     catch
         _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
             ?ERROR("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
-            {noreply, State}
+            {error, Err}
     end.
 
 %% @doc Filter out all entries for partitions that are not currently owned or

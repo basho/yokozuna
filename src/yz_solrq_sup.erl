@@ -26,7 +26,8 @@
          num_helper_specs/0, resize_helpers/1,
          set_hwm/1,
          set_index/4,
-         reload_appenv/0]).
+         reload_appenv/0,
+         drain/0]).
 
 -include("yokozuna.hrl").
 
@@ -124,6 +125,35 @@ set_index(Index, Min, Max, DelayMsMax) ->
 reload_appenv() ->
     [{Name, catch yz_solrq:reload_appenv(Name)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
+
+%% @doc Drain all queues to Solr
+-spec drain() -> ok | {error, _Reason}.
+drain() ->
+    DrainTimeout = 10000, % TODO make configurable
+    case erlang:whereis(yz_solrq_drain_fsm) of
+        undefined ->
+            try
+                {ok, Pid} = yz_solrq_drain_fsm:start_link(),
+                Reference = erlang:monitor(process, Pid),
+                yz_solrq_drain_fsm:start_prepare(),
+                receive
+                    {'DOWN', Reference, _Type, _Object, normal} ->
+                        ok;
+                    {'DOWN', Reference, _Type, _Object, Info} ->
+                        lager:info("FDUSHIN> Info: ~p", [Info]),
+                        {error, Info}
+                after DrainTimeout ->
+                    erlang:demonitor(Reference),
+                    %yz_solrq_drain_fsm:maybe_cancel()
+                    {error, timeout}
+                end
+            catch
+                _:badarg ->
+                    {error, in_progress}
+            end;
+        _ ->
+            {error, in_progress}
+    end.
 
 %%%===================================================================
 %%% Supervisor callbacks
