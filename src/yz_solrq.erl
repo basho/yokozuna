@@ -20,6 +20,8 @@
 
 -include("yokozuna.hrl").
 
+-behavior(gen_server).
+
 %%TODO: Dynamically add pulse. NOT PRODUCTION
 %% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]).
 %% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
@@ -307,7 +309,7 @@ send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
         0 ->
-            delete_indexq(Index, State2);
+            State2;
         _ ->
             % may be another full batch
             IndexQ3 = maybe_request_worker(Index, IndexQ2),
@@ -378,8 +380,9 @@ new_indexq() ->
 update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:store(Index, IndexQ, IndexQs)}.
 
-delete_indexq(Index, #state{indexqs = IndexQs} = State) ->
-    State#state{indexqs = dict:erase(Index, IndexQs)}.
+% TODO re-add once we have a reaping strategy
+%delete_indexq(Index, #state{indexqs = IndexQs} = State) ->
+%    State#state{indexqs = dict:erase(Index, IndexQs)}.
 
 %% @doc Read settings from the application environment
 read_appenv(State) ->
