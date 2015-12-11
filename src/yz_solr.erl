@@ -204,8 +204,10 @@ index(Core, Docs, DelOps) ->
         Err -> throw({"Failed to index docs", Err})
     end.
 
-index_batch(Core, Ops) ->
-    JSON = mochijson2:encode({struct, Ops}),
+index_batch(Core, Ops0) ->
+    %% Flatten and Reverse Ops (Making sure deletes occurr first for combined operators)
+    Ops1 = lists:reverse(lists:flatten(Ops0)),
+    JSON = mochijson2:encode({struct, Ops1}),
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],

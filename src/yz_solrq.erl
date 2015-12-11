@@ -39,7 +39,7 @@
                  queue_len = 0          :: non_neg_integer(),
                  href                   :: reference(),
                  pending_helper = false :: boolean(),
-                 batch_min = 10         :: non_neg_integer(),
+                 batch_min = 1          :: non_neg_integer(),
                  batch_max = 100        :: non_neg_integer(),
                  delayms_max = 100      :: non_neg_integer()}).
 -record(state, {indexqs = dict:new()    :: yz_dict(),
