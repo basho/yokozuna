@@ -309,7 +309,7 @@ send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
         0 ->
-            State2;
+            update_indexq(Index, IndexQ2, State2);
         _ ->
             % may be another full batch
             IndexQ3 = maybe_request_worker(Index, IndexQ2),
