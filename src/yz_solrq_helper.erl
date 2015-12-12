@@ -84,8 +84,8 @@ index_batch(HPid, Index, BatchMax, QPid, Entries) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call(status, _From, #state{}) ->
-    {reply, []};
+handle_call(status, _From, State) ->
+    {reply, ok, State};
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
