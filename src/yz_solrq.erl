@@ -35,11 +35,13 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([request_batch/3, drain/1, drain_complete/3]).
+-export([request_batch/3, drain/1, batch_complete/3]).
+
+% -type solrq_message() :: {BKey, Docs, Reason, P}.
 
 -record(
     indexq, {
-        queue = queue:new()     :: yz_queue(),   % {BKey, Docs, Reason, P}
+        queue = queue:new()     :: yz_queue(),   % solrq_message()
         queue_len = 0           :: non_neg_integer(),
         href                    :: reference(),
         pending_helper = false  :: boolean(),
@@ -115,8 +117,8 @@ drain(QPid) ->
     gen_server:cast(QPid, {drain, self(), Token}),
     Token.
 
-drain_complete(QPid, Index, Result) ->
-    gen_server:cast(QPid, {drain_complete, Index, Result}).
+batch_complete(QPid, Index, Result) ->
+    gen_server:cast(QPid, {batch_complete, Index, Result}).
 
 %%%===================================================================
 %%% solrq/helper interface
@@ -160,46 +162,147 @@ handle_cast({request_batch, Index, HPid}, State) ->
     State2 = send_entries(HPid, Index, State),
     {noreply, maybe_unblock_vnodes(State2)};
 
+%%
+%% @doc Handle the drain message.
+%%
+%%      The drain message is sent via the drain/1 function
+%%      in this module, which is called by the solrq_drain_fsm
+%%      during its prepare state, typically as the result of
+%%      a request to drain the queues.
+%%
+%%      This handler will iterate over all IndexQs in the
+%%      solrq, and initiate a drain on the queue, if it is currently
+%%      non-empty.
+%%
 handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
-    NewIndexQs = dict:fold(
-        fun(Index, IndexQ, IndexQsAccum) ->
-            drain(Index, IndexQ, IndexQsAccum)
+    {Remaining, NewIndexQs} = dict:fold(
+        fun(Index, IndexQ, {RemainingAccum, IndexQsAccum}) ->
+            case IndexQ#indexq.queue_len of
+                0 ->
+                    {RemainingAccum, IndexQsAccum};
+                _ ->
+                    {[Index | RemainingAccum], drain(Index, IndexQ, IndexQsAccum)}
+            end
         end,
-        IndexQs,
+        {[], IndexQs},
         IndexQs
     ),
-    {noreply, State#state{indexqs = NewIndexQs, drain_info = {DPid, Token}}};
+    DrainInfo =
+        case Remaining of
+            [] ->
+                yz_solrq_drain_fsm:drain_complete(DPid, Token),
+                undefined;
+            _ ->
+                {DPid, Token, Remaining}
+        end,
+    {noreply, State#state{indexqs = NewIndexQs, drain_info = DrainInfo}};
 
-handle_cast({drain_complete, Index, Result}, #state{all_queue_len = AQL, drain_info = DrainInfo} = State) ->
-    case DrainInfo of
-        undefined ->
-            {noreply, State};
-        {DPid, Token} ->
-            IndexQ = get_indexq(Index, State),
-            #indexq{queue = Queue, aux_queue = AuxQueue} = IndexQ2 = IndexQ#indexq{draining = false},
-            %% assert the current queue is empty, because we would have drained the queue
-            %%if we had gotten a drain_complete back from the helper.
+
+%%
+%% @doc     Handle the batch_complete message.
+%%
+%%          The batch_complete message is sent via the batch_complete/3 function
+%%          in this module, which is called by a solrq_helper when a batch has
+%%          been delivered to Solr (or has failed to have been delivered).
+%%          If the batch was successfully sent to Solr, the Result field of the
+%%          batch_complete message matches the atom 'ok'.  Otherwise, it matches
+%%          the tuple {error, Undelivered}, where Undelivered is a list of messages
+%%          that have not been delivered (a subset of what was sent for delivery).
+%%
+%%          This message can be handled in one of two scenarios -- draining is in
+%%          effect, or not.  If draining is in effect (as the result of a drain
+%%          operation, triggered externally),
+%%
+handle_cast(
+    {batch_complete, Index, Result},
+    #state{all_queue_len = AQL, drain_info = DrainInfo} = State
+) ->
+    #indexq{
+        draining = Draining,
+        queue = Queue,
+        queue_len = QueueLen,
+        aux_queue = AuxQueue
+    } = IndexQ = get_indexq(Index, State),
+    case Draining of
+        false ->
+            %%
+            %% A drain is not in progress (normal case).  There are two cases to consider:
+            %%   1. The result is ok; This means all batched messages were delivered; nothing to do
+            %%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
+            %%      for this index, and request a new worker, if we are over the requested minimum.
+            %%
+            case Result of
+                ok ->
+                    {noreply, State};
+                {error, Undelivered} ->
+                    NewQueue = queue:join(queue:from_list(Undelivered), Queue),
+                    UndeliveredLen = erlang:length(Undelivered),
+                    NewQueueLen = QueueLen + UndeliveredLen,
+                    IndexQ1 = IndexQ#indexq{
+                        queue = NewQueue,
+                        queue_len = NewQueueLen
+                    },
+                    IndexQ2 = maybe_request_worker(Index, IndexQ1),
+                    {noreply, update_indexq(Index, IndexQ2, State#state{all_queue_len = AQL + UndeliveredLen})}
+            end;
+        true ->
+            %%
+            %% This queue is being drained.  Again there are two cases to consider:
+            %%    1. The batch succeeded.  In this case, move any data we
+            %%       have accumulated in aux_queue to the main queue,
+            %%       and remove ourselves from the list
+            %%       of remaining indices that need to be flushed.
+            %%    2. The batch did not succeed.  In this case, we got back a list
+            %%       of undelivered messages.  Put the undelivered messages back onto
+            %%       the queue and request another worker.
+            %%
+            {DPid, Token, Remaining0} = DrainInfo,
             true = queue:is_empty(Queue),
-            IndexQ3 =
+            {Remaining1, IndexQ2, AddedLen} =
                 case Result of
                     ok ->
-                        QueueLen = queue:len(AuxQueue),
-                        IndexQ2#indexq{
-                            queue = AuxQueue,
-                            queue_len = QueueLen,
-                            aux_queue = queue:new()
+                        AuxQueueLen = queue:len(AuxQueue),
+                        {
+                            lists:delete(Index, Remaining0),
+                            IndexQ#indexq{
+                                queue = AuxQueue,
+                                queue_len = AuxQueueLen,
+                                aux_queue = queue:new(),
+                                draining = false
+                            },
+                            0
                         };
                     {error, Undelivered} ->
-                        NewQueue = queue:join(queue:from_list(Undelivered), AuxQueue),
-                        QueueLen = queue:len(NewQueue),
-                        IndexQ2#indexq{
-                            queue = NewQueue,
-                            queue_len = QueueLen,
-                            aux_queue = queue:new()
+                        IndexQ1 = request_worker(Index, IndexQ),
+                        NewQueue = queue:from_list(Undelivered),
+                        NewQueueLen = queue:len(NewQueue),
+                        {
+                            Remaining0,
+                            IndexQ1#indexq{
+                                queue = NewQueue,
+                                queue_len = NewQueueLen
+                            },
+                            NewQueueLen
                         }
                 end,
-            yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            {noreply, update_indexq(Index, IndexQ3, State#state{all_queue_len = AQL + QueueLen})}
+            %%
+            %% If there are no remaining indexqs to be flushed, send the drain FSM
+            %% a drain complete for this solrq instance.
+            %%
+            case Remaining1 of
+                [] ->
+                    yz_solrq_drain_fsm:drain_complete(DPid, Token),
+                    NewDrainInfo = undefined;
+                _ ->
+                    NewDrainInfo = {DPid, Token, Remaining1}
+            end,
+            {
+                noreply,
+                update_indexq(
+                    Index, IndexQ2,
+                    State#state{all_queue_len = AQL + AddedLen, drain_info = NewDrainInfo}
+                )
+            }
     end.
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -309,6 +412,7 @@ send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
     State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
         0 ->
+            % all the messages have been sent
             update_indexq(Index, IndexQ2, State2);
         _ ->
             % may be another full batch

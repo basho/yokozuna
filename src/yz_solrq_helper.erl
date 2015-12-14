@@ -94,7 +94,7 @@ handle_cast({ready, Index, QPid}, State) ->
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
     Result = do_batches(Index, BatchMax, Entries),
-    yz_solrq:drain_complete(QPid, Index, Result),
+    yz_solrq:batch_complete(QPid, Index, Result),
     {noreply, State}.
 
 
