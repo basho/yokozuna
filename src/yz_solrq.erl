@@ -37,7 +37,7 @@
 % solrq/helper interface
 -export([request_batch/3, drain/1, batch_complete/3]).
 
-% -type solrq_message() :: {BKey, Docs, Reason, P}.
+-type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 
 -record(
     indexq, {
@@ -58,7 +58,7 @@
         all_queue_len = 0       :: non_neg_integer(),
         queue_hwm = 1000        :: non_neg_integer(),
         pending_vnodes = []     :: [{pid(), atom()}],
-        drain_info = undefined  :: {pid(), reference()} | undefined
+        drain_info = undefined  :: {pid(), reference(), [solrq_message()]} | undefined
     }
 ).
 
