@@ -23,6 +23,7 @@ yz_search_http.erl:80: The variable _ can never match since previous clauses com
 yz_search_http.erl:87: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_solr_start_timeout.erl:28: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_wm_extract_test.erl:45: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_siblings.erl:141: The variable _ can never match since previous clauses completely covered the type 'false'
 Unknown functions:
   make_certs:endusers/3
   make_certs:rootCA/2
@@ -92,3 +93,6 @@ Unknown functions:
   rt_config:get/1
   rt_intercept:add/2
   rt_intercept:load_code/2
+  rt:heal/1
+  rt:partition/2
+  rt:wait_until_transfers_complete/1
