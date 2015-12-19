@@ -93,24 +93,42 @@ handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
-    Result = do_batches(Index, BatchMax, Entries),
+    Result = case do_batches(Index, BatchMax, 0, Entries) of
+        ok ->
+            {ok, length(Entries)};
+        {ok, Delivered} ->
+            {retry, length(Entries) + length(Delivered), Entries -- Delivered};
+        {error, Undelivered} ->
+            {retry, length(Entries) - length(Undelivered), Undelivered}
+    end,
     yz_solrq:batch_complete(QPid, Index, Result),
     {noreply, State}.
 
 
--spec do_batches(index_name(), non_neg_integer(), solr_entries()) -> ok | {error, Undelivered :: solr_entries()}.
-do_batches(_Index, _BatchMax, []) ->
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+-spec do_batches(index_name(), non_neg_integer(), non_neg_integer(), solr_entries()) ->
+    {ok, NumDelivered :: non_neg_integer()} | {error, Undelivered :: solr_entries()}.
+do_batches(_Index, _BatchMax, _NumDelivered, []) ->
     ok;
-do_batches(Index, BatchMax, Entries) ->
+do_batches(Index, BatchMax, NumDelivered, Entries) ->
     {Entries1, Rest} = lists:split(min(length(Entries), BatchMax), Entries),
     case do_batch(Index, Entries1) of
         ok ->
-            do_batches(Index, BatchMax, Rest);
+            do_batches(Index, BatchMax, NumDelivered + length(Entries1), Rest);
+        {ok, NumDeliveredInBatch} ->
+            {ok, NumDelivered + NumDeliveredInBatch};
         {error, _Reason} ->
             {error, Entries}
     end.
 
--spec do_batch(index_name(), solr_entries()) -> ok | {error, term()}.
+-spec do_batch(index_name(), solr_entries()) ->
+      ok                                        % all entries were delivered
+    | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered, as listed
+    | {error, term()}.                          % an error occurred; retry all of them
 do_batch(Index, Entries0) ->
     try
         %% TODO: use ibrowse http worker
@@ -128,9 +146,11 @@ do_batch(Index, Entries0) ->
                           filter_out_fallbacks(OwnedAndNext, Entries0)],
         case update_solr(Index, LI, Entries1) of
             ok ->
-                update_aae_and_repair_stats(Entries1);
+                update_aae_and_repair_stats(Entries1),
+                ok;
             {ok, Entries2} ->
-                update_aae_and_repair_stats(Entries2);
+                update_aae_and_repair_stats(Entries2),
+                {ok, Entries2};
             {error, Reason} ->
                 {error, Reason}
         end
@@ -221,7 +241,6 @@ solr_ops(LI, Entries) ->
 %%      a Solr Internal error of sorts, for which we stop list-processing and
 %%      use the success-length to segment the entries list for `AAE-updates'.
 -spec send_solr_ops_for_entries(index_name(), solr_ops(), solr_entries()) ->
-                                       ok |
                                        {ok, SuccessEntries :: solr_entries()} |
                                        {error, tuple()}.
 send_solr_ops_for_entries(Index, Ops, Entries) ->

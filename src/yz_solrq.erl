@@ -160,7 +160,7 @@ handle_call(reload_appenv, _From, State) ->
 
 handle_cast({request_batch, Index, HPid}, State) ->
     State2 = send_entries(HPid, Index, State),
-    {noreply, maybe_unblock_vnodes(State2)};
+    {noreply, State2};
 
 %%
 %% @doc Handle the drain message.
@@ -205,13 +205,15 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
 %%          in this module, which is called by a solrq_helper when a batch has
 %%          been delivered to Solr (or has failed to have been delivered).
 %%          If the batch was successfully sent to Solr, the Result field of the
-%%          batch_complete message matches the atom 'ok'.  Otherwise, it matches
-%%          the tuple {error, Undelivered}, where Undelivered is a list of messages
-%%          that have not been delivered (a subset of what was sent for delivery).
-%%
-%%          This message can be handled in one of two scenarios -- draining is in
-%%          effect, or not.  If draining is in effect (as the result of a drain
-%%          operation, triggered externally),
+%%          batch_complete message matches {ok, NumDelivered}.  NumDelivered is
+%%          the number of messages that were successfully delivered to Solr.
+%%          Otherwise, it matches the tuple {retry, NumDelievered, Undelivered},
+%%          where NumDelivered is as above, and Undelivered is a list of messages
+%%          that have not been delivered (a subset of what was sent for delivery)
+%%          and should be retried.  This handler will decrement the all_queues_len
+%%          field on the solrq state record by the supplied NumDelievered value
+%%          thus potentially unblocking any vnodes waiting on this solrq instance,
+%%          if the number of queued messages are above the hight water mark.
 %%
 handle_cast(
     {batch_complete, Index, Result},
@@ -227,14 +229,18 @@ handle_cast(
         false ->
             %%
             %% A drain is not in progress (normal case).  There are two cases to consider:
-            %%   1. The result is ok; This means all batched messages were delivered; nothing to do
+            %%   1. The result is ok; This means all batched messages were delivered; Reduce the
+            %%      all_queue_len by the number of messages delivered.
             %%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
             %%      for this index, and request a new worker, if we are over the requested minimum.
+            %%      Reduce the all_queue_len by the number of messages delivered.
             %%
-            case Result of
-                ok ->
-                    {noreply, State};
-                {error, Undelivered} ->
+            %% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
+            %%
+            State1 = case Result of
+                {ok, NumDelivered} ->
+                    State#state{all_queue_len = AQL - NumDelivered};
+                {retry, NumDelivered, Undelivered} ->
                     NewQueue = queue:join(queue:from_list(Undelivered), Queue),
                     UndeliveredLen = erlang:length(Undelivered),
                     NewQueueLen = QueueLen + UndeliveredLen,
@@ -243,8 +249,9 @@ handle_cast(
                         queue_len = NewQueueLen
                     },
                     IndexQ2 = maybe_request_worker(Index, IndexQ1),
-                    {noreply, update_indexq(Index, IndexQ2, State#state{all_queue_len = AQL + UndeliveredLen})}
-            end;
+                    update_indexq(Index, IndexQ2, State#state{all_queue_len = AQL - NumDelivered})
+            end,
+            {noreply, maybe_unblock_vnodes(State1)};
         true ->
             %%
             %% This queue is being drained.  Again there are two cases to consider:
@@ -256,11 +263,13 @@ handle_cast(
             %%       of undelivered messages.  Put the undelivered messages back onto
             %%       the queue and request another worker.
             %%
+            %% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
+            %%
             {DPid, Token, Remaining0} = DrainInfo,
             true = queue:is_empty(Queue),
-            {Remaining1, IndexQ2, AddedLen} =
+            {Remaining1, IndexQ2, NumDelivered0} =
                 case Result of
-                    ok ->
+                    {ok, NumDelivered} ->
                         AuxQueueLen = queue:len(AuxQueue),
                         {
                             lists:delete(Index, Remaining0),
@@ -270,9 +279,9 @@ handle_cast(
                                 aux_queue = queue:new(),
                                 draining = false
                             },
-                            0
+                            NumDelivered
                         };
-                    {error, Undelivered} ->
+                    {retry, NumDelivered, Undelivered} ->
                         IndexQ1 = request_worker(Index, IndexQ),
                         NewQueue = queue:from_list(Undelivered),
                         NewQueueLen = queue:len(NewQueue),
@@ -282,7 +291,7 @@ handle_cast(
                                 queue = NewQueue,
                                 queue_len = NewQueueLen
                             },
-                            NewQueueLen
+                            NumDelivered
                         }
                 end,
             %%
@@ -296,13 +305,11 @@ handle_cast(
                 _ ->
                     NewDrainInfo = {DPid, Token, Remaining1}
             end,
-            {
-                noreply,
-                update_indexq(
-                    Index, IndexQ2,
-                    State#state{all_queue_len = AQL + AddedLen, drain_info = NewDrainInfo}
-                )
-            }
+            State2 = update_indexq(
+                Index, IndexQ2,
+                State#state{all_queue_len = AQL - NumDelivered0, drain_info = NewDrainInfo}
+            ),
+            {noreply, maybe_unblock_vnodes(State2)}
     end.
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -403,23 +410,21 @@ request_worker(_Index, IndexQ) ->
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
 %%      return updated state
-send_entries(HPid, Index, #state{all_queue_len = AQL} = State) ->
+send_entries(HPid, Index, State) ->
     IndexQ = get_indexq(Index, State),
     #indexq{batch_max = BatchMax} = IndexQ,
-    {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
+    {Batch, _BatchLen, IndexQ2} = get_batch(IndexQ),
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
-    true = (AQL =< BatchLen),
-    State2 = State#state{all_queue_len = AQL - BatchLen},
     case IndexQ2#indexq.queue_len of
         0 ->
             % all the messages have been sent
-            update_indexq(Index, IndexQ2, State2);
+            update_indexq(Index, IndexQ2, State);
         _ ->
             % may be another full batch
             IndexQ3 = maybe_request_worker(Index, IndexQ2),
             % if entries left, restart timer if batch not full
             IndexQ4 = maybe_start_timer(Index, IndexQ3),
-            update_indexq(Index, IndexQ4, State2)
+            update_indexq(Index, IndexQ4, State)
     end.
 
 %% @doc Get up to batch_max entries and reset the pending worker/timer href
