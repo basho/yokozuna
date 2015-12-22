@@ -117,15 +117,20 @@ drain(QPid) ->
     gen_server:cast(QPid, {drain, self(), Token}),
     Token.
 
-batch_complete(QPid, Index, Result) ->
-    gen_server:cast(QPid, {batch_complete, Index, Result}).
-
 %%%===================================================================
 %%% solrq/helper interface
 %%%===================================================================
 -spec request_batch(pid(), index_name(), pid()|atom()) -> ok.
 request_batch(QPid, Index, HPid) ->
     gen_server:cast(QPid, {request_batch, Index, HPid}).
+
+
+-spec batch_complete(
+    pid(),
+    index_name(),
+    {NumDelivered :: non_neg_integer(), ok} | {NumDelivered :: non_neg_integer(), {retry, [Undelivered :: solrq_message()]}}) -> ok.
+batch_complete(QPid, Index, Message) ->
+    gen_server:cast(QPid, {batch_complete, Index, Message}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -173,6 +178,7 @@ handle_cast({request_batch, Index, HPid}, State) ->
 %%      This handler will iterate over all IndexQs in the
 %%      solrq, and initiate a drain on the queue, if it is currently
 %%      non-empty.
+%% @end
 %%
 handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
     {Remaining, NewIndexQs} = dict:fold(
@@ -198,6 +204,7 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
     {noreply, State#state{indexqs = NewIndexQs, drain_info = DrainInfo}};
 
 
+
 %%
 %% @doc     Handle the batch_complete message.
 %%
@@ -214,103 +221,13 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
 %%          field on the solrq state record by the supplied NumDelievered value
 %%          thus potentially unblocking any vnodes waiting on this solrq instance,
 %%          if the number of queued messages are above the hight water mark.
+%% @end
 %%
-handle_cast(
-    {batch_complete, Index, Result},
-    #state{all_queue_len = AQL, drain_info = DrainInfo} = State
-) ->
-    #indexq{
-        draining = Draining,
-        queue = Queue,
-        queue_len = QueueLen,
-        aux_queue = AuxQueue
-    } = IndexQ = get_indexq(Index, State),
-    case Draining of
-        false ->
-            %%
-            %% A drain is not in progress (normal case).  There are two cases to consider:
-            %%   1. The result is ok; This means all batched messages were delivered; Reduce the
-            %%      all_queue_len by the number of messages delivered.
-            %%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
-            %%      for this index, and request a new worker, if we are over the requested minimum.
-            %%      Reduce the all_queue_len by the number of messages delivered.
-            %%
-            %% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
-            %%
-            State1 = case Result of
-                {ok, NumDelivered} ->
-                    State#state{all_queue_len = AQL - NumDelivered};
-                {retry, NumDelivered, Undelivered} ->
-                    NewQueue = queue:join(queue:from_list(Undelivered), Queue),
-                    UndeliveredLen = erlang:length(Undelivered),
-                    NewQueueLen = QueueLen + UndeliveredLen,
-                    IndexQ1 = IndexQ#indexq{
-                        queue = NewQueue,
-                        queue_len = NewQueueLen
-                    },
-                    IndexQ2 = maybe_request_worker(Index, IndexQ1),
-                    update_indexq(Index, IndexQ2, State#state{all_queue_len = AQL - NumDelivered})
-            end,
-            {noreply, maybe_unblock_vnodes(State1)};
-        true ->
-            %%
-            %% This queue is being drained.  Again there are two cases to consider:
-            %%    1. The batch succeeded.  In this case, move any data we
-            %%       have accumulated in aux_queue to the main queue,
-            %%       and remove ourselves from the list
-            %%       of remaining indices that need to be flushed.
-            %%    2. The batch did not succeed.  In this case, we got back a list
-            %%       of undelivered messages.  Put the undelivered messages back onto
-            %%       the queue and request another worker.
-            %%
-            %% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
-            %%
-            {DPid, Token, Remaining0} = DrainInfo,
-            true = queue:is_empty(Queue),
-            {Remaining1, IndexQ2, NumDelivered0} =
-                case Result of
-                    {ok, NumDelivered} ->
-                        AuxQueueLen = queue:len(AuxQueue),
-                        {
-                            lists:delete(Index, Remaining0),
-                            IndexQ#indexq{
-                                queue = AuxQueue,
-                                queue_len = AuxQueueLen,
-                                aux_queue = queue:new(),
-                                draining = false
-                            },
-                            NumDelivered
-                        };
-                    {retry, NumDelivered, Undelivered} ->
-                        IndexQ1 = request_worker(Index, IndexQ),
-                        NewQueue = queue:from_list(Undelivered),
-                        NewQueueLen = queue:len(NewQueue),
-                        {
-                            Remaining0,
-                            IndexQ1#indexq{
-                                queue = NewQueue,
-                                queue_len = NewQueueLen
-                            },
-                            NumDelivered
-                        }
-                end,
-            %%
-            %% If there are no remaining indexqs to be flushed, send the drain FSM
-            %% a drain complete for this solrq instance.
-            %%
-            case Remaining1 of
-                [] ->
-                    yz_solrq_drain_fsm:drain_complete(DPid, Token),
-                    NewDrainInfo = undefined;
-                _ ->
-                    NewDrainInfo = {DPid, Token, Remaining1}
-            end,
-            State2 = update_indexq(
-                Index, IndexQ2,
-                State#state{all_queue_len = AQL - NumDelivered0, drain_info = NewDrainInfo}
-            ),
-            {noreply, maybe_unblock_vnodes(State2)}
-    end.
+handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_len = AQL} = State) ->
+    IndexQ = get_indexq(Index, State),
+    State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false}, Result, State),
+    {noreply, maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered})}.
+
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
     case find_indexq(Index, State) of
@@ -338,8 +255,122 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 
+%%
+%% @doc
+%% A drain is not in progress.  There are two cases to consider:
+%%   1. The result is ok; This means all batched messages were delivered; Reduce the
+%%      all_queue_len by the number of messages delivered.
+%%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
+%%      for this index, and request a new worker, if we are over the requested minimum.
+%%      Reduce the all_queue_len by the number of messages delivered.
+%%
+%% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
+%% @end
+%%
+handle_batch(
+    Index,
+    #indexq{queue = Queue, queue_len = QueueLen, draining = false} = IndexQ0,
+    Result,
+    State
+) ->
+    IndexQ1 =
+        case Result of
+            ok ->
+                IndexQ0;
+            {retry, Undelivered} ->
+                NewQueue = queue:join(queue:from_list(Undelivered), Queue),
+                IndexQ0#indexq{
+                    queue = NewQueue,
+                    queue_len = QueueLen + erlang:length(Undelivered)
+                }
+        end,
+    IndexQ2 = maybe_request_worker(Index, IndexQ1),
+    update_indexq(Index, IndexQ2, State);
+
+%%
+%% @doc
+%% This queue is being drained.  There are two cases to consider:
+%%    1. The batch succeeded.  In this case, move any data we
+%%       have accumulated in aux_queue to the main queue,
+%%       and remove ourselves from the list
+%%       of remaining indices that need to be flushed.
+%%    2. The batch did not succeed.  In this case, we got back a list
+%%       of undelivered messages.  Put the undelivered messages back onto
+%%       the queue and request another worker.
+%%
+%% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
+%% @end
+%%
+handle_batch(
+    Index,
+    #indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = true} = IndexQ,
+    Result,
+    #state{drain_info = DrainInfo} = State
+) ->
+    {DPid, Token, Remaining0} = DrainInfo,
+    {Remaining1, IndexQ2} =
+        case Result of
+            ok ->
+                AuxQueueLen = queue:len(AuxQueue),
+                %% If a drain request was made while this index had a pending
+                %% helper, it's possible that a batch smaller than the queue
+                %% length might have been requested.  If so, the queue len will
+                %% be non-zero, in which case we should request a worker and not
+                %% mark the batch completed.
+                {IndexQ1, NewDraining, NewRemaining} =
+                    case QueueLen of
+                        0 ->
+                            {IndexQ, true, lists:delete(Index, Remaining0)};
+                        _ ->
+                            {request_worker(Index, IndexQ), false, Remaining0}
+                    end,
+                {
+                    NewRemaining,
+                    IndexQ1#indexq{
+                        queue = queue:join(Queue, AuxQueue),
+                        queue_len = QueueLen + AuxQueueLen,
+                        aux_queue = queue:new(),
+                        draining = NewDraining
+                    }
+                };
+            {retry, Undelivered} ->
+                IndexQ1 = request_worker(Index, IndexQ),
+                NewQueue = queue:from_list(Undelivered),
+                NewQueueLen = queue:len(NewQueue),
+                {
+                    Remaining0,
+                    IndexQ1#indexq{
+                        queue = NewQueue,
+                        queue_len = NewQueueLen
+                    }
+                }
+        end,
+    %%
+    %% If there are no remaining indexqs to be flushed, send the drain FSM
+    %% a drain complete for this solrq instance.
+    %%
+    case Remaining1 of
+        [] ->
+            yz_solrq_drain_fsm:drain_complete(DPid, Token),
+            NewDrainInfo = undefined;
+        _ ->
+            NewDrainInfo = {DPid, Token, Remaining1}
+    end,
+    update_indexq(
+        Index, IndexQ2,
+        State#state{drain_info = NewDrainInfo}
+    ).
+
+
+
 drain(Index, IndexQ, IndexQs) ->
-    % TODO What do we do if there is already a pending worker? (We might be okay)
+    %% NB. A drain request may occur while a helper is pending
+    %% (and hence while a batch may be "in flight" to Solr).  If
+    %% so, then we treat this as a "best effort" to drain the queue.
+    %% It might be the case that not all messages in a queue get
+    %% drained, as a consequence, so there is nothing definitive we
+    %% can say about whether a drain request resulted in a full flush
+    %% of all pending data.
     IndexQ2 = request_worker(Index, IndexQ),
     dict:store(Index, IndexQ2#indexq{draining = true}, IndexQs).
 
@@ -439,7 +470,7 @@ get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max, draining = Draining
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
     IndexQ2 = IndexQ#indexq{queue = RestQ, queue_len = L - BatchLen,
-                            pending_helper = false, href = undefined},
+                            href = undefined},
     {Batch, BatchLen, IndexQ2}.
 
 
