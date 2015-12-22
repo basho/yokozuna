@@ -93,15 +93,15 @@ handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
-    Result = case do_batches(Index, BatchMax, 0, Entries) of
+    Message = case do_batches(Index, BatchMax, 0, Entries) of
         ok ->
-            {ok, length(Entries)};
-        {ok, Delivered} ->
-            {retry, length(Entries) + length(Delivered), Entries -- Delivered};
+            {length(Entries), ok};
+        {ok, NumDelivered} ->
+            {NumDelivered, {retry, lists:nthtail(NumDelivered, Entries)}};
         {error, Undelivered} ->
-            {retry, length(Entries) - length(Undelivered), Undelivered}
+            {length(Entries) - length(Undelivered), {retry, Undelivered}}
     end,
-    yz_solrq:batch_complete(QPid, Index, Result),
+    yz_solrq:batch_complete(QPid, Index, Message),
     {noreply, State}.
 
 
@@ -111,7 +111,7 @@ handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
 %%%===================================================================
 
 -spec do_batches(index_name(), non_neg_integer(), non_neg_integer(), solr_entries()) ->
-    {ok, NumDelivered :: non_neg_integer()} | {error, Undelivered :: solr_entries()}.
+    ok | {ok, NumDelivered :: non_neg_integer()} | {error, Undelivered :: solr_entries()}.
 do_batches(_Index, _BatchMax, _NumDelivered, []) ->
     ok;
 do_batches(Index, BatchMax, NumDelivered, Entries) ->
@@ -127,7 +127,7 @@ do_batches(Index, BatchMax, NumDelivered, Entries) ->
 
 -spec do_batch(index_name(), solr_entries()) ->
       ok                                        % all entries were delivered
-    | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered, as listed
+    | {ok, NumDelivered :: non_neg_integer()}   % a strict subset of entries were delivered
     | {error, term()}.                          % an error occurred; retry all of them
 do_batch(Index, Entries0) ->
     try
@@ -150,7 +150,11 @@ do_batch(Index, Entries0) ->
                 ok;
             {ok, Entries2} ->
                 update_aae_and_repair_stats(Entries2),
-                {ok, Entries2};
+                %% Why +1?  Because if we got a set of entries back with an ok,
+                %% that was because we tried sending operations one at a time until
+                %% we got a bad-request.  But Entries2 will not contain the offending
+                %% operation, so we need to signal the caller to remove it.
+                {ok, length(Entries2) + case length(Entries1) =:= length(Entries2) of true -> 0; _ -> 1 end};
             {error, Reason} ->
                 {error, Reason}
         end
