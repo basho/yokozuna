@@ -366,11 +366,13 @@ handle_batch(
 drain(Index, IndexQ, IndexQs) ->
     %% NB. A drain request may occur while a helper is pending
     %% (and hence while a batch may be "in flight" to Solr).  If
-    %% so, then we treat this as a "best effort" to drain the queue.
-    %% It might be the case that not all messages in a queue get
-    %% drained, as a consequence, so there is nothing definitive we
-    %% can say about whether a drain request resulted in a full flush
-    %% of all pending data.
+    %% so, then no worker will be requested.  However, the draining
+    %% flag will be set on the indexq.  Hence, when the drain_complete
+    %% message is received, if there are any pending messages still in
+    %% the queue, a worker will be requested at that time, and the indexq
+    %% will remain in the draining state, the result being that the
+    %% indexq will eventually get drained, once the current in-flight
+    %% batch completes.
     IndexQ2 = request_worker(Index, IndexQ),
     dict:store(Index, IndexQ2#indexq{draining = true}, IndexQs).
 
