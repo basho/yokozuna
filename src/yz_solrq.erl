@@ -285,7 +285,8 @@ handle_batch(
                 }
         end,
     IndexQ2 = maybe_request_worker(Index, IndexQ1),
-    update_indexq(Index, IndexQ2, State);
+    IndexQ3 = maybe_start_timer(Index, IndexQ2),
+    update_indexq(Index, IndexQ3, State);
 
 %%
 %% @doc
@@ -356,8 +357,9 @@ handle_batch(
         _ ->
             NewDrainInfo = {DPid, Token, Remaining1}
     end,
+    IndexQ3 = maybe_start_timer(Index, IndexQ2),
     update_indexq(
-        Index, IndexQ2,
+        Index, IndexQ3,
         State#state{drain_info = NewDrainInfo}
     ).
 
