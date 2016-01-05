@@ -37,6 +37,12 @@
 % solrq/helper interface
 -export([request_batch/3, drain/1, batch_complete/3]).
 
+-ifdef(PULSE).
+-compile(export_all).
+-compile({parse_transform, pulse_instrument}).
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-endif.
+
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 
 -record(

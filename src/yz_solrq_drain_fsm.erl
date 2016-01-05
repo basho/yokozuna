@@ -33,6 +33,12 @@
 
 -export([start_prepare/0, prepare/2, wait/2, drain_complete/2]).
 
+-ifdef(PULSE).
+-compile(export_all).
+-compile({parse_transform, pulse_instrument}).
+-compile({pulse_replace_module, [{gen_fsm, pulse_gen_fsm}]}).
+-endif.
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
