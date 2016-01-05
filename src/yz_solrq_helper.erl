@@ -20,9 +20,7 @@
 
 -include("yokozuna.hrl").
 
-%%TODO: Dynamically add pulse. NOT PRODUCTION
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]).
-%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-behavior(gen_server).
 
 %% api
 -export([start_link/1, status/1, status/2]).
@@ -34,6 +32,12 @@
 % solrq/helper interface
 -export([index_ready/3, index_batch/5]).
 
+-ifdef(PULSE).
+-compile(export_all).
+-compile({parse_transform, pulse_instrument}).
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-endif.
+
 -record(state, {}).
 -type solr_op()      :: {add, {struct, [{atom(), binary()}]}} |
                         {delete, {struct, [{atom(), binary()}]}}.
@@ -44,9 +48,6 @@
 %% All Ops: [[[adds], [deletes]]]
 -type solr_ops()     :: [solr_op_list()].
 
--type solr_entry()   :: {bkey(), obj(), write_reason(), p(), short_preflist(),
-                          hash()}.
--type solr_entries() :: [solr_entry()].
 
 %%%===================================================================
 %%% API
@@ -143,7 +144,7 @@ do_batch(Index, Entries0) ->
         Entries1 = [{BKey, Obj, Reason, P,
                     riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
                       {BKey, Obj, Reason, P} <-
-                          filter_out_fallbacks(OwnedAndNext, Entries0)],
+                          yz_misc:filter_out_fallbacks(OwnedAndNext, Entries0)],
         case update_solr(Index, LI, Entries1) of
             ok ->
                 update_aae_and_repair_stats(Entries1),
@@ -166,14 +167,6 @@ do_batch(Index, Entries0) ->
             {error, Err}
     end.
 
-%% @doc Filter out all entries for partitions that are not currently owned or
-%%      this node is a future owner of.
--spec filter_out_fallbacks(ordset(p), solr_entries()) -> [{bkey(), obj(),
-                                                          write_reason(), p()}].
-filter_out_fallbacks(OwnedAndNext, Entries) ->
-    lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
-                          ordsets:is_element(P, OwnedAndNext)
-                 end, Entries).
 
 %% @doc Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
 -spec update_solr(index_name(), logical_idx(), solr_entries()) ->
