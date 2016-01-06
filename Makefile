@@ -32,10 +32,6 @@ pulse:
 	./rebar compile -D PULSE
 	./rebar eunit -D PULSE skip_deps=true suite=$(PULSE_TESTS)
 
-fred:
-	./rebar compile skip_deps=true
-	./rebar eunit skip_deps=true suite=$(PULSE_TESTS)
-
 
 ##
 ## Dialyzer
