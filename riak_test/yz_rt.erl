@@ -26,6 +26,8 @@
 
 -type cluster() :: [node()].
 
+-export_type([prop/0, props/0, cluster/0]).
+
 %% @doc Given a list of protobuff connections, close each one.
 %%
 %% @see open_pb_conns/1
@@ -33,6 +35,17 @@
 close_pb_conns(PBConns) ->
     [riakc_pb_socket:stop(C) || C <- PBConns],
     ok.
+
+%% @doc Prepare a cluster of `NumNodes' nodes using the given `Config', wait for
+%% all the nodes to join the cluster, and wait for the yokozuna service to start.
+-spec prepare_cluster(NumNodes :: non_neg_integer(), Config :: props())
+                     -> cluster().
+prepare_cluster(NumNodes, Config) ->
+    Nodes = rt:deploy_nodes(NumNodes, Config),
+    Cluster = yz_rt:join_all(Nodes),
+    yz_rt:wait_for_joins(Cluster),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
+    Cluster.
 
 -spec connection_info(list()) -> orddict:orddict().
 connection_info(Cluster) ->
@@ -258,6 +271,14 @@ random_keys(MaxKey) ->
 random_keys(Num, MaxKey) ->
     lists:usort([?INT_TO_BIN(random:uniform(MaxKey))
                  || _ <- lists:seq(1, Num)]).
+
+-spec random_binary(pos_integer()) -> binary().
+random_binary(Length) when Length >= 1 ->
+    Chars = "abcdefghijklmnopqrstuvwxyz1234567890",
+    Value = lists:foldl(fun(_, Acc) ->
+            [lists:nth(random:uniform(length(Chars)), Chars)] ++ Acc
+        end, [], lists:seq(1, Length)),
+    list_to_binary(Value).
 
 -spec riak_http({node(), interfaces()} | interfaces()) -> {host(), portnum()}.
 riak_http({_Node, ConnInfo}) ->
