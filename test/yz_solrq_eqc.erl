@@ -7,10 +7,41 @@
 -ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
 
+-include_lib("eunit/include/eunit.hrl").
+
+-ifdef(PULSE).
 -include_lib("pulse/include/pulse.hrl").
--compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]). %%TODO: Dynamically add pulse. NOT PRODUCTION
+-compile([export_all, {parse_transform, pulse_instrument}]).
 -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
-%-include_lib("pulse_otp/include/pulse_otp.hrl").
+
+-define(QC_OUT(P),
+    eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
+
+%%
+%% EUinit tests
+%%
+
+solrq_test_() ->
+    {setup,
+        fun() ->
+            error_logger:tty(false),
+            pulse:start()
+        end,
+        fun(_) ->
+            pulse:stop(),
+            error_logger:tty(true)
+        end,
+        {timeout, 60,
+            fun() ->
+                ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(10, prop_ok()))))
+            end
+        }
+    }.
+
+
+%%
+%% functions for running manually via the shell
+%%
 
 run() ->
     run(10).
@@ -24,15 +55,20 @@ check() ->
 recheck() ->
     eqc:recheck(prop_ok()).
 
-gen_partition() ->
-    nat().
-
 cover(Secs) ->
     cover:compile_beam(yz_solrq),
     cover:compile_beam(yz_solrq_helper),
     eqc:quickcheck(eqc:testing_time(Secs, prop_ok())),
     cover:analyse_to_file(yz_solrq,[html]),
     cover:analyse_to_file(yz_solrq_helper,[html]).
+
+
+%%
+%% Generators
+%%
+
+gen_partition() ->
+    nat().
 
 -ifndef(YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
@@ -47,9 +83,10 @@ gen_reason() ->
     oneof([put, delete, handoff]).
 
 gen_solr_result() ->
-    frequency([{98, {ok, "200", some, crap}},
-               {1, {ok, "500", some, crap}},
-               {1, {error, reqd_timeout}}]).
+    %frequency([{98, {ok, "200", some, crap}},
+    %           {1, {ok, "500", some, crap}},
+    %           {1, {error, reqd_timeout}}]).
+    frequency([{100, {ok, "200", some, crap}}]).
 
 gen_entries() ->
     non_empty(list({gen_partition(), gen_index(), gen_bucket(), gen_reason(), gen_solr_result()})).
@@ -59,80 +96,195 @@ gen_params() ->
          {nat(), nat(), nat()},
          {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
 
+%%
+%% Quickcheck Properties
+%%
+
 prop_ok() ->
-    ?SETUP(fun() -> setup(), fun() -> cleanup() end end,
-           ?FORALL({Entries0, {HWM, Min, Max}},
-                   {gen_entries(), gen_params()},
-                   begin
-                       true = lists:member({'PULSE-REPLACE-MODULE',1},
+    ?SETUP(
+        fun() -> setup(), fun() -> cleanup() end end,
+        ?FORALL(
+            {Entries0, {HWM, Min, Max}},
+            {gen_entries(), gen_params()},
+            begin
+                true = lists:member({'PULSE-REPLACE-MODULE',1},
                                            ?MODULE:module_info(exports)),
-                       true = lists:member({'PULSE-REPLACE-MODULE',1},
+                true = lists:member({'PULSE-REPLACE-MODULE',1},
                                            yz_solrq:module_info(exports)),
-                       true = lists:member({'PULSE-REPLACE-MODULE',1},
+                true = lists:member({'PULSE-REPLACE-MODULE',1},
                                            yz_solrq_helper:module_info(exports)),
 
-                       %% Reset the solrq/solrq helper processes
-                       application:set_env(yokozuna, solrq_queue_hwm, HWM),
-                       application:set_env(yokozuna, solrq_batch_min, Min),
-                       application:set_env(yokozuna, solrq_batch_max, Max),
-                       application:set_env(yokozuna, solrq_delayms_max, 10),
+                %% Reset the solrq/solrq helper processes
+                application:set_env(yokozuna, solrq_queue_hwm, HWM),
+                application:set_env(yokozuna, solrq_batch_min, Min),
+                application:set_env(yokozuna, solrq_batch_max, Max),
+                application:set_env(yokozuna, solrq_delayms_max, 10),
 
-                       %% Prepare the entries, and set up the ibrowse mock
-                       %% to respond based on what was generated.
-                       Entries = add_keys(Entries0),
-                       KeyRes = make_keyres(Entries),
-                       PE = entries_by_vnode(Entries),
+                %% Prepare the entries, and set up the ibrowse mock
+                %% to respond based on what was generated.
+                Entries = add_keys(Entries0),
+                KeyRes = make_keyres(Entries),
+                PE = entries_by_vnode(Entries),
+
+                meck:expect(
+                    ibrowse, send_req,
+                    fun(_Url, _H, _M, B, _O, _T) ->
+                        %% TODO: Add check for index from URL
+                        SolrReq = parse_solr_reqs(mochijson2:decode(B)),
+                        {Keys, Res} = update_response(SolrReq, KeyRes),
+                        solr_responses:record(Keys, Res),
+                        Res
+                    end
+                ),
+
+                ?PULSE(
+                    {SolrQ, Helper},
+                    begin
+                        reset(), % restart the processes
+                        unlink_kill(yz_solrq_0001),
+                        unlink_kill(yz_solrq_helper_0001),
+                        {ok, SolrQ} = yz_solrq:start_link(yz_solrq_0001),
+                        {ok, Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
+
+                        %% Issue the requests under pulse
+                        Pids = ?MODULE:send_entries(PE),
+                        wait_for_vnodes(Pids, timer:seconds(20)),
+                        timer:sleep(500),
+                        {SolrQ, Helper}
+                    end,
+                    ?WHENFAIL(
+                        begin
+                            eqc:format("SolrQ: ~p\n", [SolrQ]),
+                            eqc:format("Helper: ~p\n", [Helper]),
+                            debug_history([ibrowse, solr_responses, yz_kv])
+                        end,
+                        begin
+                        %% For each vnode, spawn a process and start sending
+                        %% Once all vnodes have sent, small delay to give async stuff time to catch up
+                        %% Check all the objects that we expected were delivered.
+                        %Expect = lists:sort(lists:flatten([Es || {_P,Es} <- PE])),
+                        %equals(Expect, lists:sort(ibrowse_requests()))
+
+                        HttpRespByKey = http_response_by_key(),
+                        HashtreeHistory = hashtree_history(),
+                        HashtreeExpect = hashtree_expect(Entries, HttpRespByKey),
+
+                        %eqc:collect({hwm, HWM},
+                        %    eqc:collect({batch_min, Min},
+                        %        eqc:collect({batch_max, Max},
+                                    conjunction([
+                                        {solr, equals(solr_history(), solr_expect(Entries))},
+                                        {hashtree, equals(HashtreeHistory, HashtreeExpect)}
+                                    ])
+                        %        )
+                        %    )
+                        %)
+                        % equals(solr_history(), solr_expect(Entries))
+                        end
+                    )
+
+                )
+            end
+        )
+    ).
+
+%%
+%% Internal functions
+%%
+
+setup() ->
+    %% Todo: Try trapping lager_msg:new/4 instead
+    %% meck:new(lager, [passthrough]),
+    %% meck:expect(lager, log, fun(_,_,Fmt,Args) ->
+    %%                                 io:format(user, "LAGER: " ++ Fmt, Args)
+    application:start(syntax_tools),
+    application:start(compiler),
+    application:start(goldrush),
+    application:start(lager),
+
+    application:start(fuse),
+
+    yz_solrq_sup:set_solrq_tuple(1), % for yz_solrq_sup:regname
+    yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
+
+    meck:new(ibrowse),
+    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) ->
+    %%                                     io:format("REQ: ~p\n", [{_A,_B,_C,_D,_E,_F}]),
+    %%                                     {ok, "200", some, crap} end),
+
+    meck:new(exometer),
+    meck:expect(exometer, update, fun(_,_) -> ok end),
+
+    meck:new(riak_kv_util),
+    meck:expect(riak_kv_util, get_index_n, fun(BKey) -> {erlang:phash2(BKey) rem 16, 3} end),
+
+    meck:new(riak_core_bucket),
+    meck:expect(riak_core_bucket, get_bucket, fun get_bucket/1),
+
+    meck:new(yz_misc, [passthrough]),
+    meck:expect(yz_misc, get_ring, fun(_) -> fake_ring_from_yz_solrq_eqc end),
+    meck:expect(yz_misc, owned_and_next_partitions, fun(_Node, _Ring) -> ordsets:new() end),
+    meck:expect(yz_misc, filter_out_fallbacks, fun(_OwnedAndNext, Entries) -> Entries end),
+
+    meck:new(yz_cover, [passthrough]),
+    meck:expect(yz_cover, logical_index, fun(_) -> fake_logical_index_from_yz_solrq_eqc end),
+    meck:expect(yz_cover, logical_partition, fun(_, _) -> 4321 end),
+
+    meck:new(yz_extractor, [passthrough]),
+    meck:expect(yz_extractor, get_def, fun(_,_) -> ?MODULE end), % dummy local module for extractor
+
+    meck:new(yz_kv, [passthrough]),
+    meck:expect(yz_kv, is_owner_or_future_owner, fun(_,_,_) -> true end),
+    meck:expect(yz_kv, update_hashtree, fun(_Action, _Partition, _IdxN, _BKey) -> ok end),
+    meck:expect(yz_kv, update_aae_exchange_stats, fun(_P, _TreeId, _Count) -> ok end),
+
+    meck:new(fuse),
+    meck:expect(fuse, ask, fun(_IndexName, _Context) -> ok end),
+    meck:expect(fuse, melt, fun(_IndexName) -> ok end),
+
+    %% Fake module to track solr responses - meck:history(solr_responses)
+    meck:new(solr_responses, [non_strict]),
+    meck:expect(solr_responses, record, fun(_Keys, _Response) -> ok end),
+
+    %% Apply the pulse transform to the modules in the test
+    %% Pulse compile solrq/solrq helper
+%    Opts = [export_all,
+%            {parse_transform,pulse_instrument},
+%            {pulse_replace_module, [{gen_server, pulse_gen_server}]}],
+%    yz_pulseh:compile(yz_solrq_eqc, Opts),
+%    yz_pulseh:compile(yz_solrq, Opts),
+%    yz_pulseh:compile(yz_solrq_helper, Opts),
+
+    %% And start up supervisors to own the solrq/solrq helper
+    %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
+    %% {ok, HelperSup} = yz_solrq_helper_sup:start_link(1),
+    %% io:format(user, "SolrqSup = ~p HelperSup = ~p\n", [SolrqSup, HelperSup]),
+    ok.
 
 
-                       meck:expect(ibrowse, send_req,
-                                   fun(_Url, _H, _M, B, _O, _T) ->
-                                           %% TODO: Add check for index from URL
-                                           SolrReq = parse_solr_reqs(mochijson2:decode(B)),
-                                           {Keys, Res} = update_response(SolrReq, KeyRes),
-                                           solr_responses:record(Keys, Res),
-                                           Res
-                                   end),
+cleanup() ->
+    meck:unload(),
+    %% unlink_kill(yz_solrq_helper_sup),
+    %% unlink_kill(yz_solrq_sup),
 
-                       ?WHENFAIL(
-                          begin
-                              eqc:format("self = ~p  yz_solrq_0001 = ~p  yz_solrq_helper_0001 = ~p\n",
-                                         [self(), whereis(yz_solrq_0001), whereis(yz_solrq_helper_0001)]),
-                              eqc:format("Partition/Entries\n~p\n", [PE]),
-                              debug_history([ibrowse, solr_responses, yz_kv])
-                          end,
-                          ?PULSE(
-                          _Res,
-                          begin
-                              reset(), % restart the processes
-                              unlink_kill(yz_solrq_0001),
-                              unlink_kill(yz_solrq_helper_0001),
-                              {ok,_SolrQ} = yz_solrq:start_link(yz_solrq_0001),
-                              {ok,_Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
+    catch application:stop(fuse),
 
-                              %% Issue the requests under pulse
-                              Pids = ?MODULE:send_entries(PE),
-                              wait_for_vnodes(Pids, timer:seconds(20)),
-                              timer:sleep(500)
-                          end,
-                          begin
-                              %% For each vnode, spawn a process and start sending
-                              %% Once all vnodes have sent, small delay to give async stuff time to catch up
-                              %% Check all the objects that we expected were delivered.
-                                                %Expect = lists:sort(lists:flatten([Es || {_P,Es} <- PE])),
-                                                %equals(Expect, lists:sort(ibrowse_requests()))
+    catch application:stop(lager),
+    catch application:stop(goldrush),
+    catch application:stop(compiler),
+    catch application:stop(syntax_tools),
 
-                              HttpRespByKey = http_response_by_key(),
-                              HashtreeHistory = hashtree_history(),
-                              HashtreeExpect = hashtree_expect(Entries, HttpRespByKey),
-                              collect(with_title('Queue HWM'), HWM,
-                              collect(with_title('Batch Min'), Min,
-                              collect(with_title('Batch Max'), Max,
-                                      conjunction([{solr,equals(solr_history(),
-                                                                solr_expect(Entries))},
-                                                   {hashtree, equals(HashtreeHistory,
-                                                                     HashtreeExpect)}]))))
-                          end))
-                   end)).
+    ok.
+
+reset() ->
+    %% restart(yz_solrq_sup, yz_solrq_0001),
+    %% restart(yz_solrq_helper_sup, yz_solrq_helper_0001),
+    meck:reset(ibrowse),
+    meck:reset(solr_responses),
+    meck:reset(yz_kv),
+    ok.
+
+
 
 %% Return the parsed solr history - which objects were dequeued and sent over HTTP
 solr_history() ->
@@ -199,74 +351,6 @@ get_http_response(Key, RespByKey) ->
     dict:fetch(Key, RespByKey).
 
 
-setup() ->
-    %% Todo: Try trapping lager_msg:new/4 instead
-    %% meck:new(lager, [passthrough]),
-    %% meck:expect(lager, log, fun(_,_,Fmt,Args) ->
-    %%                                 io:format(user, "LAGER: " ++ Fmt, Args)
-    application:start(syntax_tools),
-    application:start(compiler),
-    application:start(goldrush),
-    application:start(lager),
-
-    application:start(fuse),
-
-    yz_solrq_sup:set_solrq_tuple(1), % for yz_solrq_sup:regname
-    yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
-
-    meck:new(ibrowse),
-    %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) ->
-    %%                                     io:format("REQ: ~p\n", [{_A,_B,_C,_D,_E,_F}]),
-    %%                                     {ok, "200", some, crap} end),
-
-    meck:new(exometer),
-    meck:expect(exometer, update, fun(_,_) -> ok end),
-
-    meck:new(riak_kv_util),
-    meck:expect(riak_kv_util, get_index_n, fun(BKey) -> {erlang:phash2(BKey) rem 16, 3} end),
-
-    meck:new(riak_core_bucket),
-    meck:expect(riak_core_bucket, get_bucket, fun get_bucket/1),
-
-    meck:new(yz_misc, [passthrough]),
-    meck:expect(yz_misc, get_ring, fun(_) -> fake_ring_from_yz_solrq_eqc end),
-
-    meck:new(yz_cover, [passthrough]),
-    meck:expect(yz_cover, logical_index, fun(_) -> fake_logical_index_from_yz_solrq_eqc end),
-    meck:expect(yz_cover, logical_partition, fun(_, _) -> 4321 end),
-
-    meck:new(yz_extractor, [passthrough]),
-    meck:expect(yz_extractor, get_def, fun(_,_) -> ?MODULE end), % dummy local module for extractor
-
-    meck:new(yz_kv, [passthrough]),
-    meck:expect(yz_kv, is_owner_or_future_owner, fun(_,_,_) -> true end),
-    meck:expect(yz_kv, update_hashtree, fun(_Action, _Partition, _IdxN, _BKey) -> ok end),
-    meck:expect(yz_kv, update_aae_exchange_stats, fun(_P, _TreeId, _Count) -> ok end),
-
-    meck:new(fuse),
-    meck:expect(fuse, ask, fun(_IndexName, _Context) -> ok end),
-    meck:expect(fuse, melt, fun(_IndexName) -> ok end),
-
-    %% Fake module to track solr responses - meck:history(solr_responses)
-    meck:new(solr_responses, [non_strict]),
-    meck:expect(solr_responses, record, fun(_Keys, _Response) -> ok end),
-
-    %% Apply the pulse transform to the modules in the test
-    %% Pulse compile solrq/solrq helper
-    Opts = [export_all,
-            {parse_transform,pulse_instrument},
-            {pulse_replace_module, [{gen_server, pulse_gen_server}]}],
-    yz_pulseh:compile(yz_solrq_eqc, Opts),
-    yz_pulseh:compile(yz_solrq, Opts),
-    yz_pulseh:compile(yz_solrq_helper, Opts),
-
-    %% And start up supervisors to own the solrq/solrq helper
-    %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
-    %% {ok, HelperSup} = yz_solrq_helper_sup:start_link(1),
-    %% io:format(user, "SolrqSup = ~p HelperSup = ~p\n", [SolrqSup, HelperSup]),
-    ok.
-
-
 %% Mocked extractor
 extract(Value) ->
     [{yz_solrq_eqc, Value}].
@@ -279,29 +363,6 @@ get_bucket({_BT,<<"bn_no_index">>}) ->
     [{n_val, 3}];
 get_bucket({_BT,_BN}=_B) ->
     [{search_index, <<"index1">>}, {n_val, 3}].
-
-
-cleanup() ->
-    meck:unload(),
-    %% unlink_kill(yz_solrq_helper_sup),
-    %% unlink_kill(yz_solrq_sup),
-
-    catch application:stop(fuse),
-
-    catch application:stop(lager),
-    catch application:stop(goldrush),
-    catch application:stop(compiler),
-    catch application:stop(syntax_tools),
-
-    ok.
-
-reset() ->
-    %% restart(yz_solrq_sup, yz_solrq_0001),
-    %% restart(yz_solrq_helper_sup, yz_solrq_helper_0001),
-    meck:reset(ibrowse),
-    meck:reset(solr_responses),
-    meck:reset(yz_kv),
-    ok.
 
 restart(Sup, Id) ->
     catch supervisor:terminate_child(Sup, Id),
@@ -423,4 +484,19 @@ update_response_folder(_, {ok, "500", _Some, _Crap}=R) ->
 update_response_folder(R, _Acc) ->
     R.
 
--endif.
+-else. %% PULSE is not defined
+
+pulse_warning_test() ->
+    ?debugMsg("WARNING: PULSE is not defined.  Run `make pulse` to execute this test."),
+    ok.
+
+-endif. % PULSE
+
+-else. %% EQC is not defined
+
+-include_lib("eunit/include/eunit.hrl").
+eqc_warning_test() ->
+    ?debugMsg("WARNING: EQC is not defined.  Make sure EQC is installed and licensed with your current Erlang runtime."),
+    ok.
+
+-endif. % EQC

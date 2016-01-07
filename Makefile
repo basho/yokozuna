@@ -25,6 +25,11 @@ clean:
 distclean: clean
 	$(REBAR) delete-deps
 
+pulse:
+	./rebar compile -D PULSE
+	./rebar eunit -D PULSE skip_deps=true suite=yz_solrq_eqc
+
+
 ##
 ## Dialyzer
 ##

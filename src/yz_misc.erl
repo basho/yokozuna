@@ -28,6 +28,11 @@
 %%% API
 %%%===================================================================
 
+filter_out_fallbacks(OwnedAndNext, Entries) ->
+    lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
+                          ordsets:is_element(P, OwnedAndNext)
+                 end, Entries).
+
 %% @doc Extract the hostname from `Node'.
 -spec hostname(node()) -> string().
 hostname(Node) ->

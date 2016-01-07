@@ -35,6 +35,12 @@
 % solrq/helper interface
 -export([request_batch/3]).
 
+-ifdef(PULSE).
+-compile(export_all).
+-compile({parse_transform, pulse_instrument}).
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-endif.
+
 -record(indexq, {queue = queue:new()    :: yz_queue(),   % {BKey, Docs, Delete}
                  queue_len = 0          :: non_neg_integer(),
                  href                   :: reference(),
