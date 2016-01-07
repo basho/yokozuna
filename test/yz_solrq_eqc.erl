@@ -14,6 +14,13 @@
 -compile([export_all, {parse_transform, pulse_instrument}]).
 -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
 
+-define(QC_OUT(P),
+    eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
+
+%%
+%% EUinit tests
+%%
+
 solrq_test_() ->
     {setup,
         fun() ->
@@ -24,11 +31,17 @@ solrq_test_() ->
             pulse:stop(),
             error_logger:tty(true)
         end,
-        [
-            ?_assert(eqc:quickcheck(eqc:testing_time(10, prop_ok())))
-        ]
+        {timeout, 60,
+            fun() ->
+                ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(10, prop_ok()))))
+            end
+        }
     }.
 
+
+%%
+%% functions for running manually via the shell
+%%
 
 run() ->
     run(10).
@@ -42,15 +55,20 @@ check() ->
 recheck() ->
     eqc:recheck(prop_ok()).
 
-gen_partition() ->
-    nat().
-
 cover(Secs) ->
     cover:compile_beam(yz_solrq),
     cover:compile_beam(yz_solrq_helper),
     eqc:quickcheck(eqc:testing_time(Secs, prop_ok())),
     cover:analyse_to_file(yz_solrq,[html]),
     cover:analyse_to_file(yz_solrq_helper,[html]).
+
+
+%%
+%% Generators
+%%
+
+gen_partition() ->
+    nat().
 
 -ifndef(YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
@@ -77,6 +95,10 @@ gen_params() ->
     ?LET({HWMSeed, MinSeed, MaxSeed},
          {nat(), nat(), nat()},
          {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
+
+%%
+%% Quickcheck Properties
+%%
 
 prop_ok() ->
     ?SETUP(
@@ -147,16 +169,16 @@ prop_ok() ->
                         HashtreeHistory = hashtree_history(),
                         HashtreeExpect = hashtree_expect(Entries, HttpRespByKey),
 
-                        collect({hwm, HWM},
-                            collect({batch_min, Min},
-                                collect({batch_max, Max},
+                        %eqc:collect({hwm, HWM},
+                        %    eqc:collect({batch_min, Min},
+                        %        eqc:collect({batch_max, Max},
                                     conjunction([
                                         {solr, equals(solr_history(), solr_expect(Entries))},
                                         {hashtree, equals(HashtreeHistory, HashtreeExpect)}
                                     ])
-                                )
-                            )
-                        )
+                        %        )
+                        %    )
+                        %)
                         % equals(solr_history(), solr_expect(Entries))
                         end
                     )
@@ -166,70 +188,9 @@ prop_ok() ->
         )
     ).
 
-%% Return the parsed solr history - which objects were dequeued and sent over HTTP
-solr_history() ->
-    lists:sort(dict:fetch_keys(http_response_by_key())).
-
-solr_expect(Entries) ->
-    lists:sort([Key || {_P, Index, _Bucket, Key, _Op, _Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE]).
-
-
-%% Return the hashtree history
-%% {<0.11796.2>,
-%%  {yz_kv,update_hashtree,
-%%         [{insert,<<131,98,5,19,185,115>>},
-%%          0,
-%%          {7,3},
-%%          {{<<"default">>,<<"b">>},<<"k1">>}]},
-%%  ok},
-%% {<0.11759.2>,
-%%  {yz_kv,update_hashtree,[delete,3,{8,3},{{<<"default">>,<<"b">>},<<"k2">>}]},
-hashtree_history() ->
-    Calls = [Args || {_Pid, {yz_kv, update_hashtree, Args}, ok} <- meck:history(yz_kv)],
-    Updates = [{P, Key, case Op of {insert, _Hash} -> insert; _ -> Op end} ||
-                  [Op, P, _Tree, {_Bucket,Key}] <- Calls],
-    %% *STABLE* sort needed on P/BKey so that the order of operations on a key is correct
-    lists:sort(Updates).
-
-hashtree_expect(Entries, RespByKey) ->
-    %% NB. foldr so no reverse, NB Result is per-entry result overridden because
-    %% of batching.
-    Expect = lists:foldr(fun({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, delete, _Result}, Acc) ->
-                                 [{P, Key, delete} | Acc];
-                            ({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, Op, _Result}, Acc) when Op == put;
-                                                                                 Op == handoff ->
-                                 [{P, Key, insert} | Acc];
-                            ({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
-                                 case get_http_response(Key, RespByKey) of
-                                     {ok, "200", _, _} ->
-                                         [hashtree_expect_entry(E) | Acc];
-                                     _ ->
-                                         Acc
-                                 end
-                         end, [], Entries),
-    %% *STABLE* sort on P/BKey
-    lists:sort(Expect).
-
-hashtree_expect_entry({P, _Index, _Bucket, Key, delete, _Result}) ->
-    %% If a successful delete, expect delete from AAE
-    {P, Key, delete};
-hashtree_expect_entry({P, _Index, _Bucket, Key, Op, _Result}) when Op == handoff;
-                                                              Op == put ->
-
-    {P, Key, insert}.
-
-
-%% Expand to a dict of Key -> ibrowse:send_req returns
-http_response_by_key() ->
-    KeysResp = [{Keys, Resp} || {_Pid, {solr_responses, record,
-                                        [Keys, Resp]}, ok} <- meck:history(solr_responses)],
-    dict:from_list(lists:flatten([[{Key, Resp} || Key <- Keys] ||
-                                     {Keys, Resp} <- KeysResp])).
-
-%% Look up an http response by the sequence batch it was in
-get_http_response(Key, RespByKey) ->
-    dict:fetch(Key, RespByKey).
-
+%%
+%% Internal functions
+%%
 
 setup() ->
     %% Todo: Try trapping lager_msg:new/4 instead
@@ -301,20 +262,6 @@ setup() ->
     ok.
 
 
-%% Mocked extractor
-extract(Value) ->
-    [{yz_solrq_eqc, Value}].
-
-    %% %% THE MOCKED FALLBACK
-%% If bt_no_index or bn_no_index
-get_bucket({<<"bt_no_index">>,_BN}) ->
-    [{n_val, 3}];
-get_bucket({_BT,<<"bn_no_index">>}) ->
-    [{n_val, 3}];
-get_bucket({_BT,_BN}=_B) ->
-    [{search_index, <<"index1">>}, {n_val, 3}].
-
-
 cleanup() ->
     meck:unload(),
     %% unlink_kill(yz_solrq_helper_sup),
@@ -336,6 +283,86 @@ reset() ->
     meck:reset(solr_responses),
     meck:reset(yz_kv),
     ok.
+
+
+
+%% Return the parsed solr history - which objects were dequeued and sent over HTTP
+solr_history() ->
+    lists:sort(dict:fetch_keys(http_response_by_key())).
+
+solr_expect(Entries) ->
+    lists:sort([Key || {_P, Index, _Bucket, Key, _Op, _Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE]).
+
+
+%% Return the hashtree history
+%% {<0.11796.2>,
+%%  {yz_kv,update_hashtree,
+%%         [{insert,<<131,98,5,19,185,115>>},
+%%          0,
+%%          {7,3},
+%%          {{<<"default">>,<<"b">>},<<"k1">>}]},
+%%  ok},
+%% {<0.11759.2>,
+%%  {yz_kv,update_hashtree,[delete,3,{8,3},{{<<"default">>,<<"b">>},<<"k2">>}]},
+hashtree_history() ->
+    Calls = [Args || {_Pid, {yz_kv, update_hashtree, Args}, ok} <- meck:history(yz_kv)],
+    Updates = [{P, Key, case Op of {insert, _Hash} -> insert; _ -> Op end} ||
+                  [Op, P, _Tree, {_Bucket,Key}] <- Calls],
+    %% *STABLE* sort needed on P/BKey so that the order of operations on a key is correct
+    lists:sort(Updates).
+
+hashtree_expect(Entries, RespByKey) ->
+    %% NB. foldr so no reverse, NB Result is per-entry result overridden because
+    %% of batching.
+    Expect = lists:foldr(fun({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, delete, _Result}, Acc) ->
+                                 [{P, Key, delete} | Acc];
+                            ({P, ?YZ_INDEX_TOMBSTONE, _Bucket, Key, Op, _Result}, Acc) when Op == put;
+                                                                                 Op == handoff ->
+                                 [{P, Key, insert} | Acc];
+                            ({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
+                                 case get_http_response(Key, RespByKey) of
+                                     {ok, "200", _, _} ->
+                                         [hashtree_expect_entry(E) | Acc];
+                                     _ ->
+                                         Acc
+                                 end
+                         end, [], Entries),
+    %% *STABLE* sort on P/BKey
+    lists:sort(Expect).
+
+hashtree_expect_entry({P, _Index, _Bucket, Key, delete, _Result}) ->
+    %% If a successful delete, expect delete from AAE
+    {P, Key, delete};
+hashtree_expect_entry({P, _Index, _Bucket, Key, Op, _Result}) when Op == handoff;
+                                                              Op == put ->
+
+    {P, Key, insert}.
+
+
+%% Expand to a dict of Key -> ibrowse:send_req returns
+http_response_by_key() ->
+    KeysResp = [{Keys, Resp} || {_Pid, {solr_responses, record,
+                                        [Keys, Resp]}, ok} <- meck:history(solr_responses)],
+    dict:from_list(lists:flatten([[{Key, Resp} || Key <- Keys] ||
+                                     {Keys, Resp} <- KeysResp])).
+
+%% Look up an http response by the sequence batch it was in
+get_http_response(Key, RespByKey) ->
+    dict:fetch(Key, RespByKey).
+
+
+%% Mocked extractor
+extract(Value) ->
+    [{yz_solrq_eqc, Value}].
+
+    %% %% THE MOCKED FALLBACK
+%% If bt_no_index or bn_no_index
+get_bucket({<<"bt_no_index">>,_BN}) ->
+    [{n_val, 3}];
+get_bucket({_BT,<<"bn_no_index">>}) ->
+    [{n_val, 3}];
+get_bucket({_BT,_BN}=_B) ->
+    [{search_index, <<"index1">>}, {n_val, 3}].
 
 restart(Sup, Id) ->
     catch supervisor:terminate_child(Sup, Id),
