@@ -83,10 +83,10 @@ gen_reason() ->
     oneof([put, delete, handoff]).
 
 gen_solr_result() ->
-    %frequency([{98, {ok, "200", some, crap}},
-    %           {1, {ok, "500", some, crap}},
-    %           {1, {error, reqd_timeout}}]).
-    frequency([{100, {ok, "200", some, crap}}]).
+    frequency([{98, {ok, "200", some, crap}},
+               {1, {ok, "500", some, crap}},
+               {1, {error, reqd_timeout}}]).
+    %frequency([{100, {ok, "200", some, crap}}]).
 
 gen_entries() ->
     non_empty(list({gen_partition(), gen_index(), gen_bucket(), gen_reason(), gen_solr_result()})).
