@@ -32,6 +32,7 @@
 % solrq/helper interface
 -export([index_ready/3, index_batch/5]).
 
+%% TODO: Dynamically pulse_instrument.
 -ifdef(PULSE).
 -compile(export_all).
 -compile({parse_transform, pulse_instrument}).
@@ -94,41 +95,45 @@ handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
-    Message = case do_batches(Index, BatchMax, 0, Entries) of
+    Message = case do_batches(Index, BatchMax, [], Entries) of
         ok ->
             {length(Entries), ok};
-        {ok, NumDelivered} ->
-            {NumDelivered, {retry, lists:nthtail(NumDelivered, Entries)}};
+        {ok, Delivered} ->
+            {length(Delivered), {retry, remove(Delivered, Entries)}};
         {error, Undelivered} ->
             {length(Entries) - length(Undelivered), {retry, Undelivered}}
     end,
     yz_solrq:batch_complete(QPid, Index, Message),
     {noreply, State}.
 
-
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
--spec do_batches(index_name(), non_neg_integer(), non_neg_integer(), solr_entries()) ->
-    ok | {ok, NumDelivered :: non_neg_integer()} | {error, Undelivered :: solr_entries()}.
-do_batches(_Index, _BatchMax, _NumDelivered, []) ->
+-spec remove(solr_entries(), solr_entries()) -> solr_entries().
+remove(Delivered, Entries) ->
+    %% TODO Performance stinks, but this will only be used in the (hopefully) degenerate
+    %% of having to handle bad requests.
+    Entries -- [{BKey, Obj, Reason, P} || {BKey, Obj, Reason, P, _IndexN, _Hash} <- Delivered].
+
+-spec do_batches(index_name(), non_neg_integer(), solr_entries(), solr_entries()) ->
+    ok | {ok, Delivered :: solr_entries()} | {error, Undelivered :: solr_entries()}.
+do_batches(_Index, _BatchMax, _Delivered, []) ->
     ok;
-do_batches(Index, BatchMax, NumDelivered, Entries) ->
+do_batches(Index, BatchMax, Delivered, Entries) ->
     {Entries1, Rest} = lists:split(min(length(Entries), BatchMax), Entries),
     case do_batch(Index, Entries1) of
         ok ->
-            do_batches(Index, BatchMax, NumDelivered + length(Entries1), Rest);
-        {ok, NumDeliveredInBatch} ->
-            {ok, NumDelivered + NumDeliveredInBatch};
+            do_batches(Index, BatchMax, Delivered ++ Entries1, Rest);
+        {ok, DeliveredInBatch} ->
+            {ok, DeliveredInBatch ++ Delivered};
         {error, _Reason} ->
             {error, Entries}
     end.
 
 -spec do_batch(index_name(), solr_entries()) ->
       ok                                        % all entries were delivered
-    | {ok, NumDelivered :: non_neg_integer()}   % a strict subset of entries were delivered
+    | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered
     | {error, term()}.                          % an error occurred; retry all of them
 do_batch(Index, Entries0) ->
     try
@@ -151,11 +156,7 @@ do_batch(Index, Entries0) ->
                 ok;
             {ok, Entries2} ->
                 update_aae_and_repair_stats(Entries2),
-                %% Why +1?  Because if we got a set of entries back with an ok,
-                %% that was because we tried sending operations one at a time until
-                %% we got a bad-request.  But Entries2 will not contain the offending
-                %% operation, so we need to signal the caller to remove it.
-                {ok, length(Entries2) + case length(Entries1) =:= length(Entries2) of true -> 0; _ -> 1 end};
+                {ok, Entries2};
             {error, Reason} ->
                 {error, Reason}
         end
@@ -163,7 +164,7 @@ do_batch(Index, Entries0) ->
         _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            ?ERROR("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
+            ?DEBUG("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
             {error, Err}
     end.
 
@@ -185,7 +186,7 @@ update_solr(Index, LI, Entries) ->
                     send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
                                               Entries);
                 blown ->
-                    ?ERROR("Fuse Blown: can't currently send solr "
+                    ?DEBUG("Fuse Blown: can't currently send solr "
                            "operations for index ~s", [Index]),
                     {error, fuse_blown};
                 _ ->
@@ -249,11 +250,10 @@ send_solr_ops_for_entries(Index, Ops, Entries) ->
     catch _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            ?ERROR("batch for index ~s failed - ~p\n : ~p\n",
-                   [Index, Err, Trace]),
+            ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
             case Err of
                 {_, badrequest, _} ->
-                    SuccessOps = send_solr_single_ops(Index, Ops),
+                    SuccessOps = send_solr_single_ops(Index, lists:reverse(Ops)),
                     {SuccessEntries, _} = lists:split(length(SuccessOps),
                                                       Entries),
                     {ok, SuccessEntries};
@@ -285,7 +285,7 @@ send_solr_single_ops(Index, Ops) ->
               catch _:Err ->
                       yz_stat:index_fail(),
                       Trace = erlang:get_stacktrace(),
-                      ?ERROR("update for index ~s failed - ~p\n : ~p\n",
+                      ?DEBUG("update for index ~s failed - ~p\n : ~p\n",
                              [Index, Err, Trace]),
                       case Err of
                           {_, badrequest, _} ->
