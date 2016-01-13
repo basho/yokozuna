@@ -223,7 +223,7 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
 %%          and should be retried.  This handler will decrement the all_queues_len
 %%          field on the solrq state record by the supplied NumDelievered value
 %%          thus potentially unblocking any vnodes waiting on this solrq instance,
-%%          if the number of queued messages are above the hight water mark.
+%%          if the number of queued messages are above the high water mark.
 %% @end
 %%
 handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_len = AQL} = State) ->
@@ -272,7 +272,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 handle_batch(
     Index,
-    #indexq{queue = Queue, queue_len = QueueLen, draining = false} = IndexQ0,
+    #indexq{draining = false} = IndexQ0,
     Result,
     State
 ) ->
@@ -281,11 +281,7 @@ handle_batch(
             ok ->
                 IndexQ0;
             {retry, Undelivered} ->
-                NewQueue = queue:join(queue:from_list(Undelivered), Queue),
-                IndexQ0#indexq{
-                    queue = NewQueue,
-                    queue_len = QueueLen + erlang:length(Undelivered)
-                }
+                requeue_undelivered(Undelivered, IndexQ0)
         end,
     IndexQ2 = maybe_request_worker(Index, IndexQ1),
     IndexQ3 = maybe_start_timer(Index, IndexQ2),
@@ -415,6 +411,14 @@ enqueue(E, #indexq{queue = Q, queue_len = L, draining = Draining} = IndexQ) ->
         false ->
             IndexQ#indexq{queue = queue:in(E, Q), queue_len = L + 1}
     end.
+
+%% @doc Re-enqueue undelivered items as part of updated indexq.
+requeue_undelivered(Undelivered, #indexq{queue = Queue, queue_len = QueueLen} = IndexQ) ->
+    NewQueue = queue:join(queue:from_list(Undelivered), Queue),
+    IndexQ#indexq{
+      queue = NewQueue,
+      queue_len = QueueLen + erlang:length(Undelivered)
+     }.
 
 %% @doc Trigger a flush and return state
 flush(Index, IndexQ, State) ->
