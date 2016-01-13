@@ -22,10 +22,6 @@
 
 -behavior(gen_server).
 
-%%TODO: Dynamically add pulse. NOT PRODUCTION
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]).
-%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
-
 %% api
 -export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
          reload_appenv/1]).
@@ -37,6 +33,7 @@
 % solrq/helper interface
 -export([request_batch/3, drain/1, batch_complete/3]).
 
+%% TODO: Dynamically pulse_instrument.  See test/pulseh.erl
 -ifdef(PULSE).
 -compile(export_all).
 -compile({parse_transform, pulse_instrument}).

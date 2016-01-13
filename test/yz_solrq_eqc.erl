@@ -33,7 +33,7 @@ solrq_test_() ->
         end,
         {timeout, 60,
             fun() ->
-                ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(10, prop_ok()))))
+                ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(30, prop_ok()))))
             end
         }
     }.
@@ -74,19 +74,18 @@ gen_partition() ->
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
 -endif.
 gen_index() ->
-    oneof([<<"idx1">>,<<"idx2">>, ?YZ_INDEX_TOMBSTONE]).
+    oneof([<<"idx1">>, <<"idx2">>, ?YZ_INDEX_TOMBSTONE]).
 
 gen_bucket() ->
-    {<<"default">>,<<"b">>}.
+    {<<"default">>, <<"b">>}.
 
 gen_reason() ->
     oneof([put, delete, handoff]).
 
 gen_solr_result() ->
-    %frequency([{98, {ok, "200", some, crap}},
-    %           {1, {ok, "500", some, crap}},
-    %           {1, {error, reqd_timeout}}]).
-    frequency([{100, {ok, "200", some, crap}}]).
+    frequency([{94, {ok, "200", some, crap}},
+               {5, {ok, "400", bad, request}},
+               {1, {error, reqd_timeout}}]).
 
 gen_entries() ->
     non_empty(list({gen_partition(), gen_index(), gen_bucket(), gen_reason(), gen_solr_result()})).
@@ -124,14 +123,14 @@ prop_ok() ->
                 %% to respond based on what was generated.
                 Entries = add_keys(Entries0),
                 KeyRes = make_keyres(Entries),
+                yz_solrq_eqc_ibrowse_responder:reset(KeyRes),
                 PE = entries_by_vnode(Entries),
 
                 meck:expect(
                     ibrowse, send_req,
                     fun(_Url, _H, _M, B, _O, _T) ->
                         %% TODO: Add check for index from URL
-                        SolrReq = parse_solr_reqs(mochijson2:decode(B)),
-                        {Keys, Res} = update_response(SolrReq, KeyRes),
+                        {Keys, Res} = yz_solrq_eqc_ibrowse_responder:get_response(B),
                         solr_responses:record(Keys, Res),
                         Res
                     end
@@ -156,7 +155,11 @@ prop_ok() ->
                         begin
                             eqc:format("SolrQ: ~p\n", [SolrQ]),
                             eqc:format("Helper: ~p\n", [Helper]),
-                            debug_history([ibrowse, solr_responses, yz_kv])
+                            eqc:format("KeyRes: ~p\n", [KeyRes]),
+                            eqc:format("keys(): ~p\n", [yz_solrq_eqc_ibrowse_responder:keys()]),
+                            eqc:format("Entries: ~p\n", [Entries]),
+                            %debug_history([ibrowse, solr_responses, yz_kv])
+                            debug_history([solr_responses])
                         end,
                         begin
                         %% For each vnode, spawn a process and start sending
@@ -173,13 +176,12 @@ prop_ok() ->
                         %    eqc:collect({batch_min, Min},
                         %        eqc:collect({batch_max, Max},
                                     conjunction([
-                                        {solr, equals(solr_history(), solr_expect(Entries))},
+                                        {solr, equals(yz_solrq_eqc_ibrowse_responder:keys(), solr_expect(Entries))},
                                         {hashtree, equals(HashtreeHistory, HashtreeExpect)}
                                     ])
                         %        )
                         %    )
                         %)
-                        % equals(solr_history(), solr_expect(Entries))
                         end
                     )
 
@@ -248,6 +250,7 @@ setup() ->
 
     %% Apply the pulse transform to the modules in the test
     %% Pulse compile solrq/solrq helper
+    %% TODO dynamically pulse_instrument
 %    Opts = [export_all,
 %            {parse_transform,pulse_instrument},
 %            {pulse_replace_module, [{gen_server, pulse_gen_server}]}],
@@ -259,6 +262,7 @@ setup() ->
     %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
     %% {ok, HelperSup} = yz_solrq_helper_sup:start_link(1),
     %% io:format(user, "SolrqSup = ~p HelperSup = ~p\n", [SolrqSup, HelperSup]),
+    yz_solrq_eqc_ibrowse_responder:start_link(),
     ok.
 
 
@@ -266,6 +270,8 @@ cleanup() ->
     meck:unload(),
     %% unlink_kill(yz_solrq_helper_sup),
     %% unlink_kill(yz_solrq_sup),
+
+    catch yz_solrq_eqc_ibrowse_responder:stop(),
 
     catch application:stop(fuse),
 
@@ -291,7 +297,12 @@ solr_history() ->
     lists:sort(dict:fetch_keys(http_response_by_key())).
 
 solr_expect(Entries) ->
-    lists:sort([Key || {_P, Index, _Bucket, Key, _Op, _Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE]).
+    lists:sort(
+        [Key || {_P, Index, _Bucket, Key, _Op, Result} <- Entries,
+            Index /= ?YZ_INDEX_TOMBSTONE,
+            Result /= {ok, "400", bad, request}
+        ]
+    ).
 
 
 %% Return the hashtree history
@@ -322,6 +333,8 @@ hashtree_expect(Entries, RespByKey) ->
                             ({_P, _Index, _Bucket, Key, _Op, _Result} = E, Acc) ->
                                  case get_http_response(Key, RespByKey) of
                                      {ok, "200", _, _} ->
+                                         [hashtree_expect_entry(E) | Acc];
+                                     {ok, "400", _, _} ->
                                          [hashtree_expect_entry(E) | Acc];
                                      _ ->
                                          Acc
@@ -388,14 +401,27 @@ make_key(Seq) ->
 make_keyres(Entries) ->
     [{Key, Result} || {_P, _Index, _Bucket, Key, _Reason, Result} <- Entries].
 
-send_entries(PE) ->
-    Self = self(),
-    [spawn_link(fun() -> send_vnode_entries(Self, P, E) end) || {P, E} <- PE].
-
 entries_by_vnode(Entries) ->
     lists:foldl(fun({P, Index, Bucket, Key, Reason, Result}, Acc) ->
                         orddict:append_list(P, [{Index, Bucket, Key, Reason, Result}], Acc)
                 end, orddict:new(), Entries).
+
+send_entries(PE) ->
+    Self = self(),
+    [spawn_link(fun() -> send_vnode_entries(Self, P, E) end) || {P, E} <- PE].
+
+%% Send the entries for a vnode
+send_vnode_entries(Runner, P, Events)  ->
+    self() ! {ohai, length(Events)},
+    [yz_solrq:index(Index, {Bucket, Key}, make_obj(Bucket, Key), Reason, P) || {Index, Bucket, Key, Reason, _Result} <- Events],
+    receive
+        {ohai, _Len} ->
+            ok
+    end,
+    Runner ! {self(), done}.
+
+make_obj(B,K) ->
+    riak_object:new(B, K, K, "application/yz_solrq_eqc"). % Set Key as value
 
 %% Wait for send_entries - should probably set a global timeout and
 %% and look for that instead
@@ -425,19 +451,6 @@ wait_for_vnodes_msgs([Pid | Pids], Ref) ->
             wait_for_vnodes_msgs([Pid|Pids], Ref)
     end.
 
-%% Send the entries for a vnode
-send_vnode_entries(Runner, P, Events)  ->
-    self() ! {ohai, length(Events)},
-    [yz_solrq:index(Index, {Bucket, Key}, make_obj(Bucket, Key), Reason, P) || {Index, Bucket, Key, Reason, _Result} <- Events],
-    receive
-        {ohai, _Len} ->
-            ok
-    end,
-    Runner ! {self(), done}.
-
-make_obj(B,K) ->
-    riak_object:new(B, K, K, "application/yz_solrq_eqc"). % Set Key as value
-
 %% ibrowse_requests() ->
 %%     [ibrowse_call_extract(Args, Res) || {_Pid, {ibrowse, send_req, Args, Res}} <- meck:history(ibrowse)].
 
@@ -447,42 +460,6 @@ make_obj(B,K) ->
 debug_history(Mods) ->
     [io:format("~p\n====\n~p\n\n", [Mod, meck:history(Mod)]) || Mod <- Mods],
     ok.
-
-
-%% Returns [{add, Key}, {delete, Key}]
-parse_solr_reqs({struct, Reqs}) ->
-    [parse_solr_req(Req) || Req <- Reqs].
-
-parse_solr_req({<<"add">>, {struct, [{<<"doc">>, Doc}]}}) ->
-    {add, find_key_field(Doc)};
-parse_solr_req({<<"delete">>, {struct, [{<<"query">>, Query}]}}) ->
-    {delete, parse_delete_query(Query)};
-parse_solr_req({delete, _Query}) ->
-    {delete, could_parse_bkey};
-parse_solr_req({Other, Thing}) ->
-    {Other, Thing}.
-
-parse_delete_query(Query) ->
-    {match, [Key]} = re:run(Query, "(XKEYX[0-9]+)",[{capture,[1],binary}]),
-    Key.
-
-find_key_field({struct, Props}) ->
-    proplists:get_value(<<"yz_solrq_eqc">>, Props).
-
-
-%% Decide what to return for the request... If any of the seq
-%% numbers had failures generated, apply to all of them.
-update_response(SolrReqs, KeyRes) ->
-    Keys = lists:usort([Key || {_Op, Key} <- SolrReqs]),
-    Responses = [Res || {Key, Res} <- KeyRes, lists:member(Key, Keys)],
-    {Keys, lists:foldl(fun update_response_folder/2, undefined, Responses)}.
-
-update_response_folder(_, {error, _Err}=R) ->
-    R;
-update_response_folder(_, {ok, "500", _Some, _Crap}=R) ->
-    R;
-update_response_folder(R, _Acc) ->
-    R.
 
 -else. %% PULSE is not defined
 
