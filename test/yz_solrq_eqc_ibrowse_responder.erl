@@ -72,13 +72,13 @@ handle_call({get_response, B}, _From, #state{keyres = KeyRes, written = Written,
     {Keys, Res, NewFailed} = get_response(SolrReqs, KeyRes, AlredyFailed),
     NewWritten = case Res of
         {ok, "200", _Some, _Crap} ->
-            sets:to_list(sets:from_list(Written ++ Keys));
+            Written ++ [Key || {_Op, Key} <- SolrReqs];
         _ ->
             Written
     end,
     {reply, {Keys, Res}, State#state{written = NewWritten, failed = NewFailed}};
 handle_call(keys, _From, #state{written = Written} = State) ->
-    {reply, lists:sort(Written), State};
+    {reply, Written, State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 

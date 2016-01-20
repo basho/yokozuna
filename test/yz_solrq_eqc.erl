@@ -157,6 +157,8 @@ prop_ok() ->
                             eqc:format("Helper: ~p\n", [Helper]),
                             eqc:format("KeyRes: ~p\n", [KeyRes]),
                             eqc:format("keys(): ~p\n", [yz_solrq_eqc_ibrowse_responder:keys()]),
+                            eqc:format("expected_entry_keys: ~p\n", [expected_entry_keys(PE)]),
+                            eqc:format("PE: ~p\n", [PE]),
                             eqc:format("Entries: ~p\n", [Entries]),
                             %debug_history([ibrowse, solr_responses, yz_kv])
                             debug_history([solr_responses])
@@ -176,8 +178,11 @@ prop_ok() ->
                         %    eqc:collect({batch_min, Min},
                         %        eqc:collect({batch_max, Max},
                                     conjunction([
-                                        {solr, equals(yz_solrq_eqc_ibrowse_responder:keys(), solr_expect(Entries))},
-                                        {hashtree, equals(HashtreeHistory, HashtreeExpect)}
+                                        {solr, equals(
+                                            lists:sort(yz_solrq_eqc_ibrowse_responder:keys()),
+                                            solr_expect(Entries))},
+                                        {hashtree, equals(HashtreeHistory, HashtreeExpect)},
+                                        {insert_order, ordered(expected_entry_keys(PE), yz_solrq_eqc_ibrowse_responder:keys())}
                                     ])
                         %        )
                         %    )
@@ -362,6 +367,83 @@ http_response_by_key() ->
 %% Look up an http response by the sequence batch it was in
 get_http_response(Key, RespByKey) ->
     dict:fetch(Key, RespByKey).
+
+
+%% The set of Keys that were written are ordered
+%% by partition if for each set of keys [key_1, ..., key_n]
+%% inserted under partion P for Index I, key_1, ..., key_n are ordered
+%% in Keys.  I.e., for each key_i, key_j in {1..n}, if i < j,
+%% then both key_i and key_j are in Keys, and key_i occurs
+%% earlier in Keys than key_j.
+%%
+ordered(PartitionEntryKeys, Keys) ->
+    lists:all(
+        fun({_P, EntryKeys}) ->
+            subseteq_ordered(EntryKeys, Keys)
+        end,
+        PartitionEntryKeys
+    ).
+
+subseteq_ordered(A, B) ->
+    A == lists:filter(fun(Be) -> lists:member(Be, A) end, B).
+
+
+%% PE =    [{partition(), [{index(), bucket(), key(), reason(), result()}]}]
+%% returns [{{partition(), index()}, [key()]}]
+%% where Index /= ?YZ_INDEX_TOMBSTONE and Reason /= {ok, "400", _, _}
+expected_entry_keys(PE) ->
+    KeysByIndexByPartition = lists:map(
+        fun({P, Entries}) ->
+            FilteredEntries = lists:filter(
+                fun({Index, _Bucket, _Key, _Reason, Result}) ->
+                    case Result of
+                        {ok, "400", _Bad, _Request} ->
+                            false;
+                        _ ->
+                            Index /= ?YZ_INDEX_TOMBSTONE
+                    end
+                end,
+                Entries
+            ),
+            PartitionedEntries = partition(
+                fun({Index1, _, _, _, _}, {Index2, _, _, _, _}) -> Index1 == Index2 end,
+                FilteredEntries
+            ),
+            KeysByIndex = lists:map(
+                fun([{Index, _, _, _, _}|_T] = NonEmptyListOfEntriesWithSameIndex) ->
+                    Keys = [Key || {I, _, Key, _, _} <- NonEmptyListOfEntriesWithSameIndex, I == Index],
+                    {Index, Keys}
+                end,
+                PartitionedEntries
+            ),
+            {P, KeysByIndex}
+        end,
+        orddict:to_list(PE)
+    ),
+    [{{P, Index}, Keys} || {P, KeysByIndex} <- KeysByIndexByPartition, {Index, Keys} <- KeysByIndex].
+
+%% partition a list based on an equivalence relation, R.
+%% R must be reflexive, symmetic, and transitive over elements in L.
+%% returns a list L of lists, such that for each
+%% L' = [E_1, ..., E_n] in L, R(E_i, E_j), for each i, j in {1..n},
+%% Union(L') = L and intersection(L') = []
+partition(R, L) ->
+    lists:foldl(
+        fun(E, Accum) ->
+            {L1, L2} = lists:partition(
+                fun([E_i|_T]) ->
+                    R(E_i, E)
+                end,
+                Accum
+            ),
+            case L1 of
+                []  -> [[E]      | L2];
+                [H] -> [H ++ [E] | L2]
+            end
+        end,
+        [],
+        L
+    ).
 
 
 %% Mocked extractor
