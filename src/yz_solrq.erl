@@ -62,7 +62,8 @@
         all_queue_len = 0       :: non_neg_integer(),
         queue_hwm = 1000        :: non_neg_integer(),
         pending_vnodes = []     :: [{pid(), atom()}],
-        drain_info = undefined  :: {pid(), reference(), [solrq_message()]} | undefined
+        drain_info = undefined  :: {pid(), reference(), [solrq_message()]} | undefined,
+        purge_blown_indices     :: boolean()
     }
 ).
 
@@ -422,8 +423,15 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
     State2 = State#state{all_queue_len = AQL + 1},
     case over_hwm(State2) of
         true ->
-            yz_stat:blocked_vnode(From),
-            State2#state{pending_vnodes = [From | PendingVnodes]};
+            State3 = maybe_purge_blown_indices(State2),
+            case over_hwm(State3) of
+                true ->
+                    yz_stat:blocked_vnode(From),
+                    State3#state{pending_vnodes = [From | PendingVnodes]};
+                false ->
+                    gen_server:reply(From, ok),
+                    State3
+            end;
         false ->
             gen_server:reply(From, ok),
             State2
@@ -454,6 +462,27 @@ flush(Index, IndexQ, State) ->
 %% @doc Return true if queue is over the high water mark
 over_hwm(#state{all_queue_len = L, queue_hwm = HWM}) ->
     L > HWM.
+
+maybe_purge_blown_indices(#state{purge_blown_indices = false} = State) ->
+    State;
+maybe_purge_blown_indices(#state{indexqs=IndexQs} = State) ->
+    BlownIndices = [
+        {Index, IndexQ} ||
+            {Index, #indexq{fuse_blown=true, queue_len=QueueLen} = IndexQ} <- dict:to_list(IndexQs),
+            QueueLen > 0
+    ],
+    case BlownIndices of
+        [] ->
+            State;
+        _ ->
+            I = random:uniform(length(BlownIndices)),
+            {Index, #indexq{queue=Queue, queue_len=QueueLen} = IndexQ} = lists:nth(I, BlownIndices),
+            {{value, _Item}, NewQueue} = queue:out(Queue),
+            NewIndexQ = IndexQ#indexq{queue=NewQueue, queue_len=QueueLen - 1},
+            ?WARN("Removing item from queue because we have hit the high water mark and the fuse is blown for index ~p.", [Index]),
+            update_indexq(Index, NewIndexQ, State)
+    end.
+
 
 %% @doc Request a worker to pull the queue
 maybe_request_worker(Index, #indexq{batch_min = Min} = IndexQ) ->
@@ -566,4 +595,5 @@ update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
 %% @doc Read settings from the application environment
 read_appenv(State) ->
     HWM = app_helper:get_env(yokozuna, solrq_queue_hwm, 10000),
-    State#state{queue_hwm = HWM}.
+    PBI = application:get_env(yokozuna, purge_blown_indices, true),
+    State#state{queue_hwm = HWM, purge_blown_indices=PBI}.

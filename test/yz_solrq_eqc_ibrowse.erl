@@ -74,7 +74,13 @@ handle_call({reset, KeyRes}, _From, _State) ->
 
 handle_call(
     {get_response, B}, _From,
-    #state{keyres=KeyRes, written=Written, failed=AlredyFailed, root=Root, expected=Expected} = State
+    #state{
+        keyres=KeyRes,
+        written=Written,
+        failed=AlredyFailed,
+        root=Root,
+        expected=Expected
+    } = State
 ) ->
     SolrReqs = parse_solr_reqs(mochijson2:decode(B)),
     {Keys, Res, NewFailed} = get_response(SolrReqs, KeyRes, AlredyFailed),
@@ -87,10 +93,8 @@ handle_call(
     NewWritten = Written ++ WrittenKeys,
     case lists:usort(NewWritten) == Expected of
         true ->
-            %lager:info("HIT lists:usort(NewWritten): ~p", [lists:usort(NewWritten)]),
             maybe_reply(Root);
         _ ->
-            %lager:info("MISS lists:usort(NewWritten): ~p", [lists:usort(NewWritten)]),
             proceed
     end,
     {reply, {Keys, Res}, State#state{written = NewWritten, failed = NewFailed}};

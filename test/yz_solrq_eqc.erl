@@ -119,6 +119,7 @@ prop_ok() ->
                 application:set_env(yokozuna, solrq_batch_min, Min),
                 application:set_env(yokozuna, solrq_batch_max, Max),
                 application:set_env(yokozuna, solrq_delayms_max, 10),
+                application:set_env(yokozuna, purge_blown_indices, false),
 
                 %% Prepare the entries, and set up the ibrowse mock
                 %% to respond based on what was generated.
@@ -152,7 +153,7 @@ prop_ok() ->
                         Pids = ?MODULE:send_entries(PE),
                         wait_for_vnodes(Pids, timer:seconds(20)),
                         timer:sleep(500),
-                        yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
+                        catch yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
                         {SolrQ, Helper,  melts_by_index(Entries)}
                     end,
                     ?WHENFAIL(
