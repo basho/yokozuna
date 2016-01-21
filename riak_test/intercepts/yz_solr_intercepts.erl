@@ -3,6 +3,7 @@
 
 -type index_name() :: binary().
 
+-define(M, yz_solr_orig).
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).
 
 -spec slow_cores() -> {ok, []}.
@@ -23,3 +24,8 @@ entropy_data_cant_complete(Core, Filter) ->
             {error, Error}
     end.
 
+index_batch_call_orig(Core, Ops) ->
+    ?M:index_batch_orig(Core, Ops).
+
+index_batch_throw_exception(_Core, _Ops) ->
+    throw({"Failed to index docs", other, error}).

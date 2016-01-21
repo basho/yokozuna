@@ -27,14 +27,17 @@
 
 -define(INDEX1, <<"solrq_index1">>).
 -define(INDEX2, <<"solrq_index2">>).
+-define(INDEX3, <<"solrq_index3">>).
 -define(BUCKET1, {<<"solrq1">>, <<"solrq_bucket1">>}).
 -define(BUCKET2, {<<"solrq2">>, <<"solrq_bucket2">>}).
+-define(BUCKET3, {<<"solrq3">>, <<"solrq_bucket3">>}).
 
 -define(NUM_SOLRQ, 3).
 -define(NUM_SOLRQ_HELPERS, 3).
 -define(SOLRQ_DELAYMS_MAX, 3000).
 -define(SOLRQ_BATCH_MIN, 4).
 -define(SOLRQ_BATCH_MAX, 8).
+-define(MELT_RESET_REFRESH, 1000).
 -define(CONFIG,
         [{yokozuna,
           [{enabled, true},
@@ -42,16 +45,29 @@
            {num_solrq_helpers, ?NUM_SOLRQ_HELPERS},
            {solrq_delayms_max, ?SOLRQ_DELAYMS_MAX},
            {solrq_batch_min, ?SOLRQ_BATCH_MIN},
-           {solrq_batch_max, ?SOLRQ_BATCH_MAX}]}]).
+           {solrq_batch_max, ?SOLRQ_BATCH_MAX},
+           {melt_reset_refresh, ?MELT_RESET_REFRESH}]}]).
 
+%%Zeeshan Lakhani:
+%%  Proving assertions that melt windows are correct and that we recover from being blown I think suffices
+%%  Next would be to test requeuing itself too
+%%Fred Dushin:
+%%  I would use intercepts, and some sort of state managed in a gen_server or raw proc.
+%%
 confirm() ->
     Cluster = yz_rt:prepare_cluster(1, ?CONFIG),
     [PBConn|_] = PBConns = yz_rt:open_pb_conns(Cluster),
 
     ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET1, ?INDEX1),
     ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET2, ?INDEX2),
+    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET3, ?INDEX3),
     confirm_batching(Cluster, PBConn, ?BUCKET1, ?INDEX1),
     confirm_draining(Cluster, PBConn, ?BUCKET2, ?INDEX2),
+
+    %% confirm_requeue_undelivered must be last since it installs an interrupt
+    %% that intentionally causes failures
+    confirm_requeue_undelivered(Cluster, PBConn, ?BUCKET3, ?INDEX3),
+
     yz_rt:close_pb_conns(PBConns),
     pass.
 
@@ -95,6 +111,27 @@ confirm_draining(Cluster, PBConn, BKey, Index) ->
     verify_search_count(PBConn, Index, Count),
     ok.
 
+confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
+    load_intercept_code(Node),
+    intercept_index_batch(Node, index_batch_throw_exception),
+
+    Count = ?SOLRQ_BATCH_MIN,
+    Count = put_objects(PBConn, BKey, Count),
+    yz_rt:commit(Cluster, Index),
+
+    %% Because the index_batch_throw_exception intercept simulates a Solr
+    %% failure, none of the objects should have been indexed at this point.
+    verify_search_count(PBConn, Index, 0),
+
+    %% Now, if we replace the intercept with one that just calls the original
+    %% function, the undelivered objects will be requeued and should succeed
+    %% (assuming that the fuse has been blown and reset).
+    intercept_index_batch(Node, index_batch_call_orig),
+    timer:sleep(?MELT_RESET_REFRESH + 1000), %% wait for fuse reset
+    drain_solrqs(Node),
+    verify_search_count(PBConn, Index, Count),
+    ok.
+
 -spec put_objects(pid(), bucket(), non_neg_integer()) -> non_neg_integer().
 put_objects(PBConn, Bucket, Count) ->
     RandVals = [yz_rt:random_binary(16) || _ <- lists:seq(1, Count)],
@@ -115,3 +152,15 @@ verify_search_count(PBConn, Index, Count) ->
 
 drain_solrqs(Node) ->
     rpc:call(Node, yz_solrq_sup, drain, []).
+
+load_intercept_code(Node) ->
+    CodePath = filename:join([rt_config:get(yz_dir),
+                              "riak_test",
+                              "intercepts",
+                              "*.erl"]),
+    rt_intercept:load_code(Node, [CodePath]).
+
+intercept_index_batch(Node, Intercept) ->
+    rt_intercept:add(
+      Node,
+      {yz_solr, [{{index_batch, 2}, Intercept}]}).
