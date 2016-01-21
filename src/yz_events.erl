@@ -101,9 +101,11 @@ init([]) ->
 
 handle_event({Index, blown}, S) ->
     handle_index_recovered(Index, down),
+    yz_solrq_sup:fuse_event({Index, blown}),
     {ok, S};
 handle_event({Index, ok}, S) ->
     handle_index_recovered(Index, up),
+    yz_solrq_sup:fuse_event({Index, ok}),
     {ok, S};
 handle_event({Index, removed}, S) ->
     handle_index_recovered(Index, removed),

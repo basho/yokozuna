@@ -27,7 +27,9 @@
          set_hwm/1,
          set_index/4,
          reload_appenv/0,
-         drain/0]).
+         drain/0,
+         blown_fuse/1,
+         healed_fuse/1]).
 
 -include("yokozuna.hrl").
 
@@ -154,6 +156,26 @@ drain() ->
         _ ->
             {error, in_progress}
     end.
+
+%% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
+-spec blown_fuse(index_name()) -> ok.
+blown_fuse(Index) ->
+    lists:foreach(
+        fun(Name) ->
+            yz_solrq:blown_fuse(Name, Index)
+        end,
+        tuple_to_list(get_solrq_tuple())
+    ).
+
+%% @doc Signal to all Solrqs that a fuse has healed for the the specified index.
+-spec healed_fuse(index_name()) -> ok.
+healed_fuse(Index) ->
+    lists:foreach(
+        fun(Name) ->
+            yz_solrq:healed_fuse(Name, Index)
+        end,
+        tuple_to_list(get_solrq_tuple())
+    ).
 
 %%%===================================================================
 %%% Supervisor callbacks

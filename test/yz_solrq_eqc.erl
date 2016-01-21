@@ -83,9 +83,9 @@ gen_reason() ->
     oneof([put, delete, handoff]).
 
 gen_solr_result() ->
-    frequency([{94, {ok, "200", some, crap}},
-               {5, {ok, "400", bad, request}},
-               {1, {error, reqd_timeout}}]).
+    frequency([{75, {ok, "200", some, crap}},
+               {5,  {ok, "400", bad, request}},
+               {20, {error, reqd_timeout}}]).
 
 gen_entries() ->
     non_empty(list({gen_partition(), gen_index(), gen_bucket(), gen_reason(), gen_solr_result()})).
@@ -93,7 +93,9 @@ gen_entries() ->
 gen_params() ->
     ?LET({HWMSeed, MinSeed, MaxSeed},
          {nat(), nat(), nat()},
-         {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
+         %{1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
+         {1 + HWMSeed, 1, 1 + MinSeed + MaxSeed}).
+
 
 %%
 %% Quickcheck Properties
@@ -137,19 +139,22 @@ prop_ok() ->
                 ),
 
                 ?PULSE(
-                    {SolrQ, Helper},
+                    {SolrQ, Helper, MeltsByIndex},
                     begin
                         reset(), % restart the processes
                         unlink_kill(yz_solrq_0001),
                         unlink_kill(yz_solrq_helper_0001),
+                        unlink_kill(yz_solrq_eqc_fuse),
                         {ok, SolrQ} = yz_solrq:start_link(yz_solrq_0001),
                         {ok, Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
+                        {ok, _} = yz_solrq_eqc_fuse:start_link(),
 
                         %% Issue the requests under pulse
                         Pids = ?MODULE:send_entries(PE),
                         wait_for_vnodes(Pids, timer:seconds(20)),
                         timer:sleep(500),
-                        {SolrQ, Helper}
+                        yz_solrq_eqc_ibrowse_responder:wait(expected_keys(Entries)),
+                        {SolrQ, Helper,  melts_by_index(Entries)}
                     end,
                     ?WHENFAIL(
                         begin
@@ -159,6 +164,7 @@ prop_ok() ->
                             eqc:format("keys(): ~p\n", [yz_solrq_eqc_ibrowse_responder:keys()]),
                             eqc:format("expected_entry_keys: ~p\n", [expected_entry_keys(PE)]),
                             eqc:format("PE: ~p\n", [PE]),
+                            eqc:format("melts_by_index: ~p~n", [MeltsByIndex]),
                             eqc:format("Entries: ~p\n", [Entries]),
                             %debug_history([ibrowse, solr_responses, yz_kv])
                             debug_history([solr_responses])
@@ -182,7 +188,8 @@ prop_ok() ->
                                             lists:sort(yz_solrq_eqc_ibrowse_responder:keys()),
                                             solr_expect(Entries))},
                                         {hashtree, equals(HashtreeHistory, HashtreeExpect)},
-                                        {insert_order, ordered(expected_entry_keys(PE), yz_solrq_eqc_ibrowse_responder:keys())}
+                                        {insert_order, ordered(expected_entry_keys(PE), yz_solrq_eqc_ibrowse_responder:keys())},
+                                        {melts, equals(MeltsByIndex, errors_by_index(Entries))}
                                     ])
                         %        )
                         %    )
@@ -208,8 +215,6 @@ setup() ->
     application:start(compiler),
     application:start(goldrush),
     application:start(lager),
-
-    application:start(fuse),
 
     yz_solrq_sup:set_solrq_tuple(1), % for yz_solrq_sup:regname
     yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
@@ -246,8 +251,8 @@ setup() ->
     meck:expect(yz_kv, update_aae_exchange_stats, fun(_P, _TreeId, _Count) -> ok end),
 
     meck:new(fuse),
-    meck:expect(fuse, ask, fun(_IndexName, _Context) -> ok end),
-    meck:expect(fuse, melt, fun(_IndexName) -> ok end),
+    meck:expect(fuse, ask, fun(IndexName, Context) -> yz_solrq_eqc_fuse:ask(IndexName, Context) end),
+    meck:expect(fuse, melt, fun(IndexName) -> yz_solrq_eqc_fuse:melt(IndexName) end),
 
     %% Fake module to track solr responses - meck:history(solr_responses)
     meck:new(solr_responses, [non_strict]),
@@ -369,6 +374,27 @@ get_http_response(Key, RespByKey) ->
     dict:fetch(Key, RespByKey).
 
 
+melts_by_index(Entries) ->
+    Indices = lists:usort([Index || {_P, Index, _Bucket, _Key, _Op, _Result} <- Entries]),
+    MeltsByIndex = [{Index, yz_solrq_eqc_fuse:melts(Index)} || Index <- Indices, Index /= ?YZ_INDEX_TOMBSTONE],
+    %lager:info("FDUSHIN> MeltsByIndex: ~p", [MeltsByIndex]),
+    [{Index, Melts} || {Index, Melts} <- MeltsByIndex, Melts /= 0].
+    %MeltsByIndex.
+
+errors_by_index(Entries) ->
+    IndexErrors = [Index || {_P, Index, _Bucket, _Key, _Op, Result} <-
+        Entries, Result == {error, reqd_timeout}, Index /= ?YZ_INDEX_TOMBSTONE],
+    Partitions = partition(
+        fun(I1, I2) -> I1 == I2 end,
+        IndexErrors
+    ),
+    ErrorsByIndex = [{Index, length(Indices)} || [Index | _Rest] = Indices <- Partitions],
+    sort_by_key(ErrorsByIndex).
+
+sort_by_key(PropList) ->
+    SortedKeys = lists:usort(proplists:get_keys(PropList)),
+    [{Key, proplists:get_value(Key, PropList)} || Key <- SortedKeys].
+
 %% The set of Keys that were written are ordered
 %% by partition if for each set of keys [key_1, ..., key_n]
 %% inserted under partion P for Index I, key_1, ..., key_n are ordered
@@ -483,7 +509,10 @@ make_key(Seq) ->
 make_keyres(Entries) ->
     [{Key, Result} || {_P, _Index, _Bucket, Key, _Reason, Result} <- Entries].
 
-entries_by_vnode(Entries) ->
+expected_keys(Entries) ->
+    [Key || {_P, Index, _Bucket, Key, _Reason, Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE, Result /= {ok, "400", bad, request}].
+
+    entries_by_vnode(Entries) ->
     lists:foldl(fun({P, Index, Bucket, Key, Reason, Result}, Acc) ->
                         orddict:append_list(P, [{Index, Bucket, Key, Reason, Result}], Acc)
                 end, orddict:new(), Entries).

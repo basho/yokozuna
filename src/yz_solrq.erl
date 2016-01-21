@@ -24,7 +24,7 @@
 
 %% api
 -export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
-         reload_appenv/1]).
+         reload_appenv/1, blown_fuse/2, healed_fuse/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -52,7 +52,8 @@
         batch_max = 100         :: non_neg_integer(),
         delayms_max = 100       :: non_neg_integer(),
         aux_queue = queue:new() :: yz_queue(),
-        draining = false        :: boolean()
+        draining = false        :: boolean(),
+        fuse_blown = false      :: boolean()
     }
 ).
 -record(
@@ -119,6 +120,16 @@ drain(QPid) ->
     Token = make_ref(),
     gen_server:cast(QPid, {drain, self(), Token}),
     Token.
+
+%% @doc Signal to the solrq that a fuse has blown for the the specified index.
+-spec blown_fuse(pid(), index_name()) -> ok.
+blown_fuse(QPid, Index) ->
+    gen_server:cast(QPid, {blown_fuse, Index}).
+
+%% @doc Signal to the solrq that a fuse has healed for the the specified index.
+-spec healed_fuse(pid(), index_name()) -> ok.
+healed_fuse(QPid, Index) ->
+    gen_server:cast(QPid, {healed_fuse, Index}).
 
 %%%===================================================================
 %%% solrq/helper interface
@@ -206,7 +217,22 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
         end,
     {noreply, State#state{indexqs = NewIndexQs, drain_info = DrainInfo}};
 
+%%
+%% @doc Set the fuse_blown state on the IndexQ associated with the supplied Index
+%%
+handle_cast({blown_fuse, Index}, State) ->
+    IndexQ = get_indexq(Index, State),
+    {noreply, update_indexq(Index, IndexQ#indexq{fuse_blown = true}, State)};
 
+%%
+%% @doc Clear the fuse_blown state on the IndexQ associated with the supplied Index
+%%      Resume any batches that may need to proceed.
+%% @end
+%%
+handle_cast({healed_fuse, Index}, State) ->
+    IndexQ = get_indexq(Index, State),
+    NewIndexQ = request_worker(Index, maybe_start_timer(Index, IndexQ#indexq{fuse_blown = false})),
+    {noreply, update_indexq(Index, NewIndexQ, State)};
 
 %%
 %% @doc     Handle the batch_complete message.
@@ -436,6 +462,7 @@ maybe_request_worker(Index, #indexq{batch_min = Min} = IndexQ) ->
 %% @doc Request a worker to pulll the queue with a provided minimum,
 %%      as long as one has not already been requested.
 maybe_request_worker(Index, Min, #indexq{pending_helper = false,
+                                         fuse_blown = false,
                                          queue_len = L} = IndexQ) when L >= Min ->
     request_worker(Index, IndexQ);
 maybe_request_worker(_Index, _Min, IndexQ) ->
@@ -500,6 +527,7 @@ maybe_unblock_vnodes(#state{pending_vnodes = PendingVnodes} = State) ->
 
 maybe_start_timer(Index, #indexq{href = undefined, queue_len = L,
                                  pending_helper = false,
+                                 fuse_blown = false,
                                  delayms_max = DelayMS} = IndexQ) when L > 0 ->
     HRef = make_ref(),
     erlang:send_after(DelayMS, self(), {flush, Index, HRef}),
