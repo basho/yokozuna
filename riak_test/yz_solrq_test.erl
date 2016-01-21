@@ -48,12 +48,6 @@
            {solrq_batch_max, ?SOLRQ_BATCH_MAX},
            {melt_reset_refresh, ?MELT_RESET_REFRESH}]}]).
 
-%%Zeeshan Lakhani:
-%%  Proving assertions that melt windows are correct and that we recover from being blown I think suffices
-%%  Next would be to test requeuing itself too
-%%Fred Dushin:
-%%  I would use intercepts, and some sort of state managed in a gen_server or raw proc.
-%%
 confirm() ->
     Cluster = yz_rt:prepare_cluster(1, ?CONFIG),
     [PBConn|_] = PBConns = yz_rt:open_pb_conns(Cluster),
