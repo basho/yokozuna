@@ -16,7 +16,7 @@
 %% under the License.
 %%
 %% -------------------------------------------------------------------
--module(yz_solrq_eqc_ibrowse_responder).
+-module(yz_solrq_eqc_ibrowse).
 
 -behaviour(gen_server).
 

@@ -124,14 +124,14 @@ prop_ok() ->
                 %% to respond based on what was generated.
                 Entries = add_keys(Entries0),
                 KeyRes = make_keyres(Entries),
-                yz_solrq_eqc_ibrowse_responder:reset(KeyRes),
+                yz_solrq_eqc_ibrowse:reset(KeyRes),
                 PE = entries_by_vnode(Entries),
 
                 meck:expect(
                     ibrowse, send_req,
                     fun(_Url, _H, _M, B, _O, _T) ->
                         %% TODO: Add check for index from URL
-                        {Keys, Res} = yz_solrq_eqc_ibrowse_responder:get_response(B),
+                        {Keys, Res} = yz_solrq_eqc_ibrowse:get_response(B),
                         solr_responses:record(Keys, Res),
                         Res
                     end
@@ -152,7 +152,7 @@ prop_ok() ->
                         Pids = ?MODULE:send_entries(PE),
                         wait_for_vnodes(Pids, timer:seconds(20)),
                         timer:sleep(500),
-                        yz_solrq_eqc_ibrowse_responder:wait(expected_keys(Entries)),
+                        yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
                         {SolrQ, Helper,  melts_by_index(Entries)}
                     end,
                     ?WHENFAIL(
@@ -160,7 +160,7 @@ prop_ok() ->
                             eqc:format("SolrQ: ~p\n", [SolrQ]),
                             eqc:format("Helper: ~p\n", [Helper]),
                             eqc:format("KeyRes: ~p\n", [KeyRes]),
-                            eqc:format("keys(): ~p\n", [yz_solrq_eqc_ibrowse_responder:keys()]),
+                            eqc:format("keys(): ~p\n", [yz_solrq_eqc_ibrowse:keys()]),
                             eqc:format("expected_entry_keys: ~p\n", [expected_entry_keys(PE)]),
                             eqc:format("PE: ~p\n", [PE]),
                             eqc:format("melts_by_index: ~p~n", [MeltsByIndex]),
@@ -184,10 +184,10 @@ prop_ok() ->
                         %        eqc:collect({batch_max, Max},
                                     conjunction([
                                         {solr, equals(
-                                            lists:sort(yz_solrq_eqc_ibrowse_responder:keys()),
+                                            lists:sort(yz_solrq_eqc_ibrowse:keys()),
                                             solr_expect(Entries))},
                                         {hashtree, equals(HashtreeHistory, HashtreeExpect)},
-                                        {insert_order, ordered(expected_entry_keys(PE), yz_solrq_eqc_ibrowse_responder:keys())},
+                                        {insert_order, ordered(expected_entry_keys(PE), yz_solrq_eqc_ibrowse:keys())},
                                         {melts, equals(MeltsByIndex, errors_by_index(Entries))}
                                     ])
                         %        )
@@ -271,7 +271,7 @@ setup() ->
     %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
     %% {ok, HelperSup} = yz_solrq_helper_sup:start_link(1),
     %% io:format(user, "SolrqSup = ~p HelperSup = ~p\n", [SolrqSup, HelperSup]),
-    yz_solrq_eqc_ibrowse_responder:start_link(),
+    yz_solrq_eqc_ibrowse:start_link(),
     ok.
 
 
@@ -280,7 +280,7 @@ cleanup() ->
     %% unlink_kill(yz_solrq_helper_sup),
     %% unlink_kill(yz_solrq_sup),
 
-    catch yz_solrq_eqc_ibrowse_responder:stop(),
+    catch yz_solrq_eqc_ibrowse:stop(),
 
     catch application:stop(fuse),
 
