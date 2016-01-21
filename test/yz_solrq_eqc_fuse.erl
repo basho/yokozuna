@@ -44,7 +44,7 @@
 -record(state, {
     indices = dict:new(),
     threshold = 1, % 1 melt is enough to blow a fuse
-    interval = 0  % recover immediately
+    interval = 100  % recover after 100ms
 }).
 
 %%%===================================================================

@@ -93,8 +93,7 @@ gen_entries() ->
 gen_params() ->
     ?LET({HWMSeed, MinSeed, MaxSeed},
          {nat(), nat(), nat()},
-         %{1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
-         {1 + HWMSeed, 1, 1 + MinSeed + MaxSeed}).
+         {1 + HWMSeed, 1 + MinSeed, 1 + MinSeed + MaxSeed}).
 
 
 %%
