@@ -21,7 +21,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, stop/0, reset/1, get_response/1, keys/0]).
+-export([start_link/0, stop/0, reset/1, get_response/1, keys/0, wait/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -36,7 +36,8 @@
 -record(state, {
     keyres,
     written = [],
-    failed = []
+    failed = [],
+    root = undefined, expected = []
 }).
 
 %%%===================================================================
@@ -58,6 +59,9 @@ get_response(B) ->
 keys() ->
     gen_server:call(?MODULE, keys).
 
+wait(Keys) ->
+    gen_server:call(?MODULE, {wait, Keys}, 1000).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -67,18 +71,47 @@ init([]) ->
 
 handle_call({reset, KeyRes}, _From, _State) ->
     {reply, ok, #state{keyres = KeyRes}};
-handle_call({get_response, B}, _From, #state{keyres = KeyRes, written = Written, failed = AlredyFailed} = State) ->
+
+handle_call(
+    {get_response, B}, _From,
+    #state{keyres=KeyRes, written=Written, failed=AlredyFailed, root=Root, expected=Expected} = State
+) ->
     SolrReqs = parse_solr_reqs(mochijson2:decode(B)),
     {Keys, Res, NewFailed} = get_response(SolrReqs, KeyRes, AlredyFailed),
-    NewWritten = case Res of
+    WrittenKeys = case Res of
         {ok, "200", _Some, _Crap} ->
-            Written ++ [Key || {_Op, Key} <- SolrReqs];
+            [Key || {_Op, Key} <- SolrReqs];
         _ ->
-            Written
+            []
+    end,
+    NewWritten = Written ++ WrittenKeys,
+    case lists:usort(NewWritten) == Expected of
+        true ->
+            %lager:info("HIT lists:usort(NewWritten): ~p", [lists:usort(NewWritten)]),
+            maybe_reply(Root);
+        _ ->
+            %lager:info("MISS lists:usort(NewWritten): ~p", [lists:usort(NewWritten)]),
+            proceed
     end,
     {reply, {Keys, Res}, State#state{written = NewWritten, failed = NewFailed}};
+
 handle_call(keys, _From, #state{written = Written} = State) ->
     {reply, Written, State};
+
+handle_call({wait, Keys}, From, #state{written=Written} = State) ->
+    case Keys of
+        [] ->
+            {reply, ok, State};
+        _ ->
+            case lists:usort(Written) == lists:usort(Keys) of
+                true ->
+                    {reply, ok, State};
+                _ ->
+                    lager:info("Process ~p waiting for keys...: ~p", [From, Keys]),
+                    {noreply, State#state{root=From, expected=lists:usort(Keys)}}
+            end
+    end;
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -151,3 +184,9 @@ find_response([{Key, Res} | KeyResRest], AlreadyFailed, Candidate) ->
                     find_response(KeyResRest, AlreadyFailed, Res)
             end
     end.
+
+
+maybe_reply(undefined) ->
+    ok;
+maybe_reply(Root) ->
+    gen_server:reply(Root, ok).
