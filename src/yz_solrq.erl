@@ -119,7 +119,7 @@ set_index(QPid, Index, Min, Max, DelayMax) ->
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
 
--spec drain(pid()) -> reference().
+-spec drain(atom()) -> reference().
 drain(QPid) ->
     Token = make_ref(),
     gen_server:cast(QPid, {drain, self(), Token}),
@@ -615,8 +615,4 @@ debug_state(State) ->
         {all_queue_len, State#state.all_queue_len},
         {drain_info, State#state.drain_info}
     ].
--else.
-debug_queue(_) -> ok.
-debug_indexq(_) -> ok.
-debug_state(_) -> ok.
 -endif.
