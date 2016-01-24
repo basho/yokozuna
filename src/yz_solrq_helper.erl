@@ -43,7 +43,6 @@ debug_entries(Entries) ->
     [erlang:element(1, Entry) || Entry <- Entries].
 -else.
 -define(PULSE_DEBUG(S,F), ok).
-debug_entries(_) -> ok.
 -endif.
 
 -record(state, {}).
