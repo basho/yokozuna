@@ -29,7 +29,8 @@
          reload_appenv/0,
          drain/0,
          blown_fuse/1,
-         healed_fuse/1]).
+         healed_fuse/1,
+         solrq_names/0]).
 
 -include("yokozuna.hrl").
 
@@ -176,6 +177,12 @@ healed_fuse(Index) ->
         end,
         tuple_to_list(get_solrq_tuple())
     ).
+
+%% @doc Return the list of solrq names registered with this supervisor
+-spec solrq_names() -> [atom()].
+solrq_names() ->
+    tuple_to_list(get_solrq_tuple()).
+    %[int_to_queue_regname(I) || I <- lists:seq(1, queue_procs())].
 
 %%%===================================================================
 %%% Supervisor callbacks

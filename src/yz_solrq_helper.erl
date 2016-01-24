@@ -37,6 +37,13 @@
 -compile(export_all).
 -compile({parse_transform, pulse_instrument}).
 -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+
+-define(PULSE_DEBUG(S,F), pulse:format(S,F)).
+debug_entries(Entries) ->
+    [erlang:element(1, Entry) || Entry <- Entries].
+-else.
+-define(PULSE_DEBUG(S,F), ok).
+debug_entries(_) -> ok.
 -endif.
 
 -record(state, {}).
@@ -95,12 +102,14 @@ handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
+    ?PULSE_DEBUG("Handling batch for index ~p.  Entries: ~p~n", [Index, debug_entries(Entries)]),
     Message = case do_batches(Index, BatchMax, [], Entries) of
         ok ->
             {length(Entries), ok};
         {ok, Delivered} ->
             {length(Delivered), {retry, remove(Delivered, Entries)}};
         {error, Undelivered} ->
+            ?PULSE_DEBUG("Error handling batch for index ~p.  Undelivered: ~p~n", [Index, debug_entries(Undelivered)]),
             {length(Entries) - length(Undelivered), {retry, Undelivered}}
     end,
     yz_solrq:batch_complete(QPid, Index, Message),
@@ -344,3 +353,4 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+

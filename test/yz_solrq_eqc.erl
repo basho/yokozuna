@@ -125,7 +125,6 @@ prop_ok() ->
                 %% to respond based on what was generated.
                 Entries = add_keys(Entries0),
                 KeyRes = make_keyres(Entries),
-                yz_solrq_eqc_ibrowse:reset(KeyRes),
                 PE = entries_by_vnode(Entries),
 
                 meck:expect(
@@ -139,29 +138,32 @@ prop_ok() ->
                 ),
 
                 ?PULSE(
-                    {SolrQ, Helper, MeltsByIndex},
+                    {SolrQ, Helper, IBrowseKeys, MeltsByIndex},
                     begin
                         reset(), % restart the processes
                         unlink_kill(yz_solrq_0001),
                         unlink_kill(yz_solrq_helper_0001),
                         unlink_kill(yz_solrq_eqc_fuse),
+                        unlink_kill(yz_solrq_eqc_ibrowse),
                         {ok, SolrQ} = yz_solrq:start_link(yz_solrq_0001),
                         {ok, Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
                         {ok, _} = yz_solrq_eqc_fuse:start_link(),
+                        {ok, _} = yz_solrq_eqc_ibrowse:start_link(KeyRes),
 
                         %% Issue the requests under pulse
                         Pids = ?MODULE:send_entries(PE),
+                        start_drains(length(Entries)),
                         wait_for_vnodes(Pids, timer:seconds(20)),
                         timer:sleep(500),
                         catch yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
-                        {SolrQ, Helper,  melts_by_index(Entries)}
+                        {SolrQ, Helper,  yz_solrq_eqc_ibrowse:keys(), melts_by_index(Entries)}
                     end,
                     ?WHENFAIL(
                         begin
                             eqc:format("SolrQ: ~p\n", [SolrQ]),
                             eqc:format("Helper: ~p\n", [Helper]),
                             eqc:format("KeyRes: ~p\n", [KeyRes]),
-                            eqc:format("keys(): ~p\n", [yz_solrq_eqc_ibrowse:keys()]),
+                            eqc:format("keys(): ~p\n", [IBrowseKeys]),
                             eqc:format("expected_entry_keys: ~p\n", [expected_entry_keys(PE)]),
                             eqc:format("PE: ~p\n", [PE]),
                             eqc:format("melts_by_index: ~p~n", [MeltsByIndex]),
@@ -185,10 +187,10 @@ prop_ok() ->
                         %        eqc:collect({batch_max, Max},
                                     conjunction([
                                         {solr, equals(
-                                            lists:sort(yz_solrq_eqc_ibrowse:keys()),
+                                            lists:sort(IBrowseKeys),
                                             solr_expect(Entries))},
                                         {hashtree, equals(HashtreeHistory, HashtreeExpect)},
-                                        {insert_order, ordered(expected_entry_keys(PE), yz_solrq_eqc_ibrowse:keys())},
+                                        {insert_order, ordered(expected_entry_keys(PE), IBrowseKeys)},
                                         {melts, equals(MeltsByIndex, errors_by_index(Entries))}
                                     ])
                         %        )
@@ -272,7 +274,6 @@ setup() ->
     %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
     %% {ok, HelperSup} = yz_solrq_helper_sup:start_link(1),
     %% io:format(user, "SolrqSup = ~p HelperSup = ~p\n", [SolrqSup, HelperSup]),
-    yz_solrq_eqc_ibrowse:start_link(),
     ok.
 
 
@@ -280,8 +281,6 @@ cleanup() ->
     meck:unload(),
     %% unlink_kill(yz_solrq_helper_sup),
     %% unlink_kill(yz_solrq_sup),
-
-    catch yz_solrq_eqc_ibrowse:stop(),
 
     catch application:stop(fuse),
 
@@ -533,6 +532,35 @@ send_vnode_entries(Runner, P, Events)  ->
 
 make_obj(B,K) ->
     riak_object:new(B, K, K, "application/yz_solrq_eqc"). % Set Key as value
+
+
+
+start_drains(_N) ->
+    spawn_link(fun() -> [drain(100) || _I <- lists:seq(1, 10)] end).
+
+drain(Millis) ->
+    %ok = yz_solrq_sup:drain(),
+    try
+        {ok, Pid} = yz_solrq_drain_fsm:start_link(),
+        Reference = erlang:monitor(process, Pid),
+        yz_solrq_drain_fsm:start_prepare(),
+        receive
+            {'DOWN', Reference, _Type, _Object, normal} ->
+                ok;
+            {'DOWN', Reference, _Type, _Object, Info} ->
+                lager:info("FDUSHIN> Info: ~p", [Info]),
+                {error, Info}
+        after 10000 ->
+            erlang:demonitor(Reference),
+            %yz_solrq_drain_fsm:maybe_cancel()
+            {error, timeout}
+        end
+    catch
+        _:badarg ->
+            {error, in_progress}
+    end,
+
+    timer:sleep(Millis).
 
 %% Wait for send_entries - should probably set a global timeout and
 %% and look for that instead
