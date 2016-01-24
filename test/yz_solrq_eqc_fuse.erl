@@ -64,7 +64,7 @@ ask(Index, Context) ->
     gen_server:call(?MODULE, {ask, Index, Context}).
 
 melt(Index) ->
-    gen_server:call(?MODULE, {melt, Index}).
+    gen_server:cast(?MODULE, {melt, Index}).
 
 melts(Index) ->
     %% NB. yz_fuse converts Indices (as binaries) to atoms, so in general,
@@ -95,7 +95,18 @@ handle_call(
         end,
     {reply, IndexState, State};
 
-handle_call({melt, Index}, _From, #state{indices = Indices, threshold = Threshold, interval = Interval} = State) ->
+handle_call({melts, Index}, _From, #state{indices = Indices} = State) ->
+    TotalMelts = case dict:find(Index, Indices) of
+        {ok, {_FuseState, Melts}} -> Melts;
+        _ -> 0
+    end,
+    {reply, TotalMelts, State};
+
+handle_call(_Request, _From, State) ->
+    {reply, ok, State}.
+
+
+handle_cast({melt, Index}, #state{indices = Indices, threshold = Threshold, interval = Interval} = State) ->
     NewMelts =
         case dict:find(Index, Indices) of
             {ok, {_FuseState, Melts}} ->
@@ -112,18 +123,7 @@ handle_call({melt, Index}, _From, #state{indices = Indices, threshold = Threshol
             _ ->
                 ok
         end,
-    {reply, ok, State#state{indices = dict:store(Index, {FuseState, NewMelts}, Indices)}};
-
-handle_call({melts, Index}, _From, #state{indices = Indices} = State) ->
-    TotalMelts = case dict:find(Index, Indices) of
-        {ok, {_FuseState, Melts}} -> Melts;
-        _ -> 0
-    end,
-    {reply, TotalMelts, State};
-
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
-
+    {noreply, State#state{indices = dict:store(Index, {FuseState, NewMelts}, Indices)}};
 
 handle_cast(_Request, State) ->
     {noreply, State}.

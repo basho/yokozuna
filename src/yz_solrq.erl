@@ -38,6 +38,9 @@
 -compile(export_all).
 -compile({parse_transform, pulse_instrument}).
 -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-define(PULSE_DEBUG(S,F), pulse:format(S,F)).
+-else.
+-define(PULSE_DEBUG(S,F), ok).
 -endif.
 
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
@@ -156,11 +159,14 @@ init([]) ->
     {ok, read_appenv(#state{})} .
 
 handle_call({index, Index, E}, From, State) ->
+    ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
     State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
     IndexQ = enqueue(E, get_indexq(Index, State2)),
     IndexQ2 = maybe_request_worker(Index, IndexQ),
     IndexQ3 = maybe_start_timer(Index, IndexQ2),
-    {noreply, update_indexq(Index, IndexQ3, State2)};
+    NewState = update_indexq(Index, IndexQ3, State2),
+    ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(NewState)]),
+    {noreply, NewState};
 handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
@@ -196,6 +202,7 @@ handle_cast({request_batch, Index, HPid}, State) ->
 %% @end
 %%
 handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
+    ?PULSE_DEBUG("drain.  State: ~p~n", [debug_state(State)]),
     {Remaining, NewIndexQs} = dict:fold(
         fun(Index, IndexQ, {RemainingAccum, IndexQsAccum}) ->
             case IndexQ#indexq.queue_len of
@@ -208,15 +215,17 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
         {[], IndexQs},
         IndexQs
     ),
-    DrainInfo =
+    NewState =
         case Remaining of
             [] ->
                 yz_solrq_drain_fsm:drain_complete(DPid, Token),
-                undefined;
+                State;
             _ ->
-                {DPid, Token, Remaining}
+                State#state{indexqs = NewIndexQs, drain_info = {DPid, Token, Remaining}}
+
         end,
-    {noreply, State#state{indexqs = NewIndexQs, drain_info = DrainInfo}};
+    ?PULSE_DEBUG("drain.  NewState: ~p~n", [debug_state(NewState)]),
+    {noreply, NewState};
 
 %%
 %% @doc Set the fuse_blown state on the IndexQ associated with the supplied Index
@@ -232,7 +241,7 @@ handle_cast({blown_fuse, Index}, State) ->
 %%
 handle_cast({healed_fuse, Index}, State) ->
     IndexQ = get_indexq(Index, State),
-    NewIndexQ = request_worker(Index, maybe_start_timer(Index, IndexQ#indexq{fuse_blown = false})),
+    NewIndexQ = maybe_request_worker(Index, maybe_start_timer(Index, IndexQ#indexq{fuse_blown = false})),
     {noreply, update_indexq(Index, NewIndexQ, State)};
 
 %%
@@ -254,9 +263,12 @@ handle_cast({healed_fuse, Index}, State) ->
 %% @end
 %%
 handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_len = AQL} = State) ->
+    ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     IndexQ = get_indexq(Index, State),
     State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false}, Result, State),
-    {noreply, maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered})}.
+    NewState = maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered}),
+    ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
+    {noreply, NewState}.
 
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -330,62 +342,45 @@ handle_batch(
 %%
 handle_batch(
     Index,
-    #indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = true} = IndexQ,
+    #indexq{queue_len = QueueLen, aux_queue = AuxQueue, draining = true} = IndexQ,
     Result,
     #state{drain_info = DrainInfo} = State
 ) ->
-    {DPid, Token, Remaining0} = DrainInfo,
-    {Remaining1, IndexQ2} =
+    {DPid, Token, Remaining} = DrainInfo,
+    {NewRemaining, NewIndexQ} =
         case Result of
             ok ->
-                AuxQueueLen = queue:len(AuxQueue),
-                %% If a drain request was made while this index had a pending
-                %% helper, it's possible that a batch smaller than the queue
-                %% length might have been requested.  If so, the queue len will
-                %% be non-zero, in which case we should request a worker and not
-                %% mark the batch completed.
-                {IndexQ1, NewDraining, NewRemaining} =
-                    case QueueLen of
-                        0 ->
-                            {IndexQ, true, lists:delete(Index, Remaining0)};
-                        _ ->
-                            {request_worker(Index, IndexQ), false, Remaining0}
-                    end,
-                {
-                    NewRemaining,
-                    IndexQ1#indexq{
-                        queue = queue:join(Queue, AuxQueue),
-                        queue_len = QueueLen + AuxQueueLen,
-                        aux_queue = queue:new(),
-                        draining = NewDraining
-                    }
-                };
+                case QueueLen of
+                    0 ->
+                        {
+                            lists:delete(Index, Remaining),
+                            IndexQ#indexq{
+                                queue = AuxQueue,
+                                queue_len = queue:len(AuxQueue),
+                                aux_queue = queue:new(),
+                                draining = false
+                            }
+                        };
+                    _ ->
+                        {Remaining, request_worker(Index, IndexQ)}
+                end;
             {retry, Undelivered} ->
-                IndexQ1 = request_worker(Index, IndexQ),
-                NewQueue = queue:from_list(Undelivered),
-                NewQueueLen = queue:len(NewQueue),
-                {
-                    Remaining0,
-                    IndexQ1#indexq{
-                        queue = NewQueue,
-                        queue_len = NewQueueLen
-                    }
-                }
+                {Remaining, requeue_undelivered(Undelivered, request_worker(Index, IndexQ))}
         end,
     %%
     %% If there are no remaining indexqs to be flushed, send the drain FSM
     %% a drain complete for this solrq instance.
     %%
-    case Remaining1 of
+    NewDrainInfo = case NewRemaining of
         [] ->
             yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            NewDrainInfo = undefined;
+            undefined;
         _ ->
-            NewDrainInfo = {DPid, Token, Remaining1}
+            {DPid, Token, NewRemaining}
     end,
-    IndexQ3 = maybe_start_timer(Index, IndexQ2),
     update_indexq(
-        Index, IndexQ3,
+        Index,
+        maybe_start_timer(Index, NewIndexQ),
         State#state{drain_info = NewDrainInfo}
     ).
 
@@ -438,10 +433,10 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
     end.
 
 %% @doc Enqueue the entry and return updated state.
-enqueue(E, #indexq{queue = Q, queue_len = L, draining = Draining} = IndexQ) ->
+enqueue(E, #indexq{queue = Q, queue_len = L, aux_queue = A, draining = Draining} = IndexQ) ->
     case Draining of
         true ->
-            IndexQ#indexq{aux_queue = queue:in(E, Q)};
+            IndexQ#indexq{aux_queue = queue:in(E, A)};
         false ->
             IndexQ#indexq{queue = queue:in(E, Q), queue_len = L + 1}
     end.
@@ -498,7 +493,7 @@ maybe_request_worker(_Index, _Min, IndexQ) ->
     IndexQ.
 
 %% @doc Notify the solrq workers the index is ready to be pulled.
-request_worker(Index, #indexq{pending_helper = false} = IndexQ) ->
+request_worker(Index, #indexq{pending_helper = false, fuse_blown = false} = IndexQ) ->
     Hash = erlang:phash2({Index, self()}),
     yz_solrq_helper:index_ready(Hash, Index, self()),
     IndexQ#indexq{pending_helper = true};
@@ -597,3 +592,31 @@ read_appenv(State) ->
     HWM = app_helper:get_env(yokozuna, solrq_queue_hwm, 10000),
     PBI = application:get_env(yokozuna, purge_blown_indices, true),
     State#state{queue_hwm = HWM, purge_blown_indices=PBI}.
+
+%%
+%% debugging
+%%
+
+-ifdef(PULSE).
+debug_queue(Queue) ->
+    [erlang:element(1, Entry) || Entry <- queue:to_list(Queue)].
+
+debug_indexq(#indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = Draining, fuse_blown = FuseBlown}) ->
+    [
+        {queue, debug_queue(Queue)},
+        {queue_len, QueueLen},
+        {aux_queue, debug_queue(AuxQueue)},
+        {draining, Draining},
+        {fuse_blown, FuseBlown}
+    ].
+debug_state(State) ->
+    [
+        {indexqs, [{Index, debug_indexq(IndexQ)} || {Index, IndexQ} <- dict:to_list(State#state.indexqs)]},
+        {all_queue_len, State#state.all_queue_len},
+        {drain_info, State#state.drain_info}
+    ].
+-else.
+debug_queue(_) -> ok.
+debug_indexq(_) -> ok.
+debug_state(_) -> ok.
+-endif.

@@ -81,7 +81,7 @@ init([]) ->
 
 %% TODO doc
 prepare(start, State) ->
-    SolrqIds = [Id || {Id, _Child, _Type, [Module]} <- supervisor:which_children(yz_solrq_sup), Module == yz_solrq],
+    SolrqIds = yz_solrq_sup:solrq_names(),
     Tokens = [yz_solrq:drain(SolrqId) || SolrqId <- SolrqIds],
     {next_state, wait, State#state{tokens = Tokens}}.
 

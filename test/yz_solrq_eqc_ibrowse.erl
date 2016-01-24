@@ -21,7 +21,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, stop/0, reset/1, get_response/1, keys/0, wait/1]).
+-export([start_link/1, stop/0, get_response/1, keys/0, wait/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -30,6 +30,15 @@
     handle_info/2,
     terminate/2,
     code_change/3]).
+
+-ifdef(PULSE).
+-include_lib("pulse/include/pulse.hrl").
+-compile([export_all, {parse_transform, pulse_instrument}]).
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-define(PULSE_DEBUG(S,F), pulse:format(S,F)).
+-else.
+-define(PULSE_DEBUG(S,F), ok).
+-endif.
 
 -define(SERVER, ?MODULE).
 
@@ -44,14 +53,11 @@
 %%% API
 %%%===================================================================
 
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(KeyRes) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, KeyRes, []).
 
 stop() ->
     gen_server:stop(?MODULE).
-
-reset(KeyRes) ->
-    gen_server:call(?MODULE, {reset, KeyRes}).
 
 get_response(B) ->
     gen_server:call(?MODULE, {get_response, B}).
@@ -66,11 +72,8 @@ wait(Keys) ->
 %%% gen_server callbacks
 %%%===================================================================
 
-init([]) ->
-    {ok, #state{}}.
-
-handle_call({reset, KeyRes}, _From, _State) ->
-    {reply, ok, #state{keyres = KeyRes}};
+init(KeyRes) ->
+    {ok, #state{keyres = KeyRes}}.
 
 handle_call(
     {get_response, B}, _From,
@@ -97,6 +100,7 @@ handle_call(
         _ ->
             proceed
     end,
+    ?PULSE_DEBUG("yz_solrq_eqc_ibrowse: response: ~p~n", [{Keys, Res}]),
     {reply, {Keys, Res}, State#state{written = NewWritten, failed = NewFailed}};
 
 handle_call(keys, _From, #state{written = Written} = State) ->
@@ -111,7 +115,7 @@ handle_call({wait, Keys}, From, #state{written=Written} = State) ->
                 true ->
                     {reply, ok, State};
                 _ ->
-                    lager:info("Process ~p waiting for keys...: ~p", [From, Keys]),
+                    ?PULSE_DEBUG("Process ~p waiting for keys...: ~p", [From, Keys]),
                     {noreply, State#state{root=From, expected=lists:usort(Keys)}}
             end
     end;
