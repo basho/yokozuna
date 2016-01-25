@@ -536,7 +536,7 @@ make_obj(B,K) ->
 
 
 start_drains(_N) ->
-    spawn_link(fun() -> [drain(100) || _I <- lists:seq(1, 10)] end).
+    spawn_link(fun() -> drain(500) end).
 
 drain(Millis) ->
     %ok = yz_solrq_sup:drain(),
@@ -559,8 +559,8 @@ drain(Millis) ->
         _:badarg ->
             {error, in_progress}
     end,
-
-    timer:sleep(Millis).
+    timer:sleep(Millis),
+    drain(Millis).
 
 %% Wait for send_entries - should probably set a global timeout and
 %% and look for that instead
