@@ -28,6 +28,7 @@
          set_index/4,
          reload_appenv/0,
          drain/0,
+         drain/1,
          blown_fuse/1,
          healed_fuse/1,
          solrq_names/0]).
@@ -132,11 +133,16 @@ reload_appenv() ->
 %% @doc Drain all queues to Solr
 -spec drain() -> ok | {error, _Reason}.
 drain() ->
+    drain(fun() -> ok end).
+
+%% @doc Drain all queues to Solr
+-spec drain(fun(() -> ok)) -> ok | {error, _Reason}.
+drain(DrainCompleteCallback) ->
     DrainTimeout = 10000, % TODO make configurable
     case erlang:whereis(yz_solrq_drain_fsm) of
         undefined ->
             try
-                {ok, Pid} = yz_solrq_drain_fsm:start_link(),
+                {ok, Pid} = yz_solrq_drain_fsm:start_link(DrainCompleteCallback),
                 Reference = erlang:monitor(process, Pid),
                 yz_solrq_drain_fsm:start_prepare(),
                 receive
