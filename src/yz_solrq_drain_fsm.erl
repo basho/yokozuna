@@ -91,6 +91,7 @@ wait({drain_complete, Token}, #state{tokens = Tokens} = State) ->
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
+            [yz_solrq:drain_complete(Name) || Name <- yz_solrq_sup:solrq_names()],
             {stop, normal, NewState};
         _ ->
             {next_state, wait, NewState}

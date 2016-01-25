@@ -113,6 +113,7 @@ handle_call({wait, Keys}, From, #state{written=Written} = State) ->
         _ ->
             case lists:usort(Written) == lists:usort(Keys) of
                 true ->
+                    timer:sleep(500),
                     {reply, ok, State};
                 _ ->
                     ?PULSE_DEBUG("Process ~p waiting for keys...: ~p", [From, Keys]),
@@ -197,4 +198,5 @@ find_response([{Key, Res} | KeyResRest], AlreadyFailed, Candidate) ->
 maybe_reply(undefined) ->
     ok;
 maybe_reply(Root) ->
+    timer:sleep(500),
     gen_server:reply(Root, ok).

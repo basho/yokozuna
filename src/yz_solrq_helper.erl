@@ -122,7 +122,7 @@ handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
 remove(Delivered, Entries) ->
     %% TODO Performance stinks, but this will only be used in the (hopefully) degenerate
     %% of having to handle bad requests.
-    Entries -- [{BKey, Obj, Reason, P} || {BKey, Obj, Reason, P, _IndexN, _Hash} <- Delivered].
+    Entries -- [{element(1, D), element(2, D), element(3, D), element(4, D)} || D <- Delivered].
 
 -spec do_batches(index_name(), non_neg_integer(), solr_entries(), solr_entries()) ->
     ok | {ok, Delivered :: solr_entries()} | {error, Undelivered :: solr_entries()}.

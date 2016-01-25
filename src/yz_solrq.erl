@@ -31,7 +31,7 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([request_batch/3, drain/1, batch_complete/3]).
+-export([request_batch/3, drain/1, drain_complete/1, batch_complete/3]).
 
 %% TODO: Dynamically pulse_instrument.  See test/pulseh.erl
 -ifdef(PULSE).
@@ -55,7 +55,7 @@
         batch_max = 100         :: non_neg_integer(),
         delayms_max = 100       :: non_neg_integer(),
         aux_queue = queue:new() :: yz_queue(),
-        draining = false        :: boolean(),
+        draining = false        :: boolean() | wait_for_drain_complete,
         fuse_blown = false      :: boolean()
     }
 ).
@@ -124,6 +124,10 @@ drain(QPid) ->
     Token = make_ref(),
     gen_server:cast(QPid, {drain, self(), Token}),
     Token.
+
+-spec drain_complete(atom()) -> ok.
+drain_complete(QPid) ->
+    gen_server:cast(QPid, drain_complete).
 
 %% @doc Signal to the solrq that a fuse has blown for the the specified index.
 -spec blown_fuse(pid(), index_name()) -> ok.
@@ -268,7 +272,32 @@ handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_le
     State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false}, Result, State),
     NewState = maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered}),
     ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
-    {noreply, NewState}.
+    {noreply, NewState};
+
+%%
+%% @doc     Handle the drain_complete message.
+%%
+%%          The drain_complete message is sent from the yz_solrq_drain_fsm, once
+%%          all the solrqs have completed their drains.  This is a signal to resume
+%%          batching, by moving the aux queue to the main queue, setting the drain
+%%          flag to false (finally), and kick-starting the indexq.
+%% @end
+%%
+handle_cast(drain_complete, #state{indexqs = IndexQs} = State) ->
+    NewIndexQs = dict:fold(
+        fun(Index, #indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue} = IndexQ, IndexQAccum) ->
+            NewIndexQ = IndexQ#indexq{
+                queue = queue:join(Queue, AuxQueue),
+                queue_len = QueueLen + queue:len(AuxQueue),
+                aux_queue = queue:new(),
+                draining = false
+            },
+            dict:store(Index, maybe_start_timer(Index, maybe_request_worker(Index, NewIndexQ)), IndexQAccum)
+        end,
+        dict:new(),
+        IndexQs
+    ),
+    {noreply, State#state{indexqs = NewIndexQs}}.
 
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -342,7 +371,7 @@ handle_batch(
 %%
 handle_batch(
     Index,
-    #indexq{queue_len = QueueLen, aux_queue = AuxQueue, draining = true} = IndexQ,
+    #indexq{queue_len = QueueLen, draining = true} = IndexQ,
     Result,
     #state{drain_info = DrainInfo} = State
 ) ->
@@ -354,12 +383,7 @@ handle_batch(
                     0 ->
                         {
                             lists:delete(Index, Remaining),
-                            IndexQ#indexq{
-                                queue = AuxQueue,
-                                queue_len = queue:len(AuxQueue),
-                                aux_queue = queue:new(),
-                                draining = false
-                            }
+                            IndexQ#indexq{draining = wait_for_drain_complete}
                         };
                     _ ->
                         {Remaining, request_worker(Index, IndexQ)}
@@ -435,10 +459,10 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
 %% @doc Enqueue the entry and return updated state.
 enqueue(E, #indexq{queue = Q, queue_len = L, aux_queue = A, draining = Draining} = IndexQ) ->
     case Draining of
-        true ->
-            IndexQ#indexq{aux_queue = queue:in(E, A)};
         false ->
-            IndexQ#indexq{queue = queue:in(E, Q), queue_len = L + 1}
+            IndexQ#indexq{queue = queue:in(E, Q), queue_len = L + 1};
+        _ ->
+            IndexQ#indexq{aux_queue = queue:in(E, A)}
     end.
 
 %% @doc Re-enqueue undelivered items as part of updated indexq.
