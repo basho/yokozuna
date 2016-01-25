@@ -21,7 +21,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -42,7 +42,8 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {
-    tokens
+    tokens,
+    drain_complete_callback
 }).
 
 %%%===================================================================
@@ -57,9 +58,9 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(start_link() -> {ok, pid()} | ignore | {error, Reason :: term()}).
-start_link() ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [], []).
+-spec(start_link(fun(() -> ok)) -> {ok, pid()} | ignore | {error, Reason :: term()}).
+start_link(DrainCompleteCallback) ->
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE, DrainCompleteCallback, []).
 
 %%
 %% @doc TODO
@@ -75,8 +76,8 @@ start_prepare() ->
 %%% gen_fsm callbacks
 %%%===================================================================
 
-init([]) ->
-    {ok, prepare, #state{}}.
+init(DrainCompleteCallback) ->
+    {ok, prepare, #state{drain_complete_callback = DrainCompleteCallback}}.
 
 
 %% TODO doc
@@ -86,11 +87,12 @@ prepare(start, State) ->
     {next_state, wait, State#state{tokens = Tokens}}.
 
 %% TODO doc
-wait({drain_complete, Token}, #state{tokens = Tokens} = State) ->
+wait({drain_complete, Token}, #state{tokens = Tokens, drain_complete_callback = DrainCompleteCallback} = State) ->
     Tokens2 = lists:delete(Token, Tokens),
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
+            catch ok = DrainCompleteCallback(),
             [yz_solrq:drain_complete(Name) || Name <- yz_solrq_sup:solrq_names()],
             {stop, normal, NewState};
         _ ->

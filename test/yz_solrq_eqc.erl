@@ -541,7 +541,7 @@ start_drains(_N) ->
 drain(Millis) ->
     %ok = yz_solrq_sup:drain(),
     try
-        {ok, Pid} = yz_solrq_drain_fsm:start_link(),
+        {ok, Pid} = yz_solrq_drain_fsm:start_link(fun() -> ok end),
         Reference = erlang:monitor(process, Pid),
         yz_solrq_drain_fsm:start_prepare(),
         receive
