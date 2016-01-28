@@ -145,7 +145,7 @@ verify_search_count(PBConn, Index, Count) ->
     ?assertEqual(Count, Found).
 
 drain_solrqs(Node) ->
-    rpc:call(Node, yz_solrq_sup, drain, []).
+    rpc:call(Node, yz_solrq_drain_mgr, drain, []).
 
 load_intercept_code(Node) ->
     CodePath = filename:join([rt_config:get(yz_dir),
