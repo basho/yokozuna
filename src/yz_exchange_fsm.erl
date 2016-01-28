@@ -31,7 +31,6 @@
                 index_n :: {p(),n()},
                 yz_tree :: tree(),
                 kv_tree :: tree(),
-                built :: integer(),
                 timeout :: pos_integer()}).
 
 %%%===================================================================
@@ -58,7 +57,6 @@ init([Index, Preflist, YZTree, KVTree, Manager]) ->
                index_n=Preflist,
                yz_tree=YZTree,
                kv_tree=KVTree,
-               built=0,
                timeout=?YZ_ENTROPY_TIMEOUT},
     gen_fsm:send_event(self(), start_exchange),
     lager:debug("Starting exchange between KV and Yokozuna: ~p", [Index]),
@@ -101,7 +99,13 @@ prepare_exchange(start_exchange, S) ->
                             case riak_kv_index_hashtree:get_lock(KVTree,
                                                                  ?MODULE) of
                                 ok ->
-                                    update_trees(start_exchange, S);
+                                    case yz_solrq_drain_mgr:get_lock() of
+                                        ok ->
+                                            update_trees(start_exchange, S);
+                                        _ ->
+                                            send_exchange_status(drain_in_progress, S),
+                                            {stop, normal, S}
+                                    end;
                                 _ ->
                                     send_exchange_status(already_locked, S),
                                     {stop, normal, S}
@@ -122,12 +126,10 @@ prepare_exchange(start_exchange, S) ->
 prepare_exchange(timeout, S) ->
     do_timeout(S).
 
-update_trees(start_exchange, S=#state{yz_tree=YZTree,
-                                      kv_tree=KVTree,
+update_trees(start_exchange, S=#state{kv_tree=KVTree,
                                       index=Index,
                                       index_n=IndexN}) ->
 
-    update_request(yz_index_hashtree, YZTree, Index, IndexN),
     update_request(riak_kv_index_hashtree, KVTree, Index, IndexN),
     {next_state, update_trees, S};
 
@@ -136,15 +138,22 @@ update_trees({not_responsible, Index, IndexN}, S) ->
     send_exchange_status({not_responsible, Index, IndexN}, S),
     {stop, normal, S};
 
-update_trees({tree_built, _, _}, S) ->
-    Built = S#state.built + 1,
-    case Built of
-        2 ->
-            lager:debug("Moving to key exchange"),
-            {next_state, key_exchange, S, 0};
-        _ ->
-            {next_state, update_trees, S#state{built=Built}}
-    end.
+update_trees({tree_built, riak_kv_index_hashtree, _, _}, #state{yz_tree = YZTree, index = Index, index_n = IndexN} = S) ->
+    Self = self(),
+    Result = yz_solrq_drain_mgr:drain(
+        fun() -> do_update(Self, yz_index_hashtree, YZTree, Index, IndexN), ok end
+    ),
+    case Result of
+        ok -> ok;
+        {error, Reason} ->
+            lager:warning("An error occurred draining the solr queues: ~p. YZ hashtree update will be requested without a drain, which may result in subsequent AAE exchanges.", [Reason]),
+            update_request(yz_index_hashtree, YZTree, Index, IndexN)
+    end,
+    {next_state, update_trees, S};
+
+update_trees({tree_built, yz_index_hashtree, _, _}, S) ->
+    lager:debug("Moving to key exchange"),
+    {next_state, key_exchange, S, 0}.
 
 key_exchange(timeout, S=#state{index=Index,
                                yz_tree=YZTree,
@@ -248,22 +257,21 @@ fake_kv_object({Bucket, Key}) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
 
 %% @private
-update_request(Module, Tree, Index, IndexN) ->
-    as_event(fun() ->
-                     case Module:update(IndexN, Tree) of
-                         ok -> {tree_built, Index, IndexN};
-                         not_responsible -> {not_responsible, Index, IndexN}
-                     end
-             end).
+do_update(ToWhom, Module, Tree, Index, IndexN) ->
+    Result = case Module:update(IndexN, Tree) of
+                 ok -> {tree_built, Module, Index, IndexN};
+                 not_responsible -> {not_responsible, Index, IndexN}
+             end,
+    gen_fsm:send_event(ToWhom, Result).
 
 %% @private
-as_event(F) ->
-    Self = self(),
-    spawn_link(fun() ->
-                       Result = F(),
-                       gen_fsm:send_event(Self, Result)
-               end),
-    ok.
+update_request(Module, Tree, Index, IndexN) ->
+    update_request(self(), Module, Tree, Index, IndexN).
+
+
+%% @private
+update_request(ToWhom, Module, Tree, Index, IndexN) ->
+    spawn_link(?MODULE, do_update, [ToWhom, Module, Tree, Index, IndexN]).
 
 %% @private
 do_timeout(S=#state{index=Index, index_n=Preflist}) ->

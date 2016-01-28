@@ -27,11 +27,10 @@
          set_hwm/1,
          set_index/4,
          reload_appenv/0,
-         drain/0,
-         drain/1,
          blown_fuse/1,
          healed_fuse/1,
-         solrq_names/0]).
+         solrq_names/0,
+         start_drain_fsm/1]).
 
 -include("yokozuna.hrl").
 
@@ -130,40 +129,6 @@ reload_appenv() ->
     [{Name, catch yz_solrq:reload_appenv(Name)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
 
-%% @doc Drain all queues to Solr
--spec drain() -> ok | {error, _Reason}.
-drain() ->
-    drain(fun() -> ok end).
-
-%% @doc Drain all queues to Solr
--spec drain(fun(() -> ok)) -> ok | {error, _Reason}.
-drain(DrainCompleteCallback) ->
-    DrainTimeout = 10000, % TODO make configurable
-    case erlang:whereis(yz_solrq_drain_fsm) of
-        undefined ->
-            try
-                {ok, Pid} = yz_solrq_drain_fsm:start_link(DrainCompleteCallback),
-                Reference = erlang:monitor(process, Pid),
-                yz_solrq_drain_fsm:start_prepare(),
-                receive
-                    {'DOWN', Reference, _Type, _Object, normal} ->
-                        ok;
-                    {'DOWN', Reference, _Type, _Object, Info} ->
-                        lager:info("FDUSHIN> Info: ~p", [Info]),
-                        {error, Info}
-                after DrainTimeout ->
-                    erlang:demonitor(Reference),
-                    %yz_solrq_drain_fsm:maybe_cancel()
-                    {error, timeout}
-                end
-            catch
-                _:badarg ->
-                    {error, in_progress}
-            end;
-        _ ->
-            {error, in_progress}
-    end.
-
 %% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
 -spec blown_fuse(index_name()) -> ok.
 blown_fuse(Index) ->
@@ -188,7 +153,16 @@ healed_fuse(Index) ->
 -spec solrq_names() -> [atom()].
 solrq_names() ->
     tuple_to_list(get_solrq_tuple()).
-    %[int_to_queue_regname(I) || I <- lists:seq(1, queue_procs())].
+
+
+%% @doc Start the drain supervsior, under this supervisor
+-spec start_drain_fsm(fun(() -> ok)) -> {ok, pid()} | {error, term()}.
+start_drain_fsm(DrainCompleteCallback) ->
+    supervisor:start_child(
+        ?MODULE,
+        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [DrainCompleteCallback]}, temporary, 5000, worker, []}
+    ).
+
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -202,11 +176,12 @@ solrq_names() ->
 init([NumQueues, NumHelpers]) ->
     set_solrq_tuple(NumQueues),
     set_solrq_helper_tuple(NumHelpers),
+    DrainMgrSpec = {yz_solrq_drain_mgr, {yz_solrq_drain_mgr, start_link, []}, permanent, 5000, worker, [yz_drain_mgr]},
     QueueChildren = [queue_child(Name) ||
                         Name <- tuple_to_list(get_solrq_tuple())],
     HelperChildren = [helper_child(Name) ||
                         Name <- tuple_to_list(get_solrq_helper_tuple())],
-    {ok, {{one_for_all, 10, 10}, HelperChildren ++ QueueChildren}}.
+    {ok, {{one_for_all, 10, 10}, [DrainMgrSpec | HelperChildren ++ QueueChildren]}}.
 
 %%%===================================================================
 %%% Internal functions
