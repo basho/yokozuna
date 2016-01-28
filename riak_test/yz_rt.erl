@@ -8,8 +8,14 @@
 -define(IBROWSE_TIMEOUT, 60000).
 -define(SOFTCOMMIT, 1000).
 
--type host() :: string().
--type portnum() :: integer().
+-type host() :: string()|atom().
+-type portnum() :: non_neg_integer()|port().
+-type method() :: get | post | head | options | put | delete | trace |
+                  mkcol | propfind | proppatch | lock | unlock | move | copy.
+-type response() :: {ok, string(), [{string(), string()}], string()|binary()} |
+                    {error, term()}.
+
+-export_type([host/0, portnum/0]).
 
 %% Copied from rt.erl, would be nice if there was a rt.hrl
 -type interface() :: {http, tuple()} | {pb, tuple()}.
@@ -157,30 +163,31 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http(ibrowse:method(), string(), list(), string()) -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[]) -> response().
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
 
--spec http(ibrowse:method(), string(), list(), string(), list()|timeout())
-          -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[], list()|timeout())
+          -> response().
 http(Method, URL, Headers, Body, Opts) when is_list(Opts)  ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT);
 http(Method, URL, Headers, Body, Timeout) when is_integer(Timeout) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http(ibrowse:method(), string(), list(), string(), list(), timeout())
-          -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[], list(), timeout())
+          -> response().
 http(Method, URL, Headers, Body, Opts, Timeout) when
       is_list(Opts) andalso is_integer(Timeout) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary()|string(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
--spec http_put({string(), portnum()}, bucket(), binary(), string(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary()|string(), string(),
+               binary()) -> ok.
 http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
                [Host, integer_to_list(Port), BType, BName, Key]),
@@ -189,18 +196,17 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
--spec schema_url({string(), portnum()}, schema_name()) -> ok.
+-spec schema_url({host(), portnum()}, schema_name()) -> string().
 schema_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
 
--spec index_url({string(), portnum()}, index_name()) -> ok.
+-spec index_url({host(), portnum()}, index_name()) -> string().
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 index_url({Host, Port}, Index, Timeout) ->
     ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
                                                      Timeout]).
-
--spec search_url({string(), portnum()}, index_name()) -> ok.
+-spec search_url({host(), portnum()}, index_name()) -> string().
 search_url({Host, Port}, Index) ->
     search_url({Host, Port}, Index, "").
 
@@ -483,7 +489,7 @@ wait_for_bucket_type(Cluster, BucketType) ->
 %% @doc Wait for a full exchange round since `Timestamp'.  This means
 %% that all `{Idx,N}' for all partitions must have exchanged after
 %% `Timestamp'.
--spec wait_for_full_exchange_round([node()], os:now()) -> ok.
+-spec wait_for_full_exchange_round([node()], timestamp()) -> ok.
 wait_for_full_exchange_round(Cluster, Timestamp) ->
     lager:info("wait for full AAE exchange round on cluster ~p", [Cluster]),
     MoreRecent =
@@ -535,8 +541,9 @@ wait_for_schema(Cluster, Name, Content) ->
     ok.
 
 verify_count(Expected, Resp) ->
-    lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
-    Expected == get_count(Resp).
+    Count = get_count(Resp),
+    lager:info("E: ~p, A: ~p", [Expected, Count]),
+    Expected =:= Count.
 
 -spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
@@ -578,15 +585,48 @@ node_solr_port(Node) ->
                                       [yokozuna, solr_port]),
     P.
 
+-spec internal_solr_url(host(), portnum(), index_name()) -> string().
 internal_solr_url(Host, Port, Index) ->
     ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
+
+-spec internal_solr_url(host(), portnum(), index_name(), [{host(), portnum()}])
+                   -> string().
 internal_solr_url(Host, Port, Index, Shards) ->
-    internal_solr_url(Host, Port, Index, Shards, <<"*">>, <<"*">>).
+    internal_solr_url(Host, Port, Index, <<"*">>, <<"*">>, Shards).
+
+-spec internal_solr_url(host(), portnum(), index_name(), binary()|string(),
+                        binary()|string(), [{host(), portnum()}]) -> string().
 internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
     Ss = [internal_solr_url(Host, ShardPort, Index)
           || {_, ShardPort} <- Shards],
     ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
          [Host, Port, Index, Name, Term, string:join(Ss, ",")]).
+
+entropy_data_url({Host, Port}, Index, Params) ->
+    ?FMT("http://~s:~B/internal_solr/~s/entropy_data?~s",
+         [Host, Port, Index, mochiweb_util:urlencode(Params)]).
+
+-spec merge_config(proplist(), proplist()) -> proplist().
+merge_config(Change, Base) ->
+    lists:ukeymerge(1, lists:keysort(1, Change), lists:keysort(1, Base)).
+
+-spec write_objs([node()], bucket()) -> ok.
+write_objs(Cluster, Bucket) ->
+    lager:info("Writing 1000 objects"),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1,1000)).
+
+-spec write_obj([node()], bucket()) -> fun().
+write_obj(Cluster, Bucket) ->
+    fun(N) ->
+            PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
+            Key = list_to_binary(io_lib:format("key_~B", [N])),
+            Body = mochijson2:encode(PL),
+            HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(
+                                                          Cluster))),
+            CT = "application/json",
+            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
+            yz_rt:http_put(HP, Bucket, Key, CT, Body)
+    end.
 
 -spec commit([node()], index_name()) -> ok.
 commit(Nodes, Index) ->

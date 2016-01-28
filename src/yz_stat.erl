@@ -61,9 +61,9 @@ index_fail() ->
 
 %% @doc Send stat updates for an index completion.  `ElapsedTime'
 %% should be microseconds.
--spec index_end(integer()) -> ok.
-index_end(ElapsedTime) ->
-    update({index_end, ElapsedTime}).
+-spec index_end(binary(), integer(), integer()) -> ok.
+index_end(_Index, BatchSize, ElapsedTime) ->
+    update({index_end, BatchSize, ElapsedTime}).
 
 %% @doc Send stat updates for a search failure.
 -spec search_fail() -> ok.
@@ -76,6 +76,27 @@ search_fail() ->
 search_end(ElapsedTime) ->
     update({search_end, ElapsedTime}).
 
+%% @doc Count of times the solrq had to block a vnode
+%%      pass the vnode From into the function for redbugging,
+%%      cannot see any value in overhead of doing stats
+%%      by worker pool
+blocked_vnode(_From) ->
+    update(blockedvnode).
+
+%% @doc Update fuse recovered statistic.
+-spec fuse_recovered(atom()) -> ok.
+fuse_recovered(Index) ->
+    update({fuse_recovered, Index}).
+
+%% @doc Create dynamic stats for search index.
+-spec create_dynamic_stats(atom(), [atom()]) -> [ok].
+create_dynamic_stats(Index, Stats) ->
+    [create({Stat, Index}) || Stat <- Stats].
+
+%% @doc Delete dynamic stats for search index.
+-spec delete_dynamic_stats(atom(), [atom()]) -> [ok].
+delete_dynamic_stats(Index, Stats) ->
+    [delete({Stat, Index}) || Stat <- Stats].
 
 %% @doc Optionally produce stats map based on ?YZ_ENABLED
 -spec stats_map() -> [] | proplists:proplist().
@@ -104,6 +125,14 @@ stats_map(true) ->
       %% Index stats
       {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
       {search_index_throughput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
+      {search_index_blockedvnode_count, {{?YZ_APP_NAME, index, blockedvnode}, count}, spiral},
+      {search_index_blockedvnode_one, {{?YZ_APP_NAME, index, blockedvnode}, one}, spiral},
+      {search_index_batchsize_min, {{?YZ_APP_NAME, index, batchsize}, min}, histogram},
+      {search_index_batchsize_mean, {{?YZ_APP_NAME, index, batchsize}, mean}, histogram},
+      {search_index_batchsize_max, {{?YZ_APP_NAME, index, batchsize}, max}, histogram},
+      {search_index_batchsize_median, {{?YZ_APP_NAME, index, batchsize}, median}, histogram},
+      {search_index_batchsize_95, {{?YZ_APP_NAME, index, batchsize}, 95}, histogram_percentile},
+      {search_index_batchsize_99, {{?YZ_APP_NAME, index, batchsize}, 99}, histogram_percentile},
       {search_index_fail_count, {{?YZ_APP_NAME, index, fail}, count}, spiral},
       {search_index_fail_one, {{?YZ_APP_NAME, index, fail}, one}, spiral},
       {search_index_latency_min, {{?YZ_APP_NAME, index, latency}, min}, histogram},
@@ -150,19 +179,44 @@ stat_name(Name) ->
 
 %% @private
 %%
+%% @doc Create specific dynamic metrics in exometer based on the `StatUpdate'
+%%      term.
+-spec create(StatUpdate::term()) -> ok.
+create({fuse_recovered, Index}) ->
+    exometer:update_or_create([fuse, Index, recovered], 0, spiral, []);
+create(_Stat) ->
+    ok.
+
+%% @private
+%%
+%% @doc Delete specific dynamic metrics in exometer based on the `StatUpdate'
+%%      term.
+-spec delete(StatUpdate::term()) -> ok.
+delete({fuse_recovered, Index}) ->
+    exometer:delete([fuse, Index, recovered]);
+delete(_Stat) ->
+    ok.
+
+%% @private
+%%
 %% @doc Notify specific metrics in exometer based on the `StatUpdate' term
 %% passed in.
 -spec update(StatUpdate::term()) -> ok.
-update({index_end, Time}) ->
+update({index_end, BatchSize, Time}) ->
     exometer:update([?PFX, ?APP, index, latency], Time),
-    exometer:update([?PFX, ?APP, index, throughput], 1);
+    exometer:update([?PFX, ?APP, index, throughput], 1),
+    exometer:update([?PFX, ?APP, index, batchsize], BatchSize);
 update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
+update(blockedvnode) ->
+    exometer:update([?PFX, ?APP, index, blockedvnode], 1);
 update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
 update(search_fail) ->
-    exometer:update([?PFX, ?APP, 'query', fail], 1).
+    exometer:update([?PFX, ?APP, 'query', fail], 1);
+update({fuse_recovered, Index}) ->
+    exometer:update([fuse, Index, recovered], 1).
 
 %% @private
 -spec stats() -> [{stat_name(), stat_type(), stat_opts(), stat_map()}].
@@ -179,6 +233,12 @@ stats() ->
                                         {mean  , search_index_latency_mean}]},
      {[index, throughput], spiral, [], [{count, search_index_throughput_count},
                                         {one  , search_index_throughput_one}]},
+     {[index, batchsize], histogram, [], [{min   , search_index_batchsize_min},
+                                          {mean  , search_index_batchsize_mean},
+                                          {median, search_index_batchsize_median},
+                                          {max   , search_index_batchsize_max}]},
+     {[index, blockedvnode], spiral, [], [{count, search_index_blockedvnode_count},
+                                          {one  , search_index_blockedvnode_one}]},
      {['query', fail], spiral, [], [{count, search_query_fail_count},
                                     {one  , search_query_fail_one}]},
      {['query', latency], histogram, [], [{95    , search_query_latency_95},
@@ -190,4 +250,4 @@ stats() ->
                                           {mean  , search_query_latency_mean}]},
      {['query', throughput], spiral, [], [{count,search_query_throughput_count},
                                           {one  ,search_query_throughput_one}]}
-    ].
+    ] ++ yz_fuse:stats().

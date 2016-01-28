@@ -59,3 +59,45 @@
   {datatype, directory},
   hidden
 ]}.
+
+%% @doc The timeout for ibrowse (ibrowse:send_req) requests to Solr endpoints.
+%% Defaults to 60 seconds. It will always round up to the nearest second, e.g.
+%% 1ms = 999 ms = 1s.
+{mapping, "search.solr.request_timeout", "yokozuna.solr_request_timeout", [
+  {default, "60s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc The timeout for ibrowse (ibrowse:send_req) requests to Solr's
+%% entrop_data endpoints. Defaults to 60 seconds. It will always round up to the
+%% nearest second, e.g. 1ms = 999 ms = 1s.
+{mapping, "search.solr.request_ed_timeout", "yokozuna.solr_request_ed_timeout", [
+  {default, "60s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc To 'enable/disable' AAE for Search.
+%%      * active: out-of-sync keys will be repaired in the background
+%%      * passive: out-of-sync keys are only repaired on read
+%%      * active-debug: like active, but outputs verbose debugging
+%%        information
+{mapping, "search.anti_entropy", "yokozuna.anti_entropy", [
+  {datatype, {enum, [active, passive, 'active-debug']}},
+  {default, active},
+  hidden
+]}.
+
+{translation,
+ "yokozuna.anti_entropy",
+ fun(Conf) ->
+    Setting = cuttlefish:conf_get("search.anti_entropy", Conf),
+    case Setting of
+      active -> {on, []};
+      'active-debug' -> {on, [debug]};
+      passive -> {off, []};
+      _Default -> {on, []}
+    end
+  end
+}.

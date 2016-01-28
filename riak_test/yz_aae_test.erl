@@ -44,7 +44,7 @@ confirm() ->
     lager:info("Run test for custom bucket type"),
     aae_run(Cluster, ?BUCKETWITHTYPE, ?INDEX2).
 
--spec aae_run([node()], bucket(), index_name) -> pass | fail.
+-spec aae_run([node()], bucket(), index_name()) -> pass | fail.
 aae_run(Cluster, Bucket, Index) ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
@@ -57,6 +57,8 @@ aae_run(Cluster, Bucket, Index) ->
             {0, _} = yz_rt:load_data(Cluster, Bucket, YZBenchDir,
                                      ?NUM_KEYS_SPACES,
                                      [{load_fruit_plus_spaces, 1}]),
+
+            yz_rt:commit(Cluster, Index),
 
             {ok, BProps} = riakc_pb_socket:get_bucket(PBConn, Bucket),
             ?assertEqual(?N, proplists:get_value(n_val, BProps)),
@@ -99,7 +101,7 @@ aae_run(Cluster, Bucket, Index) ->
             Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
             ?assertEqual(ExpectedNumRepairs, Count),
 
-            verify_removal_of_orphan_postings(Cluster, Bucket),
+            verify_removal_of_orphan_postings(Cluster, Index, Bucket),
 
             verify_no_indefinite_repair(Cluster),
 
@@ -143,13 +145,15 @@ create_obj_node_partition_tuple(Cluster, BKey={Bucket, Key}) ->
 %% NOTE: This is only creating 1 replica for each posting, not
 %% N. There is no reason to create N replicas for each posting to
 %% verify to correctness of AAE in this scenario.
--spec create_orphan_postings([node()], bucket(),  [pos_integer()]) -> ok.
-create_orphan_postings(Cluster, Bucket, Keys) ->
+-spec create_orphan_postings([node()], index_name(), bucket(), [pos_integer()])
+                            -> ok.
+create_orphan_postings(Cluster, Index, Bucket, Keys) ->
     Keys2 = [{Bucket, ?INT_TO_BIN(K)} || K <- Keys],
     lager:info("Create orphan postings with keys ~p", [Keys]),
     ObjNodePs = [create_obj_node_partition_tuple(Cluster, Key) || Key <- Keys2],
     [ok = rpc:call(Node, yz_kv, index, [Obj, put, P])
      || {Obj, Node, P} <- ObjNodePs],
+    yz_rt:commit(Cluster, Index),
     ok.
 
 -spec delete_key_in_solr([node()], index_name(), bkey()) -> [ok].
@@ -236,13 +240,13 @@ verify_exchange_after_clear(Cluster, Index) ->
 
 %% @doc Verify that Yokozuna deletes postings which have no
 %%      corresponding KV object.
--spec verify_removal_of_orphan_postings([node()], bucket()) -> ok.
-verify_removal_of_orphan_postings(Cluster, Bucket) ->
+-spec verify_removal_of_orphan_postings([node()], index_name(), bucket()) -> ok.
+verify_removal_of_orphan_postings(Cluster, Index, Bucket) ->
     Num = random:uniform(100),
     lager:info("verify removal of ~p orphan postings", [Num]),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     Keys = lists:seq(?NUM_KEYS + 1, ?NUM_KEYS + Num),
-    ok = create_orphan_postings(Cluster, Bucket, Keys),
+    ok = create_orphan_postings(Cluster, Index, Bucket, Keys),
     ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
     ok = yz_rt:stop_tracing(),
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
@@ -340,7 +344,8 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
 
     ok = riakc_pb_socket:put(Conn, Obj),
 
-    %% 2. setup tracing to count repair calls
+    %% 2. setup tracing to count repair calls, which should be 0, b/c
+    %% we catch the badrequest failure early (on batch and single retry).
     ok = yz_rt:count_calls(Cluster, ?REPAIR_MFA),
 
     %% 3. wait for full exchange round
@@ -348,7 +353,7 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
     ok = yz_rt:stop_tracing(),
 
     %% 4. verify repair count is 0
-    ?assertEqual(?N * 1, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+    ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
 
     %% 5. verify count after expiration
     verify_exchange_after_expire(Cluster, Index),

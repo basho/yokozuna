@@ -163,21 +163,17 @@ key_exchange(timeout, S=#state{index=Index,
 
     AccFun = fun(KeyDiff, Count) ->
                      lists:foldl(fun(Diff, InnerCount) ->
-                                         case repair(Index, Diff) of
-                                             full_repair -> InnerCount + 1;
-                                             _ -> InnerCount
-                                         end
+                                     case repair(Index, Diff) of
+                                         full_repair -> InnerCount + 1;
+                                         _ -> InnerCount
+                                     end
                                  end, Count, KeyDiff)
              end,
-
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
         0 ->
-            yz_kv:update_aae_exchange_stats(Index, IndexN, 0),
-            ok;
+            yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
-            yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
-            lager:info("Repaired ~b keys during active anti-entropy exchange "
-                       "of partition ~p for preflist ~p",
+            lager:info("Will repair ~b keys of partition ~p for preflist ~p",
                        [Count, Index, IndexN])
     end,
     {stop, normal, S}.
@@ -195,54 +191,46 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
 %% @private
--spec repair(p(), keydiff()) -> full_repair | tree_repair | failed_repair.
+%%
+%% @doc If Yokozuna gets {remote_missing, _} b/c yz has it, but kv doesn't.
+%%      If Yokozuna gets any other repair, then it's either b/c
+%%      yz is missing the key or the hash doesn't match. For those cases,
+%%      we must reindex.
+-spec repair(p(), keydiff()) -> repair().
 repair(Partition, {remote_missing, KeyBin}) ->
-    %% Yokozuna has it but KV doesn't
-    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
-    ShortPL = riak_kv_util:get_index_n(BKey),
     FakeObj = fake_kv_object(BKey),
-    %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
-    %% assume that Yokozuna is enabled and current node is owner.
     case yz_kv:should_index(Index) of
         true ->
-            yz_kv:index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index),
-            full_repair;
+            Repair = full_repair,
+            yz_solrq:index(Index, BKey, FakeObj, {delete, Repair}, Partition),
+            Repair;
         false ->
-            yz_kv:dont_index(FakeObj, delete, Partition, BKey, ShortPL),
-            tree_repair
+            Repair = tree_repair,
+            yz_solrq:index(Index, BKey, FakeObj, {delete, Repair}, Partition),
+            Repair
     end;
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
-    ShortPL = riak_kv_util:get_index_n(BKey),
     %% Can assume here that Yokozua is enabled and current
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
             case yz_kv:should_index(Index) of
-                    true ->
-                        Ring = yz_misc:get_ring(transformed),
-                    try
-                        yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
-                        full_repair
-                    catch _:_Err ->
-                            %% The key can't be indexed; just repair the tree
-                            %% We already track the 'failed to index'
-                            %% error trace in yz_kv:index/3
-                            lager:notice("failed to repair object ~p, as it failed to index properly",
-                                         [BKey]),
-                            yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                            tree_repair
-                    end;
-                    false ->
-                        %% TODO: pass obj hash to repair fun to avoid
-                        %% object read just to update hash.
-                        yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                        tree_repair
+                true ->
+                    Repair = full_repair,
+                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
+                                   Partition),
+                    Repair;
+                false ->
+                    Repair = tree_repair,
+                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
+                                   Partition),
+                    Repair
             end;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
