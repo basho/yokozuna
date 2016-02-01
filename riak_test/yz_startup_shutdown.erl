@@ -6,6 +6,7 @@
 -compile({parse_transform, rt_intercept_pt}).
 
 -define(CONFIG, [{yokozuna, [{enabled, true}]}]).
+-define(YZ_SERVICES, [yz_pb_search, yz_pb_admin]).
 
 confirm() ->
     Cluster = rt:build_cluster(2, ?CONFIG),
@@ -13,6 +14,7 @@ confirm() ->
 
     %% compile(rt_intercept_pt, Cluster, [{parse_transform, rt_intercept_pt}]),
     verify_yz_components_enabled(Cluster),
+    verify_yz_services_registered(Cluster),
 
     intercept_yz_solrq_sup_drain(Cluster),
     stop_yokozuna(Cluster),
@@ -21,6 +23,7 @@ confirm() ->
     %% assert yz_pb_search service is deregistered?
     %% assert yz_pb_admin service is deregistered?
     verify_yz_components_disabled(Cluster),
+    verify_yz_services_deregistered(Cluster),
     pass.
 
 verify_yz_components_enabled(Cluster) ->
@@ -39,6 +42,29 @@ check_yz_components([Node|Rest], Enabled) ->
       end,
       Components),
     check_yz_components(Rest, Enabled).
+
+verify_yz_services_registered(Cluster) ->
+    lists:all(
+      fun(Node) ->
+              true =:= are_services_registered(?YZ_SERVICES, Node)
+      end,
+      Cluster).
+
+verify_yz_services_deregistered(Cluster) ->
+    lists:all(
+      fun(Node) ->
+              false =:= are_services_registered(?YZ_SERVICES, Node)
+      end,
+      Cluster).
+
+-spec are_services_registered([atom()], node()) -> boolean().
+are_services_registered(Services, Node) ->
+    RegisteredServices = lists:flatten(
+                           rpc:call(Node, riak_api_pb_registrar, services, [])),
+    lists:all(fun(Service) ->
+                      lists:member(Service, RegisteredServices)
+              end,
+              Services).
 
 intercept_yz_solrq_sup_drain([]) ->
     ok;
