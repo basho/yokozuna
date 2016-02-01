@@ -59,6 +59,7 @@
         fuse_blown = false      :: boolean()
     }
 ).
+
 -record(
     state, {
         indexqs = dict:new()    :: yz_dict(),
@@ -69,7 +70,6 @@
         purge_blown_indices     :: boolean()
     }
 ).
-
 
 -type internal_status() :: [{atom()|indexqs,
                              non_neg_integer() | [{pid(), atom()}] |
@@ -600,9 +600,10 @@ get_indexq(Index, #state{indexqs = IndexQs}) ->
     end.
 
 new_indexq() ->
-    #indexq{batch_min = app_helper:get_env(yokozuna, solrq_batch_min, 1),
-            batch_max = app_helper:get_env(yokozuna, solrq_batch_max, 100),
-            delayms_max = app_helper:get_env(yokozuna, solrq_delayms_max, 1000)}.
+    #indexq{batch_min = app_helper:get_env(?YZ_APP_NAME, solrq_batch_min, 1),
+            batch_max = app_helper:get_env(?YZ_APP_NAME, solrq_batch_max, 100),
+            delayms_max = app_helper:get_env(?YZ_APP_NAME,
+                                             solrq_delayms_max, 1000)}.
 
 update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:store(Index, IndexQ, IndexQs)}.
@@ -613,8 +614,8 @@ update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
 
 %% @doc Read settings from the application environment
 read_appenv(State) ->
-    HWM = app_helper:get_env(yokozuna, solrq_queue_hwm, 10000),
-    PBI = application:get_env(yokozuna, purge_blown_indices, true),
+    HWM = app_helper:get_env(?YZ_APP_NAME, solrq_queue_hwm, 10000),
+    PBI = application:get_env(?YZ_APP_NAME, purge_blown_indices, true),
     State#state{queue_hwm = HWM, purge_blown_indices=PBI}.
 
 %%

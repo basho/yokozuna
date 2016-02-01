@@ -96,3 +96,4 @@ Unknown functions:
   rt:heal/1
   rt:partition/2
   rt:wait_until_transfers_complete/1
+  yz_solr_orig:index_batch_orig/2
