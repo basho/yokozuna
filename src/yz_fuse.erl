@@ -23,7 +23,7 @@
 -export([setup/0]).
 
 %% api
--export([create/1, check/1, melt/1, remove/1, reset/1]).
+-export([create/1, check/1, check_all_fuses_ok/1, melt/1, remove/1, reset/1]).
 
 %% helpers
 -export([fuse_context/0]).
@@ -60,9 +60,10 @@ create(Index) ->
     case check(IndexName) of
         {error, not_found} ->
             ?INFO("Creating fuse for search index ~s", [Index]),
-            MaxR = app_helper:get_env(yokozuna, melt_attempts, 3),
-            MaxT = app_helper:get_env(yokozuna, melt_time_window, 5000),
-            Refresh = {reset, app_helper:get_env(yokozuna, melt_reset_refresh, 30000)},
+            MaxR = app_helper:get_env(?YZ_APP_NAME, melt_attempts, 3),
+            MaxT = app_helper:get_env(?YZ_APP_NAME, melt_time_window, 5000),
+            Refresh = {reset, app_helper:get_env(?YZ_APP_NAME,
+                                                 melt_reset_refresh, 30000)},
             Strategy = {standard, MaxR, MaxT},
             Opts = {Strategy, Refresh},
             fuse:install(IndexName, Opts),
@@ -89,6 +90,10 @@ check(Index) when is_binary(Index) ->
     check(?BIN_TO_ATOM(Index));
 check(Index) ->
     fuse:ask(Index, fuse_context()).
+
+-spec check_all_fuses_ok([index_name()]) -> boolean().
+check_all_fuses_ok(Indexes) ->
+    lists:all(fun(I) -> ok == check(I) end, Indexes).
 
 -spec melt(index_name()) -> ok.
 melt(Index) ->
