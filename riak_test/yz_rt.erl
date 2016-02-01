@@ -657,3 +657,12 @@ commit(Nodes, Index) ->
                [Index, ?SOFTCOMMIT]),
     rpc:multicall(Nodes, yz_solr, commit, [Index]),
     ok.
+
+-spec load_intercept_code(node()) -> ok.
+load_intercept_code(Node) ->
+    CodePath = filename:join([rt_config:get(yz_dir),
+                              "riak_test",
+                              "intercepts",
+                              "*.erl"]),
+    rt_intercept:load_code(Node, [CodePath]).
+
