@@ -106,7 +106,7 @@ confirm_draining(Cluster, PBConn, BKey, Index) ->
     ok.
 
 confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
-    load_intercept_code(Node),
+    yz_rt:load_intercept_code(Node),
     intercept_index_batch(Node, index_batch_throw_exception),
 
     Count = ?SOLRQ_BATCH_MIN,
@@ -146,13 +146,6 @@ verify_search_count(PBConn, Index, Count) ->
 
 drain_solrqs(Node) ->
     rpc:call(Node, yz_solrq_drain_mgr, drain, []).
-
-load_intercept_code(Node) ->
-    CodePath = filename:join([rt_config:get(yz_dir),
-                              "riak_test",
-                              "intercepts",
-                              "*.erl"]),
-    rt_intercept:load_code(Node, [CodePath]).
 
 intercept_index_batch(Node, Intercept) ->
     rt_intercept:add(
