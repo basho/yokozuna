@@ -43,7 +43,10 @@
 -define(PULSE_DEBUG(S,F), ok).
 -endif.
 
--type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
+-type solrq_message()     :: tuple().  % {BKey, Docs, Reason, P}.
+-type solrq_batch_min()   :: pos_integer().
+-type solrq_batch_max()   :: pos_integer().
+-type solrq_delayms_max() :: non_neg_integer()|infinity.
 
 -record(
     indexq, {
@@ -51,9 +54,9 @@
         queue_len = 0           :: non_neg_integer(),
         href                    :: reference(),
         pending_helper = false  :: boolean(),
-        batch_min = 1           :: non_neg_integer(),
-        batch_max = 100         :: non_neg_integer(),
-        delayms_max = 100       :: non_neg_integer(),
+        batch_min = 1           :: solrq_batch_min(),
+        batch_max = 100         :: solrq_batch_max(),
+        delayms_max = 1000      :: solrq_delayms_max(),
         aux_queue = queue:new() :: yz_queue(),
         draining = false        :: boolean() | wait_for_drain_complete,
         fuse_blown = false      :: boolean()
@@ -71,6 +74,7 @@
     }
 ).
 
+%% TODO: Clean this up w/ proper type naming conventions.
 -type internal_status() :: [{atom()|indexqs,
                              non_neg_integer() | [{pid(), atom()}] |
                              [{index_name(), {atom(), non_neg_integer() |
@@ -108,10 +112,10 @@ index(Index, BKey, Obj, Reason, P) ->
 set_hwm(QPid, HWM) ->
     gen_server:call(QPid, {set_hwm, HWM}).
 
--spec set_index(pid(), index_name(), non_neg_integer(), non_neg_integer(),
-                non_neg_integer()) -> {ok, {non_neg_integer(),
-                                           non_neg_integer(),
-                                           non_neg_integer()}}.
+-spec set_index(pid(), index_name(), solrq_batch_min(), solrq_batch_max(),
+                solrq_delayms_max()) -> {ok, {solrq_batch_min(),
+                                             solrq_batch_max(),
+                                             solrq_delayms_max()}}.
 set_index(QPid, Index, Min, Max, DelayMax) ->
     gen_server:call(QPid, {set_index, Index, Min, Max, DelayMax}).
 
@@ -175,7 +179,8 @@ handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
-handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
+handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
+      Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
     IndexQ = get_indexq(Index, State),
     IndexQ2 = maybe_request_worker(Index,
                                    IndexQ#indexq{batch_min = Min,
@@ -185,6 +190,12 @@ handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
                  IndexQ#indexq.batch_max,
                  IndexQ#indexq.delayms_max},
     {reply, {ok, OldParams}, update_indexq(Index, IndexQ2, State)};
+handle_call({set_index, Index, _Min, _Max, _DelayMS}, _From, State) ->
+    IndexQ = get_indexq(Index, State),
+    OldParams = {IndexQ#indexq.batch_min,
+                 IndexQ#indexq.batch_max,
+                 IndexQ#indexq.delayms_max},
+    {reply, {{error, bad_index_params}, OldParams}, State};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.
 
@@ -578,7 +589,12 @@ maybe_start_timer(Index, #indexq{href = undefined, queue_len = L,
                                  fuse_blown = false,
                                  delayms_max = DelayMS} = IndexQ) when L > 0 ->
     HRef = make_ref(),
-    erlang:send_after(DelayMS, self(), {flush, Index, HRef}),
+    case DelayMS of
+        infinity ->
+            lager:debug("Infinite delay, will not start timer and flush.");
+        _ ->
+            erlang:send_after(DelayMS, self(), {flush, Index, HRef})
+    end,
     IndexQ#indexq{href = HRef};
 maybe_start_timer(_Index, IndexQ) ->
     IndexQ.
@@ -599,11 +615,19 @@ get_indexq(Index, #state{indexqs = IndexQs}) ->
             new_indexq()
     end.
 
+set_new_index(Min, Max, DelayMS)
+  when Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
+    #indexq{batch_min = Min,
+            batch_max = Max,
+            delayms_max = DelayMS};
+set_new_index(_, _, _) ->
+    #indexq{}.
+
 new_indexq() ->
-    #indexq{batch_min = app_helper:get_env(?YZ_APP_NAME, solrq_batch_min, 1),
-            batch_max = app_helper:get_env(?YZ_APP_NAME, solrq_batch_max, 100),
-            delayms_max = app_helper:get_env(?YZ_APP_NAME,
-                                             solrq_delayms_max, 1000)}.
+    BatchMin = app_helper:get_env(?YZ_APP_NAME, solrq_batch_min, 1),
+    BatchMax = app_helper:get_env(?YZ_APP_NAME, solrq_batch_max, 100),
+    DelayMS = app_helper:get_env(?YZ_APP_NAME, solrq_delayms_max, 1000),
+    set_new_index(BatchMin, BatchMax, DelayMS).
 
 update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:store(Index, IndexQ, IndexQs)}.
