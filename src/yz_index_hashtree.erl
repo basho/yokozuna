@@ -312,11 +312,10 @@ load_built(#state{trees=Trees}) ->
         _ -> false
     end.
 
--spec fold_keys(p(), tree()) -> [ok|timeout|not_available].
-fold_keys(Partition, Tree) ->
+-spec fold_keys(p(), tree(), [index_name()]) -> [ok|timeout|not_available].
+fold_keys(Partition, Tree, Indexes) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
-    Indexes = yz_index:get_indexes_from_meta(),
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -588,8 +587,16 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
     case {Locked, Type} of
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
-            IterKeys = fold_keys(Index, Tree),
-            handle_iter_keys(Tree, Index, IterKeys);
+            Indexes = yz_index:get_indexes_from_meta(),
+            case yz_fuse:check_all_fuses_ok(Indexes) of
+                true ->
+                    IterKeys = fold_keys(Index, Tree, Indexes),
+                    handle_iter_keys(Tree, Index, IterKeys);
+                false ->
+                    ?ERROR("YZ AAE did not run due to blown fuses/solr_cores."),
+                    lager:debug("YZ AAE tree build failed: ~p", [Index]),
+                    gen_server:cast(Tree, build_failed)
+            end;
         {true, rehash} ->
             lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
@@ -645,13 +652,13 @@ maybe_expire_caps_check(S) ->
         false -> S
     end.
 
--spec handle_iter_keys(pid(), p(), []| [ok|timeout|not_available]) -> ok.
+-spec handle_iter_keys(pid(), p(), [ok|timeout|not_available|error]) -> ok.
 handle_iter_keys(Tree, Index, []) ->
     lager:debug("Finished YZ AAE tree build: ~p", [Index]),
     gen_server:cast(Tree, build_finished),
     ok;
 handle_iter_keys(Tree, Index, IterKeys) ->
-    case lists:all(fun(V) -> V =:= ok end, IterKeys)  of
+    case lists:all(fun(V) -> V == ok end, IterKeys)  of
         true ->
             lager:debug("Finished YZ AAE tree build: ~p", [Index]),
             gen_server:cast(Tree, build_finished);
