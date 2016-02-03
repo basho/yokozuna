@@ -101,11 +101,11 @@ init([]) ->
 
 handle_event({Index, blown}, S) ->
     handle_index_recovered(Index, down),
-    yz_solrq_sup:blown_fuse(Index),
+    yz_solrq_sup:blown_fuse(?ATOM_TO_BIN(Index)),
     {ok, S};
 handle_event({Index, ok}, S) ->
     handle_index_recovered(Index, up),
-    yz_solrq_sup:healed_fuse(Index),
+    yz_solrq_sup:healed_fuse(?ATOM_TO_BIN(Index)),
     {ok, S};
 handle_event({Index, removed}, S) ->
     handle_index_recovered(Index, removed),
@@ -293,7 +293,7 @@ sync_indexes(Removed, Added, Same) ->
 %% @private
 %% @doc Check and update `yz_events' ETS if the index has recovered from it's
 %%      fuse being blown or has been reset/removed.
--spec handle_index_recovered(index_name(), down|removed|up) -> true.
+-spec handle_index_recovered(atom(), down|removed|up) -> true.
 handle_index_recovered(Index, down) ->
     ets:insert(?ETS, {Index, {state, down}});
 handle_index_recovered(Index, removed) ->
