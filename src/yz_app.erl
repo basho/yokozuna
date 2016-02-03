@@ -73,7 +73,7 @@ prep_stop(State) ->
         lager:info("Stopping application yokozuna.\n", []),
         ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
         ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
-        ok = yz_solrq_sup:drain(),
+        ok = yz_solrq_drain_mgr:drain(),
         ok = disable_components()
     catch
         Type:Reason ->

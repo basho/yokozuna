@@ -15,7 +15,7 @@ confirm() ->
     verify_yz_components_enabled(Cluster),
     verify_yz_services_registered(Cluster),
 
-    intercept_yz_solrq_sup_drain(Cluster),
+    intercept_yz_solrq_drain_mgr_drain(Cluster),
     stop_yokozuna(Cluster),
 
     verify_drain_called(Cluster),
@@ -86,23 +86,23 @@ are_services_registered(Services, Node) ->
 %% @private
 %%
 %% @doc Install an intercept on all of the given nodes, which intercepts the
-%% yz_solrq_sup:drain/0 function and sends a message to the riak_test process
-%% indicating that the function was actually called on a given node. The
-%% message is of the form {Node, drain_called}, where `Node' identifies the
+%% yz_solrq_drain_mgr:drain/0 function and sends a message to the riak_test
+%% process indicating that the function was actually called on a given node.
+%% The message is of the form {Node, drain_called}, where `Node' identifies the
 %% node.
-intercept_yz_solrq_sup_drain([]) ->
+intercept_yz_solrq_drain_mgr_drain([]) ->
     ok;
-intercept_yz_solrq_sup_drain([Node|Rest]) ->
+intercept_yz_solrq_drain_mgr_drain([Node|Rest]) ->
     RiakTestProcess = self(),
     rt_intercept:add(
       Node,
-      {yz_solrq_sup,
+      {yz_solrq_drain_mgr,
        [{{drain, 0},
          {[Node, RiakTestProcess],
           fun() ->
                   RiakTestProcess ! {Node, drain_called}
           end}}]}),
-    intercept_yz_solrq_sup_drain(Rest).
+    intercept_yz_solrq_drain_mgr_drain(Rest).
 
 %% @private
 %%
