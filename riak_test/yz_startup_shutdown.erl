@@ -12,7 +12,6 @@ confirm() ->
     Cluster = rt:build_cluster(2, ?CONFIG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
 
-    %% compile(rt_intercept_pt, Cluster, [{parse_transform, rt_intercept_pt}]),
     verify_yz_components_enabled(Cluster),
     verify_yz_services_registered(Cluster),
 
@@ -20,19 +19,27 @@ confirm() ->
     stop_yokozuna(Cluster),
 
     verify_drain_called(Cluster),
-    %% assert yz_pb_search service is deregistered?
-    %% assert yz_pb_admin service is deregistered?
     verify_yz_components_disabled(Cluster),
     verify_yz_services_deregistered(Cluster),
     pass.
 
+%% @private
+%%
+%% @doc Assert that all components are enabled on each node in `Cluster'.
 verify_yz_components_enabled(Cluster) ->
     check_yz_components(Cluster, true).
 
+%% @private
+%%
+%% @doc Assert that all components are disabled on each node in `Cluster'.
 verify_yz_components_disabled(Cluster) ->
     check_yz_components(Cluster, false).
 
-check_yz_components([], _) ->
+%% @private
+%%
+%% @doc Checks that the enabled status of all yokozuna components is equal to
+%% `Enabled'.
+check_yz_components([], _Enabled) ->
     ok;
 check_yz_components([Node|Rest], Enabled) ->
     Components = yz_app:components(),
@@ -43,6 +50,9 @@ check_yz_components([Node|Rest], Enabled) ->
       Components),
     check_yz_components(Rest, Enabled).
 
+%% @private
+%%
+%% @doc Assert that all services are registerd on each node in `Cluster'.
 verify_yz_services_registered(Cluster) ->
     lists:all(
       fun(Node) ->
@@ -50,6 +60,9 @@ verify_yz_services_registered(Cluster) ->
       end,
       Cluster).
 
+%% @private
+%%
+%% @doc Assert that all services are registerd on each node in `Cluster'.
 verify_yz_services_deregistered(Cluster) ->
     lists:all(
       fun(Node) ->
@@ -57,15 +70,26 @@ verify_yz_services_deregistered(Cluster) ->
       end,
       Cluster).
 
--spec are_services_registered([atom()], node()) -> boolean().
+%% @private
+%%
+%% @doc Are the given `Services' currently registered on `Node'?
+-spec are_services_registered(Services::[atom()], Node::node()) -> boolean().
 are_services_registered(Services, Node) ->
     RegisteredServices = lists:flatten(
                            rpc:call(Node, riak_api_pb_registrar, services, [])),
-    lists:all(fun(Service) ->
-                      lists:member(Service, RegisteredServices)
-              end,
-              Services).
+    lists:all(
+      fun(Service) ->
+              lists:member(Service, RegisteredServices)
+      end,
+      Services).
 
+%% @private
+%%
+%% @doc Install an intercept on all of the given nodes, which intercepts the
+%% yz_solrq_sup:drain/0 function and sends a message to the riak_test process
+%% indicating that the function was actually called on a given node. The
+%% message is of the form {Node, drain_called}, where `Node' identifies the
+%% node.
 intercept_yz_solrq_sup_drain([]) ->
     ok;
 intercept_yz_solrq_sup_drain([Node|Rest]) ->
@@ -80,12 +104,20 @@ intercept_yz_solrq_sup_drain([Node|Rest]) ->
           end}}]}),
     intercept_yz_solrq_sup_drain(Rest).
 
+%% @private
+%%
+%% @doc Stop the yokozuna application on all of the given nodes.
 stop_yokozuna([]) ->
     ok;
 stop_yokozuna([Node|Rest]) ->
     ok = rpc:call(Node, application, stop, [yokozuna]),
     stop_yokozuna(Rest).
 
+%% @private
+%%
+%% @doc For each node in `Cluster', wait for a message of the form
+%% {Node, drain_called} and assert that each was received before
+%% timeout.
 verify_drain_called(Cluster) ->
     Results = [begin
                    receive
@@ -102,71 +134,3 @@ verify_drain_called(Cluster) ->
                              ok =:= Result
                      end,
                      Results).
-
-%% compile(Module, Cluster) ->
-%%     compile(Module, Cluster, []).
-%%
-%% compile(Module, Cluster, UserOptions) ->
-%%     %% Trigger load if not present
-%%     _ = Module:module_info(),
-%%
-%%     ?INFO("Hello Fuckers ~p", [proplists:get_value(Module, code:all_loaded())]),
-%%     %% Then work out where we loaded it from
-%%     case proplists:get_value(Module, code:all_loaded()) of
-%%         undefined ->
-%%             {error, not_loaded};
-%%         BeamName ->
-%%             do_compile_beam(Module, BeamName, Cluster, UserOptions)
-%%     end.
-%%
-%% %% Beam is a binary or a .beam file name
-%% do_compile_beam(Module, Beam, Cluster, UserOptions) ->
-%%     ?INFO("Abstract code: ~p", [get_abstract_code(Module, Beam)]),
-%%     case get_abstract_code(Module, Beam) of
-%%         no_abstract_code=E ->
-%%             {error,E};
-%%         encrypted_abstract_code=E ->
-%%             {error,E};
-%%         {_Vsn,Code} ->
-%%             Forms0 = epp:interpret_file_attribute(Code),
-%%             Forms = Module:parse_transform(Forms0, UserOptions),
-%%
-%%             %% We need to recover the source from the compilation
-%%             %% info otherwise the newly compiled module will have
-%%             %% source pointing to the current directory
-%%             SourceInfo = get_source_info(Module, Beam),
-%%
-%%             %% Compile and load the result
-%%             %% It's necessary to check the result of loading since it may
-%%             %% fail, for example if Module resides in a sticky directory
-%%             {ok, Module, Binary} = compile:forms(Forms, SourceInfo ++ UserOptions),
-%%             ?INFO("load_binary: ~p", [code:load_binary(Module, Beam, Binary)]),
-%%             [begin
-%%                  case rpc:call(Node, code, load_binary, [Module, Beam, Binary]) of
-%%                      {module, Module} ->
-%%                          {ok, Module};
-%%                      Error ->
-%%                          Error
-%%                  end
-%%              end || Node <- Cluster]
-%%     end.
-%%
-%% get_abstract_code(Module, Beam) ->
-%%     case beam_lib:chunks(Beam, [abstract_code]) of
-%%         {ok, {Module, [{abstract_code, AbstractCode}]}} ->
-%%             AbstractCode;
-%%         {error,beam_lib,{key_missing_or_invalid,_,_}} ->
-%%             encrypted_abstract_code;
-%%         Error -> Error
-%%     end.
-%%
-%% get_source_info(Module, Beam) ->
-%%     case beam_lib:chunks(Beam, [compile_info]) of
-%%         {ok, {Module, [{compile_info, Compile}]}} ->
-%%             case lists:keyfind(source, 1, Compile) of
-%%                 { source, _ } = Tuple -> [Tuple];
-%%                 false -> []
-%%             end;
-%%         _ ->
-%%             []
-%%     end.
