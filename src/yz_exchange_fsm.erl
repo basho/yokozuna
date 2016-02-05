@@ -139,16 +139,17 @@ update_trees({not_responsible, Index, IndexN}, S) ->
     {stop, normal, S};
 
 update_trees({tree_built, riak_kv_index_hashtree, _, _}, #state{yz_tree = YZTree, index = Index, index_n = IndexN} = S) ->
-    Self = self(),
-    Result = yz_solrq_drain_mgr:drain(
-        fun() -> do_update(Self, yz_index_hashtree, YZTree, Index, IndexN), ok end
-    ),
-    case Result of
+    %%
+    %% TODO: consider performing the do_update in the context of the drain_fsm via a callback into drain
+    %%
+    case yz_solrq_drain_mgr:drain() of
         ok -> ok;
+        {error, timeout} ->
+            lager:warning("A drain operation timed out during AAE exchange.  Consider increasing the yokozuna drain_timeout configuration property.");
         {error, Reason} ->
-            lager:warning("An error occurred draining the solr queues: ~p. YZ hashtree update will be requested without a drain, which may result in subsequent AAE exchanges.", [Reason]),
-            update_request(yz_index_hashtree, YZTree, Index, IndexN)
+            lager:error("A drain operation failed during AAE exchange.  Reason: ~p", [Reason])
     end,
+    update_request(yz_index_hashtree, YZTree, Index, IndexN),
     {next_state, update_trees, S};
 
 update_trees({tree_built, yz_index_hashtree, _, _}, S) ->

@@ -24,7 +24,7 @@
 
 %% api
 -export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
-         reload_appenv/1, blown_fuse/2, healed_fuse/2]).
+         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -129,6 +129,10 @@ drain(QPid) ->
 drain_complete(QPid) ->
     gen_server:cast(QPid, drain_complete).
 
+-spec cancel_drain(atom()) -> ok.
+cancel_drain(QPid) ->
+    gen_server:call(QPid, cancel_drain).
+
 %% @doc Signal to the solrq that a fuse has blown for the the specified index.
 -spec blown_fuse(pid(), index_name()) -> ok.
 blown_fuse(QPid, Index) ->
@@ -185,6 +189,9 @@ handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
                  IndexQ#indexq.batch_max,
                  IndexQ#indexq.delayms_max},
     {reply, {ok, OldParams}, update_indexq(Index, IndexQ2, State)};
+handle_call(cancel_drain, _From, State) ->
+    {noreply, NewState} = handle_cast(drain_complete, State),
+    {reply, ok, NewState};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.
 

@@ -32,6 +32,8 @@
     terminate/2,
     code_change/3]).
 
+-include("yokozuna.hrl").
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
@@ -49,7 +51,10 @@ start_link() ->
 
 
 get_lock() ->
-    gen_server:call(?SERVER, {get_lock, self()}, infinity).
+    case enabled() of
+        true -> gen_server:call(?SERVER, {get_lock, self()}, infinity);
+        _ ->    ok
+    end.
 
 release_lock() ->
     gen_server:call(?SERVER, {release_lock, self()}, infinity).
@@ -64,23 +69,31 @@ drain() ->
 drain(DrainCompleteCallback) ->
     case get_lock() of
         ok ->
-            DrainTimeout = application:get_env(yokozuna, drain_timeout, 1000),
-            try
-                {ok, Pid} = yz_solrq_sup:start_drain_fsm(DrainCompleteCallback),
-                Reference = erlang:monitor(process, Pid),
-                yz_solrq_drain_fsm:start_prepare(),
-                receive
-                    {'DOWN', Reference, _Type, _Object, normal} ->
-                        ok;
-                    {'DOWN', Reference, _Type, _Object, Info} ->
-                        {error, Info}
-                after DrainTimeout ->
-                    erlang:demonitor(Reference),
-                    %yz_solrq_drain_fsm:maybe_cancel()
-                    {error, timeout}
-                end
-            after
-                release_lock()
+            case enabled() of
+                true ->
+                    DrainTimeout = application:get_env(?YZ_APP_NAME, drain_timeout, 60000),
+                    T1 = os:timestamp(),
+                    try
+                        {ok, Pid} = yz_solrq_sup:start_drain_fsm(DrainCompleteCallback),
+                        Reference = erlang:monitor(process, Pid),
+                        yz_solrq_drain_fsm:start_prepare(),
+                        receive
+                            {'DOWN', Reference, process, Pid, normal} ->
+                                yz_stat:drain_end(?YZ_TIME_ELAPSED(T1)),
+                                ok;
+                            {'DOWN', Reference, process, Pid, Reason} ->
+                                yz_stat:drain_fail(),
+                                {error, Reason}
+                        after DrainTimeout ->
+                            yz_stat:drain_timeout(),
+                            cancel(Reference, Pid),
+                            {error, timeout}
+                        end
+                    after
+                        release_lock()
+                    end;
+                _ ->
+                    ok
             end;
         _ ->
             {error, in_progress}
@@ -134,6 +147,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+enabled() ->
+    application:get_env(?YZ_APP_NAME, enable_drains, true).
+
 maybe_release_lock(#state{lock=undefined} = S, _) ->
     S;
 maybe_release_lock(#state{lock={Ref, Pid}} = S, Pid) ->
@@ -143,3 +159,29 @@ maybe_release_lock(#state{lock={Ref, _Pid}} = S, Ref) ->
     S#state{lock=undefined};
 maybe_release_lock(#state{lock={_Ref, _Pid}} = S, _) ->
     S.
+
+cancel(Reference, Pid) ->
+    case yz_solrq_drain_fsm:cancel() of
+        ok ->
+            receive
+                {'DOWN', Reference, process, Pid, normal} ->
+                    ok
+            after 5000 ->
+                unlink_and_kill(Reference, Pid),
+                {error, timeout}
+            end;
+        no_proc ->
+            ok;
+        timeout ->
+            unlink_and_kill(Reference, Pid),
+            {error, timeout}
+    end.
+
+unlink_and_kill(Reference, Pid) ->
+    try
+        demonitor(Reference),
+        unlink(Pid),
+        exit(Pid, kill)
+    catch _:_ ->
+        ok
+    end.

@@ -65,6 +65,23 @@ index_fail() ->
 index_end(_Index, BatchSize, ElapsedTime) ->
     update({index_end, BatchSize, ElapsedTime}).
 
+
+%% @doc Send stat updates for a drain completion.  `ElapsedTime'
+%% should be microseconds.
+-spec drain_end(integer()) -> ok.
+drain_end(ElapsedTime) ->
+    update({drain_end, ElapsedTime}).
+
+%% @doc Send stat updates for a drain failure.
+-spec drain_fail() -> ok.
+drain_fail() ->
+    update(drain_fail).
+
+%% @doc Send stat updates for a drain timeout.
+-spec drain_timeout() -> ok.
+drain_timeout() ->
+    update(drain_timeout).
+
 %% @doc Send stat updates for a search failure.
 -spec search_fail() -> ok.
 search_fail() ->
@@ -141,7 +158,21 @@ stats_map(true) ->
       {search_index_latency_median, {{?YZ_APP_NAME, index, latency}, median}, histogram},
       {search_index_latency_95, {{?YZ_APP_NAME, index, latency}, 95}, histogram_percentile},
       {search_index_latency_99, {{?YZ_APP_NAME, index, latency}, 99}, histogram_percentile},
-      {search_index_latency_999, {{?YZ_APP_NAME, index, latency}, 999}, histogram_percentile}].
+      {search_index_latency_999, {{?YZ_APP_NAME, index, latency}, 999}, histogram_percentile},
+      {search_index_drain_count, {{?YZ_APP_NAME, index, drain}, count}, spiral},
+      {search_index_drain_one, {{?YZ_APP_NAME, index, drain}, one}, spiral},
+      {search_index_drain_latency_min, {{?YZ_APP_NAME, index, drain_latency}, min}, histogram},
+      {search_index_drain_latency_mean, {{?YZ_APP_NAME, index, drain_latency}, mean}, histogram},
+      {search_index_drain_latency_max, {{?YZ_APP_NAME, index, drain_latency}, max}, histogram},
+      {search_index_drain_latency_median, {{?YZ_APP_NAME, index, drain_latency}, median}, histogram},
+      {search_index_drain_latency_95, {{?YZ_APP_NAME, index, drain_latency}, 95}, histogram_percentile},
+      {search_index_drain_latency_99, {{?YZ_APP_NAME, index, drain_latency}, 99}, histogram_percentile},
+      {search_index_drain_latency_999, {{?YZ_APP_NAME, index, drain_latency}, 999}, histogram_percentile},
+      {search_index_drain_fail_count, {{?YZ_APP_NAME, index, drain_fail}, count}, spiral},
+      {search_index_drain_fail_one, {{?YZ_APP_NAME, index, drain_fail}, one}, spiral},
+      {search_index_drain_timeout_count, {{?YZ_APP_NAME, index, drain_timeout}, count}, spiral},
+      {search_index_drain_timeout_one, {{?YZ_APP_NAME, index, drain_timeout}, one}, spiral}
+     ].
 
 %% -------------------------------------------------------------------
 %% Callbacks
@@ -210,6 +241,13 @@ update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
 update(blockedvnode) ->
     exometer:update([?PFX, ?APP, index, blockedvnode], 1);
+update({drain_end, Time}) ->
+    exometer:update([?PFX, ?APP, index, drain_latency], Time),
+    exometer:update([?PFX, ?APP, index, drain], 1);
+update(drain_fail) ->
+    exometer:update([?PFX, ?APP, index, drain_fail], 1);
+update(drain_timeout) ->
+    exometer:update([?PFX, ?APP, index, drain_timeout], 1);
 update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
@@ -239,6 +277,20 @@ stats() ->
                                           {max   , search_index_batchsize_max}]},
      {[index, blockedvnode], spiral, [], [{count, search_index_blockedvnode_count},
                                           {one  , search_index_blockedvnode_one}]},
+     {[index, drain], spiral, [], [{count, search_index_drain_count},
+                                   {one  , search_index_drain_one}]},
+     {[index, drain_fail], spiral, [], [{count,search_index_drain_fail_count},
+                                        {one  ,search_index_drain_fail_one}]},
+     {[index, drain_timeout], spiral, [], [{count,search_index_drain_timeout_count},
+                                           {one  ,search_index_drain_timeout_one}]},
+     {[index, drain_latency], histogram, [], [
+            {95    , search_index_drain_latency_95},
+            {99    , search_index_drain_latency_99},
+            {999   , search_index_drain_latency_999},
+            {max   , search_index_drain_latency_max},
+            {median, search_index_drain_latency_median},
+            {min   , search_index_drain_latency_min},
+            {mean  , search_index_drain_latency_mean}]},
      {['query', fail], spiral, [], [{count, search_query_fail_count},
                                     {one  , search_query_fail_one}]},
      {['query', latency], histogram, [], [{95    , search_query_latency_95},
