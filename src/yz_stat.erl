@@ -82,6 +82,11 @@ drain_fail() ->
 drain_timeout() ->
     update(drain_timeout).
 
+%% @doc Send updates for aae repairs.
+-spec aae_repairs(integer()) -> ok.
+aae_repairs(Count) ->
+    update({aae_repairs, Count}).
+
 %% @doc Send stat updates for a search failure.
 -spec search_fail() -> ok.
 search_fail() ->
@@ -171,7 +176,11 @@ stats_map(true) ->
       {search_index_drain_fail_count, {{?YZ_APP_NAME, index, drain_fail}, count}, spiral},
       {search_index_drain_fail_one, {{?YZ_APP_NAME, index, drain_fail}, one}, spiral},
       {search_index_drain_timeout_count, {{?YZ_APP_NAME, index, drain_timeout}, count}, spiral},
-      {search_index_drain_timeout_one, {{?YZ_APP_NAME, index, drain_timeout}, one}, spiral}
+      {search_index_drain_timeout_one, {{?YZ_APP_NAME, index, drain_timeout}, one}, spiral},
+      {search_index_aae_repairs_min, {{?YZ_APP_NAME, index, aae_repairs}, min}, histogram},
+      {search_index_aae_repairs_max, {{?YZ_APP_NAME, index, aae_repairs}, max}, histogram},
+      {search_index_aae_repairs_mean, {{?YZ_APP_NAME, index, aae_repairs}, mean}, histogram},
+      {search_index_aae_repairs_median, {{?YZ_APP_NAME, index, aae_repairs}, median}, histogram}
      ].
 
 %% -------------------------------------------------------------------
@@ -248,6 +257,8 @@ update(drain_fail) ->
     exometer:update([?PFX, ?APP, index, drain_fail], 1);
 update(drain_timeout) ->
     exometer:update([?PFX, ?APP, index, drain_timeout], 1);
+update({aae_repairs, Count}) ->
+    exometer:update([?PFX, ?APP, index, aae_repairs], Count);
 update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
@@ -291,6 +302,11 @@ stats() ->
             {median, search_index_drain_latency_median},
             {min   , search_index_drain_latency_min},
             {mean  , search_index_drain_latency_mean}]},
+     {[index, aae_repairs], histogram, [], [
+            {min   , search_index_aae_repairs_min},
+            {max   , search_index_aae_repairs_max},
+            {median, search_index_aae_repairs_median},
+            {mean  , search_index_aae_repairs_mean}]},
      {['query', fail], spiral, [], [{count, search_query_fail_count},
                                     {one  , search_query_fail_one}]},
      {['query', latency], histogram, [], [{95    , search_query_latency_95},

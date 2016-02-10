@@ -99,13 +99,13 @@ prepare_exchange(start_exchange, S) ->
                             case riak_kv_index_hashtree:get_lock(KVTree,
                                                                  ?MODULE) of
                                 ok ->
-                                    case yz_solrq_drain_mgr:get_lock() of
-                                        ok ->
+                                    %case yz_solrq_drain_mgr:get_lock() of
+                                    %    ok ->
                                             update_trees(start_exchange, S);
-                                        _ ->
-                                            send_exchange_status(drain_in_progress, S),
-                                            {stop, normal, S}
-                                    end;
+                                    %    _ ->
+                                    %        send_exchange_status(drain_in_progress, S),
+                                    %        {stop, normal, S}
+                                    %end;
                                 _ ->
                                     send_exchange_status(already_locked, S),
                                     {stop, normal, S}
@@ -139,18 +139,19 @@ update_trees({not_responsible, Index, IndexN}, S) ->
     {stop, normal, S};
 
 update_trees({tree_built, riak_kv_index_hashtree, _, _}, #state{yz_tree = YZTree, index = Index, index_n = IndexN} = S) ->
-    %%
-    %% TODO: consider performing the do_update in the context of the drain_fsm via a callback into drain
-    %%
     case yz_solrq_drain_mgr:drain() of
-        ok -> ok;
-        {error, timeout} ->
-            lager:warning("A drain operation timed out during AAE exchange.  Consider increasing the yokozuna drain_timeout configuration property.");
+        ok ->
+            update_request(yz_index_hashtree, YZTree, Index, IndexN),
+            {next_state, update_trees, S};
+        %{error, timeout} ->
+        %    lager:warning("A drain operation timed out during AAE exchange.  Consider increasing the yokozuna drain_timeout configuration property."),
+        %    update_request(yz_index_hashtree, YZTree, Index, IndexN),
+        %    {next_state, update_trees, S};
         {error, Reason} ->
-            lager:error("A drain operation failed during AAE exchange.  Reason: ~p", [Reason])
-    end,
-    update_request(yz_index_hashtree, YZTree, Index, IndexN),
-    {next_state, update_trees, S};
+            lager:error("A drain operation failed during AAE exchange.  Reason: ~p", [Reason]),
+            send_exchange_status(drain_failed, S),
+            {stop, normal, S}
+    end;
 
 update_trees({tree_built, yz_index_hashtree, _, _}, S) ->
     lager:debug("Moving to key exchange"),
@@ -181,8 +182,10 @@ key_exchange(timeout, S=#state{index=Index,
              end,
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
         0 ->
+            yz_stat:aae_repairs(0),
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
+            yz_stat:aae_repairs(Count),
             lager:info("Will repair ~b keys of partition ~p for preflist ~p",
                        [Count, Index, IndexN])
     end,
