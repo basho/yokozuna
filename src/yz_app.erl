@@ -70,20 +70,20 @@ start(_StartType, _StartArgs) ->
 prep_stop(State) ->
     try %% wrap with a try/catch - application carries on regardless,
         %% no error message or logging about the failure otherwise.
-        lager:info("Stopping application yokozuna.\n", []),
-        ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
-        ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
-        ok = yz_solrq_drain_mgr:drain(),
-        ok = disable_components()
+        lager:info("Stopping application yokozuna.", []),
+        riak_api_pb_service:deregister(?QUERY_SERVICES),
+        riak_api_pb_service:deregister(?ADMIN_SERVICES),
+        yz_solrq_drain_mgr:drain(),
+        disable_components()
     catch
         Type:Reason ->
-            lager:error("Stopping application yokozuna - ~p:~p.\n",
+            lager:error("Stopping application yokozuna - ~p:~p.",
                         [Type, Reason])
     end,
     State.
 
 stop(_State) ->
-    lager:info("Stopped application yokozuna.\n", []),
+    lager:info("Stopped application yokozuna.", []),
     ok.
 
 %% @private
