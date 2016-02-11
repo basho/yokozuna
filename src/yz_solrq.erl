@@ -56,7 +56,8 @@
         delayms_max = 100       :: non_neg_integer(),
         aux_queue = queue:new() :: yz_queue(),
         draining = false        :: boolean() | wait_for_drain_complete,
-        fuse_blown = false      :: boolean()
+        fuse_blown = false      :: boolean(),
+        in_flight_len = 0       :: non_neg_integer()
     }
 ).
 -record(
@@ -216,9 +217,11 @@ handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
     ?PULSE_DEBUG("drain.  State: ~p~n", [debug_state(State)]),
     {Remaining, NewIndexQs} = dict:fold(
         fun(Index, IndexQ, {RemainingAccum, IndexQsAccum}) ->
-            case IndexQ#indexq.queue_len of
-                0 ->
-                    {RemainingAccum, IndexQsAccum};
+            case {IndexQ#indexq.queue_len, IndexQ#indexq.in_flight_len} of
+                {0, 0} ->
+                    {RemainingAccum, dict:store(Index, IndexQ#indexq{draining = wait_for_drain_complete}, IndexQsAccum)};
+                {0, _InFlightLen} ->
+                    {[Index | RemainingAccum], dict:store(Index, IndexQ#indexq{draining = true}, IndexQsAccum)};
                 _ ->
                     {[Index | RemainingAccum], drain(Index, IndexQ, IndexQsAccum)}
             end
@@ -276,7 +279,7 @@ handle_cast({healed_fuse, Index}, State) ->
 handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_len = AQL} = State) ->
     ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     IndexQ = get_indexq(Index, State),
-    State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false}, Result, State),
+    State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false, in_flight_len = 0}, Result, State),
     NewState = maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered}),
     ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
@@ -563,7 +566,7 @@ get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max, draining = Draining
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
     IndexQ2 = IndexQ#indexq{queue = RestQ, queue_len = L - BatchLen,
-                            href = undefined},
+                            href = undefined, in_flight_len = BatchLen},
     {Batch, BatchLen, IndexQ2}.
 
 
@@ -632,13 +635,14 @@ read_appenv(State) ->
 debug_queue(Queue) ->
     [erlang:element(1, Entry) || Entry <- queue:to_list(Queue)].
 
-debug_indexq(#indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = Draining, fuse_blown = FuseBlown}) ->
+debug_indexq(#indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = Draining, fuse_blown = FuseBlown, in_flight_len = InFlightLen}) ->
     [
         {queue, debug_queue(Queue)},
         {queue_len, QueueLen},
         {aux_queue, debug_queue(AuxQueue)},
         {draining, Draining},
-        {fuse_blown, FuseBlown}
+        {fuse_blown, FuseBlown},
+        {in_flight_len, InFlightLen}
     ].
 debug_state(State) ->
     [
