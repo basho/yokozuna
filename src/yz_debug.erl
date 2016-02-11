@@ -31,6 +31,7 @@ solrq_indexq(Index, IndexQ) ->
         , {aux_queue_len, queue:len(element(9, IndexQ))}
         , {draining, element(10, IndexQ)}
         , {fuse_blown, element(11, IndexQ)}
+        , {in_flight_len, element(12, IndexQ)}
     ].
 
 solrq_state(State) ->

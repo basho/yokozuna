@@ -139,9 +139,12 @@ update_trees({not_responsible, Index, IndexN}, S) ->
     {stop, normal, S};
 
 update_trees({tree_built, riak_kv_index_hashtree, _, _}, #state{yz_tree = YZTree, index = Index, index_n = IndexN} = S) ->
-    case yz_solrq_drain_mgr:drain() of
+    Self = self(),
+    case yz_solrq_drain_mgr:drain(
+        fun() -> do_update(Self, yz_index_hashtree, YZTree, Index, IndexN) end
+    ) of
         ok ->
-            update_request(yz_index_hashtree, YZTree, Index, IndexN),
+            %update_request(yz_index_hashtree, YZTree, Index, IndexN),
             {next_state, update_trees, S};
         %{error, timeout} ->
         %    lager:warning("A drain operation timed out during AAE exchange.  Consider increasing the yokozuna drain_timeout configuration property."),

@@ -536,9 +536,11 @@ make_obj(B,K) ->
 
 
 start_drains(_N) ->
+    %ok.
     spawn_link(fun() -> drain(500) end).
 
 drain(Millis) ->
+    %% TODO fix this so that drain can be called (requires support for yz_solrq_sup
     %ok = yz_solrq_sup:drain(),
     try
         {ok, Pid} = yz_solrq_drain_fsm:start_link(fun() -> ok end),
@@ -548,15 +550,16 @@ drain(Millis) ->
             {'DOWN', Reference, _Type, _Object, normal} ->
                 ok;
             {'DOWN', Reference, _Type, _Object, Info} ->
-                lager:info("FDUSHIN> Info: ~p", [Info]),
                 {error, Info}
         after 10000 ->
             erlang:demonitor(Reference),
-            %yz_solrq_drain_fsm:maybe_cancel()
+            lager:error("Warning!  Drain timed out.  Cancelling..."),
+            yz_solrq_drain_fsm:cancel(),
             {error, timeout}
         end
     catch
         _:badarg ->
+            lager:error("Error! Drain in progress."),
             {error, in_progress}
     end,
     timer:sleep(Millis),
