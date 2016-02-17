@@ -192,7 +192,7 @@ create_index(RD, S) ->
     Timeout =
         case S#ctx.timeout of
             undefined -> app_helper:get_env(
-                          yokozuna,
+                          ?YZ_APP_NAME,
                           index_put_timeout_ms,
                           ?DEFAULT_IDX_CREATE_TIMEOUT);
             Set -> Set

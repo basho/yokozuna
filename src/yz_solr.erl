@@ -336,7 +336,7 @@ build_shard_fq(LCoverSet, Mapping) ->
 %% the port if the RPC fails.
 -spec host_port(node()) -> {string(), string() | unknown}.
 host_port(Node) ->
-    case rpc:call(Node, yz_solr, port, [], 1000) of
+    case rpc:call(Node, yz_solr, port, [], ?YZ_SOLR_PORT_RPC_TIMEOUT) of
         {badrpc, Reason} ->
             ?DEBUG("error retrieving Solr port ~p ~p", [Node, Reason]),
             {yz_misc:hostname(Node), unknown};
