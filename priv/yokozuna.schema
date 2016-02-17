@@ -159,7 +159,7 @@
   {validators, ["positive_integer"]}
 ]}.
 
-%% @doc The maximim batch size, in number of Riak objects. Any batches that are
+%% @doc The maximum batch size, in number of Riak objects. Any batches that are
 %%      larger than this amount will be split, where the first solrq_batch_max
 %%      objects will be flushed to Solr, and the remaining objects enqueued for
 %%      that index will be retained until the next batch is delivered. This
@@ -199,8 +199,8 @@
 ]}.
 
 %% @doc The number of solr queue workers to instantiate in the Yokozuna
-%%      application. Solr queue workers are responsible for enqueing objects for
-%%      insertion or update into Solr. Increasing the number of solrq
+%%      application. Solr queue workers are responsible for enqueuing objects
+%%      for insertion or update into Solr. Increasing the number of solrq
 %%      distributes the queuing of objects, and can lead to greater throughput
 %%      under high load, potentially at the expense of smaller batch sizes.
 {mapping, "search.num_solrq", "yokozuna.num_solrq", [
