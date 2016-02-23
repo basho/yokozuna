@@ -30,6 +30,7 @@
          blown_fuse/1,
          healed_fuse/1,
          solrq_names/0,
+         solrq_helper_names/0,
          start_drain_fsm/1]).
 
 -include("yokozuna.hrl").
@@ -153,6 +154,11 @@ healed_fuse(Index) ->
 -spec solrq_names() -> [atom()].
 solrq_names() ->
     tuple_to_list(get_solrq_tuple()).
+
+%% @doc Return the list of solrq names registered with this supervisor
+-spec solrq_helper_names() -> [atom()].
+solrq_helper_names() ->
+    tuple_to_list(get_solrq_helper_tuple()).
 
 
 %% @doc Start the drain supervsior, under this supervisor

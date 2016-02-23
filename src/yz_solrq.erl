@@ -60,7 +60,8 @@
         aux_queue = queue:new() :: yz_queue(),
         draining = false        :: boolean() | wait_for_drain_complete,
         fuse_blown = false      :: boolean(),
-        in_flight_len = 0       :: non_neg_integer()
+        in_flight_len = 0       :: non_neg_integer(),
+        batch_start             :: timestamp()
     }
 ).
 
@@ -317,7 +318,7 @@ handle_cast(drain_complete, #state{indexqs = IndexQs} = State) ->
         dict:new(),
         IndexQs
     ),
-    {noreply, State#state{indexqs = NewIndexQs}}.
+    {noreply, State#state{indexqs = NewIndexQs, drain_info = undefined}}.
 
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -360,13 +361,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 handle_batch(
     Index,
-    #indexq{draining = false} = IndexQ0,
+    #indexq{draining = false, batch_start = T1} = IndexQ0,
     Result,
     State
 ) ->
     IndexQ1 =
         case Result of
             ok ->
+                yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
                 IndexQ0;
             {retry, Undelivered} ->
                 requeue_undelivered(Undelivered, IndexQ0)
@@ -391,7 +393,7 @@ handle_batch(
 %%
 handle_batch(
     Index,
-    #indexq{queue_len = QueueLen, draining = true} = IndexQ,
+    #indexq{queue_len = QueueLen, draining = true, batch_start = T1} = IndexQ,
     Result,
     #state{drain_info = DrainInfo} = State
 ) ->
@@ -401,6 +403,7 @@ handle_batch(
             ok ->
                 case QueueLen of
                     0 ->
+                        yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
                         {
                             lists:delete(Index, Remaining),
                             IndexQ#indexq{draining = wait_for_drain_complete}
@@ -576,7 +579,8 @@ get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max, draining = Draining
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
     IndexQ2 = IndexQ#indexq{queue = RestQ, queue_len = L - BatchLen,
-                            href = undefined, in_flight_len = BatchLen},
+                            href = undefined, in_flight_len = BatchLen,
+                            batch_start = os:timestamp()},
     {Batch, BatchLen, IndexQ2}.
 
 
