@@ -65,6 +65,7 @@ solrq_summary() ->
         {draining_indexqs, draining_indexqs(Solrqs)},
         {blown_indexqs, blown_indexqs(Solrqs)},
         {nonzero_queue_lengths, nonzero_queue_lengths(Solrqs)},
+        {in_flight_lengths, in_flight_lengths(Solrqs)},
         {nonzero_aux_queue_lengths, nonzero_aux_queue_lengths(Solrqs)}
     ].
 
@@ -151,6 +152,32 @@ nonzero_queue_lengths(Solrqs) ->
             {IndexQLen, IndexQs} = lists:foldr(
                 fun(IndexQ, {IndexQLenAccum, IndexQAccum}) ->
                     case proplists:get_value(queue_len, IndexQ) of
+                        0 ->
+                            {IndexQLenAccum, IndexQAccum};
+                        QueueLen ->
+                            {IndexQLenAccum + QueueLen, [{proplists:get_value(index, IndexQ), QueueLen} | IndexQAccum]}
+                    end
+                end,
+                {0, []},
+                proplists:get_value(indexqs, State)
+            ),
+            case IndexQs of
+                [] ->
+                    {SolrqLenAccum, SolrqAccum};
+                _ ->
+                    {SolrqLenAccum + IndexQLen, [{Id, IndexQs} | SolrqAccum]}
+            end
+        end,
+        {0, []},
+        Solrqs
+    ).
+
+in_flight_lengths(Solrqs) ->
+    lists:foldr(
+        fun({Id, State}, {SolrqLenAccum, SolrqAccum}) ->
+            {IndexQLen, IndexQs} = lists:foldr(
+                fun(IndexQ, {IndexQLenAccum, IndexQAccum}) ->
+                    case proplists:get_value(in_flight_len, IndexQ) of
                         0 ->
                             {IndexQLenAccum, IndexQAccum};
                         QueueLen ->

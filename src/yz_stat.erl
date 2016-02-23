@@ -72,6 +72,13 @@ index_end(_Index, BatchSize, ElapsedTime) ->
 drain_end(ElapsedTime) ->
     update({drain_end, ElapsedTime}).
 
+
+%% @doc Send stat updates for a batch completion.  `ElapsedTime'
+%% should be microseconds.
+-spec batch_end(integer()) -> ok.
+batch_end(ElapsedTime) ->
+    update({batch_end, ElapsedTime}).
+
 %% @doc Send stat updates for a drain failure.
 -spec drain_fail() -> ok.
 drain_fail() ->
@@ -173,6 +180,13 @@ stats_map(true) ->
       {search_index_drain_latency_95, {{?YZ_APP_NAME, index, drain_latency}, 95}, histogram_percentile},
       {search_index_drain_latency_99, {{?YZ_APP_NAME, index, drain_latency}, 99}, histogram_percentile},
       {search_index_drain_latency_999, {{?YZ_APP_NAME, index, drain_latency}, 999}, histogram_percentile},
+      {search_index_batch_latency_min, {{?YZ_APP_NAME, index, batch_latency}, min}, histogram},
+      {search_index_batch_latency_mean, {{?YZ_APP_NAME, index, batch_latency}, mean}, histogram},
+      {search_index_batch_latency_max, {{?YZ_APP_NAME, index, batch_latency}, max}, histogram},
+      {search_index_batch_latency_median, {{?YZ_APP_NAME, index, batch_latency}, median}, histogram},
+      {search_index_batch_latency_95, {{?YZ_APP_NAME, index, batch_latency}, 95}, histogram_percentile},
+      {search_index_batch_latency_99, {{?YZ_APP_NAME, index, batch_latency}, 99}, histogram_percentile},
+      {search_index_batch_latency_999, {{?YZ_APP_NAME, index, batch_latency}, 999}, histogram_percentile},
       {search_index_drain_fail_count, {{?YZ_APP_NAME, index, drain_fail}, count}, spiral},
       {search_index_drain_fail_one, {{?YZ_APP_NAME, index, drain_fail}, one}, spiral},
       {search_index_drain_timeout_count, {{?YZ_APP_NAME, index, drain_timeout}, count}, spiral},
@@ -248,6 +262,8 @@ update({index_end, BatchSize, Time}) ->
     exometer:update([?PFX, ?APP, index, batchsize], BatchSize);
 update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
+update({batch_end, Time}) ->
+    exometer:update([?PFX, ?APP, index, batch_latency], Time);
 update(blockedvnode) ->
     exometer:update([?PFX, ?APP, index, blockedvnode], 1);
 update({drain_end, Time}) ->
@@ -302,6 +318,14 @@ stats() ->
             {median, search_index_drain_latency_median},
             {min   , search_index_drain_latency_min},
             {mean  , search_index_drain_latency_mean}]},
+     {[index, batch_latency], histogram, [], [
+            {95    , search_index_batch_latency_95},
+            {99    , search_index_batch_latency_99},
+            {999   , search_index_batch_latency_999},
+            {max   , search_index_batch_latency_max},
+            {median, search_index_batch_latency_median},
+            {min   , search_index_batch_latency_min},
+            {mean  , search_index_batch_latency_mean}]},
      {[index, aae_repairs], histogram, [], [
             {min   , search_index_aae_repairs_min},
             {max   , search_index_aae_repairs_max},
