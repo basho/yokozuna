@@ -93,6 +93,7 @@ drain(DrainCompleteCallback) ->
                         release_lock()
                     end;
                 _ ->
+                    DrainCompleteCallback(),
                     ok
             end;
         _ ->
