@@ -154,6 +154,8 @@ stats_map(true) ->
       %% Index stats
       {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
       {search_index_throughput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
+      {search_index_batch_throughput_count, {{?YZ_APP_NAME, index, batch_throughput}, count}, spiral},
+      {search_index_batch_throughput_one, {{?YZ_APP_NAME, index, batch_throughput}, one}, spiral},
       {search_index_blockedvnode_count, {{?YZ_APP_NAME, index, blockedvnode}, count}, spiral},
       {search_index_blockedvnode_one, {{?YZ_APP_NAME, index, blockedvnode}, one}, spiral},
       {search_index_batchsize_min, {{?YZ_APP_NAME, index, batchsize}, min}, histogram},
@@ -258,7 +260,8 @@ delete(_Stat) ->
 -spec update(StatUpdate::term()) -> ok.
 update({index_end, BatchSize, Time}) ->
     exometer:update([?PFX, ?APP, index, latency], Time),
-    exometer:update([?PFX, ?APP, index, throughput], 1),
+    exometer:update([?PFX, ?APP, index, throughput], BatchSize),
+    exometer:update([?PFX, ?APP, index, batch_throughput], 1),
     exometer:update([?PFX, ?APP, index, batchsize], BatchSize);
 update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
@@ -298,6 +301,8 @@ stats() ->
                                         {mean  , search_index_latency_mean}]},
      {[index, throughput], spiral, [], [{count, search_index_throughput_count},
                                         {one  , search_index_throughput_one}]},
+     {[index, batch_throughput], spiral, [], [{count, search_index_batch_throughput_count},
+                                              {one  , search_index_batch_throughput_one}]},
      {[index, batchsize], histogram, [], [{min   , search_index_batchsize_min},
                                           {mean  , search_index_batchsize_mean},
                                           {median, search_index_batchsize_median},
