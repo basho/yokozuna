@@ -30,7 +30,7 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([index_ready/3, index_batch/5]).
+-export([index_ready/3, index_ready/2, index_batch/5]).
 
 %% TODO: Dynamically pulse_instrument.
 -ifdef(PULSE).
@@ -68,6 +68,11 @@ status(Pid) ->
 
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
+
+-spec index_ready(index_name(), pid()) -> ok.
+index_ready(Index, QPid) ->
+    HPid = yz_solrq_sup:random_helper(),
+    index_ready(HPid, Index, QPid).
 
 %% @doc Mark the index as ready.  Separating into a two phase
 %%      rather than just blindly sending from the solrq adds the

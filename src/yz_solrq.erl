@@ -105,7 +105,7 @@ status(QPid, Timeout) ->
 index(Index, BKey, Obj, Reason, P) ->
     %% Hash on the index and partition to ensure updates to
     %% an index are serialized for all objects in the vnode.
-    Hash = erlang:phash2({Index, P}),
+    Hash = erlang:phash2({Index, BKey}),
     gen_server:call(yz_solrq_sup:queue_regname(Hash),
                     {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
@@ -541,8 +541,7 @@ maybe_request_worker(_Index, _Min, IndexQ) ->
 
 %% @doc Notify the solrq workers the index is ready to be pulled.
 request_worker(Index, #indexq{pending_helper = false, fuse_blown = false} = IndexQ) ->
-    Hash = erlang:phash2({Index, self()}),
-    yz_solrq_helper:index_ready(Hash, Index, self()),
+    yz_solrq_helper:index_ready(Index, self()),
     IndexQ#indexq{pending_helper = true};
 request_worker(_Index, IndexQ) ->
     IndexQ.

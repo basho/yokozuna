@@ -22,6 +22,7 @@
 
 -export([start_link/0, start_link/2,
          queue_regname/1, helper_regname/1,
+         random_helper/0,
          num_queue_specs/0, resize_queues/1,
          num_helper_specs/0, resize_helpers/1,
          set_hwm/1,
@@ -76,6 +77,17 @@ helper_regname(Hash) ->
             error(solrq_sup_not_started);
         Names ->
             Index = 1 + (Hash rem size(Names)),
+            element(Index, Names)
+    end.
+
+%% @doc return a random helper
+-spec random_helper() -> regname().
+random_helper() ->
+    case get_solrq_helper_tuple() of
+        undefined ->
+            error(solrq_sup_not_started);
+        Names ->
+            Index = random:uniform(size(Names)),
             element(Index, Names)
     end.
 
