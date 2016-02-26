@@ -174,11 +174,11 @@ solrq_helper_names() ->
 
 
 %% @doc Start the drain supervsior, under this supervisor
--spec start_drain_fsm(fun(() -> ok)) -> {ok, pid()} | {error, term()}.
-start_drain_fsm(DrainCompleteCallback) ->
+-spec start_drain_fsm(proplist()) -> {ok, pid()} | {error, term()}.
+start_drain_fsm(CallbackList) ->
     supervisor:start_child(
         ?MODULE,
-        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [DrainCompleteCallback]}, temporary, 5000, worker, []}
+        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
     ).
 
 

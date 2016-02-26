@@ -127,37 +127,35 @@ prepare_exchange(timeout, S) ->
     do_timeout(S).
 
 update_trees(start_exchange, S=#state{kv_tree=KVTree,
+                                      yz_tree = YZTree,
                                       index=Index,
                                       index_n=IndexN}) ->
-
-    update_request(riak_kv_index_hashtree, KVTree, Index, IndexN),
+    Self = self(),
+    spawn(
+        yz_solrq_drain_mgr:drain([
+            {drain_initiated_callback, fun() -> do_update(Self, riak_kv_index_hashtree, KVTree, Index, IndexN) end},
+            {drain_completed_callback, fun() -> do_update(Self, yz_index_hashtree, YZTree, Index, IndexN) end},
+            {drain_error_callback,     fun(Reason) -> gen_fsm:send_event(Self, {drain_error, Reason}) end}
+        ])
+    ),
     {next_state, update_trees, S};
 
+update_trees({drain_error, Reason}, S) ->
+    lager:info("Drain failed with reason ~p", [Reason]),
+    send_exchange_status(drain_failed, S),
+    {stop, normal, S};
+
 update_trees({not_responsible, Index, IndexN}, S) ->
-    lager:debug("Index ~p does not cover preflist ~p", [Index, IndexN]),
+    lager:info("Index ~p does not cover preflist ~p", [Index, IndexN]),
     send_exchange_status({not_responsible, Index, IndexN}, S),
     {stop, normal, S};
 
-update_trees({tree_built, riak_kv_index_hashtree, _, _}, #state{yz_tree = YZTree, index = Index, index_n = IndexN} = S) ->
-    Self = self(),
-    case yz_solrq_drain_mgr:drain(
-        fun() -> do_update(Self, yz_index_hashtree, YZTree, Index, IndexN) end
-    ) of
-        ok ->
-            %update_request(yz_index_hashtree, YZTree, Index, IndexN),
-            {next_state, update_trees, S};
-        %{error, timeout} ->
-        %    lager:warning("A drain operation timed out during AAE exchange.  Consider increasing the yokozuna drain_timeout configuration property."),
-        %    update_request(yz_index_hashtree, YZTree, Index, IndexN),
-        %    {next_state, update_trees, S};
-        {error, Reason} ->
-            lager:error("A drain operation failed during AAE exchange.  Reason: ~p", [Reason]),
-            send_exchange_status(drain_failed, S),
-            {stop, normal, S}
-    end;
+update_trees({tree_built, riak_kv_index_hashtree, _, _}, S) ->
+    lager:info("riak_kv_index_hashtree built.  Waiting for yz_index_hashtree..."),
+    {next_state, update_trees, S, 0};
 
 update_trees({tree_built, yz_index_hashtree, _, _}, S) ->
-    lager:debug("Moving to key exchange"),
+    lager:info("Moving to key exchange"),
     {next_state, key_exchange, S, 0}.
 
 key_exchange(timeout, S=#state{index=Index,
@@ -265,11 +263,13 @@ fake_kv_object({Bucket, Key}) ->
 
 %% @private
 do_update(ToWhom, Module, Tree, Index, IndexN) ->
-    Result = case Module:update(IndexN, Tree) of
+    UpdateResult = Module:update(IndexN, Tree),
+    Result = case UpdateResult of
                  ok -> {tree_built, Module, Index, IndexN};
                  not_responsible -> {not_responsible, Index, IndexN}
              end,
-    gen_fsm:send_event(ToWhom, Result).
+    gen_fsm:send_event(ToWhom, Result),
+    UpdateResult.
 
 %% @private
 update_request(Module, Tree, Index, IndexN) ->
