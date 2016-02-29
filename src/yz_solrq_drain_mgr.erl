@@ -109,6 +109,7 @@ drain(Params) ->
 %%%===================================================================
 
 init([]) ->
+    schedule_tick(),
     {ok, #state{}}.
 
 
@@ -137,6 +138,10 @@ handle_cast(_Request, State) ->
 handle_info({'DOWN', Ref, _, _Obj, _Status}, State) ->
     {noreply, maybe_release_lock(State, Ref)};
 
+handle_info(tick, State) ->
+    yz_stat:queue_capacity(yz_solrq_sup:queue_capacity()),
+    schedule_tick(),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -196,3 +201,7 @@ unlink_and_kill(Reference, Pid) ->
     catch _:_ ->
         ok
     end.
+
+-spec schedule_tick() -> reference().
+schedule_tick() ->
+    erlang:send_after(5000, ?MODULE, tick).

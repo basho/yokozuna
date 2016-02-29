@@ -23,8 +23,8 @@
 -behavior(gen_server).
 
 %% api
--export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
-         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1]).
+-export([start_link/1, status/1, index/5, set_hwm/2, get_hwm/1, set_index/5,
+         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1, all_queue_len/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -149,6 +149,16 @@ blown_fuse(QPid, Index) ->
 healed_fuse(QPid, Index) ->
     gen_server:cast(QPid, {healed_fuse, Index}).
 
+%% @doc return the sum of the length of all queues in each indexq
+-spec get_hwm(pid()) -> non_neg_integer().
+get_hwm(QPid) ->
+    gen_server:call(QPid, get_hwm).
+
+%% @doc return the sum of the length of all queues in each indexq
+-spec all_queue_len(pid()) -> non_neg_integer().
+all_queue_len(QPid) ->
+    gen_server:call(QPid, all_queue_len).
+
 %%%===================================================================
 %%% solrq/helper interface
 %%%===================================================================
@@ -185,6 +195,8 @@ handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
+handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
+    {reply, HWM, State};
 handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
       Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
     IndexQ = get_indexq(Index, State),
@@ -205,6 +217,8 @@ handle_call({set_index, Index, _Min, _Max, _DelayMS}, _From, State) ->
 handle_call(cancel_drain, _From, State) ->
     {noreply, NewState} = handle_cast(drain_complete, State),
     {reply, ok, NewState};
+handle_call(all_queue_len, _From, #state{all_queue_len=Len} = State) ->
+    {reply, Len, State};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.
 handle_cast({request_batch, Index, HPid}, State) ->

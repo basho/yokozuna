@@ -32,7 +32,8 @@
          healed_fuse/1,
          solrq_names/0,
          solrq_helper_names/0,
-         start_drain_fsm/1]).
+         start_drain_fsm/1,
+         queue_capacity/0]).
 
 -include("yokozuna.hrl").
 
@@ -180,6 +181,14 @@ start_drain_fsm(CallbackList) ->
         ?MODULE,
         {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
     ).
+
+%% @doc return the queue capacity as a percentage in [0..100], representing the ratio of
+%% data stored in data in all the queues to the potential capacity of all the queues.
+-spec queue_capacity() -> capacity().
+queue_capacity() ->
+    TotalQueueLength = lists:sum([yz_solrq:all_queue_len(Name) || Name <- tuple_to_list(get_solrq_tuple())]),
+    TotalCapacity = lists:sum([yz_solrq:get_hwm(Name) || Name <- tuple_to_list(get_solrq_tuple())]),
+    round(100 * (TotalQueueLength / TotalCapacity)).
 
 
 %%%===================================================================
