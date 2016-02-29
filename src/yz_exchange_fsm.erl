@@ -136,7 +136,8 @@ update_trees(start_exchange, S=#state{kv_tree=KVTree,
                     lager:info("Draining..."),
                     yz_solrq_drain_mgr:drain([
                         {drain_completed_callback, fun() -> lager:info("Updating yz_index_hashtree..."), do_update(Self, yz_index_hashtree, YZTree, Index, IndexN, ?FUN_OK0) end},
-                        {drain_error_callback,     fun(Reason) -> gen_fsm:send_event(Self, {drain_error, Reason}) end}
+                        {drain_error_callback,     fun(Reason) -> gen_fsm:send_event(Self, {drain_error, Reason}) end},
+                        {partition, Index}
                     ])
                 end
             )

@@ -31,7 +31,7 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([request_batch/3, drain/1, drain_complete/1, batch_complete/3]).
+-export([request_batch/3, drain/2, drain_complete/1, batch_complete/3]).
 
 %% TODO: Dynamically pulse_instrument.  See test/pulseh.erl
 -ifdef(PULSE).
@@ -125,10 +125,10 @@ set_index(QPid, Index, Min, Max, DelayMax) ->
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
 
--spec drain(atom()) -> reference().
-drain(QPid) ->
+-spec drain(atom(), p() | undefined) -> reference().
+drain(QPid, Partition) ->
     Token = make_ref(),
-    gen_server:cast(QPid, {drain, self(), Token}),
+    gen_server:cast(QPid, {drain, self(), Token, Partition}),
     Token.
 
 -spec drain_complete(atom()) -> ok.
@@ -224,10 +224,11 @@ handle_cast({request_batch, Index, HPid}, State) ->
 %%      non-empty.
 %% @end
 %%
-handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
-    ?PULSE_DEBUG("drain.  State: ~p~n", [debug_state(State)]),
+handle_cast({drain, DPid, Token, Partition}, #state{indexqs = IndexQs} = State) ->
+    ?PULSE_DEBUG("drain{~p=DPid, ~p=Token, ~p=Partition}.  State: ~p~n", [debug_state(State), DPid, Token, Partition]),
     {Remaining, NewIndexQs} = dict:fold(
-        fun(Index, IndexQ, {RemainingAccum, IndexQsAccum}) ->
+        fun(Index, IndexQ0, {RemainingAccum, IndexQsAccum}) ->
+            IndexQ = partition(IndexQ0, Partition),
             case {IndexQ#indexq.queue_len, IndexQ#indexq.in_flight_len} of
                 {0, 0} ->
                     {RemainingAccum, dict:store(Index, IndexQ#indexq{draining = wait_for_drain_complete}, IndexQsAccum)};
@@ -393,7 +394,7 @@ handle_batch(
 %%
 handle_batch(
     Index,
-    #indexq{queue_len = QueueLen, draining = true, batch_start = T1} = IndexQ,
+    #indexq{queue_len = QueueLen, draining = _Draining, batch_start = T1} = IndexQ,
     Result,
     #state{drain_info = DrainInfo} = State
 ) ->
@@ -418,20 +419,32 @@ handle_batch(
     %% If there are no remaining indexqs to be flushed, send the drain FSM
     %% a drain complete for this solrq instance.
     %%
-    NewDrainInfo = case NewRemaining of
+    case NewRemaining of
         [] ->
-            yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            undefined;
+            yz_solrq_drain_fsm:drain_complete(DPid, Token);
         _ ->
-            {DPid, Token, NewRemaining}
+            ok
     end,
     update_indexq(
         Index,
         maybe_start_timer(Index, NewIndexQ),
-        State#state{drain_info = NewDrainInfo}
+        State#state{drain_info = {DPid, Token, NewRemaining}}
     ).
 
-
+partition(IndexQ, undefined) ->
+    IndexQ;
+partition(IndexQ, Partition) ->
+    {NewQueue, NewAuxQueue} = lists:partition(
+        fun({_BKey, _Obj, _Reason, P}) ->
+            P =:= Partition
+        end,
+        queue:to_list(IndexQ#indexq.queue)
+    ),
+    IndexQ#indexq{
+        queue = queue:from_list(NewQueue),
+        queue_len = length(NewQueue),
+        aux_queue = queue:join(queue:from_list(NewAuxQueue), IndexQ#indexq.aux_queue)
+    }.
 
 drain(Index, IndexQ, IndexQs) ->
     %% NB. A drain request may occur while a helper is pending

@@ -45,7 +45,8 @@
 -record(state, {
     tokens,
     drain_initiated_callback,
-    drain_completed_callback
+    drain_completed_callback,
+    partition
 }).
 
 %%%===================================================================
@@ -66,8 +67,8 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 -spec(start_link(proplist()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
-start_link(CallbackList) ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, CallbackList, []).
+start_link(Params) ->
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE, Params, []).
 
 %%
 %% @doc TODO
@@ -92,17 +93,18 @@ cancel() ->
 %%% gen_fsm callbacks
 %%%===================================================================
 
-init(CallbackList) ->
+init(Params) ->
     {ok, prepare, #state{
-        drain_initiated_callback = proplists:get_value(drain_initiated_callback, CallbackList, ?FUN_OK0),
-        drain_completed_callback = proplists:get_value(drain_completed_callback, CallbackList, ?FUN_OK0)
+        drain_initiated_callback = proplists:get_value(drain_initiated_callback, Params, ?FUN_OK0),
+        drain_completed_callback = proplists:get_value(drain_completed_callback, Params, ?FUN_OK0),
+        partition = proplists:get_value(partition, Params)
     }}.
 
 
 %% TODO doc
-prepare(start, #state{drain_initiated_callback = DrainInitiatedCallback} = State) ->
+prepare(start, #state{drain_initiated_callback = DrainInitiatedCallback, partition = P} = State) ->
     SolrqIds = yz_solrq_sup:solrq_names(),
-    Tokens = [yz_solrq:drain(SolrqId) || SolrqId <- SolrqIds],
+    Tokens = [yz_solrq:drain(SolrqId, P) || SolrqId <- SolrqIds],
     case DrainInitiatedCallback() of
         ok ->
             {next_state, wait, State#state{tokens = Tokens}};

@@ -126,6 +126,7 @@ prop_ok() ->
                 Entries = add_keys(Entries0),
                 KeyRes = make_keyres(Entries),
                 PE = entries_by_vnode(Entries),
+                Partitions = partitions(Entries),
 
                 meck:expect(
                     ibrowse, send_req,
@@ -152,7 +153,7 @@ prop_ok() ->
 
                         %% Issue the requests under pulse
                         Pids = ?MODULE:send_entries(PE),
-                        start_drains(length(Entries)),
+                        start_drains([undefind|Partitions]),
                         wait_for_vnodes(Pids, timer:seconds(20)),
                         timer:sleep(500),
                         catch yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
@@ -500,6 +501,8 @@ unlink_kill(Name) ->
             true
     end.
 
+partitions(Entries) ->
+    [P || {P, _Index, _Bucket, _Reason, _Result} <- Entries].
 
 add_keys(Entries) ->
     [{P, Index, Bucket, make_key(Seq), Reason, Result} ||
@@ -538,15 +541,16 @@ make_obj(B,K) ->
 
 
 
-start_drains(_N) ->
-    %ok.
-    spawn_link(fun() -> drain(500) end).
+start_drains(Partitions) ->
+    spawn_link(fun() -> drain(Partitions) end).
 
-drain(Millis) ->
+drain([]) ->
+    ok;
+drain([P | Rest] = _Partitions) ->
     %% TODO fix this so that drain can be called (requires support for yz_solrq_sup
     %ok = yz_solrq_sup:drain(),
     try
-        {ok, Pid} = yz_solrq_drain_fsm:start_link(),
+        {ok, Pid} = yz_solrq_drain_fsm:start_link([{partition, P}]),
         Reference = erlang:monitor(process, Pid),
         yz_solrq_drain_fsm:start_prepare(),
         receive
@@ -565,8 +569,8 @@ drain(Millis) ->
             lager:error("Error! Drain in progress."),
             {error, in_progress}
     end,
-    timer:sleep(Millis),
-    drain(Millis).
+    timer:sleep(500),
+    drain(Rest).
 
 %% Wait for send_entries - should probably set a global timeout and
 %% and look for that instead
