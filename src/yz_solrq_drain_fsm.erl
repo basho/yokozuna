@@ -21,7 +21,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1, cancel/0]).
+-export([start_link/0, start_link/1, cancel/0]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -39,16 +39,24 @@
 -compile({pulse_replace_module, [{gen_fsm, pulse_gen_fsm}]}).
 -endif.
 
+-include("yokozuna.hrl").
 -define(SERVER, ?MODULE).
 
 -record(state, {
     tokens,
-    drain_complete_callback
+    drain_initiated_callback,
+    drain_completed_callback,
+    partition
 }).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+
+-spec(start_link() -> {ok, pid()} | ignore | {error, Reason :: term()}).
+start_link() ->
+    start_link([]).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -58,9 +66,9 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(start_link(fun(() -> ok)) -> {ok, pid()} | ignore | {error, Reason :: term()}).
-start_link(DrainCompleteCallback) ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, DrainCompleteCallback, []).
+-spec(start_link(proplist()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
+start_link(Params) ->
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE, Params, []).
 
 %%
 %% @doc TODO
@@ -85,23 +93,33 @@ cancel() ->
 %%% gen_fsm callbacks
 %%%===================================================================
 
-init(DrainCompleteCallback) ->
-    {ok, prepare, #state{drain_complete_callback = DrainCompleteCallback}}.
+init(Params) ->
+    {ok, prepare, #state{
+        drain_initiated_callback = proplists:get_value(drain_initiated_callback, Params, ?FUN_OK0),
+        drain_completed_callback = proplists:get_value(drain_completed_callback, Params, ?FUN_OK0),
+        partition = proplists:get_value(partition, Params)
+    }}.
 
 
 %% TODO doc
-prepare(start, State) ->
+prepare(start, #state{drain_initiated_callback = DrainInitiatedCallback, partition = P} = State) ->
     SolrqIds = yz_solrq_sup:solrq_names(),
-    Tokens = [yz_solrq:drain(SolrqId) || SolrqId <- SolrqIds],
-    {next_state, wait, State#state{tokens = Tokens}}.
+    Tokens = [yz_solrq:drain(SolrqId, P) || SolrqId <- SolrqIds],
+    case DrainInitiatedCallback() of
+        ok ->
+            {next_state, wait, State#state{tokens = Tokens}};
+        _ ->
+            cancel(),
+            {stop, normal, ok, State}
+    end.
 
 %% TODO doc
-wait({drain_complete, Token}, #state{tokens = Tokens, drain_complete_callback = DrainCompleteCallback} = State) ->
+wait({drain_complete, Token}, #state{tokens = Tokens, drain_completed_callback = DrainCompletedCallback} = State) ->
     Tokens2 = lists:delete(Token, Tokens),
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
-            catch ok = DrainCompleteCallback(),
+            DrainCompletedCallback(),
             [yz_solrq:drain_complete(Name) || Name <- yz_solrq_sup:solrq_names()],
             {stop, normal, NewState};
         _ ->

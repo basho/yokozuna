@@ -316,6 +316,12 @@
 -define(WARN(Fmt, Args), lager:warning(Fmt, Args)).
 
 %%%===================================================================
+%%% Statistics
+%%%===================================================================
+
+-type capacity() :: 0..100.
+
+%%%===================================================================
 %%% Indexes
 %%%===================================================================
 
@@ -454,3 +460,11 @@
          []}).
 -define(YZ_IS_YZ_FT_S(Name), Name == ?YZ_STR_FT_S).
 -define(YZ_STR_FT_XPATH, "/schema/types/fieldType[@name=\"_yz_str\" and @class=\"solr.StrField\" and @sortMissingLast=\"true\"]").
+
+
+%%%===================================================================
+%%% No-op funs (typical defaults for no-op callbacks)
+%%%===================================================================
+
+-define(FUN_OK0, fun() -> ok end).
+-define(FUN_OK1, fun(_) -> ok end).

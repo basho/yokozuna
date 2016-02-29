@@ -22,7 +22,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, get_lock/0, release_lock/0, drain/0, drain/1]).
+-export([start_link/0, drain/0, drain/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -49,32 +49,25 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-
-get_lock() ->
-    case enabled() of
-        true -> gen_server:call(?SERVER, {get_lock, self()}, infinity);
-        _ ->    ok
-    end.
-
-release_lock() ->
-    gen_server:call(?SERVER, {release_lock, self()}, infinity).
-
 %% @doc Drain all queues to Solr
 -spec drain() -> ok | {error, _Reason}.
 drain() ->
-    drain(fun() -> ok end).
+    drain([]).
 
 %% @doc Drain all queues to Solr
--spec drain(fun(() -> ok)) -> ok | {error, _Reason}.
-drain(DrainCompleteCallback) ->
-    case get_lock() of
-        ok ->
-            case enabled() of
-                true ->
+-spec drain(proplist()) -> ok | {error, _Reason}.
+drain(Params) ->
+    T1 = os:timestamp(),
+    case enabled() of
+        true ->
+            ErrorCallback = proplists:get_value(
+                drain_error_callback, Params, ?FUN_OK1
+            ),
+            case get_lock() of
+                ok ->
                     DrainTimeout = application:get_env(?YZ_APP_NAME, drain_timeout, 60000),
-                    T1 = os:timestamp(),
                     try
-                        {ok, Pid} = yz_solrq_sup:start_drain_fsm(DrainCompleteCallback),
+                        {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
                         Reference = erlang:monitor(process, Pid),
                         yz_solrq_drain_fsm:start_prepare(),
                         receive
@@ -83,20 +76,32 @@ drain(DrainCompleteCallback) ->
                                 ok;
                             {'DOWN', Reference, process, Pid, Reason} ->
                                 yz_stat:drain_fail(),
+                                ErrorCallback(Reason),
                                 {error, Reason}
                         after DrainTimeout ->
                             yz_stat:drain_timeout(),
                             cancel(Reference, Pid),
+                            ErrorCallback(timeout),
                             {error, timeout}
                         end
                     after
                         release_lock()
                     end;
-                _ ->
-                    ok
+                drain_already_locked ->
+                    ErrorCallback(in_progress),
+                    {error, in_progress}
             end;
         _ ->
-            {error, in_progress}
+            DrainInitiatedCallback = proplists:get_value(
+                drain_initiated_callback, Params, ?FUN_OK0
+            ),
+            DrainInitiatedCallback(),
+            DrainCompletedCallback = proplists:get_value(
+                drain_completed_callback, Params, ?FUN_OK0
+            ),
+            DrainCompletedCallback(),
+            yz_stat:drain_end(?YZ_TIME_ELAPSED(T1)),
+            ok
     end.
 
 %%%===================================================================
@@ -104,6 +109,7 @@ drain(DrainCompleteCallback) ->
 %%%===================================================================
 
 init([]) ->
+    schedule_tick(),
     {ok, #state{}}.
 
 
@@ -132,6 +138,10 @@ handle_cast(_Request, State) ->
 handle_info({'DOWN', Ref, _, _Obj, _Status}, State) ->
     {noreply, maybe_release_lock(State, Ref)};
 
+handle_info(tick, State) ->
+    yz_stat:queue_capacity(yz_solrq_sup:queue_capacity()),
+    schedule_tick(),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -146,6 +156,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+get_lock() ->
+    gen_server:call(?SERVER, {get_lock, self()}, infinity).
+
+release_lock() ->
+    gen_server:call(?SERVER, {release_lock, self()}, infinity).
 
 enabled() ->
     application:get_env(?YZ_APP_NAME, enable_drains, true).
@@ -185,3 +201,7 @@ unlink_and_kill(Reference, Pid) ->
     catch _:_ ->
         ok
     end.
+
+-spec schedule_tick() -> reference().
+schedule_tick() ->
+    erlang:send_after(5000, ?MODULE, tick).

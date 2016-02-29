@@ -22,6 +22,7 @@
 
 -export([start_link/0, start_link/2,
          queue_regname/1, helper_regname/1,
+         random_helper/0,
          num_queue_specs/0, resize_queues/1,
          num_helper_specs/0, resize_helpers/1,
          set_hwm/1,
@@ -30,7 +31,9 @@
          blown_fuse/1,
          healed_fuse/1,
          solrq_names/0,
-         start_drain_fsm/1]).
+         solrq_helper_names/0,
+         start_drain_fsm/1,
+         queue_capacity/0]).
 
 -include("yokozuna.hrl").
 
@@ -75,6 +78,17 @@ helper_regname(Hash) ->
             error(solrq_sup_not_started);
         Names ->
             Index = 1 + (Hash rem size(Names)),
+            element(Index, Names)
+    end.
+
+%% @doc return a random helper
+-spec random_helper() -> regname().
+random_helper() ->
+    case get_solrq_helper_tuple() of
+        undefined ->
+            error(solrq_sup_not_started);
+        Names ->
+            Index = random:uniform(size(Names)),
             element(Index, Names)
     end.
 
@@ -154,14 +168,27 @@ healed_fuse(Index) ->
 solrq_names() ->
     tuple_to_list(get_solrq_tuple()).
 
+%% @doc Return the list of solrq names registered with this supervisor
+-spec solrq_helper_names() -> [atom()].
+solrq_helper_names() ->
+    tuple_to_list(get_solrq_helper_tuple()).
+
 
 %% @doc Start the drain supervsior, under this supervisor
--spec start_drain_fsm(fun(() -> ok)) -> {ok, pid()} | {error, term()}.
-start_drain_fsm(DrainCompleteCallback) ->
+-spec start_drain_fsm(proplist()) -> {ok, pid()} | {error, term()}.
+start_drain_fsm(CallbackList) ->
     supervisor:start_child(
         ?MODULE,
-        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [DrainCompleteCallback]}, temporary, 5000, worker, []}
+        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
     ).
+
+%% @doc return the queue capacity as a percentage in [0..100], representing the ratio of
+%% data stored in data in all the queues to the potential capacity of all the queues.
+-spec queue_capacity() -> capacity().
+queue_capacity() ->
+    TotalQueueLength = lists:sum([yz_solrq:all_queue_len(Name) || Name <- tuple_to_list(get_solrq_tuple())]),
+    TotalCapacity = lists:sum([yz_solrq:get_hwm(Name) || Name <- tuple_to_list(get_solrq_tuple())]),
+    round(100 * (TotalQueueLength / TotalCapacity)).
 
 
 %%%===================================================================

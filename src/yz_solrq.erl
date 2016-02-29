@@ -23,15 +23,15 @@
 -behavior(gen_server).
 
 %% api
--export([start_link/1, status/1, index/5, set_hwm/2, set_index/5,
-         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1]).
+-export([start_link/1, status/1, index/5, set_hwm/2, get_hwm/1, set_index/5,
+         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1, all_queue_len/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([request_batch/3, drain/1, drain_complete/1, batch_complete/3]).
+-export([request_batch/3, drain/2, drain_complete/1, batch_complete/3]).
 
 %% TODO: Dynamically pulse_instrument.  See test/pulseh.erl
 -ifdef(PULSE).
@@ -59,7 +59,9 @@
         delayms_max = 1000      :: solrq_delayms_max(),
         aux_queue = queue:new() :: yz_queue(),
         draining = false        :: boolean() | wait_for_drain_complete,
-        fuse_blown = false      :: boolean()
+        fuse_blown = false      :: boolean(),
+        in_flight_len = 0       :: non_neg_integer(),
+        batch_start             :: timestamp()
     }
 ).
 
@@ -103,7 +105,7 @@ status(QPid, Timeout) ->
 index(Index, BKey, Obj, Reason, P) ->
     %% Hash on the index and partition to ensure updates to
     %% an index are serialized for all objects in the vnode.
-    Hash = erlang:phash2({Index, P}),
+    Hash = erlang:phash2({Index, BKey}),
     gen_server:call(yz_solrq_sup:queue_regname(Hash),
                     {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
@@ -123,10 +125,10 @@ set_index(QPid, Index, Min, Max, DelayMax) ->
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
 
--spec drain(atom()) -> reference().
-drain(QPid) ->
+-spec drain(atom(), p() | undefined) -> reference().
+drain(QPid, Partition) ->
     Token = make_ref(),
-    gen_server:cast(QPid, {drain, self(), Token}),
+    gen_server:cast(QPid, {drain, self(), Token, Partition}),
     Token.
 
 -spec drain_complete(atom()) -> ok.
@@ -146,6 +148,16 @@ blown_fuse(QPid, Index) ->
 -spec healed_fuse(pid(), index_name()) -> ok.
 healed_fuse(QPid, Index) ->
     gen_server:cast(QPid, {healed_fuse, Index}).
+
+%% @doc return the sum of the length of all queues in each indexq
+-spec get_hwm(pid()) -> non_neg_integer().
+get_hwm(QPid) ->
+    gen_server:call(QPid, get_hwm).
+
+%% @doc return the sum of the length of all queues in each indexq
+-spec all_queue_len(pid()) -> non_neg_integer().
+all_queue_len(QPid) ->
+    gen_server:call(QPid, all_queue_len).
 
 %%%===================================================================
 %%% solrq/helper interface
@@ -183,8 +195,14 @@ handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
+<<<<<<< HEAD
 handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
       Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
+=======
+handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
+    {reply, HWM, State};
+handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
+>>>>>>> feature/jv/flush-queues-parallel_aae+repair_stats
     IndexQ = get_indexq(Index, State),
     IndexQ2 = maybe_request_worker(Index,
                                    IndexQ#indexq{batch_min = Min,
@@ -203,6 +221,8 @@ handle_call({set_index, Index, _Min, _Max, _DelayMS}, _From, State) ->
 handle_call(cancel_drain, _From, State) ->
     {noreply, NewState} = handle_cast(drain_complete, State),
     {reply, ok, NewState};
+handle_call(all_queue_len, _From, #state{all_queue_len=Len} = State) ->
+    {reply, Len, State};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.
 handle_cast({request_batch, Index, HPid}, State) ->
@@ -222,13 +242,16 @@ handle_cast({request_batch, Index, HPid}, State) ->
 %%      non-empty.
 %% @end
 %%
-handle_cast({drain, DPid, Token}, #state{indexqs = IndexQs} = State) ->
-    ?PULSE_DEBUG("drain.  State: ~p~n", [debug_state(State)]),
+handle_cast({drain, DPid, Token, Partition}, #state{indexqs = IndexQs} = State) ->
+    ?PULSE_DEBUG("drain{~p=DPid, ~p=Token, ~p=Partition}.  State: ~p~n", [debug_state(State), DPid, Token, Partition]),
     {Remaining, NewIndexQs} = dict:fold(
-        fun(Index, IndexQ, {RemainingAccum, IndexQsAccum}) ->
-            case IndexQ#indexq.queue_len of
-                0 ->
-                    {RemainingAccum, IndexQsAccum};
+        fun(Index, IndexQ0, {RemainingAccum, IndexQsAccum}) ->
+            IndexQ = partition(IndexQ0, Partition),
+            case {IndexQ#indexq.queue_len, IndexQ#indexq.in_flight_len} of
+                {0, 0} ->
+                    {RemainingAccum, dict:store(Index, IndexQ#indexq{draining = wait_for_drain_complete}, IndexQsAccum)};
+                {0, _InFlightLen} ->
+                    {[Index | RemainingAccum], dict:store(Index, IndexQ#indexq{draining = true}, IndexQsAccum)};
                 _ ->
                     {[Index | RemainingAccum], drain(Index, IndexQ, IndexQsAccum)}
             end
@@ -286,7 +309,7 @@ handle_cast({healed_fuse, Index}, State) ->
 handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_len = AQL} = State) ->
     ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     IndexQ = get_indexq(Index, State),
-    State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false}, Result, State),
+    State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false, in_flight_len = 0}, Result, State),
     NewState = maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered}),
     ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
@@ -314,7 +337,7 @@ handle_cast(drain_complete, #state{indexqs = IndexQs} = State) ->
         dict:new(),
         IndexQs
     ),
-    {noreply, State#state{indexqs = NewIndexQs}}.
+    {noreply, State#state{indexqs = NewIndexQs, drain_info = undefined}}.
 
 
 handle_info({flush, Index, HRef}, State) -> % timer has fired - request a worker
@@ -357,13 +380,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 handle_batch(
     Index,
-    #indexq{draining = false} = IndexQ0,
+    #indexq{draining = false, batch_start = T1} = IndexQ0,
     Result,
     State
 ) ->
     IndexQ1 =
         case Result of
             ok ->
+                yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
                 IndexQ0;
             {retry, Undelivered} ->
                 requeue_undelivered(Undelivered, IndexQ0)
@@ -388,7 +412,7 @@ handle_batch(
 %%
 handle_batch(
     Index,
-    #indexq{queue_len = QueueLen, draining = true} = IndexQ,
+    #indexq{queue_len = QueueLen, draining = _Draining, batch_start = T1} = IndexQ,
     Result,
     #state{drain_info = DrainInfo} = State
 ) ->
@@ -398,6 +422,7 @@ handle_batch(
             ok ->
                 case QueueLen of
                     0 ->
+                        yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
                         {
                             lists:delete(Index, Remaining),
                             IndexQ#indexq{draining = wait_for_drain_complete}
@@ -412,20 +437,32 @@ handle_batch(
     %% If there are no remaining indexqs to be flushed, send the drain FSM
     %% a drain complete for this solrq instance.
     %%
-    NewDrainInfo = case NewRemaining of
+    case NewRemaining of
         [] ->
-            yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            undefined;
+            yz_solrq_drain_fsm:drain_complete(DPid, Token);
         _ ->
-            {DPid, Token, NewRemaining}
+            ok
     end,
     update_indexq(
         Index,
         maybe_start_timer(Index, NewIndexQ),
-        State#state{drain_info = NewDrainInfo}
+        State#state{drain_info = {DPid, Token, NewRemaining}}
     ).
 
-
+partition(IndexQ, undefined) ->
+    IndexQ;
+partition(IndexQ, Partition) ->
+    {NewQueue, NewAuxQueue} = lists:partition(
+        fun({_BKey, _Obj, _Reason, P}) ->
+            P =:= Partition
+        end,
+        queue:to_list(IndexQ#indexq.queue)
+    ),
+    IndexQ#indexq{
+        queue = queue:from_list(NewQueue),
+        queue_len = length(NewQueue),
+        aux_queue = queue:join(queue:from_list(NewAuxQueue), IndexQ#indexq.aux_queue)
+    }.
 
 drain(Index, IndexQ, IndexQs) ->
     %% NB. A drain request may occur while a helper is pending
@@ -535,8 +572,7 @@ maybe_request_worker(_Index, _Min, IndexQ) ->
 
 %% @doc Notify the solrq workers the index is ready to be pulled.
 request_worker(Index, #indexq{pending_helper = false, fuse_blown = false} = IndexQ) ->
-    Hash = erlang:phash2({Index, self()}),
-    yz_solrq_helper:index_ready(Hash, Index, self()),
+    yz_solrq_helper:index_ready(Index, self()),
     IndexQ#indexq{pending_helper = true};
 request_worker(_Index, IndexQ) ->
     IndexQ.
@@ -573,7 +609,8 @@ get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max, draining = Draining
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
     IndexQ2 = IndexQ#indexq{queue = RestQ, queue_len = L - BatchLen,
-                            href = undefined},
+                            href = undefined, in_flight_len = BatchLen,
+                            batch_start = os:timestamp()},
     {Batch, BatchLen, IndexQ2}.
 
 
@@ -656,13 +693,14 @@ read_appenv(State) ->
 debug_queue(Queue) ->
     [erlang:element(1, Entry) || Entry <- queue:to_list(Queue)].
 
-debug_indexq(#indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = Draining, fuse_blown = FuseBlown}) ->
+debug_indexq(#indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue, draining = Draining, fuse_blown = FuseBlown, in_flight_len = InFlightLen}) ->
     [
         {queue, debug_queue(Queue)},
         {queue_len, QueueLen},
         {aux_queue, debug_queue(AuxQueue)},
         {draining, Draining},
-        {fuse_blown, FuseBlown}
+        {fuse_blown, FuseBlown},
+        {in_flight_len, InFlightLen}
     ].
 debug_state(State) ->
     [
