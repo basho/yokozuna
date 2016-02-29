@@ -112,6 +112,11 @@ search_end(ElapsedTime) ->
 blocked_vnode(_From) ->
     update(blockedvnode).
 
+%% @doc update the queue capacity to the specified value, as a percentage in [0..100]
+-spec queue_capacity(capacity()) -> ok.
+queue_capacity(Capacity) ->
+    update({queue_capacity, Capacity}).
+
 %% @doc Update fuse recovered statistic.
 -spec fuse_recovered(atom()) -> ok.
 fuse_recovered(Index) ->
@@ -158,6 +163,7 @@ stats_map(true) ->
       {search_index_batch_throughput_one, {{?YZ_APP_NAME, index, batch_throughput}, one}, spiral},
       {search_index_blockedvnode_count, {{?YZ_APP_NAME, index, blockedvnode}, count}, spiral},
       {search_index_blockedvnode_one, {{?YZ_APP_NAME, index, blockedvnode}, one}, spiral},
+      {search_index_queue_capacity, {{?YZ_APP_NAME, index, queue_capacity}, value}, gauge},
       {search_index_batchsize_min, {{?YZ_APP_NAME, index, batchsize}, min}, histogram},
       {search_index_batchsize_mean, {{?YZ_APP_NAME, index, batchsize}, mean}, histogram},
       {search_index_batchsize_max, {{?YZ_APP_NAME, index, batchsize}, max}, histogram},
@@ -269,6 +275,8 @@ update({batch_end, Time}) ->
     exometer:update([?PFX, ?APP, index, batch_latency], Time);
 update(blockedvnode) ->
     exometer:update([?PFX, ?APP, index, blockedvnode], 1);
+update({queue_capacity, Length}) ->
+    exometer:update([?PFX, ?APP, index, queue_capacity], Length);
 update({drain_end, Time}) ->
     exometer:update([?PFX, ?APP, index, drain_latency], Time),
     exometer:update([?PFX, ?APP, index, drain], 1);
@@ -307,6 +315,7 @@ stats() ->
                                           {mean  , search_index_batchsize_mean},
                                           {median, search_index_batchsize_median},
                                           {max   , search_index_batchsize_max}]},
+     {[index, queue_capacity], gauge, [], [{value, search_index_queue_capacity}]},
      {[index, blockedvnode], spiral, [], [{count, search_index_blockedvnode_count},
                                           {one  , search_index_blockedvnode_one}]},
      {[index, drain], spiral, [], [{count, search_index_drain_count},
