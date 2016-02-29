@@ -56,18 +56,18 @@ drain() ->
 
 %% @doc Drain all queues to Solr
 -spec drain(proplist()) -> ok | {error, _Reason}.
-drain(CallbackList) ->
+drain(Params) ->
     T1 = os:timestamp(),
     case enabled() of
         true ->
+            ErrorCallback = proplists:get_value(
+                drain_error_callback, Params, ?FUN_OK1
+            ),
             case get_lock() of
                 ok ->
                     DrainTimeout = application:get_env(?YZ_APP_NAME, drain_timeout, 60000),
-                    ErrorCallback = proplists:get_value(
-                        drain_error_callback, CallbackList, ?FUN_OK1
-                    ),
                     try
-                        {ok, Pid} = yz_solrq_sup:start_drain_fsm(CallbackList),
+                        {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
                         Reference = erlang:monitor(process, Pid),
                         yz_solrq_drain_fsm:start_prepare(),
                         receive
@@ -87,16 +87,17 @@ drain(CallbackList) ->
                     after
                         release_lock()
                     end;
-                _ ->
+                drain_already_locked ->
+                    ErrorCallback(in_progress),
                     {error, in_progress}
             end;
         _ ->
             DrainInitiatedCallback = proplists:get_value(
-                drain_initiated_callback, CallbackList, ?FUN_OK0
+                drain_initiated_callback, Params, ?FUN_OK0
             ),
             DrainInitiatedCallback(),
             DrainCompletedCallback = proplists:get_value(
-                drain_completed_callback, CallbackList, ?FUN_OK0
+                drain_completed_callback, Params, ?FUN_OK0
             ),
             DrainCompletedCallback(),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(T1)),
