@@ -195,14 +195,10 @@ handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
-<<<<<<< HEAD
-handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
-      Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
-=======
 handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
-handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
->>>>>>> feature/jv/flush-queues-parallel_aae+repair_stats
+handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
+      Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
     IndexQ = get_indexq(Index, State),
     IndexQ2 = maybe_request_worker(Index,
                                    IndexQ#indexq{batch_min = Min,
