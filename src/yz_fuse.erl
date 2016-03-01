@@ -47,12 +47,9 @@
 %%% Setup
 %%%===================================================================
 
-%% @doc Start fuse and stats
+%% @doc Setup Fuse stats
 -spec setup() -> ok.
 setup() ->
-    %% TODO: move application:start to riak boot.
-    ok = yokozuna:ensure_started(fuse),
-
     ok = fuse_event:add_handler(yz_events, []),
 
     %% Set up fuse stats
@@ -68,10 +65,15 @@ create(Index) ->
     case check(FuseName) of
         {error, not_found} ->
             ?INFO("Creating fuse for search index ~s", [Index]),
-            MaxR = app_helper:get_env(?YZ_APP_NAME, melt_attempts, 3),
-            MaxT = app_helper:get_env(?YZ_APP_NAME, melt_time_window, 5000),
-            Refresh = {reset, app_helper:get_env(?YZ_APP_NAME,
-                                                 melt_reset_refresh, 30000)},
+            MaxR = app_helper:get_env(?YZ_APP_NAME, ?ERR_THRESH_FAIL_CNT,
+                                      3),
+            MaxT = app_helper:get_env(?YZ_APP_NAME,
+                                      ?ERR_THRESH_FAIL_INTERVAL,
+                                      5000),
+            Refresh = {reset,
+                       app_helper:get_env(?YZ_APP_NAME,
+                                          ?ERR_THRESH_RESET_INTERVAL,
+                                          30000)},
             Strategy = {standard, MaxR, MaxT},
             Opts = {Strategy, Refresh},
             fuse:install(FuseName, Opts),
@@ -112,7 +114,7 @@ melt(Index) ->
 
 -spec fuse_context() -> async_dirty | sync.
 fuse_context() ->
-    app_helper:get_env(?YZ_APP_NAME, fuse_context, async_dirty).
+    app_helper:get_env(?YZ_APP_NAME, ?FUSE_CTX, async_dirty).
 
 %% @doc Returns the encoded name for a fuse given a `Namespace' and a `Name'.
 %% The `Namespace' provides identifying context for the fuse (similar to a
@@ -146,21 +148,21 @@ stats() ->
                {[N], {function, M, F, As, match, value}, [], [{value, N}]}
            end,
     [Spec(N, M, F, As) ||
-        {N, M, F, As} <- [{search_index_fuses_ok_count, yz_fuse,
+        {N, M, F, As} <- [{search_index_error_threshold_ok_count, yz_fuse,
                           aggregate_index_stats, [ok, count]},
-                         {search_index_fuses_ok_one, yz_fuse,
+                         {search_index_error_threshold_ok_one, yz_fuse,
                           aggregate_index_stats, [ok, one]},
-                         {search_index_fuses_melt_count, yz_fuse,
+                         {search_index_error_threshold_failure_count, yz_fuse,
                           aggregate_index_stats, [melt, count]},
-                         {search_index_fuses_melt_one, yz_fuse,
+                         {search_index_error_treshold_failure_one, yz_fuse,
                           aggregate_index_stats, [melt, one]},
-                         {search_index_fuses_blown_count, yz_fuse,
+                         {search_index_error_threshold_blown_count, yz_fuse,
                           aggregate_index_stats, [blown, count]},
-                         {search_index_fuses_blown_one, yz_fuse,
+                         {search_index_error_threshold_blown_one, yz_fuse,
                           aggregate_index_stats, [blown, one]},
-                         {search_index_fuses_recovered_count, yz_fuse,
+                         {search_index_error_threshold_recovered_count, yz_fuse,
                           aggregate_index_stats, [recovered, count]},
-                         {search_index_fuses_recovered_one, yz_fuse,
+                         {search_index_error_treshold_recovered_one, yz_fuse,
                           aggregate_index_stats, [recovered, one]}]].
 
 -spec aggregate_index_stats(fuse_check(), count|one) -> non_neg_integer().

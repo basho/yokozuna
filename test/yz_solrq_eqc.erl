@@ -4,6 +4,8 @@
 
 -module(yz_solrq_eqc).
 
+-include("yokozuna.hrl").
+
 -ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
 
@@ -115,11 +117,11 @@ prop_ok() ->
                                            yz_solrq_helper:module_info(exports)),
 
                 %% Reset the solrq/solrq helper processes
-                application:set_env(yokozuna, solrq_queue_hwm, HWM),
-                application:set_env(yokozuna, solrq_batch_min, Min),
-                application:set_env(yokozuna, solrq_batch_max, Max),
-                application:set_env(yokozuna, solrq_delayms_max, 10),
-                application:set_env(yokozuna, purge_blown_indices, false),
+                application:set_env(?YZ_APP_NAME, ?SOLRQ_HWM, HWM),
+                application:set_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, Min),
+                application:set_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, Max),
+                application:set_env(?YZ_APP_NAME, ?SOLRQ_BATCH_FLUSH_INTERVAL, 10),
+                application:set_env(?YZ_APP_NAME, ?SOLRQ_HWM_PURGE_STRATEGY, ?PURGE_NONE),
 
                 %% Prepare the entries, and set up the ibrowse mock
                 %% to respond based on what was generated.
@@ -259,6 +261,9 @@ setup() ->
     meck:new(fuse),
     meck:expect(fuse, ask, fun(IndexName, Context) -> yz_solrq_eqc_fuse:ask(IndexName, Context) end),
     meck:expect(fuse, melt, fun(IndexName) -> yz_solrq_eqc_fuse:melt(IndexName) end),
+
+    meck:new(riak_core_vnode_manager),
+    meck:expect(riak_core_vnode_manager, all_vnodes, fun(_) -> [] end),
 
     %% Fake module to track solr responses - meck:history(solr_responses)
     meck:new(solr_responses, [non_strict]),

@@ -135,6 +135,7 @@
 -define(FLOAT_TO_BIN(F), list_to_binary(float_to_list(F))).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 -define(HEAD_CTYPE, "content-type").
+-define(DEFAULT_CTYPE, "text/plain").
 -define(YZ_HEAD_EXTRACTOR, "yz-extractor").
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
@@ -461,6 +462,35 @@
 -define(YZ_IS_YZ_FT_S(Name), Name == ?YZ_STR_FT_S).
 -define(YZ_STR_FT_XPATH, "/schema/types/fieldType[@name=\"_yz_str\" and @class=\"solr.StrField\" and @sortMissingLast=\"true\"]").
 
+%%%===================================================================
+%%% fuse/error-thresholding
+%%%===================================================================
+-define(ERR_THRESH_FAIL_CNT, err_thresh_fail_cnt).
+-define(ERR_THRESH_FAIL_INTERVAL, err_thresh_fail_interval).
+-define(ERR_THRESH_RESET_INTERVAL, err_thresh_reset_interval).
+-define(FUSE_CTX, solrq_fuse_ctx).
+
+%%%===================================================================
+%%% batching
+%%%===================================================================
+
+-define(SOLRQ_BATCH_MIN, solrq_batch_min).
+-define(SOLRQ_BATCH_MAX, solrq_batch_max).
+-define(SOLRQ_BATCH_FLUSH_INTERVAL, solrq_batch_flush_interval).
+-define(SOLRQ_HWM, solrq_hwm).
+-define(SOLRQ_HWM_PURGE, solrq_hwm_purge).
+-define(SOLRQ_WORKER_CNT, solrq_worker_cnt).
+-define(SOLRQ_HELPER_CNT, solrq_helper_cnt).
+-define(SOLRQ_HWM_PURGE_STRATEGY, solrq_hwm_purge_strategy).
+-define(PURGE_NONE, off).
+-define(PURGE_ONE, purge_one).
+-define(PURGE_IDX, purge_index).
+-define(PURGE_ALL, purge_all).
+
+-type solrq_batch_min()            :: pos_integer().
+-type solrq_batch_max()            :: pos_integer().
+-type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
+-type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX|?PURGE_ALL.
 
 %%%===================================================================
 %%% draining
@@ -469,6 +499,8 @@
 -define(EXCHANGE_FSM_PID, exchange_fsm_pid).
 -define(YZ_INDEX_HASHTREE_PARAMS, yz_index_hashtree_update_params).
 -define(DRAIN_PARTITION, drain_partition).
+-define(SOLRQ_DRAIN_TIMEOUT, solrq_drain_timeout).
+-define(SOLRQ_DRAIN_ENABLE, solrq_drain_enable).
 
 -type drain_param() ::
     {?EXCHANGE_FSM_PID, pid()} |

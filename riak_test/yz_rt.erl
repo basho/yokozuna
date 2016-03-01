@@ -665,4 +665,3 @@ load_intercept_code(Node) ->
                               "intercepts",
                               "*.erl"]),
     rt_intercept:load_code(Node, [CodePath]).
-

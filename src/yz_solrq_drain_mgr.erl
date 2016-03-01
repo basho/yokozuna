@@ -65,7 +65,9 @@ drain(Params) ->
         true ->
             case get_lock() of
                 ok ->
-                    DrainTimeout = application:get_env(?YZ_APP_NAME, drain_timeout, 60000),
+                    DrainTimeout = application:get_env(?YZ_APP_NAME,
+                                                       ?SOLRQ_DRAIN_TIMEOUT,
+                                                       60000),
                     try
                         {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
                         Reference = erlang:monitor(process, Pid),
@@ -162,7 +164,7 @@ release_lock() ->
     gen_server:call(?SERVER, {release_lock, self()}, infinity).
 
 enabled() ->
-    application:get_env(?YZ_APP_NAME, enable_drains, true).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_DRAIN_ENABLE, true).
 
 maybe_release_lock(#state{lock=undefined} = S, _) ->
     S;

@@ -96,7 +96,13 @@ hash_object(Obj) ->
 %% @doc Get the content-type of the object.
 -spec get_obj_ct(obj_metadata()) -> binary().
 get_obj_ct(MD) ->
-    dict:fetch(<<"content-type">>, MD).
+    case dict:find(<<"content-type">>, MD) of
+        {ok, CT} -> CT;
+        _ ->
+            lager:warning("No Content-Type provided in the Riak Object Metadata"
+                          " using ~p as a default", [?DEFAULT_CTYPE]),
+            ?DEFAULT_CTYPE
+    end.
 
 -spec get_obj_bucket(obj()) -> bucket().
 get_obj_bucket(Obj) ->
@@ -507,6 +513,18 @@ maybe_merge_siblings(BProps, Obj) ->
 %%%===================================================================
 
 -ifdef(TEST).
+
+metadata_check_test() ->
+    B = <<"hello">>,
+    K = <<"foo">>,
+    V = <<"heyo">>,
+    O1 = riak_object:new(B, K, V),
+    O2 = riak_object:new(B, K, V, "application/json"),
+    %% Not dealing w/ siblings, so get the single value
+    {MD1, _} = hd(riak_object:get_contents(O1)),
+    {MD2, _} = hd(riak_object:get_contents(O2)),
+    ?assertEqual(yz_kv:get_obj_ct(MD1), ?DEFAULT_CTYPE),
+    ?assertEqual(yz_kv:get_obj_ct(MD2), "application/json").
 
 siblings_permitted_test_() ->
 {setup,
