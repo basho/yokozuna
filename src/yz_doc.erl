@@ -130,9 +130,9 @@ get_vtag(MD, LiveSiblings) ->
 
 -spec extract_fields({obj_metadata(), term()}) -> fields() | [{error, any()}].
 extract_fields({MD, V}) ->
-    CT = yz_kv:get_obj_ct(MD),
-    ExtractorDef = yz_extractor:get_def(CT, [check_default]),
     try
+        CT = yz_kv:get_obj_ct(MD),
+        ExtractorDef = yz_extractor:get_def(CT, [check_default]),
         case yz_extractor:run(V, ExtractorDef) of
             {error, Reason} ->
                 yz_stat:index_fail(),

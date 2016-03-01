@@ -24,7 +24,8 @@
 
 %% api
 -export([start_link/1, status/1, index/5, set_hwm/2, get_hwm/1, set_index/5,
-         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1, all_queue_len/1]).
+         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1,
+         all_queue_len/1, set_purge_strategy/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,10 +44,7 @@
 -define(PULSE_DEBUG(S,F), ok).
 -endif.
 
--type solrq_message()     :: tuple().  % {BKey, Docs, Reason, P}.
--type solrq_batch_min()   :: pos_integer().
--type solrq_batch_max()   :: pos_integer().
--type solrq_delayms_max() :: non_neg_integer()|infinity.
+-type solrq_message()              :: tuple().  % {BKey, Docs, Reason, P}.
 
 -record(
     indexq, {
@@ -56,23 +54,24 @@
         pending_helper = false  :: boolean(),
         batch_min = 1           :: solrq_batch_min(),
         batch_max = 100         :: solrq_batch_max(),
-        delayms_max = 1000      :: solrq_delayms_max(),
+        delayms_max = 1000      :: solrq_batch_flush_interval(),
         aux_queue = queue:new() :: yz_queue(),
         draining = false        :: boolean() | wait_for_drain_complete,
         fuse_blown = false      :: boolean(),
         in_flight_len = 0       :: non_neg_integer(),
-        batch_start             :: timestamp()
+        batch_start             :: timestamp() | undefined
     }
 ).
 
 -record(
     state, {
-        indexqs = dict:new()    :: yz_dict(),
-        all_queue_len = 0       :: non_neg_integer(),
-        queue_hwm = 1000        :: non_neg_integer(),
-        pending_vnodes = []     :: [{pid(), atom()}],
-        drain_info = undefined  :: {pid(), reference(), [solrq_message()]} | undefined,
-        purge_blown_indices     :: boolean()
+      indexqs = dict:new()             :: yz_dict(),
+      all_queue_len = 0                :: non_neg_integer(),
+      queue_hwm = 1000                 :: non_neg_integer(),
+      pending_vnodes = []              :: [{pid(), atom()}],
+      drain_info = undefined           :: {pid(), reference(),
+                                           [solrq_message()]} | undefined,
+      purge_strategy                   :: purge_strategy()
     }
 ).
 
@@ -110,16 +109,33 @@ index(Index, BKey, Obj, Reason, P) ->
                     {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
 
--spec set_hwm(pid, non_neg_integer()) -> #state{}.
-set_hwm(QPid, HWM) ->
-    gen_server:call(QPid, {set_hwm, HWM}).
+-spec set_hwm(pid(), pos_integer()) ->
+    {ok, OldHWM :: pos_integer()} | {error, bad_hwm_value}.
+set_hwm(QPid, HWM) when HWM > 0 ->
+    gen_server:call(QPid, {set_hwm, HWM});
+set_hwm(_, _)  ->
+    {error, bad_hwm_value}.
 
 -spec set_index(pid(), index_name(), solrq_batch_min(), solrq_batch_max(),
-                solrq_delayms_max()) -> {ok, {solrq_batch_min(),
+                solrq_batch_flush_interval()) -> {ok, {solrq_batch_min(),
                                              solrq_batch_max(),
-                                             solrq_delayms_max()}}.
-set_index(QPid, Index, Min, Max, DelayMax) ->
-    gen_server:call(QPid, {set_index, Index, Min, Max, DelayMax}).
+                                             solrq_batch_flush_interval()}}.
+set_index(QPid, Index, Min, Max, DelayMax)
+  when Min > 0, Min =< Max, DelayMax >= 0 orelse DelayMax == infinity ->
+    gen_server:call(QPid, {set_index, Index, Min, Max, DelayMax});
+set_index(_, _, _, _, _) ->
+    {error, bad_index_params}.
+
+-spec set_purge_strategy(pid(), purge_strategy()) ->
+    {ok, OldPurgeStrategy :: purge_strategy()} | {error, bad_purge_strategy}.
+set_purge_strategy(QPid, PurgeStrategy)
+    when    PurgeStrategy == ?PURGE_NONE
+    orelse  PurgeStrategy == ?PURGE_ONE
+    orelse  PurgeStrategy == ?PURGE_IDX
+    orelse  PurgeStrategy == ?PURGE_ALL ->
+    gen_server:call(QPid, {set_purge_strategy, PurgeStrategy});
+set_purge_strategy(_QPid, _PurgeStrategy) ->
+    {error, bad_purge_strategy}.
 
 -spec reload_appenv(pid()) -> ok.
 reload_appenv(QPid) ->
@@ -197,8 +213,7 @@ handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
 handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
-handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
-      Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
+handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) ->
     IndexQ = get_indexq(Index, State),
     IndexQ2 = maybe_request_worker(Index,
                                    IndexQ#indexq{batch_min = Min,
@@ -208,12 +223,10 @@ handle_call({set_index, Index, Min, Max, DelayMS}, _From, State) when
                  IndexQ#indexq.batch_max,
                  IndexQ#indexq.delayms_max},
     {reply, {ok, OldParams}, update_indexq(Index, IndexQ2, State)};
-handle_call({set_index, Index, _Min, _Max, _DelayMS}, _From, State) ->
-    IndexQ = get_indexq(Index, State),
-    OldParams = {IndexQ#indexq.batch_min,
-                 IndexQ#indexq.batch_max,
-                 IndexQ#indexq.delayms_max},
-    {reply, {{error, bad_index_params}, OldParams}, State};
+handle_call({set_purge_strategy, NewPurgeStrategy},
+    _From,
+    #state{purge_strategy=OldPurgeStrategy} = State) ->
+    {reply, {ok, OldPurgeStrategy}, State#state{purge_strategy=NewPurgeStrategy}};
 handle_call(cancel_drain, _From, State) ->
     {noreply, NewState} = handle_cast(drain_complete, State),
     {reply, ok, NewState};
@@ -384,7 +397,7 @@ handle_batch(
         case Result of
             ok ->
                 yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
-                IndexQ0;
+                IndexQ0#indexq{batch_start = undefined};
             {retry, Undelivered} ->
                 requeue_undelivered(Undelivered, IndexQ0)
         end,
@@ -407,11 +420,10 @@ handle_batch(
 %% @end
 %%
 handle_batch(
-    Index,
-    #indexq{queue_len = QueueLen, draining = _Draining, batch_start = T1} = IndexQ,
-    Result,
-    #state{drain_info = DrainInfo} = State
-) ->
+  Index,
+  #indexq{queue_len = QueueLen, draining = _Draining, batch_start = T1} = IndexQ,
+  Result,
+  #state{drain_info = DrainInfo} = State) ->
     {DPid, Token, Remaining} = DrainInfo,
     {NewRemaining, NewIndexQ} =
         case Result of
@@ -421,7 +433,10 @@ handle_batch(
                         yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
                         {
                             lists:delete(Index, Remaining),
-                            IndexQ#indexq{draining = wait_for_drain_complete}
+                            IndexQ#indexq{
+                                draining = wait_for_drain_complete,
+                                batch_start = undefined
+                            }
                         };
                     _ ->
                         {Remaining, request_worker(Index, IndexQ)}
@@ -532,26 +547,97 @@ flush(Index, IndexQ, State) ->
 over_hwm(#state{all_queue_len = L, queue_hwm = HWM}) ->
     L > HWM.
 
-maybe_purge_blown_indices(#state{purge_blown_indices = false} = State) ->
+maybe_purge_blown_indices(#state{purge_strategy=?PURGE_NONE} = State) ->
     State;
-maybe_purge_blown_indices(#state{indexqs=IndexQs} = State) ->
-    BlownIndices = [
-        {Index, IndexQ} ||
-            {Index, #indexq{fuse_blown=true, queue_len=QueueLen} = IndexQ} <- dict:to_list(IndexQs),
-            QueueLen > 0
-    ],
+maybe_purge_blown_indices(#state{indexqs=IndexQs,
+                                 purge_strategy=PBIStrategy}
+                          = State) ->
+    BlownIndices = [{Index, IndexQ} ||
+                       {Index,
+                        #indexq{fuse_blown=true,
+                                queue_len=QueueLen,
+                                aux_queue=AuxQueue} = IndexQ} <-
+                           dict:to_list(IndexQs),
+                       QueueLen > 0 orelse queue:len(AuxQueue) > 0
+                   ],
     case BlownIndices of
         [] ->
             State;
         _ ->
-            I = random:uniform(length(BlownIndices)),
-            {Index, #indexq{queue=Queue, queue_len=QueueLen} = IndexQ} = lists:nth(I, BlownIndices),
-            {{value, _Item}, NewQueue} = queue:out(Queue),
-            NewIndexQ = IndexQ#indexq{queue=NewQueue, queue_len=QueueLen - 1},
-            ?WARN("Removing item from queue because we have hit the high water mark and the fuse is blown for index ~p.", [Index]),
-            update_indexq(Index, NewIndexQ, State)
+            purge(BlownIndices, PBIStrategy, State)
     end.
 
+%% @doc If we hit the high water mark, we will attempt to purge previously
+%% enqueued entries based on a purge strategy, which may be one of:
+%%
+%% purge_one:   Purge exactly one entry from a randomly blown indexq.  Prefer
+%%              to purge from the aux_queue, if it is not empty.
+%% purge_index: Purge all entries (both in the regular queue and in the
+%%              aux_queue) from a randomly blown indexq
+%% purge_all:   Purge all entries (both in the regular queue and in the
+%%              aux_queue) from all blown indexqs
+%%
+-spec purge([{index_name(), #indexq{}}], purge_strategy(), #state{}) ->
+    #state{}.
+purge(BlownIndices, PurgeStrategy, State) ->
+    {NewState, NumPurged} = purge_internal(BlownIndices, PurgeStrategy, State),
+    yz_stat:hwm_purged(NumPurged),
+    NewState.
+
+-spec purge_internal([{index_name(), #indexq{}}], purge_strategy(), #state{}) ->
+                            {#state{}, TotalNumPurged :: non_neg_integer()}.
+purge_internal(BlownIndices, ?PURGE_ALL, State) ->
+    lists:foldl(fun purge_idx/2, {State, 0}, BlownIndices);
+purge_internal(BlownIndices, PurgeStrategy, State) ->
+    I = random:uniform(length(BlownIndices)),
+    BlownIndex = lists:nth(I, BlownIndices),
+    purge_idx(BlownIndex, PurgeStrategy, State).
+
+-spec purge_idx(BlownIndex :: {index_name(), #indexq{}},
+                {#state{}, NumPurgedAccum :: non_neg_integer()}) ->
+                       {#state{}, TotalNumPurged :: non_neg_integer()}.
+purge_idx(BlownIndex, {State, PurgeNumAccum}) ->
+    {NewState, NumPurged} = purge_idx(BlownIndex, ?PURGE_IDX, State),
+    {NewState, PurgeNumAccum + NumPurged}.
+
+-spec purge_idx(BlownIndex :: {index_name(), #indexq{}},
+                purge_strategy(),
+                #state{}) -> {#state{}, NumPurged :: non_neg_integer()}.
+purge_idx(
+  {Index,
+   #indexq{queue_len=QueueLen, queue=OldQueue, aux_queue=OldAuxQueue}=IndexQ
+  },
+  ?PURGE_ONE,
+  #state{all_queue_len=AllQueueLen} = State) ->
+    OldAuxQueueLen = queue:len(OldAuxQueue),
+    NewIndexQ =
+        case OldAuxQueueLen > 0 of
+            true ->
+                {{value, _Item}, NewAuxQueue} = queue:out(OldAuxQueue),
+                IndexQ#indexq{aux_queue=NewAuxQueue};
+            _ ->
+                {{value, _Item}, NewQueue} = queue:out(OldQueue),
+                IndexQ#indexq{queue=NewQueue, queue_len=QueueLen - 1}
+        end,
+    ?DEBUG("Removing item from queue because we have hit the high"
+           " watermark and the fuse is blown for index ~p, using"
+           " purge_strategy ~p", [Index, ?PURGE_ONE]),
+    {update_indexq(
+       Index, NewIndexQ, State#state{all_queue_len=AllQueueLen - 1}),
+     1};
+purge_idx({Index, #indexq{queue_len=QueueLen, aux_queue=AuxQueue}=IndexQ},
+          ?PURGE_IDX,
+          #state{all_queue_len=AllQueueLen} = State) ->
+    AuxQueueLen = queue:len(AuxQueue),
+    NumPurged = QueueLen + AuxQueueLen,
+    NewIndexQ = IndexQ#indexq{queue=queue:new(), aux_queue=queue:new(),
+                              queue_len=0},
+    ?DEBUG("Removing index-queue because we have hit the high"
+           " watermark and the fuse is blown for index ~p, using"
+           " purge_strategy ~p", [Index, ?PURGE_IDX]),
+    {update_indexq(
+       Index, NewIndexQ, State#state{all_queue_len = AllQueueLen - NumPurged}),
+     NumPurged}.
 
 %% @doc Request a worker to pull the queue
 maybe_request_worker(Index, #indexq{batch_min = Min} = IndexQ) ->
@@ -572,7 +658,6 @@ request_worker(Index, #indexq{pending_helper = false, fuse_blown = false} = Inde
     IndexQ#indexq{pending_helper = true};
 request_worker(_Index, IndexQ) ->
     IndexQ.
-
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
 %%      return updated state
@@ -655,7 +740,7 @@ get_indexq(Index, #state{indexqs = IndexQs}) ->
     end.
 
 set_new_index(Min, Max, DelayMS)
-  when Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
+  when Min > 0, Min =< Max, DelayMS >= 0 orelse DelayMS == infinity ->
     #indexq{batch_min = Min,
             batch_max = Max,
             delayms_max = DelayMS};
@@ -663,9 +748,10 @@ set_new_index(_, _, _) ->
     #indexq{}.
 
 new_indexq() ->
-    BatchMin = app_helper:get_env(?YZ_APP_NAME, solrq_batch_min, 1),
-    BatchMax = app_helper:get_env(?YZ_APP_NAME, solrq_batch_max, 100),
-    DelayMS = app_helper:get_env(?YZ_APP_NAME, solrq_delayms_max, 1000),
+    BatchMin = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, 1),
+    BatchMax = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, 100),
+    DelayMS = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_FLUSH_INTERVAL,
+                                 1000),
     set_new_index(BatchMin, BatchMax, DelayMS).
 
 update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
@@ -676,10 +762,14 @@ update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
 %    State#state{indexqs = dict:erase(Index, IndexQs)}.
 
 %% @doc Read settings from the application environment
+%% TODO: Update HWM for each Index when Ring-Resize occurrs
 read_appenv(State) ->
-    HWM = app_helper:get_env(?YZ_APP_NAME, solrq_queue_hwm, 10000),
-    PBI = application:get_env(?YZ_APP_NAME, purge_blown_indices, true),
-    State#state{queue_hwm = HWM, purge_blown_indices=PBI}.
+    HWM = max(app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, 10000) -
+                  length(riak_core_vnode_manager:all_vnodes(riak_kv_vnode)), 1),
+    PBIStrategy = application:get_env(?YZ_APP_NAME, ?SOLRQ_HWM_PURGE_STRATEGY,
+                                      ?PURGE_ONE),
+    State#state{queue_hwm = HWM,
+                purge_strategy = PBIStrategy}.
 
 %%
 %% debugging

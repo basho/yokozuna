@@ -22,6 +22,8 @@
 -compile(export_all).
 -export([]).
 
+-include("yokozuna.hrl").
+
 solrq_indexq(Index, IndexQ) ->
     [
         {index, Index}
@@ -58,8 +60,9 @@ solrqs() ->
 solrq_summary() ->
     Solrqs = solrqs(),
     [
-        {num_solrqs, application:get_env(yokozuna, num_solrq, 10)},
-        {num_solrq_helpers, application:get_env(yokozuna, num_solrq_helpers, 10)},
+        {num_solrqs, application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_CNT, 10)},
+        {num_solrq_helpers, application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_CNT,
+                                                10)},
         {all_queue_len, all_queue_len(Solrqs)},
         {draining_solrqs, draining_solrqs(Solrqs)},
         {draining_indexqs, draining_indexqs(Solrqs)},
