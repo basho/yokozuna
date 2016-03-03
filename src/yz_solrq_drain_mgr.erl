@@ -55,14 +55,14 @@ drain() ->
     drain([]).
 
 %% @doc Drain all queues to Solr
--spec drain(proplist()) -> ok | {error, _Reason}.
+-spec drain(drain_params()) -> ok | {error, _Reason}.
 drain(Params) ->
     T1 = os:timestamp(),
+    ExchangeFSMPid = proplists:get_value(
+        ?EXCHANGE_FSM_PID, Params, undefined
+    ),
     case enabled() of
         true ->
-            ErrorCallback = proplists:get_value(
-                drain_error_callback, Params, ?FUN_OK1
-            ),
             case get_lock() of
                 ok ->
                     DrainTimeout = application:get_env(?YZ_APP_NAME, drain_timeout, 60000),
@@ -76,30 +76,28 @@ drain(Params) ->
                                 ok;
                             {'DOWN', Reference, process, Pid, Reason} ->
                                 yz_stat:drain_fail(),
-                                ErrorCallback(Reason),
+                                maybe_exchange_fsm_drain_error(ExchangeFSMPid, Reason),
                                 {error, Reason}
                         after DrainTimeout ->
                             yz_stat:drain_timeout(),
                             cancel(Reference, Pid),
-                            ErrorCallback(timeout),
+                            maybe_exchange_fsm_drain_error(ExchangeFSMPid, timeout),
                             {error, timeout}
                         end
                     after
                         release_lock()
                     end;
                 drain_already_locked ->
-                    ErrorCallback(in_progress),
+                    maybe_exchange_fsm_drain_error(ExchangeFSMPid, in_progress),
                     {error, in_progress}
             end;
         _ ->
-            DrainInitiatedCallback = proplists:get_value(
-                drain_initiated_callback, Params, ?FUN_OK0
+            YZIndexHashtreeUpdateParams = proplists:get_value(
+                ?YZ_INDEX_HASHTREE_PARAMS, Params
             ),
-            DrainInitiatedCallback(),
-            DrainCompletedCallback = proplists:get_value(
-                drain_completed_callback, Params, ?FUN_OK0
+            maybe_update_yz_index_hashtree(
+                ExchangeFSMPid, YZIndexHashtreeUpdateParams
             ),
-            DrainCompletedCallback(),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(T1)),
             ok
     end.
@@ -205,3 +203,14 @@ unlink_and_kill(Reference, Pid) ->
 -spec schedule_tick() -> reference().
 schedule_tick() ->
     erlang:send_after(5000, ?MODULE, tick).
+
+
+maybe_exchange_fsm_drain_error(undefined, _Reason) ->
+    ok;
+maybe_exchange_fsm_drain_error(Pid, Reason) ->
+    yz_exchange_fsm:drain_error(Pid, Reason).
+
+maybe_update_yz_index_hashtree(undefined, undefined) ->
+    ok;
+maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}) ->
+    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN).

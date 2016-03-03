@@ -44,8 +44,8 @@
 
 -record(state, {
     tokens,
-    drain_initiated_callback,
-    drain_completed_callback,
+    exchange_fsm_pid,
+    yz_index_hashtree_update_params,
     partition
 }).
 
@@ -53,40 +53,61 @@
 %%% API
 %%%===================================================================
 
-
+%% @doc Start the drain FSM process.   Note that the drain FSM will immediately
+%% go into the prepare state, but it will not start draining until start_prepate/0
+%% is called.
+%% @end
+%%
 -spec(start_link() -> {ok, pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
     start_link([]).
 
-%%--------------------------------------------------------------------
 %% @doc
 %% Creates a gen_fsm process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
-%%
 %% @end
-%%--------------------------------------------------------------------
--spec(start_link(proplist()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
+%%
+-spec(start_link(drain_params()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
 start_link(Params) ->
     gen_fsm:start_link({local, ?SERVER}, ?MODULE, Params, []).
 
+%% @doc Notify the drain FSM identified by DPid that the solrq associated
+%% with the specified Token has completed draining.  Note that the solrq
+%% will remain in the wait_for_drain_complete state until it receives a
+%% drain_complete message back from the specified FSM.
 %%
-%% @doc TODO
+%% NB. This function is typically called from each solrq.
+%% @end
 %%
+-spec drain_complete(pid(), reference()) -> ok.
 drain_complete(DPid, Token) ->
     gen_fsm:send_event(DPid, {drain_complete, Token}).
 
+%% @doc Start draining.  This operation will send a start message to this
+%% FSM with a start message, which in turn will initiate drains on all of
+%% the solrqs.
+%%
+%% NB. This function is typically called from the drain manager.
+%% @end
+%%
+-spec start_prepare() -> no_proc | timeout | term().
 start_prepare() ->
     gen_fsm:send_event(?MODULE, start).
 
+%% @doc Cancel a drain.  This operation will result in sending a cancel
+%% message to each of the solrqs, putting them back into a batching state.
+%% @end
+%%
+-spec cancel() -> no_proc | timeout | ok.
 cancel() ->
     case catch gen_fsm:sync_send_all_state_event(?MODULE, cancel, 5000) of
         {'EXIT', {noproc, _}} ->
             no_proc;
         {'EXIT', {timeout, _}} ->
             timeout;
-        Any ->
-            Any
+        ok ->
+            ok
     end.
 
 %%%===================================================================
@@ -95,31 +116,40 @@ cancel() ->
 
 init(Params) ->
     {ok, prepare, #state{
-        drain_initiated_callback = proplists:get_value(drain_initiated_callback, Params, ?FUN_OK0),
-        drain_completed_callback = proplists:get_value(drain_completed_callback, Params, ?FUN_OK0),
-        partition = proplists:get_value(partition, Params)
+        exchange_fsm_pid = proplists:get_value(?EXCHANGE_FSM_PID, Params),
+        yz_index_hashtree_update_params = proplists:get_value(?YZ_INDEX_HASHTREE_PARAMS, Params),
+        partition = proplists:get_value(?DRAIN_PARTITION, Params)
     }}.
 
 
-%% TODO doc
-prepare(start, #state{drain_initiated_callback = DrainInitiatedCallback, partition = P} = State) ->
+%% @doc We receive a start message in the prepare state when start_prepare/0 is called.
+%% This will initiate a drain on all the solrqs.  This gives us a list of references (tokens)
+%% we wait for while in the wait state, the state in which we immediate move into.
+%% @end
+%%
+prepare(start, #state{partition = P} = State) ->
     SolrqIds = yz_solrq_sup:solrq_names(),
     Tokens = [yz_solrq:drain(SolrqId, P) || SolrqId <- SolrqIds],
-    case DrainInitiatedCallback() of
-        ok ->
-            {next_state, wait, State#state{tokens = Tokens}};
-        _ ->
-            cancel(),
-            {stop, normal, ok, State}
-    end.
+    {next_state, wait, State#state{tokens = Tokens}}.
 
-%% TODO doc
-wait({drain_complete, Token}, #state{tokens = Tokens, drain_completed_callback = DrainCompletedCallback} = State) ->
+%% @doc While in the wait state, we wait for drain_complete messages with accompanying
+%% tokens.  When we have received all of the tokens, we are done, and the FSM terminates
+%% normally.  Otherwise, we keep waiting.
+%% @end
+%%
+wait({drain_complete, Token},
+    #state{
+        tokens = Tokens,
+        exchange_fsm_pid = ExchangeFSMPid,
+        yz_index_hashtree_update_params = YZIndexHashtreeUpdateParams
+    } = State) ->
     Tokens2 = lists:delete(Token, Tokens),
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
-            DrainCompletedCallback(),
+            maybe_update_yz_index_hashtree(
+                ExchangeFSMPid, YZIndexHashtreeUpdateParams
+            ),
             [yz_solrq:drain_complete(Name) || Name <- yz_solrq_sup:solrq_names()],
             {stop, normal, NewState};
         _ ->
@@ -134,8 +164,7 @@ handle_sync_event(cancel, _From, _StateName, State) ->
     {stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
-    Reply = ok,
-    {reply, Reply, StateName, State}.
+    {reply, ok, StateName, State}.
 
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
@@ -149,3 +178,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+maybe_update_yz_index_hashtree(undefined, undefined) ->
+    ok;
+maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}) ->
+    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN).
