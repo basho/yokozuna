@@ -463,8 +463,15 @@
 
 
 %%%===================================================================
-%%% No-op funs (typical defaults for no-op callbacks)
+%%% draining
 %%%===================================================================
 
--define(FUN_OK0, fun() -> ok end).
--define(FUN_OK1, fun(_) -> ok end).
+-define(EXCHANGE_FSM_PID, exchange_fsm_pid).
+-define(YZ_INDEX_HASHTREE_PARAMS, yz_index_hashtree_update_params).
+-define(DRAIN_PARTITION, drain_partition).
+
+-type drain_param() ::
+    {?EXCHANGE_FSM_PID, pid()} |
+    {?YZ_INDEX_HASHTREE_PARAMS, {tree(), p(), short_preflist()}} |
+    {?DRAIN_PARTITION, n()}.
+-type drain_params() :: [drain_param()].
