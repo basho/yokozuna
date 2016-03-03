@@ -379,7 +379,9 @@ get_http_response(Key, RespByKey) ->
 
 melts_by_index(Entries) ->
     Indices = lists:usort([Index || {_P, Index, _Bucket, _Key, _Op, _Result} <- Entries]),
-    MeltsByIndex = [{Index, yz_solrq_eqc_fuse:melts(Index)} || Index <- Indices, Index /= ?YZ_INDEX_TOMBSTONE],
+    MeltsByIndex =
+        [{Index, yz_solrq_eqc_fuse:melts(yz_fuse:fuse_name_for_index(Index))}
+         || Index <- Indices, Index /= ?YZ_INDEX_TOMBSTONE],
     %lager:info("FDUSHIN> MeltsByIndex: ~p", [MeltsByIndex]),
     [{Index, Melts} || {Index, Melts} <- MeltsByIndex, Melts /= 0].
     %MeltsByIndex.
