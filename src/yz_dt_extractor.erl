@@ -103,7 +103,7 @@ extract_fields(Name, counter, Value, #state{fields=Fields, field_separator=Sep}=
     State#state{fields=[{FieldName, ?INT_TO_BIN(Value)}|Fields]};
 extract_fields(Name, register, Value, #state{fields=Fields, field_separator=Sep}=State) ->
     FieldName = field_name(Name, register, Sep),
-    State#state{fields=[{FieldName, Value}|Fields]};
+    State#state{fields=[{FieldName, ensure_valid_unicode(Value)}|Fields]};
 extract_fields(Name, flag, Value, #state{fields=Fields, field_separator=Sep}=State) ->
     FieldName = field_name(Name, flag, Sep),
     State#state{fields=[{FieldName, Value}|Fields]}.
@@ -122,7 +122,7 @@ field_name({Prefix, Name}, Type, Sep) ->
 -spec extract_set(binary()) -> fun((binary(), state()) -> state()).
 extract_set(Name) ->
     fun(Elem, #state{fields=Fields}=Acc) ->
-            Acc#state{fields=[{Name, Elem}|Fields]}
+            Acc#state{fields=[{Name, ensure_valid_unicode(Elem)}|Fields]}
     end.
 
 -spec extract_map(field_path_name()) -> fun(({{binary(), module()}, term()}, state()) -> state()).
@@ -131,3 +131,12 @@ extract_map(Prefix) ->
             Type = riak_kv_crdt:from_mod(Mod, ?EMBEDDED_TYPES),
             extract_fields({Prefix, FieldName}, Type, Value, Acc)
     end.
+
+-spec ensure_valid_unicode(any()) -> any().
+ensure_valid_unicode(Value) when is_binary(Value) ->
+    case unicode:characters_to_list(Value, utf8) of
+        {incomplete, List, _Rest} -> unicode:characters_to_binary(List);
+        {error, List, _Rest} -> unicode:characters_to_binary(List);
+        _List -> Value
+    end;
+ensure_valid_unicode(Value) -> Value.
