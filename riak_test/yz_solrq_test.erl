@@ -77,18 +77,18 @@ confirm() ->
     Cluster = yz_rt:prepare_cluster(1, ?CONFIG),
     [PBConn|_] = PBConns = yz_rt:open_pb_conns(Cluster),
 
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET1, ?INDEX1),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET2, ?INDEX2),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET3, ?INDEX3),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET4, ?INDEX4),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET5, ?INDEX5),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET6, ?INDEX6),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET7, ?INDEX7),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET8, ?INDEX8),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET9, ?INDEX9),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET10, ?INDEX10),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET11, ?INDEX11),
-    ok = create_indexed_bucket(PBConn, Cluster, ?BUCKET12, ?INDEX12),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET1, ?INDEX1),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET2, ?INDEX2),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET3, ?INDEX3),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET4, ?INDEX4),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET5, ?INDEX5),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET6, ?INDEX6),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET7, ?INDEX7),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET8, ?INDEX8),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET9, ?INDEX9),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET10, ?INDEX10),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET11, ?INDEX11),
+    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET12, ?INDEX12),
 
     confirm_batching(Cluster, PBConn, ?BUCKET1, ?INDEX1),
     confirm_draining(Cluster, PBConn, ?BUCKET2, ?INDEX2),
@@ -102,10 +102,6 @@ confirm() ->
 
     yz_rt:close_pb_conns(PBConns),
     pass.
-
-create_indexed_bucket(PBConn, [Node|_], {BType, _Bucket}, Index) ->
-    ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, 1}]),
-    ok = yz_rt:set_bucket_type_index(Node, BType, Index, 1).
 
 confirm_batching(Cluster, PBConn, BKey, Index) ->
     %% First, put one less than the min batch size and expect that there are no
