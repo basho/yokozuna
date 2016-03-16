@@ -47,6 +47,8 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_helper_cnt", 10),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout", 60000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", true),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 100),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
     ok.
 
 override_schema_test() ->
@@ -78,7 +80,9 @@ override_schema_test() ->
             {["search", "queue", "high_watermark", "purge_strategy"],
              "purge_all"},
             {["search", "queue", "drain", "enable"], "off"},
-            {["search", "queue", "drain", "timeout"], "2m"}
+            {["search", "queue", "drain", "timeout"], "2m"},
+            {["search", "ibrowse_max_sessions"], 101},
+            {["search", "ibrowse_max_pipeline_size"], 11}
     ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
@@ -117,7 +121,8 @@ override_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout",
                                   120000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
-
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 101),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 11),
     ok.
 
 validations_test() ->

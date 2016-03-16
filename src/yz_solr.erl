@@ -35,13 +35,19 @@
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit, n}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
+-define(LOCALHOST, "localhost").
 
 -type delete_op() :: {id, binary()}
                    | {bkey, bkey()}
                    | {siblings, bkey()}
                    | {'query', binary()}.
 
+-type ibrowse_config_key() :: max_sessions | max_pipeline_size.
+-type ibrowse_config_value() :: pos_integer().
+-type ibrowse_config() :: [{ibrowse_config_key(), ibrowse_config_value()}].
+
 -export_type([delete_op/0]).
+-export_type([ibrowse_config_key/0, ibrowse_config_value/0, ibrowse_config/0]).
 
 %%%===================================================================
 %%% API
@@ -307,6 +313,28 @@ search(Core, Headers, Params) ->
         Err -> throw({"Failed to search", URL, Err})
     end.
 
+-spec set_ibrowse_config(ibrowse_config()) -> ok.
+set_ibrowse_config(Config) ->
+    lists:foreach(
+      fun({Key, Value}) -> set_ibrowse_config(Key, Value) end,
+      Config),
+    ok.
+
+set_ibrowse_config(?YZ_SOLR_MAX_SESSIONS, Max) when is_integer(Max), Max > 0 ->
+    ibrowse:set_max_sessions(?LOCALHOST, port(), Max);
+set_ibrowse_config(?YZ_SOLR_MAX_PIPELINE_SIZE, Max) when is_integer(Max), Max > 0 ->
+    ibrowse:set_max_pipeline_size(?LOCALHOST, port(), Max).
+
+get_ibrowse_config() ->
+    [{?YZ_SOLR_MAX_SESSIONS, get_ibrowse_config(?YZ_SOLR_MAX_SESSIONS)},
+     {?YZ_SOLR_MAX_PIPELINE_SIZE, get_ibrowse_config(?YZ_SOLR_MAX_PIPELINE_SIZE)}].
+
+get_ibrowse_config(Key) ->
+    try
+        ibrowse:get_config_value({Key, ?LOCALHOST, port()}, undefined)
+    catch
+        _ -> undefined
+    end.
 
 %%%===================================================================
 %%% Private
@@ -314,7 +342,8 @@ search(Core, Headers, Params) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    "http://localhost:" ++ integer_to_list(port()) ++ ?SOLR_HOST_CONTEXT.
+    "http://" ++ ?LOCALHOST ++ ":" ++ integer_to_list(port()) ++
+        ?SOLR_HOST_CONTEXT.
 
 %% @private
 %%

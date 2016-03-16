@@ -263,6 +263,22 @@
   hidden
 ]}.
 
+%% @doc The value to use for the `max_sessions' configuration for the ibrowse
+%% process used by Yokozuna.
+{mapping, "search.ibrowse_max_sessions", "yokozuna.ibrowse_max_sessions",
+ [{default, 100},
+  {datatype, integer},
+  hidden,
+  {validators, ["positive_integer"]}]}.
+
+%% @doc The value to use for the `max_pipeline_size' configuration for the
+%% ibrowse process used by Yokozuna.
+{mapping, "search.ibrowse_max_pipeline_size", "yokozuna.ibrowse_max_pipeline_size",
+ [{default, 1},
+  {datatype, integer},
+  hidden,
+  {validators, ["positive_integer"]}]}.
+
 %%===========================================================
 %% Validators
 %%===========================================================
