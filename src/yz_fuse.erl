@@ -169,7 +169,9 @@ aggregate_index_stats(FuseCheck, Stat) ->
                         exometer:aggregate([{{[fuse, '_', FuseCheck],'_','_'},
                                              [], [true]}], [Stat])).
 
--spec get_stats_for_index(atom()) -> ok.
+-spec get_stats_for_index(atom() | index_name()) -> ok.
+get_stats_for_index(Index) when is_atom(Index) ->
+    get_stats_for_index(?ATOM_TO_BIN(Index));
 get_stats_for_index(Index) ->
     case check(Index) of
         {error, _} ->
@@ -177,9 +179,15 @@ get_stats_for_index(Index) ->
         _ ->
             lists:foreach(
               fun(Check) ->
-                      {ok, Stats} = exometer:get_value([fuse, Index, Check]),
-                      io:format("Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
-                                [Index, proplists:get_value(count, Stats),
-                                 proplists:get_value(one, Stats), Check])
+                  FuseName = fuse_name_for_index(Index),
+                  Stats = case exometer:get_value([fuse, FuseName, Check]) of
+                      {ok, S} -> S;
+                      _ ->
+                          {ok, S} = exometer:get_value([fuse, ?BIN_TO_ATOM(Index), Check]),
+                          S
+                  end,
+                  io:format("Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
+                            [Index, proplists:get_value(count, Stats),
+                             proplists:get_value(one, Stats), Check])
               end, [ok, melt, blown, recovered])
     end.
