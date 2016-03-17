@@ -27,6 +27,7 @@
          num_helper_specs/0, resize_helpers/1,
          set_hwm/1,
          set_index/4,
+         set_purge_strategy/1,
          reload_appenv/0,
          blown_fuse/1,
          healed_fuse/1,
@@ -130,11 +131,17 @@ set_hwm(HWM) ->
 
 %% @doc Set the index parameters for all queues (note, index goes back to appenv
 %%      queue is empty).
--spec set_index(index_name(), non_neg_integer(), non_neg_integer(),
-                non_neg_integer()) -> [{index_name(),
+-spec set_index(index_name(), solrq_batch_min(), solrq_batch_max(),
+    solrq_batch_flush_interval()) -> [{index_name(),
                                        tuple(Params :: non_neg_integer())}].
 set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
+        Name <- tuple_to_list(get_solrq_tuple())].
+
+%% @doc Set the purge strategy on all queues
+-spec set_purge_strategy(purge_strategy()) -> [{index_name, {ok, purge_strategy()}}].
+set_purge_strategy(PurgeStrategy) ->
+    [{Name, catch yz_solrq:set_purge_strategy(Name, PurgeStrategy)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
@@ -256,10 +263,10 @@ set_solrq_helper_tuple(Size) ->
     mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
 
 queue_procs() ->
-    application:get_env(yokozuna, num_solrq, 10).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_CNT, 10).
 
 helper_procs() ->
-    application:get_env(yokozuna, num_solrq_helpers, 10).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_CNT, 10).
 
 solrqs_tuple(Queues) ->
     list_to_tuple([int_to_queue_regname(I) || I <- lists:seq(1, Queues)]).

@@ -72,7 +72,8 @@
 %% @doc The timeout for ibrowse (ibrowse:send_req) requests to Solr's
 %% entrop_data endpoints. Defaults to 60 seconds. It will always round up to the
 %% nearest second, e.g. 1ms = 999 ms = 1s.
-{mapping, "search.solr.request_ed_timeout", "yokozuna.solr_request_ed_timeout", [
+{mapping, "search.solr.request_ed_timeout", "yokozuna.solr_request_ed_timeout",
+[
   {default, "60s"},
   {datatype, {duration, ms}},
   hidden
@@ -106,42 +107,44 @@
 %% Fuse-related settings
 %%===========================================================
 
-%% @doc The number of melts within the melt_time_window before a fuse will blow.
-{mapping, "search.melt_attempts", "yokozuna.melt_attempts", [
+%% @doc The number of failures encountered while updating a search index within
+%%      search.queue.error_threshold.failure_interval" before Riak will skip
+%%      updates to that index.
+{mapping, "search.index.error_threshold.failure_count",
+"yokozuna.err_thresh_fail_cnt", [
   {default, 3},
   {datatype, integer},
   hidden,
   {validators, ["integer"]}
 ]}.
 
-%% @doc The window of time in which melt_attempts melts
-%%      will cause a fuse to blow.
-{mapping, "search.melt_time_window", "yokozuna.melt_time_window", [
+%% @doc The window of time during which
+%%      "search.queue.error_threshold.failure_count" failures will cause Riak
+%%      to skip updates to a search index.
+%%      If "search.queue.error_threshold.failure_count" errors have occurred
+%%      within this interval on a given search index, then Riak will skip
+%%      updates to that index until the
+%%      "search.queue.error_threshold.reset_interval" has passed.
+{mapping, "search.index.error_threshold.failure_interval",
+"yokozuna.err_thresh_fail_interval", [
   {default, "5s"},
   {datatype, {duration, ms}},
   hidden
 ]}.
 
-%% @doc The amount of elapsed time without a fuse blown event before a fuse
-%%      will automatically heal.
-{mapping, "search.melt_reset_refresh", "yokozuna.melt_reset_refresh", [
+%% @doc The amount of time it takes for updates to a given search index to
+%%      resume/refresh once Riak has started skipping update operations.
+{mapping, "search.index.error_threshold.reset_interval",
+"yokozuna.err_thresh_reset_interval", [
   {default, "30s"},
   {datatype, {duration, ms}},
   hidden
 ]}.
 
-%% @doc Determins how fuse is called.
-{mapping, "search.fuse_context", "yokozuna.fuse_context", [
+%% @doc Determines how fuse operator is called: sync or async.
+{mapping, "search.fuse_context", "yokozuna.fuse_ctx", [
   {default, async},
   {datatype, {flag, {sync, sync}, {async, async_dirty}}},
-  hidden
-]}.
-
-%% @doc If true, then buffered data may be discarded from indices with blown
-%%      fuses, if the solrq_queue_hwm is reached.
-{mapping, "search.purge_blown_indices", "yokozuna.purge_blown_indices", [
-  {default, on},
-  {datatype, flag},
   hidden
 ]}.
 
@@ -151,24 +154,24 @@
 
 %% @doc The minimum batch size, in number of Riak objects. Any batches that
 %%      are smaller than this amount will not be immediately flushed to Solr,
-%%      but are guaranteed to be flushed within solrq_delayms_max milliseconds.
-{mapping, "search.solrq_batch_min", "yokozuna.solrq_batch_min", [
+%%      but are guaranteed to be flushed within the
+%%      "search.queue.batch.flush_interval".
+{mapping, "search.queue.batch.minimum", "yokozuna.solrq_batch_min", [
   {default, 1},
   {datatype, integer},
-  hidden,
   {validators, ["positive_integer"]}
 ]}.
 
 %% @doc The maximum batch size, in number of Riak objects. Any batches that are
-%%      larger than this amount will be split, where the first solrq_batch_max
-%%      objects will be flushed to Solr, and the remaining objects enqueued for
-%%      that index will be retained until the next batch is delivered. This
-%%      parameter ensures that at most solrq_batch_max objects will be delivered
-%%      into Solr in any given request.
-{mapping, "search.solrq_batch_max", "yokozuna.solrq_batch_max", [
+%%      larger than this amount will be split, where the first
+%%      search.queue.batch.maximum set of objects will be flushed to Solr, and
+%%      the remaining objects enqueued for that index will be retained until the
+%%      next batch is delivered. This parameter ensures that at most
+%%      "search.queue.batch.maximum object" will be delivered into Solr in any
+%%      given request.
+{mapping, "search.queue.batch.maximum", "yokozuna.solrq_batch_max", [
   {default, 100},
   {datatype, integer},
-  hidden,
   {validators, ["positive_integer"]}
 ]}.
 
@@ -176,49 +179,88 @@
 %%      setting is used to increase or decrease the frequency of batch delivery
 %%      into Solr, specifically for relatively low-volume input into Riak. This
 %%      setting ensures that data will be delivered into Solr in accordance with
-%%      the solrq_batch_min and solrq_batch_max settings within the specified
-%%      interval. Batches that are smaller than solrq_batch_min will be
-%%      delivered to Solr within this interval. This setting will generally have
-%%      no effect on heavily loaded systems.
-{mapping, "search.solrq_delayms_max", "yokozuna.solrq_delayms_max", [
-  {default, "1000ms"},
-  {datatype, [{duration, ms}, {atom, infinity}]},
+%%      the "search.queue.batch.minimum" and "search.queue.batch.maximum"
+%%      settings within the specified interval. Batches that are smaller than
+%%      "search.queue.batch.minimum" will be delivered to Solr within this
+%%      interval. This setting will generally hav no effect on heavily loaded
+%%      systems.
+{mapping, "search.queue.batch.flush_interval",
+ "yokozuna.solrq_batch_flush_interval", [
+  {default, "1s"},
+  {datatype, [{duration, ms}, {atom, infinity}]}
+]}.
+
+%% @doc The queue high watermark. If the total number of queued messages in a
+%%      Solr Queue Worker instance exceeds this limit, then the calling vnode
+%%      will be blocked until the total number falls below this limit. This
+%%      parameter exercises flow control between Riak and the Riak
+%%      Search batching subsystem if writes into Solr start to fall behind.
+{mapping, "search.queue.high_watermark", "yokozuna.solrq_hwm", [
+  {default, 10000},
+  {datatype, integer},
+  {validators, ["positive_integer"]}
+]}.
+
+%% @doc The strategy for how we handle purging when we hit the
+%%      search.queue.high_watermark.
+%%      - purge_one -> Removes the oldest item on the queue from an
+%%        erroring (references to fuses blown in the code) index in
+%%        order to get below the search.queue.high_watermark.
+%%      - purge_index -> Removes all items associated with one random
+%%        erroring (references to fuses blown in the code) index in
+%%        order to get below the search.queue.high_watermark.
+%%      - purge_all -> Removes all items associated with all
+%%        erroring (references to fuses blown in the code) indices in
+%%        order to get below the search.queue.high_watermark.
+%%      - off -> purging is disabled
+{mapping, "search.queue.high_watermark.purge_strategy",
+ "yokozuna.solrq_hwm_purge_strategy", [
+  {default, purge_one},
+  {commented, purge_one},
+  {datatype, {enum, [purge_one, purge_index, purge_all, off]}}
+]}.
+
+%% @doc The number of solr queue workers to instantiate in the Riak
+%%      Search application. Solr queue workers are responsible for enqueuing
+%%      objects for insertion or update into Solr. Increasing the number of
+%%      solrq distributes the queuing of objects, and can lead to greater
+%%      throughput under high load, potentially at the expense of smaller batch
+%%      sizes.
+{mapping, "search.queue.worker_count", "yokozuna.solrq_worker_cnt", [
+  {default, 10},
+  {commented, 10},
+  {datatype, integer},
+  {validators, ["positive_integer"]}
+]}.
+
+%% @doc The number of solr queue helpers to instantiate in the Riak
+%%      Search application. Solr queue helpers are responsible for delivering
+%%      batches of data into Solr. Increasing the number of solrq helpers will
+%%      increase concurrent writes into Solr.
+{mapping, "search.queue.helper_count", "yokozuna.solrq_helper_cnt", [
+  {default, 10},
+  {commented, 10},
+  {datatype, integer},
+  {validators, ["positive_integer"]}
+]}.
+
+%% @doc The amount of time to wait before a drain operation times out.
+%%      If a drain times out during an AAE exchange, the exchange is cancelled
+%%      and retried at a later time.
+{mapping, "search.queue.drain.timeout", "yokozuna.solrq_drain_timeout", [
+  {default, "1m"},
+  {datatype, {duration, ms}},
   hidden
 ]}.
 
-%% @doc The queue high water mark. If the total number of queued messages in a
-%%      Solrq worker instance exceed this limit, then the calling vnode will be
-%%      blocked until the total number falls below this limit. This parameter
-%%      exercises flow control between Riak and the Yokozuna batching subsystem,
-%%      if writes into Solr start to fall behind.
-{mapping, "search.solrq_queue_hwm", "yokozuna.solrq_queue_hwm", [
-  {default, 10000},
-  {datatype, integer},
-  hidden,
-  {validators, ["integer"]}
-]}.
-
-%% @doc The number of solr queue workers to instantiate in the Yokozuna
-%%      application. Solr queue workers are responsible for enqueuing objects
-%%      for insertion or update into Solr. Increasing the number of solrq
-%%      distributes the queuing of objects, and can lead to greater throughput
-%%      under high load, potentially at the expense of smaller batch sizes.
-{mapping, "search.num_solrq", "yokozuna.num_solrq", [
-  {default, 10},
-  {datatype, integer},
-  hidden,
-  {validators, ["positive_integer"]}
-]}.
-
-%% @doc The number of solr queue helpers to instantiate in the Yokozuna
-%%      application. Solr queue helpers are responsible for delivering batches
-%%      of data into Solr. Increasing the number of solrq helpers will
-%%      increase concurrent writes into Solr.
-{mapping, "search.num_solrq_helpers", "yokozuna.num_solrq_helpers", [
-  {default, 10},
-  {datatype, integer},
-  hidden,
-  {validators, ["positive_integer"]}
+%% @doc When enabled, enqueued Riak objects are drained prior to an AAE
+%%      exchange, in order to minimize AAE activity, and during shutdown.
+%%      If AAE is disabled, this setting only has an effect on shutdown
+%%      behavior. Users generally have little reason to disable draining.
+{mapping, "search.queue.drain.enable", "yokozuna.solrq_drain_enable", [
+  {default, on},
+  {datatype, flag},
+  hidden
 ]}.
 
 %% @doc The value to use for the `max_sessions' configuration for the ibrowse
