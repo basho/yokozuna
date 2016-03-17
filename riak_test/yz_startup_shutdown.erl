@@ -5,7 +5,13 @@
 -include_lib("eunit/include/eunit.hrl").
 -compile({parse_transform, rt_intercept_pt}).
 
--define(CONFIG, [{yokozuna, [{enabled, true}]}]).
+-define(MAX_SESSIONS, 11).
+-define(MAX_PIPELINE_SIZE, 9).
+-define(CONFIG,
+        [{yokozuna, [{enabled, true},
+                     {?YZ_CONFIG_IBROWSE_MAX_SESSIONS, ?MAX_SESSIONS},
+                     {?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE, ?MAX_PIPELINE_SIZE}]}]
+).
 -define(YZ_SERVICES, [yz_pb_search, yz_pb_admin]).
 
 confirm() ->
@@ -14,6 +20,7 @@ confirm() ->
 
     verify_yz_components_enabled(Cluster),
     verify_yz_services_registered(Cluster),
+    verify_ibrowse_config(Cluster),
 
     intercept_yz_solrq_drain_mgr_drain(Cluster),
     stop_yokozuna(Cluster),
@@ -134,3 +141,29 @@ verify_drain_called(Cluster) ->
                              ok =:= Result
                      end,
                      Results).
+
+%% @private
+%% @doc For each node in `Cluster', verify that the ibrowse configuration has
+%% been applied.
+verify_ibrowse_config([Node1|_] = Cluster) ->
+    {ResL, []} = rpc:multicall(Cluster, yz_solr, get_ibrowse_config, []),
+    lists:foreach(
+      fun(Config) ->
+              MaxSessions = proplists:get_value(?YZ_SOLR_MAX_SESSIONS, Config),
+              MaxPipelineSize = proplists:get_value(?YZ_SOLR_MAX_PIPELINE_SIZE, Config),
+              ?assertEqual(MaxSessions, ?MAX_SESSIONS),
+              ?assertEqual(MaxPipelineSize, ?MAX_PIPELINE_SIZE)
+      end,
+      ResL),
+
+    %% Now verify setting these config values programmatically...
+    NewMaxSessions = 42,
+    NewMaxPipelineSize = 64,
+    ok = rpc:call(Node1, yz_solr, set_ibrowse_config,
+                  [[{?YZ_SOLR_MAX_SESSIONS, NewMaxSessions},
+                    {?YZ_SOLR_MAX_PIPELINE_SIZE, NewMaxPipelineSize}]]),
+    NewConfig = rpc:call(Node1, yz_solr, get_ibrowse_config, []),
+    ?assertEqual(NewMaxSessions, proplists:get_value(?YZ_SOLR_MAX_SESSIONS, NewConfig)),
+    ?assertEqual(NewMaxPipelineSize,
+            proplists:get_value(?YZ_SOLR_MAX_PIPELINE_SIZE, NewConfig)).
+

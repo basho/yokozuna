@@ -79,7 +79,7 @@ confirm() ->
             %% and search operations during upgrade.  I'm avoiding them in
             %% this test because Riak Search can fail on search while in a
             %% mixed-cluster.
-            rolling_upgrade(Cluster, current),
+            yz_rt:rolling_upgrade(Cluster, current),
 
             load_data(Cluster, YZBenchDir, 5000),
             query_data(Cluster, YZBenchDir, 5000, 1, <<"value">>),
@@ -261,24 +261,3 @@ http_get_bucket_prop({Host, Port}, Bucket, Prop, Default) ->
     Struct = mochijson2:decode(R),
     {struct, Props} = element(2,hd(element(2, Struct))),
     proplists:get_value(Prop, Props, Default).
-
-rolling_upgrade(Cluster, Vsn) ->
-    lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
-    SolrPorts = lists:seq(11000, 11000 + length(Cluster) - 1),
-    Cluster2 = lists:zip(SolrPorts, Cluster),
-    [begin
-         Cfg = [{riak_kv, [{anti_entropy, {on, [debug]}},
-                           {anti_entropy_concurrency, 12},
-                           {anti_entropy_build_limit, {6,500}}
-                          ]},
-                {yokozuna, [{anti_entropy, {on, [debug]}},
-                            {anti_entropy_concurrency, 12},
-                            {anti_entropy_build_limit, {6,500}},
-                            {anti_entropy_tick, 1000},
-                            {enabled, true},
-                            {solr_port, SolrPort}]}],
-         rt:upgrade(Node, Vsn, Cfg),
-         rt:wait_for_service(Node, riak_kv),
-         rt:wait_for_service(Node, riak_search),
-         rt:wait_for_service(Node, yokozuna)
-     end || {SolrPort, Node} <- Cluster2].

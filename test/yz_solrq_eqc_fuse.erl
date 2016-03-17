@@ -67,11 +67,7 @@ melt(Index) ->
     gen_server:call(?MODULE, {melt, Index}).
 
 melts(Index) ->
-    %% NB. yz_fuse converts Indices (as binaries) to atoms, so in general,
-    %% melt and ask are called with atom arguments.  Since this function
-    %% is used just for property testing (and is not called through yz_fuse),
-    %% we need to covert the Index paramter from a binary to an atom.
-    gen_server:call(?MODULE, {melts, list_to_atom(binary_to_list(Index))}).
+    gen_server:call(?MODULE, {melts, Index}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -106,7 +102,7 @@ handle_call({melt, Index}, _From, #state{indices = Indices, threshold = Threshol
     FuseState =
         case NewMelts == Threshold of
             true ->
-                yz_solrq_sup:blown_fuse(to_binary(Index)),
+                yz_solrq_sup:blown_fuse(Index),
                 erlang:send_after(Interval, ?MODULE, {recover, Index}),
                 blown;
             _ ->
@@ -130,7 +126,7 @@ handle_cast(_Request, State) ->
 
 handle_info({recover, Index}, #state{indices=Indices} = State) ->
     {ok, {_FuseState, Melts}} = dict:find(Index, Indices),
-    yz_solrq_sup:healed_fuse(to_binary(Index)),
+    yz_solrq_sup:healed_fuse(Index),
     {noreply, State#state{indices=dict:store(Index, {ok, Melts}, Indices)}};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -144,6 +140,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-to_binary(Atom) ->
-    list_to_binary(atom_to_list(Atom)).

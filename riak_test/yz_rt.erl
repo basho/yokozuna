@@ -418,6 +418,14 @@ set_bucket_type_index(Node, BucketType, Index, NVal) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
     create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index},{n_val,NVal}]).
 
+-spec create_indexed_bucket(pid(),
+                            cluster(),
+                            {binary(), binary()},
+                            index_name()) -> ok.
+create_indexed_bucket(PBConn, [Node|_], {BType, _Bucket}, Index) ->
+    ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, 1}]),
+    ok = yz_rt:set_bucket_type_index(Node, BType, Index, 1).
+
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);
 solr_http(ConnInfo) ->
@@ -607,6 +615,11 @@ commit(Nodes, Index) ->
     rpc:multicall(Nodes, yz_solr, commit, [Index]),
     ok.
 
+-spec drain_solrqs([node()]) -> ok.
+drain_solrqs(Nodes) ->
+    {_ResL, []} = rpc:multicall(Nodes, yz_solrq_drain_mgr, drain, []),
+    ok.
+
 -spec load_intercept_code(node()) -> ok.
 load_intercept_code(Node) ->
     CodePath = filename:join([rt_config:get(yz_dir),
@@ -614,3 +627,26 @@ load_intercept_code(Node) ->
                               "intercepts",
                               "*.erl"]),
     rt_intercept:load_code(Node, [CodePath]).
+
+-spec rolling_upgrade([node()], current | previous | legacy) -> ok.
+rolling_upgrade(Cluster, Vsn) ->
+    lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
+    SolrPorts = lists:seq(11000, 11000 + length(Cluster) - 1),
+    Cluster2 = lists:zip(SolrPorts, Cluster),
+    [begin
+         Cfg = [{riak_kv, [{anti_entropy, {on, [debug]}},
+                           {anti_entropy_concurrency, 12},
+                           {anti_entropy_build_limit, {6,500}}
+                          ]},
+                {yokozuna, [{anti_entropy, {on, [debug]}},
+                            {anti_entropy_concurrency, 12},
+                            {anti_entropy_build_limit, {6,500}},
+                            {anti_entropy_tick, 1000},
+                            {enabled, true},
+                            {solr_port, SolrPort}]}],
+         rt:upgrade(Node, Vsn, Cfg),
+         rt:wait_for_service(Node, riak_kv),
+         rt:wait_for_service(Node, riak_search),
+         rt:wait_for_service(Node, yokozuna)
+     end || {SolrPort, Node} <- Cluster2],
+    ok.
