@@ -34,6 +34,8 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_queue_hwm", 10000),
     cuttlefish_unit:assert_config(Config, "yokozuna.num_solrq", 10),
     cuttlefish_unit:assert_config(Config, "yokozuna.num_solrq_helpers", 10),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 100),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
     ok.
 
 override_schema_test() ->
@@ -61,6 +63,8 @@ override_schema_test() ->
             {["search", "solrq_batch_max"], 10000},
             {["search", "solrq_delayms_max"], infinity},
             {["search", "solrq_queue_hwm"], 100000},
+            {["search", "ibrowse_max_sessions"], 101},
+            {["search", "ibrowse_max_pipeline_size"], 11},
             {["search", "num_solrq"], 5},
             {["search", "num_solrq_helpers"], 20}
     ],
@@ -88,6 +92,8 @@ override_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_max", 10000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_delayms_max", infinity),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_queue_hwm", 100000),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 101),
+    cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 11),
     cuttlefish_unit:assert_config(Config, "yokozuna.num_solrq", 5),
     cuttlefish_unit:assert_config(Config, "yokozuna.num_solrq_helpers", 20),
     ok.
