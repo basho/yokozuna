@@ -1,73 +1,59 @@
-From a2e77eaa262bd24c8bf3250d85fa0b3cab7d33e7 Mon Sep 17 00:00:00 2001
-From: Ryan Zezeski <rzezeski@gmail.com>
-Date: Tue, 12 Feb 2013 11:54:21 -0500
-Subject: [PATCH] Disable stale check and nagle
+commit 13449f7dc2ac0d205180611f2de6e1371cd88a4b
+Author: Zeeshan Lakhani <zlakhani@basho.com.com>
+Date:   Thu May 7 00:20:08 2015 +0900
 
-* Apache HTTP's stale conn check causes additionall latency and
-  is not recommended for high-throughput/low-latency scenarios.
-
-* Disabling the stale check requires adding a periodic background
-  task which clears idles connections.  This prevents the client
-  from pulling a conn closed by the server which causes an IOException.
-
-* Disable nagle as it's meant for protocols that use many small messages.
----
- .../solr/handler/component/HttpShardHandlerFactory.java     |  3 +++
- .../org/apache/solr/client/solrj/impl/HttpClientUtil.java   | 13 +++++++++++++
- 2 files changed, 16 insertions(+)
+    Update patches for Solr 4.10.4
 
 diff --git a/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java b/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
-index 3f91f17..e8b018e 100644
+index f574f29..42168df 100644
 --- a/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
 +++ b/solr/core/src/java/org/apache/solr/handler/component/HttpShardHandlerFactory.java
-@@ -17,6 +17,7 @@ package org.apache.solr.handler.component;
-  */
+@@ -29,6 +29,7 @@ import java.util.concurrent.ThreadPoolExecutor;
+ import java.util.concurrent.TimeUnit;
  
  import org.apache.commons.lang.StringUtils;
 +import org.apache.http.params.HttpConnectionParams;
  import org.apache.http.client.HttpClient;
- import org.apache.solr.client.solrj.SolrServerException;
- import org.apache.solr.client.solrj.impl.HttpClientUtil;
-@@ -153,6 +154,8 @@ public class HttpShardHandlerFactory extends ShardHandlerFactory implements org.
-     clientParams.set(HttpClientUtil.PROP_CONNECTION_TIMEOUT, connectionTimeout);
-     clientParams.set(HttpClientUtil.PROP_USE_RETRY, false);
+ import org.apache.http.impl.client.DefaultHttpClient;
+ import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
+@@ -163,7 +164,8 @@ public class HttpShardHandlerFactory extends ShardHandlerFactory implements org.
+       clientParams.set(HttpClientUtil.PROP_USE_RETRY, false);
+     }
      this.defaultClient = HttpClientUtil.createClient(clientParams);
+-    
 +    this.defaultClient.getParams().setParameter(HttpConnectionParams.STALE_CONNECTION_CHECK, false);
 +    this.defaultClient.getParams().setParameter(HttpConnectionParams.TCP_NODELAY, true);
-     this.loadbalancer = createLoadbalancer(defaultClient);
-   }
- 
+     // must come after createClient
+     if (useRetries) {
+       // our default retry handler will never retry on IOException if the request has been sent already,
 diff --git a/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java b/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
-index b7c0680..8ca13f3 100644
+index fcbc80d..c98c982 100644
 --- a/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
 +++ b/solr/solrj/src/java/org/apache/solr/client/solrj/impl/HttpClientUtil.java
-@@ -18,6 +18,9 @@ package org.apache.solr.client.solrj.impl;
+@@ -17,6 +17,9 @@
+ package org.apache.solr.client.solrj.impl;
  
  import java.io.IOException;
- import java.io.InputStream;
 +import java.util.concurrent.Executors;
 +import java.util.concurrent.ScheduledExecutorService;
 +import java.util.concurrent.TimeUnit;
+ import java.io.InputStream;
  import java.util.zip.GZIPInputStream;
  import java.util.zip.InflaterInputStream;
- 
-@@ -110,6 +113,16 @@ public class HttpClientUtil {
+@@ -115,6 +118,16 @@ public class HttpClientUtil {
        logger.debug("Creating new http client, config:" + config);
      }
      final DefaultHttpClient httpClient = new SystemDefaultHttpClient();
 +    final org.apache.http.conn.ClientConnectionManager mgr = httpClient.getConnectionManager();
 +
-+    // NOTE: The sweeper task is assuming hard-coded Jetty max-idle of 50s.
++    // Note: The sweeper task is assuming hard-coded Jetty max-idle of 50s.
 +    final Runnable sweeper = new Runnable() {
-+            public void run() {
-+                mgr.closeIdleConnections(40, TimeUnit.SECONDS);
-+            }
-+        };
++        public void run() {
++            mgr.closeIdleConnections(40, TimeUnit.SECONDS);
++        }
++    };
 +    final ScheduledExecutorService stp = Executors.newScheduledThreadPool(1);
 +    stp.scheduleWithFixedDelay(sweeper, 5, 5, TimeUnit.SECONDS);
      configureClient(httpClient, config);
      return httpClient;
    }
--- 
-1.9.0
-
