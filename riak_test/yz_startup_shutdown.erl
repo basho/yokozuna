@@ -5,6 +5,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -compile({parse_transform, rt_intercept_pt}).
 
+-define(CLUSTER_SIZE, 4).
 -define(MAX_SESSIONS, 11).
 -define(MAX_PIPELINE_SIZE, 9).
 -define(CONFIG,
@@ -15,12 +16,14 @@
 -define(YZ_SERVICES, [yz_pb_search, yz_pb_admin]).
 
 confirm() ->
-    Cluster = rt:build_cluster(2, ?CONFIG),
+    Cluster = rt:build_cluster(?CLUSTER_SIZE, ?CONFIG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
 
     verify_yz_components_enabled(Cluster),
     verify_yz_services_registered(Cluster),
     verify_ibrowse_config(Cluster),
+
+    verify_node_restart(Cluster),
 
     intercept_yz_solrq_drain_mgr_drain(Cluster),
     stop_yokozuna(Cluster),
@@ -167,3 +170,14 @@ verify_ibrowse_config([Node1|_] = Cluster) ->
     ?assertEqual(NewMaxPipelineSize,
             proplists:get_value(?YZ_SOLR_MAX_PIPELINE_SIZE, NewConfig)).
 
+%% @private
+%% @doc Restart one node in `Cluster' and verify that it does not participate
+%% in query coverage plans until it is ready to service queries.
+verify_node_restart(Cluster) ->
+    restart_and_wait_for_service(hd(Cluster), yokozuna).
+
+restart_and_wait_for_service(Node, Service) ->
+    rt:stop_and_wait(Node),
+    rt:start_and_wait(Node),
+    rt:wait_until_nodes_ready([Node]),
+    rt:wait_for_cluster_service([Node], Service).
