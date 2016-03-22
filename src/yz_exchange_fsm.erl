@@ -206,7 +206,6 @@ key_exchange(timeout, S=#state{index=Index,
              end,
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
         0 ->
-            yz_stat:aae_repairs(0),
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
             yz_stat:aae_repairs(Count),

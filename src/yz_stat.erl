@@ -203,10 +203,7 @@ stats_map(true) -> [
     {search_queue_batch_latency_99, {{?YZ_APP_NAME, queue, batch, latency}, 99}, histogram_percentile},
     {search_queue_batch_latency_999, {{?YZ_APP_NAME, queue, batch, latency}, 999}, histogram_percentile},
 
-    {search_aae_repairs_min, {{?YZ_APP_NAME, aae_repairs}, min}, histogram},
-    {search_aae_repairs_max, {{?YZ_APP_NAME, aae_repairs}, max}, histogram},
-    {search_aae_repairs_mean, {{?YZ_APP_NAME, aae_repairs}, mean}, histogram},
-    {search_aae_repairs_median, {{?YZ_APP_NAME, aae_repairs}, median}, histogram},
+    {search_aae_repairs_count, {{?YZ_APP_NAME, aae_repairs}, value}, counter},
 
     %% Query stats
     {search_query_throughput_count, {{?YZ_APP_NAME, 'query', throughput}, count}, spiral},
@@ -384,11 +381,8 @@ stats() -> [
         {99,     search_queue_batch_latency_99},
         {999,    search_queue_batch_latency_999}
     ]},
-    {[aae_repairs], histogram, [], [
-        {min,    search_aae_repairs_min},
-        {max,    search_aae_repairs_max},
-        {mean,   search_aae_repairs_mean},
-        {median, search_aae_repairs_median}
+    {[aae_repairs], counter, [], [
+        {value,    search_aae_repairs_count}
     ]},
     {['query', fail], spiral, [], [
         {count, search_query_fail_count},
