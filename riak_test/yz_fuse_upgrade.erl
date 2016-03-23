@@ -33,7 +33,7 @@
 -define(CONFIG,
         [{riak_core,
           [{ring_creation_size, 16}]},
-         {riak_search,
+         {yokozuna,
           [{enabled, true}]}
         ]).
 

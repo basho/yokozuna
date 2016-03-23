@@ -698,7 +698,6 @@ rolling_upgrade(Cluster, Vsn) ->
                             {solr_port, SolrPort}]}],
          rt:upgrade(Node, Vsn, Cfg),
          rt:wait_for_service(Node, riak_kv),
-         rt:wait_for_service(Node, riak_search),
          rt:wait_for_service(Node, yokozuna)
      end || {SolrPort, Node} <- Cluster2],
     ok.
