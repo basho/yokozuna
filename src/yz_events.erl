@@ -296,7 +296,7 @@ sync_indexes(Removed, Added, Same) ->
 %% @private
 %% @doc Check and update `yz_events' ETS if the index has recovered from it's
 %%      fuse being blown or has been reset/removed.
--spec handle_index_recovered(atom(), down|removed|up) -> true.
+-spec handle_index_recovered(index_name(), down|removed|up) -> true.
 handle_index_recovered(Index, down) ->
     ets:insert(?ETS, {Index, {state, down}});
 handle_index_recovered(Index, removed) ->
@@ -305,7 +305,7 @@ handle_index_recovered(Index, up) ->
     Recovered = ets:lookup(?ETS, Index),
     case proplists:get_value(Index, Recovered, []) of
         {state, down} ->
-            yz_stat:fuse_recovered(Index),
+            yz_stat:fuse_recovered(?BIN_TO_ATOM(Index)),
             ets:insert(?ETS, {Index, {state, up}});
         _ ->
             ets:insert(?ETS, {Index, {state, up}})
