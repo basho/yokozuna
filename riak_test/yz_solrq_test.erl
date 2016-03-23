@@ -506,12 +506,14 @@ wait_until_fuses_blown(Node, SolrqId, Indices) ->
     F = fun(IndexQ) ->
         proplists:get_value(fuse_blown, IndexQ)
     end,
+    lager:info("Waiting until fuses are blown for indices ~p ...", [Indices]),
     check_fuse_status(Node, SolrqId, Indices, F).
 
 wait_until_fuses_reset(Node, SolrqId, Indices) ->
     F = fun(IndexQ) ->
         not proplists:get_value(fuse_blown, IndexQ)
     end,
+    lager:info("Waiting until fuses recover for indices ~p ...", [Indices]),
     check_fuse_status(Node, SolrqId, Indices, F).
 
 check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
@@ -519,17 +521,18 @@ check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
         Solrqs = rpc:call(N, yz_debug, solrqs, []),
         Solrq = proplists:get_value(SolrqId, Solrqs),
         IndexQs = proplists:get_value(indexqs, Solrq),
-        DrainingIndexqs = lists:filter(
+        MatchingIndexQs = lists:filter(
             FuseCheckFunction,
             IndexQs
         ),
-        DrainingIndices = lists:map(
+        MatchingIndices = lists:map(
             fun(IndexQ) ->
                 proplists:get_value(index, IndexQ)
             end,
-            DrainingIndexqs
+            MatchingIndexQs
         ),
-        subseteq(Indices, DrainingIndices)
+        %lager:info("Matching indices ~p ...", [MatchingIndices]),
+        subseteq(Indices, MatchingIndices)
     end,
     yz_rt:wait_until([Node], F).
 
