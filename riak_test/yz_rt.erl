@@ -628,24 +628,17 @@ load_intercept_code(Node) ->
                               "*.erl"]),
     rt_intercept:load_code(Node, [CodePath]).
 
--spec rolling_upgrade([node()], current | previous | legacy) -> ok.
-rolling_upgrade(Cluster, Vsn) ->
+-spec rolling_upgrade(cluster() | node(),
+                      current | previous | legacy,
+                      UpgradeConfig :: props(),
+                      WaitForServices :: [atom()]) -> ok.
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices)
+  when is_list(Cluster) ->
     lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
-    SolrPorts = lists:seq(11000, 11000 + length(Cluster) - 1),
-    Cluster2 = lists:zip(SolrPorts, Cluster),
-    [begin
-         Cfg = [{riak_kv, [{anti_entropy, {on, [debug]}},
-                           {anti_entropy_concurrency, 12},
-                           {anti_entropy_build_limit, {6,500}}
-                          ]},
-                {yokozuna, [{anti_entropy, {on, [debug]}},
-                            {anti_entropy_concurrency, 12},
-                            {anti_entropy_build_limit, {6,500}},
-                            {anti_entropy_tick, 1000},
-                            {enabled, true},
-                            {solr_port, SolrPort}]}],
-         rt:upgrade(Node, Vsn, Cfg),
-         rt:wait_for_service(Node, riak_kv),
-         rt:wait_for_service(Node, yokozuna)
-     end || {SolrPort, Node} <- Cluster2],
+    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices)
+     || Node <- Cluster],
+    ok;
+rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
+    rt:upgrade(Node, Version, UpgradeConfig),
+    [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
     ok.
