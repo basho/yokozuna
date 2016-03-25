@@ -243,7 +243,8 @@ solr_ops(LI, Entries) ->
                     DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
                                                        LP),
 
-                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)}
+                                    || Doc <- AddOps],
                                    [{delete, yz_solr:encode_delete(DeleteOp)} ||
                                        DeleteOp <- DeleteOps]],
                     [OpsForEntry | Ops]
@@ -264,7 +265,7 @@ solr_ops(LI, Entries) ->
 send_solr_ops_for_entries(Index, Ops, Entries) ->
     try
         T1 = os:timestamp(),
-        ok = yz_solr:index_batch(Index, Ops),
+        ok = yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)),
         yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
         ok
     catch _:Err ->
@@ -273,7 +274,7 @@ send_solr_ops_for_entries(Index, Ops, Entries) ->
             ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
             case Err of
                 {_, badrequest, _} ->
-                    SuccessOps = send_solr_single_ops(Index, lists:reverse(Ops)),
+                    SuccessOps = send_solr_single_ops(Index, Ops),
                     {SuccessEntries, _} = lists:split(length(SuccessOps),
                                                       Entries),
                     {ok, SuccessEntries};
@@ -299,7 +300,7 @@ send_solr_single_ops(Index, Ops) ->
       fun(Op) ->
               try
                   T1 = os:timestamp(),
-                  ok = yz_solr:index_batch(Index, [Op]),
+                  ok = yz_solr:index_batch(Index, prepare_ops_for_batch([Op])),
                   yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
                   true
               catch _:Err ->
@@ -315,7 +316,7 @@ send_solr_single_ops(Index, Ops) ->
                               false
                       end
               end
-      end, Ops).
+      end, lists:reverse(Ops)).
 
 -spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
@@ -357,6 +358,12 @@ get_reason_action(Reason) when is_tuple(Reason) ->
 get_reason_action(Reason) ->
     Reason.
 
+-spec prepare_ops_for_batch(solr_ops()) -> solr_entries().
+prepare_ops_for_batch(Ops) ->
+    %% Flatten and Reverse Ops (Making sure deletes occurr first for
+    %% combined operators)
+    lists:reverse(lists:flatten(Ops)).
+
 handle_info(_Msg, State) ->
     {noreply, State}.
 
@@ -365,4 +372,3 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
