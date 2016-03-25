@@ -642,3 +642,12 @@ rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
     rt:upgrade(Node, Version, UpgradeConfig),
     [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
     ok.
+
+-spec setup_drain_intercepts(cluster()) -> ok.
+setup_drain_intercepts(Cluster) ->
+    [yz_rt:load_intercept_code(Node) || Node <- Cluster],
+    [rt_intercept:add(
+        N,
+        {yz_solrq_drain_mgr, [{{drain, 1}, delay_drain}]}
+    ) || N <- Cluster],
+    ok.

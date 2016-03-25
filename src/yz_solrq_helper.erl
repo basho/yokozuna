@@ -223,6 +223,13 @@ solr_ops(LI, Entries) ->
             ObjValues = riak_object:get_values(Obj),
             Reason = get_reason_action(Reason0),
             case {Reason, ObjValues} of
+                {anti_entropy_delete, _ObjValues} ->
+                    LP = yz_cover:logical_partition(LI, P),
+                    DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
+                    DeleteOps =
+                        [[{delete, yz_solr:encode_delete({id, DocId})}
+                            || DocId <- DocIds]],
+                    [DeleteOps | Ops];
                 {delete, _} ->
                     [[[{delete, yz_solr:encode_delete({bkey, BKey})}]] | Ops];
                 {_, [notfound]} ->
@@ -317,6 +324,7 @@ update_aae_and_repair_stats(Entries) ->
                         ReasonAction = get_reason_action(Reason),
                         Action = case ReasonAction of
                                      delete -> delete;
+                                     anti_entropy_delete -> delete;
                                      _ -> {insert, Hash}
                                  end,
                         yz_kv:update_hashtree(Action, P, ShortPL, BKey),
