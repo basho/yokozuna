@@ -92,7 +92,9 @@
 %% index-write reasons
 -type repair() :: full_repair | tree_repair | failed_repair.
 -type write_reason() :: delete | handoff | put | anti_entropy |
-                        {delete, repair()} | {anti_entropy, repair()}.
+                        {delete, repair()} | {anti_entropy, repair()}
+                        | {anti_entropy_delete, repair()}
+                        | anti_entropy_delete.
 
 %% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is

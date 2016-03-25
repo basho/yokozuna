@@ -240,11 +240,11 @@ repair(Partition, {remote_missing, KeyBin}) ->
     case yz_kv:should_index(Index) of
         true ->
             Repair = full_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {delete, Repair}, Partition),
+            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
             Repair;
         false ->
             Repair = tree_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {delete, Repair}, Partition),
+            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
             Repair
     end;
 repair(Partition, {_Reason, KeyBin}) ->
