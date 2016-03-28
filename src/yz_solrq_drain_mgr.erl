@@ -50,12 +50,12 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% @doc Drain all queues to Solr
--spec drain() -> ok | {error, _Reason}.
+-spec drain() -> ok | {error, Reason :: term()}.
 drain() ->
     drain([]).
 
 %% @doc Drain all queues to Solr
--spec drain(drain_params()) -> ok | {error, _Reason}.
+-spec drain(drain_params()) -> ok | {error, Reason :: term()}.
 drain(Params) ->
     T1 = os:timestamp(),
     ExchangeFSMPid = proplists:get_value(
