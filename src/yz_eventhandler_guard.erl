@@ -22,7 +22,6 @@
 
 %% @doc yz_eventhandler_guard processes.
 %%      Same as riak_core_eventhandler_guard.erl.
-%%      TODO: Create generic eventhandler_sup and eventhandler_guard templates.
 
 -module(yz_eventhandler_guard).
 -behaviour(gen_server).

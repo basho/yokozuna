@@ -235,7 +235,7 @@ local_create(Name) ->
 
 %% @doc Wrapper around file:delete on the core properties file.
 %% Obeys the same return semantics as file:delete/1
--spec delete_core_props_file(string()) -> ok | enoent | term().
+-spec delete_core_props_file(PropsFile::string()) -> ok | enoent | term().
 delete_core_props_file(PropsFile) ->
     case file:delete(PropsFile) of
         ok ->

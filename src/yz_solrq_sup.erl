@@ -106,7 +106,7 @@ num_helper_specs() ->
 %% @doc Resize the number of queues. For debugging/testing only,
 %%      this will briefly cause the worker that queues remap to
 %%      to change so updates may be out of order briefly.
--spec resize_queues(pos_integer()) -> size_resps().
+-spec resize_queues(NewSize :: pos_integer()) -> size_resps().
 resize_queues(NewSize) when NewSize > 0 ->
     do_child_resize(NewSize, num_queue_specs(),
         fun set_solrq_tuple/1,
@@ -116,7 +116,7 @@ resize_queues(NewSize) when NewSize > 0 ->
 %% @doc Resize the number of helpers. For debugging/testing only,
 %%      this will briefly cause the worker that queues remap to
 %%      to change so updates may be out of order briefly.
--spec resize_helpers(pos_integer()) -> size_resps().
+-spec resize_helpers(NewSize :: pos_integer()) -> size_resps().
 resize_helpers(NewSize) when NewSize > 0 ->
     do_child_resize(NewSize, num_helper_specs(),
         fun set_solrq_helper_tuple/1,
@@ -182,7 +182,7 @@ solrq_helper_names() ->
 
 
 %% @doc Start the drain supervsior, under this supervisor
--spec start_drain_fsm(proplist()) -> {ok, pid()} | {error, term()}.
+-spec start_drain_fsm(proplist()) -> {ok, pid()} | {error, Reason :: term()}.
 start_drain_fsm(CallbackList) ->
     supervisor:start_child(
         ?MODULE,
@@ -226,10 +226,12 @@ child_count(ChildType) ->
     length([true || {_,_,_,[Type]} <- supervisor:which_children(?MODULE),
                    Type == ChildType]).
 
--spec do_child_resize(pos_integer(), non_neg_integer(),
-                      fun((pos_integer()) -> ok),
-                      fun((non_neg_integer()) -> regname()),
-                      fun((regname()) -> {regname(), pid()})) -> size_resps().
+-spec do_child_resize(NewSize :: pos_integer(),
+                      OldSize :: non_neg_integer(),
+                      SetTupleFun :: fun((pos_integer()) -> ok),
+                      RegnameFun :: fun((non_neg_integer()) -> regname()),
+                      ChildSpecFun :: fun((regname()) -> {regname(), pid()}))
+                      -> size_resps().
 do_child_resize(NewSize, OldSize, SetTupleFun, RegnameFun, ChildSpecFun) ->
     case NewSize of
         OldSize ->

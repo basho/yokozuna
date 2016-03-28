@@ -69,7 +69,7 @@ status(Pid) ->
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
 
--spec index_ready(index_name(), pid()) -> ok.
+-spec index_ready(index_name(), solrq_id()) -> ok.
 index_ready(Index, QPid) ->
     HPid = yz_solrq_sup:random_helper(),
     index_ready(HPid, Index, QPid).
@@ -77,8 +77,7 @@ index_ready(Index, QPid) ->
 %% @doc Mark the index as ready.  Separating into a two phase
 %%      rather than just blindly sending from the solrq adds the
 %%      backpressure on the KV vnode.
--spec index_ready(atom()|pid()|non_neg_integer(), index_name(), pid())
-                 -> ok.
+-spec index_ready(solrq_helper_id(), index_name(), solrq_id()) -> ok.
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
@@ -86,7 +85,11 @@ index_ready(Hash, Index, QPid) ->
     index_ready(HPid, Index, QPid).
 
 %% @doc Index a batch
--spec index_batch(atom()|pid(), index_name(), non_neg_integer(), pid(), solr_entries()) -> ok.
+-spec index_batch(solrq_helper_id(),
+                  index_name(),
+                  BatchMax :: non_neg_integer(),
+                  solrq_id(),
+                  solr_entries()) -> ok.
 index_batch(HPid, Index, BatchMax, QPid, Entries) ->
     gen_server:cast(HPid, {batch, Index, BatchMax, QPid, Entries}).
 
@@ -129,8 +132,13 @@ remove(Delivered, Entries) ->
     %% of having to handle bad requests.
     Entries -- Delivered.
 
--spec do_batches(index_name(), non_neg_integer(), solr_entries(), solr_entries()) ->
-    ok | {ok, Delivered :: solr_entries()} | {error, Undelivered :: solr_entries()}.
+-spec do_batches(index_name(),
+                 BatchMax :: non_neg_integer(),
+                 solr_entries(),
+                 solr_entries()) ->
+    ok |
+    {ok, Delivered :: solr_entries()} |
+    {error, Undelivered :: solr_entries()}.
 do_batches(_Index, _BatchMax, _Delivered, []) ->
     ok;
 do_batches(Index, BatchMax, Delivered, Entries) ->
@@ -147,7 +155,7 @@ do_batches(Index, BatchMax, Delivered, Entries) ->
 -spec do_batch(index_name(), solr_entries()) ->
       ok                                        % all entries were delivered
     | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered
-    | {error, term()}.                          % an error occurred; retry all of them
+    | {error, Reason :: term()}.                % an error occurred; retry all of them
 do_batch(Index, Entries0) ->
     try
         %% TODO: use ibrowse http worker
