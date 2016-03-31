@@ -246,8 +246,15 @@ query_data(Cluster, YZBenchDir, NumKeys, Time, DefaultField) ->
            {shutdown_on_error, true}],
     File = "bb-query-fruit-" ++ Idx,
     yz_rt:write_terms(File, Cfg),
-    {ExitCode, _StdOut} = yz_rt:run_bb(sync, File),
-    ?assertEqual(0, ExitCode).
+    {ExitCode, StdOut} = yz_rt:run_bb(sync, File),
+    case ExitCode of
+        0 ->
+            ok;
+        _ ->
+            lager:info("***** run_bb failed with code ~p", [ExitCode]),
+            lager:info("***** StdOut: \"\"\"~s\"\"\"", [StdOut]),
+            ?assertEqual(0, ExitCode)
+    end.
 
 pb_get_bucket_prop(PB, Bucket, Prop, Default) ->
     {ok, Props} = riakc_pb_socket:get_bucket(PB, Bucket),

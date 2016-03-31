@@ -297,9 +297,13 @@ run_bb(Method, File) ->
               sync -> cmd;
               async -> spawn_cmd
           end,
+    lager:info("@@@@@ run_bb(~p, ~p), Fun = ~p", [Method, File, Fun]),
     AbsFile = filename:absname(File),
+    lager:info("@@@@@ AbsFile = ~p", [AbsFile]),
     BB = filename:join([rt_config:get(basho_bench), "basho_bench"]),
+    lager:info("@@@@@ BB = ~p", [BB]),
     Path = lists:flatten([BB, " -d /tmp/yz-bb-results ", AbsFile]),
+    lager:info("@@@@@ Path = ~p", [Path]),
     lager:debug("Executing b_b with the following command: ~p", [Path]),
     rt:Fun(Path).
 
