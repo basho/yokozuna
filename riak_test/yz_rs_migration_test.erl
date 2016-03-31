@@ -67,7 +67,7 @@ confirm() ->
             lager:info("YZBenchDir: ~p", [YZBenchDir]),
 
             TestMetaData = riak_test_runner:metadata(),
-            OldVsn = proplists:get_value(upgrade_version, TestMetaData, previous),
+            OldVsn = proplists:get_value(upgrade_version, TestMetaData, legacy),
 
             Cluster = rt:build_cluster(lists:duplicate(3, {OldVsn, ?CFG})),
 

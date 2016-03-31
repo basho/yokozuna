@@ -29,6 +29,10 @@
 -define(QUERY_SERVICES, [{yz_pb_search, 27, 28}]).
 -define(ADMIN_SERVICES, [{yz_pb_admin, 54, 60}]).
 
+%% NOTE: These default values are duplicated in yokozuna.schema.
+-define(YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT, 100).
+-define(YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT, 1).
+
 components() ->
     [index, search].
 
@@ -168,9 +172,11 @@ setup_stats() ->
 set_ibrowse_config() ->
     Config = [{?YZ_SOLR_MAX_SESSIONS,
                app_helper:get_env(?YZ_APP_NAME,
-                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS)},
+                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS,
+                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT)},
               {?YZ_SOLR_MAX_PIPELINE_SIZE,
                app_helper:get_env(?YZ_APP_NAME,
-                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE)}
+                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE,
+                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT)}
              ],
     yz_solr:set_ibrowse_config(Config).
