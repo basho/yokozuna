@@ -188,6 +188,7 @@ handle_call({update_tree, Id}, From, S) ->
     apply_tree(Id,
                fun(Tree) ->
                        {SnapTree, Tree2} = hashtree:update_snapshot(Tree),
+                       Tree3 = hashtree:set_next_rebuild(Tree2, full),
                        Self = self(),
                        spawn_link(
                          fun() ->
@@ -195,7 +196,7 @@ handle_call({update_tree, Id}, From, S) ->
                                  gen_server:cast(Self, {updated, Id}),
                                  gen_server:reply(From, ok)
                          end),
-                       {noreply, Tree2}
+                       {noreply, Tree3}
                end,
                S);
 
