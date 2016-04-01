@@ -33,9 +33,9 @@ solrq_test_() ->
             pulse:stop(),
             error_logger:tty(true)
         end,
-        {timeout, 60,
+        {timeout, 300,
             fun() ->
-                ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(30, prop_ok()))))
+                ?assert(eqc:quickcheck(?QC_OUT(eqc:testing_time(120, prop_ok()))))
             end
         }
     }.
@@ -196,7 +196,7 @@ prop_ok() ->
                                         %% TODO Modify ordering test to center around key order, NOT partition order.
                                         %% requires a fairly significant change to the test structure, becuase currently
                                         %% all keys are unique.
-                                        %{insert_order, ordered(expected_entry_keys(PE), IBrowseKeys)},
+                                        {insert_order, ordered(expected_entry_keys(PE), IBrowseKeys)},
                                         {melts, equals(MeltsByIndex, errors_by_index(Entries))}
                                     ])
                         %        )
