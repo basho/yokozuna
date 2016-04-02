@@ -47,11 +47,6 @@ start(_StartType, _StartArgs) ->
     %% of failures in yz_kv:index/3.
     disable_components(),
 
-    %% TODO: Consider moving into maybe_setup and
-    %%  having any YZ components that interact with KV
-    %%  delay until KV is up, then get started (e.g. yz_entropy_mgr
-    %%  in manual mode, and then set to configured value later in
-    %%  startup).
     %% Ensure that the KV service has fully loaded.
     riak_core:wait_for_service(riak_kv),
 

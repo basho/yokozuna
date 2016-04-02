@@ -52,7 +52,7 @@ start(Index, Preflist, YZTree, KVTree, Manager) ->
 %% Use at your own risk (or ignore).
 %% @end
 %%
--spec drain_error(pid(), term()) -> ok.
+-spec drain_error(pid(), Reason::term()) -> ok.
 drain_error(Pid, Reason) ->
     gen_fsm:send_event(Pid, {drain_error, Reason}).
 

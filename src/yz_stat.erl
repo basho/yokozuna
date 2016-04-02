@@ -50,7 +50,7 @@ register_stats() ->
     riak_core_stat:register_stats(?APP, stats()).
 
 %% @doc Return current aggregation of all stats.
--spec get_stats() -> proplists:proplist() | {error, term()}.
+-spec get_stats() -> proplists:proplist() | {error, Reason :: term()}.
 get_stats() ->
     riak_core_stat:get_stats(?APP).
 
@@ -61,21 +61,23 @@ index_fail() ->
 
 %% @doc Send stat updates for an index completion.  `ElapsedTime'
 %% should be microseconds.
--spec index_end(binary(), integer(), integer()) -> ok.
+-spec index_end(index_name(),
+                BatchSize :: integer(),
+                ElapsedTime :: integer()) -> ok.
 index_end(_Index, BatchSize, ElapsedTime) ->
     update({index_end, BatchSize, ElapsedTime}).
 
 
 %% @doc Send stat updates for a drain completion.  `ElapsedTime'
 %% should be microseconds.
--spec drain_end(integer()) -> ok.
+-spec drain_end(ElapsedTime :: integer()) -> ok.
 drain_end(ElapsedTime) ->
     update({drain_end, ElapsedTime}).
 
 
 %% @doc Send stat updates for a batch completion.  `ElapsedTime'
 %% should be microseconds.
--spec batch_end(integer()) -> ok.
+-spec batch_end(ElapsedTime :: integer()) -> ok.
 batch_end(ElapsedTime) ->
     update({batch_end, ElapsedTime}).
 
@@ -90,7 +92,7 @@ drain_timeout() ->
     update(drain_timeout).
 
 %% @doc Send updates for aae repairs.
--spec aae_repairs(integer()) -> ok.
+-spec aae_repairs(Count :: integer()) -> ok.
 aae_repairs(Count) ->
     update({aae_repairs, Count}).
 
@@ -101,7 +103,7 @@ search_fail() ->
 
 %% @doc Send stat updates for search completion.  `ElapsedTime' should
 %% be microseconds.
--spec search_end(integer()) -> ok.
+-spec search_end(ElapsedTime :: integer()) -> ok.
 search_end(ElapsedTime) ->
     update({search_end, ElapsedTime}).
 
@@ -118,22 +120,22 @@ queue_capacity(Capacity) ->
     update({queue_capacity, Capacity}).
 
 %% @doc update the the number of purges that have occurred
--spec hwm_purged(non_neg_integer()) -> ok.
+-spec hwm_purged(NumPurged :: non_neg_integer()) -> ok.
 hwm_purged(NumPurged) ->
     update({hwm_purged, NumPurged}).
 
 %% @doc Update fuse recovered statistic.
--spec fuse_recovered(atom()) -> ok.
+-spec fuse_recovered(Index :: atom()) -> ok.
 fuse_recovered(Index) ->
     update({fuse_recovered, Index}).
 
 %% @doc Create dynamic stats for search index.
--spec create_dynamic_stats(atom(), [atom()]) -> [ok].
+-spec create_dynamic_stats(Index :: atom(), Stats :: [atom()]) -> [ok].
 create_dynamic_stats(Index, Stats) ->
     [create({Stat, Index}) || Stat <- Stats].
 
 %% @doc Delete dynamic stats for search index.
--spec delete_dynamic_stats(atom(), [atom()]) -> [ok].
+-spec delete_dynamic_stats(Index :: atom(), Stats :: [atom()]) -> [ok].
 delete_dynamic_stats(Index, Stats) ->
     [delete({Stat, Index}) || Stat <- Stats].
 
