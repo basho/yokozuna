@@ -118,6 +118,12 @@ confirm() ->
             restart(Cluster),
             check_for_errors(Cluster),
 
+            %% Disabling anti-entropy here prevents a race condition we would occasionally
+            %% see when AAE kicked in during the load_data step. It was possible for more
+            %% data to be written to YZ between the KV and YZ trees being snapshotted, which
+            %% would then cause the data to be removed from YZ as a remote_missing repair.
+            %% (At least, until the next AAE sweep came around and fixed everything.)
+            [rpc:call(Node, yz_entropy_mgr, set_mode, [manual]) || Node <- Cluster],
             load_data(Cluster, YZBenchDir, 10000),
             query_data(Cluster, YZBenchDir, 10000, 1, <<"text">>),
             check_for_errors(Cluster),
@@ -224,6 +230,7 @@ create_pb_conn(Node) ->
 load_data(Cluster, YZBenchDir, NumKeys) ->
     {ExitCode, _} = yz_rt:load_data(Cluster, ?FRUIT_BUCKET, YZBenchDir, NumKeys),
     ?assertEqual(0,ExitCode),
+    yz_rt:drain_solrqs(Cluster),
     yz_rt:commit(Cluster, ?FRUIT_BUCKET).
 
 query_data(Cluster, YZBenchDir, NumKeys, Time, DefaultField) ->
