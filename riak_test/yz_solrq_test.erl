@@ -61,12 +61,12 @@
 -define(CONFIG,
         [{yokozuna,
           [{enabled, true},
-           {?SOLRQ_WORKER_CNT, ?NUM_SOLRQ},
-           {?SOLRQ_WORKER_CNT, ?NUM_SOLRQ_HELPERS},
+           {?SOLRQ_WORKER_COUNT, ?NUM_SOLRQ},
+           {?SOLRQ_WORKER_COUNT, ?NUM_SOLRQ_HELPERS},
            {?SOLRQ_BATCH_FLUSH_INTERVAL, ?SOLRQ_DELAYMS_MAX},
            {?SOLRQ_BATCH_MIN, ?SOLRQ_BATCH_MIN_SETTING},
            {?SOLRQ_BATCH_MAX, ?SOLRQ_BATCH_MAX_SETTING},
-           {?ERR_THRESH_FAIL_CNT, 1},
+           {?ERR_THRESH_FAIL_COUNT, 1},
            {?ERR_THRESH_RESET_INTERVAL, ?MELT_RESET_REFRESH},
            {anti_entropy, {off, []}}
           ]}]).
@@ -135,7 +135,7 @@ confirm_draining(Cluster, PBConn, BKey, Index) ->
     Count = put_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, 0),
-    drain_solrqs(hd(Cluster)),
+    yz_rt:drain_solrqs(hd(Cluster)),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, Count),
     lager:info("confirm_draining ok"),
@@ -143,7 +143,7 @@ confirm_draining(Cluster, PBConn, BKey, Index) ->
 
 confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
     yz_rt:load_intercept_code(Node),
-    intercept_index_batch(Node, index_batch_throw_exception),
+    yz_rt:intercept_index_batch(Node, index_batch_throw_exception),
 
     Count = ?SOLRQ_BATCH_MIN_SETTING,
     Count = put_objects(PBConn, BKey, Count),
@@ -156,15 +156,15 @@ confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
     %% Now, if we replace the intercept with one that just calls the original
     %% function, the undelivered objects will be requeued and should succeed
     %% (assuming that the fuse has been blown and reset).
-    intercept_index_batch(Node, index_batch_call_orig),
+    yz_rt:intercept_index_batch(Node, index_batch_call_orig),
     timer:sleep(?MELT_RESET_REFRESH + 1000), %% wait for fuse reset
-    drain_solrqs(Node),
+    yz_rt:drain_solrqs(Node),
     verify_search_count(PBConn, Index, Count),
     lager:info("confirm_requeue_undelivered ok"),
     ok.
 
 confirm_no_contenttype_data(Cluster, PBConn, BKey, Index) ->
-    set_index(Cluster, Index, 1, 100, 100),
+    yz_rt:set_index(Cluster, Index, 1, 100, 100),
     Count = 1,
     Count = put_no_contenttype_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
@@ -312,10 +312,10 @@ do_purge([Node|_] = Cluster, PBConn,
          {Bucket1, Index1},
          {Bucket2, Index2},
          PurgeStrategy) ->
-    set_purge_strategy(Cluster, PurgeStrategy),
-    set_index(Cluster, Index1, 1, 100, 99999),
-    set_index(Cluster, Index2, 1, 100, 99999),
-    set_hwm(Cluster, 4),
+    yz_rt:set_purge_strategy(Cluster, PurgeStrategy),
+    yz_rt:set_index(Cluster, Index1, 1, 100, 99999),
+    yz_rt:set_index(Cluster, Index2, 1, 100, 99999),
+    yz_rt:set_hwm(Cluster, 4),
     %%
     %% Find a list of representative keys for each Index.
     %% Each representative in the list is a unique key
@@ -330,7 +330,7 @@ do_purge([Node|_] = Cluster, PBConn,
     Index2BKey2 = lists:nth(2, Index2BKeys),
     try
         yz_rt:load_intercept_code(Node),
-        intercept_index_batch(Node, index_batch_throw_exception),
+        yz_rt:intercept_index_batch(Node, index_batch_throw_exception),
         %%
         %% Send two messages through each indexq on the solrq, which
         %% will trip the fuse on both; however
@@ -341,7 +341,7 @@ do_purge([Node|_] = Cluster, PBConn,
         [Index1BKey2] = put_bkey_objects(PBConn, [Index1BKey2]),
         [Index2BKey1] = put_bkey_objects(PBConn, [Index2BKey1]),
         [Index2BKey2] = put_bkey_objects(PBConn, [Index2BKey2]),
-        wait_until_fuses_blown(Node, yz_solrq_0001, [Index1, Index2]),
+        yz_rt:wait_until_fuses_blown(Node, yz_solrq_0001, [Index1, Index2]),
         %%
         %% At this point, the two indexqs in yz_solrq_001 corresponding
         %% to Index1 and Index2, respectively, should be blown.
@@ -362,9 +362,9 @@ do_purge([Node|_] = Cluster, PBConn,
         %% Revert the intercept, and drain, giving time for the
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
-        intercept_index_batch(Node, index_batch_call_orig),
-        wait_until_fuses_reset(Node, yz_solrq_0001, [Index1, Index2]),
-        drain_solrqs(Node),
+        yz_rt:intercept_index_batch(Node, index_batch_call_orig),
+        yz_rt:wait_until_fuses_reset(Node, yz_solrq_0001, [Index1, Index2]),
+        yz_rt:drain_solrqs(Node),
         yz_rt:commit(Cluster, Index1),
         yz_rt:commit(Cluster, Index2)
     end,
@@ -485,57 +485,4 @@ verify_search_count(PBConn, Index, Count) ->
         riakc_pb_socket:search(PBConn, Index, <<"*:*">>),
     ?assertEqual(Count, Found).
 
-drain_solrqs(Node) ->
-    rpc:call(Node, yz_solrq_drain_mgr, drain, []).
-
-intercept_index_batch(Node, Intercept) ->
-    rt_intercept:add(
-      Node,
-      {yz_solr, [{{index_batch, 2}, Intercept}]}).
-
-set_index(Cluster, Index, Min, Max, DelayMsMax) ->
-    rpc:multicall(Cluster, yz_solrq_sup, set_index, [Index, Min, Max, DelayMsMax]).
-
-set_hwm(Cluster, Hwm) ->
-    rpc:multicall(Cluster, yz_solrq_sup, set_hwm, [Hwm]).
-
-set_purge_strategy(Cluster, PurgeStrategy) ->
-    rpc:multicall(Cluster, yz_solrq_sup, set_purge_strategy, [PurgeStrategy]).
-
-wait_until_fuses_blown(Node, SolrqId, Indices) ->
-    F = fun(IndexQ) ->
-        proplists:get_value(fuse_blown, IndexQ)
-    end,
-    lager:info("Waiting until fuses are blown for indices ~p ...", [Indices]),
-    check_fuse_status(Node, SolrqId, Indices, F).
-
-wait_until_fuses_reset(Node, SolrqId, Indices) ->
-    F = fun(IndexQ) ->
-        not proplists:get_value(fuse_blown, IndexQ)
-    end,
-    lager:info("Waiting until fuses recover for indices ~p ...", [Indices]),
-    check_fuse_status(Node, SolrqId, Indices, F).
-
-check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
-    F = fun(N) ->
-        Solrqs = rpc:call(N, yz_debug, solrqs, []),
-        Solrq = proplists:get_value(SolrqId, Solrqs),
-        IndexQs = proplists:get_value(indexqs, Solrq),
-        MatchingIndexQs = lists:filter(
-            FuseCheckFunction,
-            IndexQs
-        ),
-        MatchingIndices = lists:map(
-            fun(IndexQ) ->
-                proplists:get_value(index, IndexQ)
-            end,
-            MatchingIndexQs
-        ),
-        %lager:info("Matching indices ~p ...", [MatchingIndices]),
-        subseteq(Indices, MatchingIndices)
-    end,
-    yz_rt:wait_until([Node], F).
-
-subseteq(L1, L2) ->
-    sets:is_subset(sets:from_list(L1), sets:from_list(L2)).
 

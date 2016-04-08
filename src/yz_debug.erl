@@ -60,8 +60,8 @@ solrqs() ->
 solrq_summary() ->
     Solrqs = solrqs(),
     [
-        {num_solrqs, application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_CNT, 10)},
-        {num_solrq_helpers, application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_CNT,
+        {num_solrqs, application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_COUNT, 10)},
+        {num_solrq_helpers, application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_COUNT,
                                                 10)},
         {all_queue_len, all_queue_len(Solrqs)},
         {draining_solrqs, draining_solrqs(Solrqs)},

@@ -23,7 +23,7 @@
 -export([setup/0]).
 
 %% api
--export([create/1, check/1, check_all_fuses_ok/1, melt/1, remove/1, reset/1]).
+-export([create/1, check/1, check_all_fuses_not_blown/1, melt/1, remove/1, reset/1]).
 
 %% helpers
 -export([fuse_context/0]).
@@ -32,7 +32,7 @@
 -export([fuse_name_for_index/1, index_for_fuse_name/1]).
 
 %% stats helpers
--export([aggregate_index_stats/2, stats/0, get_stats_for_index/1]).
+-export([aggregate_index_stats/2, stats/0, get_stats_for_index/1, print_stats_for_index/1]).
 
 %% types
 -export_type([fuse_check/0, fuse_namespace/0, fuse_name/0,
@@ -67,7 +67,7 @@ create(Index) ->
     case check(FuseName) of
         {error, not_found} ->
             ?INFO("Creating fuse for search index ~s", [Index]),
-            MaxR = app_helper:get_env(?YZ_APP_NAME, ?ERR_THRESH_FAIL_CNT,
+            MaxR = app_helper:get_env(?YZ_APP_NAME, ?ERR_THRESH_FAIL_COUNT,
                                       3),
             MaxT = app_helper:get_env(?YZ_APP_NAME,
                                       ?ERR_THRESH_FAIL_INTERVAL,
@@ -102,9 +102,9 @@ check(Index) when is_binary(Index) ->
 check(Index) ->
     fuse:ask(Index, fuse_context()).
 
--spec check_all_fuses_ok([index_name()]) -> boolean().
-check_all_fuses_ok(Indexes) ->
-    lists:all(fun(I) -> ok == check(I) end, Indexes).
+-spec check_all_fuses_not_blown([index_name()]) -> boolean().
+check_all_fuses_not_blown(Indexes) ->
+    lists:all(fun(I) -> blown =/= check(I) end, Indexes).
 
 -spec melt(index_name()) -> ok.
 melt(Index) ->
@@ -163,7 +163,7 @@ stats() ->
                           aggregate_index_stats, [ok, one]},
                          {search_index_error_threshold_failure_count, yz_fuse,
                           aggregate_index_stats, [melt, count]},
-                         {search_index_error_treshold_failure_one, yz_fuse,
+                         {search_index_error_threshold_failure_one, yz_fuse,
                           aggregate_index_stats, [melt, one]},
                          {search_index_error_threshold_blown_count, yz_fuse,
                           aggregate_index_stats, [blown, count]},
@@ -171,7 +171,7 @@ stats() ->
                           aggregate_index_stats, [blown, one]},
                          {search_index_error_threshold_recovered_count, yz_fuse,
                           aggregate_index_stats, [recovered, count]},
-                         {search_index_error_treshold_recovered_one, yz_fuse,
+                         {search_index_error_threshold_recovered_one, yz_fuse,
                           aggregate_index_stats, [recovered, one]}]].
 
 -spec aggregate_index_stats(fuse_check(), count|one) -> non_neg_integer().
@@ -180,25 +180,44 @@ aggregate_index_stats(FuseCheck, Stat) ->
                         exometer:aggregate([{{[fuse, '_', FuseCheck],'_','_'},
                                              [], [true]}], [Stat])).
 
--spec get_stats_for_index(atom() | index_name()) -> ok.
-get_stats_for_index(Index) when is_atom(Index) ->
-    get_stats_for_index(?ATOM_TO_BIN(Index));
+%% @doc NB.  This function is meant to be called manually from the console.
+-spec print_stats_for_index(atom() | index_name()) -> ok.
+print_stats_for_index(Index) when is_atom(Index) ->
+    print_stats_for_index(?ATOM_TO_BIN(Index));
+print_stats_for_index(Index) ->
+    case get_stats_for_index(Index) of
+        {error, _} ->
+            io:format("No stats found for index ~s\n", [Index]);
+        StatsList ->
+            lists:foreach(
+              fun({Check, Stats}) ->
+                  io:format(
+                      "Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
+                      [Index, proplists:get_value(count, Stats),
+                          proplists:get_value(one, Stats), Check])
+              end,
+              StatsList
+            )
+    end.
+
+-spec get_stats_for_index(index_name()) -> {error, Reason::term()} | [{ok|melt|blown|recovered, term()}].
 get_stats_for_index(Index) ->
     case check(Index) of
         {error, _} ->
-            io:format("No stats found for index ~s\n", [Index]);
+            {error, {no_stats_for_index, Index}};
         _ ->
-            lists:foreach(
-              fun(Check) ->
-                  FuseName = fuse_name_for_index(Index),
-                  Stats = case exometer:get_value([fuse, FuseName, Check]) of
-                      {ok, S} -> S;
-                      _ ->
-                          {ok, S} = exometer:get_value([fuse, ?BIN_TO_ATOM(Index), Check]),
-                          S
-                  end,
-                  io:format("Index - ~s: count: ~p | one: | ~p for fuse stat `~s`\n",
-                            [Index, proplists:get_value(count, Stats),
-                             proplists:get_value(one, Stats), Check])
-              end, [ok, melt, blown, recovered])
+            lists:map(
+                fun(Check) ->
+                    FuseName = fuse_name_for_index(Index),
+                    Stats =
+                        case exometer:get_value([fuse, FuseName, Check]) of
+                            {ok, S} -> S;
+                            _ ->
+                                {ok, S} =
+                                    exometer:get_value(
+                                        [fuse, ?BIN_TO_ATOM(Index), Check]),
+                                S
+                        end,
+                    {Check, Stats}
+                end, [ok, melt, blown, recovered])
     end.

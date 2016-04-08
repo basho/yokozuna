@@ -265,10 +265,10 @@ set_solrq_helper_tuple(Size) ->
     mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
 
 queue_procs() ->
-    application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_CNT, 10).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_COUNT, 10).
 
 helper_procs() ->
-    application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_CNT, 10).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_COUNT, 10).
 
 solrqs_tuple(Queues) ->
     list_to_tuple([int_to_queue_regname(I) || I <- lists:seq(1, Queues)]).

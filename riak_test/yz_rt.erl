@@ -474,9 +474,17 @@ set_bucket_type_index(Node, BucketType, Index, NVal) ->
                             cluster(),
                             {binary(), binary()},
                             index_name()) -> ok.
-create_indexed_bucket(PBConn, [Node|_], {BType, _Bucket}, Index) ->
-    ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, 1}]),
-    ok = yz_rt:set_bucket_type_index(Node, BType, Index, 1).
+create_indexed_bucket(PBConn, Cluster, Bucket, Index) ->
+    create_indexed_bucket(PBConn, Cluster, Bucket, Index, 1).
+
+-spec create_indexed_bucket(pid(),
+    cluster(),
+    {binary(), binary()},
+    index_name(),
+    pos_integer()) -> ok.
+create_indexed_bucket(PBConn, [Node|_], {BType, _Bucket}, Index, NVal) ->
+    ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, NVal}]),
+    ok = yz_rt:set_bucket_type_index(Node, BType, Index, NVal).
 
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);
@@ -515,6 +523,10 @@ wait_for_bucket_type(Cluster, BucketType) ->
         end,
     wait_until(Cluster, F),
     ok.
+
+-spec wait_for_full_exchange_round([node()]) -> ok.
+wait_for_full_exchange_round(Cluster) ->
+    wait_for_full_exchange_round(Cluster, erlang:now()).
 
 %% @doc Wait for a full exchange round since `Timestamp'.  This means
 %% that all `{Idx,N}' for all partitions must have exchanged after
@@ -667,9 +679,11 @@ commit(Nodes, Index) ->
     rpc:multicall(Nodes, yz_solr, commit, [Index]),
     ok.
 
--spec drain_solrqs([node()]) -> ok.
-drain_solrqs(Nodes) ->
-    {_ResL, []} = rpc:multicall(Nodes, yz_solrq_drain_mgr, drain, []),
+-spec drain_solrqs(node() | [node()]) -> ok.
+drain_solrqs(Cluster) when is_list(Cluster) ->
+    [drain_solrqs(Node) || Node <- Cluster];
+drain_solrqs(Node) ->
+    rpc:call(Node, yz_solrq_drain_mgr, drain, []),
     ok.
 
 -spec load_intercept_code(node()) -> ok.
@@ -703,3 +717,92 @@ setup_drain_intercepts(Cluster) ->
         {yz_solrq_drain_mgr, [{{drain, 1}, delay_drain}]}
     ) || N <- Cluster],
     ok.
+
+-spec expire_aae_trees(cluster()) -> [ok].
+expire_aae_trees(Cluster) ->
+    lager:info("Expiring YZ AAE trees across cluster"),
+    [ok = rpc:call(Node, yz_entropy_mgr, expire_trees, []) || Node <- Cluster].
+
+-spec clear_aae_trees(cluster()) -> [ok].
+clear_aae_trees(Cluster) ->
+    lager:info("Clearing YZ AAE trees across cluster"),
+    [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster].
+
+-spec expire_kv_trees(cluster()) -> [ok].
+expire_kv_trees(Cluster) ->
+    lager:info("Expiring KV AAE trees across cluster"),
+    [ok = rpc:call(Node, riak_kv_entropy_manager, expire_trees, []) || Node <- Cluster].
+
+-spec clear_kv_trees(cluster()) -> [ok].
+clear_kv_trees(Cluster) ->
+    lager:info("Clearing KV AAE trees across cluster"),
+    [ok = rpc:call(Node, riak_kv_entropy_manager, clear_trees, []) || Node <- Cluster].
+
+-spec set_index([node()], index_name(), solrq_batch_min(), solrq_batch_max(),
+    solrq_batch_flush_interval()) -> {[any()],[atom()]}.
+set_index(Cluster, Index, Min, Max, DelayMsMax) ->
+    rpc:multicall(Cluster, yz_solrq_sup, set_index, [Index, Min, Max, DelayMsMax]).
+
+-spec set_hwm([node()], pos_integer()) -> {[any()],[atom()]}.
+set_hwm(Cluster, Hwm) ->
+    rpc:multicall(Cluster, yz_solrq_sup, set_hwm, [Hwm]).
+
+-spec set_purge_strategy([node()], purge_strategy()) -> {[any()],[atom()]}.
+set_purge_strategy(Cluster, PurgeStrategy) ->
+    rpc:multicall(Cluster, yz_solrq_sup, set_purge_strategy, [PurgeStrategy]).
+
+-spec wait_until_fuses_blown(node() | [node()], solrq_id(), [index_name()]) ->
+    ok | [ok].
+wait_until_fuses_blown(Cluster, SolrqId, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_blown(Node, SolrqId, Indices) || Node <- Cluster];
+wait_until_fuses_blown(Node, SolrqId, Indices) ->
+    F = fun(IndexQ) ->
+        lager:info("Waiting for fuse to blow for index ~p", [IndexQ]),
+        proplists:get_value(fuse_blown, IndexQ)
+        end,
+    check_fuse_status(Node, SolrqId, Indices, F).
+
+-spec wait_until_fuses_reset(node() | [node()], module(), [index_name()]) ->
+    ok | [ok].
+wait_until_fuses_reset(Cluster, SolrqId, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_reset(Node, SolrqId, Indices) || Node <- Cluster];
+wait_until_fuses_reset(Node, SolrqId, Indices) ->
+    F = fun(IndexQ) ->
+        lager:info("Waiting for fuse to reset for index ~p", [IndexQ]),
+        not proplists:get_value(fuse_blown, IndexQ)
+        end,
+    check_fuse_status(Node, SolrqId, Indices, F).
+
+%% @private
+check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
+    F = fun(N) ->
+        Solrqs = rpc:call(N, yz_debug, solrqs, []),
+        Solrq = proplists:get_value(SolrqId, Solrqs),
+        IndexQs = proplists:get_value(indexqs, Solrq),
+        MatchingIndexQs = lists:filter(
+            FuseCheckFunction,
+            IndexQs
+        ),
+        MatchingIndices = lists:map(
+            fun(IndexQ) ->
+                proplists:get_value(index, IndexQ)
+            end,
+            MatchingIndexQs
+        ),
+        sets:is_subset(sets:from_list(Indices), sets:from_list(MatchingIndices))
+        end,
+    wait_until([Node], F).
+
+-spec intercept_index_batch(node() | [node()], module()) -> ok | [ok].
+intercept_index_batch(Cluster, Intercept) when is_list(Cluster) ->
+    [intercept_index_batch(Node, Intercept) || Node <- Cluster];
+intercept_index_batch(Node, Intercept) ->
+    rt_intercept:add(
+        Node,
+        {yz_solr, [{{index_batch, 2}, Intercept}]}).
+
+-spec set_yz_aae_mode(node() | [node()], automatic | manual) -> ok | [ok].
+set_yz_aae_mode(Cluster, Mode) when is_list(Cluster) ->
+    [set_yz_aae_mode(Node, Mode) || Node <- Cluster];
+set_yz_aae_mode(Node, Mode) ->
+    rpc:call(Node, yz_entropy_mgr, set_mode, [Mode]).

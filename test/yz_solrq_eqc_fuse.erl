@@ -102,7 +102,7 @@ handle_call({melt, Index}, _From, #state{indices = Indices, threshold = Threshol
     FuseState =
         case NewMelts == Threshold of
             true ->
-                yz_solrq_sup:blown_fuse(Index),
+                yz_solrq_sup:blown_fuse(yz_fuse:index_for_fuse_name(Index)),
                 erlang:send_after(Interval, ?MODULE, {recover, Index}),
                 blown;
             _ ->
@@ -126,7 +126,7 @@ handle_cast(_Request, State) ->
 
 handle_info({recover, Index}, #state{indices=Indices} = State) ->
     {ok, {_FuseState, Melts}} = dict:find(Index, Indices),
-    yz_solrq_sup:healed_fuse(Index),
+    yz_solrq_sup:healed_fuse(yz_fuse:index_for_fuse_name(Index)),
     {noreply, State#state{indices=dict:store(Index, {ok, Melts}, Indices)}};
 handle_info(_Info, State) ->
     {noreply, State}.

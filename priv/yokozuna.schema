@@ -111,7 +111,7 @@
 %%      search.queue.error_threshold.failure_interval" before Riak will skip
 %%      updates to that index.
 {mapping, "search.index.error_threshold.failure_count",
-"yokozuna.err_thresh_fail_cnt", [
+"yokozuna.err_thresh_fail_count", [
   {default, 3},
   {datatype, integer},
   hidden,
@@ -226,7 +226,7 @@
 %%      solrq distributes the queuing of objects, and can lead to greater
 %%      throughput under high load, potentially at the expense of smaller batch
 %%      sizes.
-{mapping, "search.queue.worker_count", "yokozuna.solrq_worker_cnt", [
+{mapping, "search.queue.worker_count", "yokozuna.solrq_worker_count", [
   {default, 10},
   {commented, 10},
   {datatype, integer},
@@ -237,7 +237,7 @@
 %%      Search application. Solr queue helpers are responsible for delivering
 %%      batches of data into Solr. Increasing the number of solrq helpers will
 %%      increase concurrent writes into Solr.
-{mapping, "search.queue.helper_count", "yokozuna.solrq_helper_cnt", [
+{mapping, "search.queue.helper_count", "yokozuna.solrq_helper_count", [
   {default, 10},
   {commented, 10},
   {datatype, integer},
