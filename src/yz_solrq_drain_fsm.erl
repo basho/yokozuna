@@ -46,7 +46,8 @@
     tokens,
     exchange_fsm_pid,
     yz_index_hashtree_update_params,
-    partition
+    partition,
+    time_start
 }).
 
 %%%===================================================================
@@ -129,8 +130,9 @@ init(Params) ->
 %%
 prepare(start, #state{partition = P} = State) ->
     SolrqIds = yz_solrq_sup:solrq_names(),
+    TS = os:timestamp(),
     Tokens = [yz_solrq:drain(SolrqId, P) || SolrqId <- SolrqIds],
-    {next_state, wait, State#state{tokens = Tokens}}.
+    {next_state, wait, State#state{tokens = Tokens, time_start=TS}}.
 
 %% @doc While in the wait state, we wait for drain_complete messages with accompanying
 %% tokens.  When we have received all of the tokens, we are done, and the FSM terminates
@@ -141,12 +143,14 @@ wait({drain_complete, Token},
     #state{
         tokens = Tokens,
         exchange_fsm_pid = ExchangeFSMPid,
-        yz_index_hashtree_update_params = YZIndexHashtreeUpdateParams
+        yz_index_hashtree_update_params = YZIndexHashtreeUpdateParams,
+        time_start = StartTS
     } = State) ->
     Tokens2 = lists:delete(Token, Tokens),
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
+            yz_stat:drain_end(?YZ_TIME_ELAPSED(StartTS)),
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams
             ),

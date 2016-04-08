@@ -475,7 +475,7 @@
 %%%===================================================================
 %%% fuse/error-thresholding
 %%%===================================================================
--define(ERR_THRESH_FAIL_CNT, err_thresh_fail_cnt).
+-define(ERR_THRESH_FAIL_COUNT, err_thresh_fail_count).
 -define(ERR_THRESH_FAIL_INTERVAL, err_thresh_fail_interval).
 -define(ERR_THRESH_RESET_INTERVAL, err_thresh_reset_interval).
 -define(FUSE_CTX, solrq_fuse_ctx).
@@ -489,8 +489,8 @@
 -define(SOLRQ_BATCH_FLUSH_INTERVAL, solrq_batch_flush_interval).
 -define(SOLRQ_HWM, solrq_hwm).
 -define(SOLRQ_HWM_PURGE, solrq_hwm_purge).
--define(SOLRQ_WORKER_CNT, solrq_worker_cnt).
--define(SOLRQ_HELPER_CNT, solrq_helper_cnt).
+-define(SOLRQ_WORKER_COUNT, solrq_worker_count).
+-define(SOLRQ_HELPER_COUNT, solrq_helper_count).
 -define(SOLRQ_HWM_PURGE_STRATEGY, solrq_hwm_purge_strategy).
 -define(PURGE_NONE, off).
 -define(PURGE_ONE, purge_one).

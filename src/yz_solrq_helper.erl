@@ -201,8 +201,7 @@ update_solr(Index, LI, Entries) ->
         false ->
             ok; % No need to send anything to SOLR, still need for AAE.
         _ ->
-            IndexName = (?BIN_TO_ATOM(Index)),
-            case yz_fuse:check(IndexName) of
+            case yz_fuse:check(Index) of
                 ok ->
                     send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
                                               Entries);
