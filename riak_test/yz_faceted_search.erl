@@ -127,8 +127,14 @@ verify_field_faceting(Cluster, Index) ->
 verify_query_faceting(Cluster, Index) ->
     HP = yz_rt:host_port(Cluster),
     Params = [{facet, true},
+              {'facet.mincount', 1},
               {'facet.query', "price:[1 TO 29]"},
               {'facet.query', "price:[30 TO 100]"}],
+    %% Verify 10 times because of non-determinism in coverage
+    [verify_query_facets(HP, Index, Params) || _ <- lists:seq(1, 10)],
+    ok.
+
+verify_query_facets(HP, Index, Params) ->
     lager:info("Query faceting: ~p, ~p, ~p", [HP, Index, Params]),
     {ok, "200", _Hdr, Res} = yz_rt:search(HP, Index, "state", "Ohio", Params),
     Struct = mochijson2:decode(Res),
