@@ -44,7 +44,7 @@
 -define(PULSE_DEBUG(S,F), ok).
 -endif.
 
--type solrq_message()              :: tuple().  % {BKey, Docs, Reason, P}.
+-type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 
 -record(
     indexq, {
@@ -92,11 +92,11 @@
 start_link(Name) ->
     gen_server:start_link({local, Name}, ?MODULE, [], []).
 
--spec status(pid()) -> internal_status().
+-spec status(solrq_id()) -> internal_status().
 status(QPid) ->
     status(QPid, 5000).
 
--spec status(pid(), timeout()) -> internal_status().
+-spec status(solrq_id(), timeout()) -> internal_status().
 status(QPid, Timeout) ->
     gen_server:call(QPid, status, Timeout).
 
@@ -109,14 +109,14 @@ index(Index, BKey, Obj, Reason, P) ->
                     {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
 
--spec set_hwm(pid(), pos_integer()) ->
+-spec set_hwm(solrq_id(), HWM :: pos_integer()) ->
     {ok, OldHWM :: pos_integer()} | {error, bad_hwm_value}.
 set_hwm(QPid, HWM) when HWM > 0 ->
     gen_server:call(QPid, {set_hwm, HWM});
 set_hwm(_, _)  ->
     {error, bad_hwm_value}.
 
--spec set_index(pid(), index_name(), solrq_batch_min(), solrq_batch_max(),
+-spec set_index(solrq_id(), index_name(), solrq_batch_min(), solrq_batch_max(),
                 solrq_batch_flush_interval()) -> {ok, {solrq_batch_min(),
                                              solrq_batch_max(),
                                              solrq_batch_flush_interval()}}.
@@ -126,7 +126,7 @@ set_index(QPid, Index, Min, Max, DelayMax)
 set_index(_, _, _, _, _) ->
     {error, bad_index_params}.
 
--spec set_purge_strategy(pid(), purge_strategy()) ->
+-spec set_purge_strategy(solrq_id(), purge_strategy()) ->
     {ok, OldPurgeStrategy :: purge_strategy()} | {error, bad_purge_strategy}.
 set_purge_strategy(QPid, PurgeStrategy)
     when    PurgeStrategy == ?PURGE_NONE
@@ -137,56 +137,58 @@ set_purge_strategy(QPid, PurgeStrategy)
 set_purge_strategy(_QPid, _PurgeStrategy) ->
     {error, bad_purge_strategy}.
 
--spec reload_appenv(pid()) -> ok.
+-spec reload_appenv(solrq_id()) -> ok.
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
 
--spec drain(atom(), p() | undefined) -> reference().
+-spec drain(solrq_id(), p() | undefined) -> reference().
 drain(QPid, Partition) ->
     Token = make_ref(),
     gen_server:cast(QPid, {drain, self(), Token, Partition}),
     Token.
 
--spec drain_complete(atom()) -> ok.
+-spec drain_complete(solrq_id()) -> ok.
 drain_complete(QPid) ->
     gen_server:cast(QPid, drain_complete).
 
--spec cancel_drain(atom()) -> ok.
+-spec cancel_drain(solrq_id()) -> ok.
 cancel_drain(QPid) ->
     gen_server:call(QPid, cancel_drain).
 
 %% @doc Signal to the solrq that a fuse has blown for the the specified index.
--spec blown_fuse(pid(), index_name()) -> ok.
+-spec blown_fuse(solrq_id(), index_name()) -> ok.
 blown_fuse(QPid, Index) ->
     gen_server:cast(QPid, {blown_fuse, Index}).
 
 %% @doc Signal to the solrq that a fuse has healed for the the specified index.
--spec healed_fuse(pid(), index_name()) -> ok.
+-spec healed_fuse(solrq_id(), index_name()) -> ok.
 healed_fuse(QPid, Index) ->
     gen_server:cast(QPid, {healed_fuse, Index}).
 
 %% @doc return the sum of the length of all queues in each indexq
--spec get_hwm(pid()) -> non_neg_integer().
+-spec get_hwm(solrq_id()) -> HWM :: non_neg_integer().
 get_hwm(QPid) ->
     gen_server:call(QPid, get_hwm).
 
 %% @doc return the sum of the length of all queues in each indexq
--spec all_queue_len(pid()) -> non_neg_integer().
+-spec all_queue_len(solrq_id()) -> non_neg_integer().
 all_queue_len(QPid) ->
     gen_server:call(QPid, all_queue_len).
 
 %%%===================================================================
 %%% solrq/helper interface
 %%%===================================================================
--spec request_batch(pid(), index_name(), pid()|atom()) -> ok.
+-spec request_batch(solrq_id(), index_name(), solrq_helper_id()) -> ok.
 request_batch(QPid, Index, HPid) ->
     gen_server:cast(QPid, {request_batch, Index, HPid}).
 
 
 -spec batch_complete(
-    pid(),
+    solrq_id(),
     index_name(),
-    {NumDelivered :: non_neg_integer(), ok} | {NumDelivered :: non_neg_integer(), {retry, [Undelivered :: solrq_message()]}}) -> ok.
+    {NumDelivered :: non_neg_integer(), ok} |
+    {NumDelivered :: non_neg_integer(),
+     {retry, [Undelivered :: solrq_message()]}}) -> ok.
 batch_complete(QPid, Index, Message) ->
     gen_server:cast(QPid, {batch_complete, Index, Message}).
 
@@ -756,10 +758,6 @@ new_indexq() ->
 
 update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
     State#state{indexqs = dict:store(Index, IndexQ, IndexQs)}.
-
-% TODO re-add once we have a reaping strategy
-%delete_indexq(Index, #state{indexqs = IndexQs} = State) ->
-%    State#state{indexqs = dict:erase(Index, IndexQs)}.
 
 %% @doc Read settings from the application environment
 %% TODO: Update HWM for each Index when Ring-Resize occurrs

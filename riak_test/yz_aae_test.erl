@@ -35,6 +35,7 @@
 
 confirm() ->
     Cluster = rt:build_cluster(5, ?CFG),
+    yz_rt:setup_drain_intercepts(Cluster),
 
     %% Run test for `default'/legacy bucket type
     lager:info("Run test for default (type)/legacy bucket"),
@@ -75,6 +76,10 @@ aae_run(Cluster, Bucket, Index) ->
             %% number of keys deleted.
             TS1 = erlang:now(),
             yz_rt:wait_for_full_exchange_round(Cluster, TS1),
+
+            lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
+            verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
+
             RepairCountBefore = get_cluster_repair_count(Cluster),
             yz_rt:count_calls(Cluster, ?REPAIR_MFA),
             NumKeys = [{Bucket, K} || K <- yz_rt:random_keys(?NUM_KEYS)],
@@ -236,6 +241,8 @@ verify_exchange_after_clear(Cluster, Index) ->
     yz_rt:wait_for_full_exchange_round(Cluster, TS2),
     lager:info("Verify AAE repairs missing Solr documents"),
     verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+    lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
+    verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
     ok.
 
 %% @doc Verify that Yokozuna deletes postings which have no
@@ -250,6 +257,10 @@ verify_removal_of_orphan_postings(Cluster, Index, Bucket) ->
     ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
     ok = yz_rt:stop_tracing(),
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
+    lager:info("Verifying data was indexed"),
+    verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+    lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
+    verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
     ok.
 
 %% @doc Verify that there is no indefinite repair.  There have been

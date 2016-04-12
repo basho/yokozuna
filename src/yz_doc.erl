@@ -42,6 +42,13 @@
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
 
+%% @doc Get all doc ids for an object, possibly including docids for siblings
+-spec doc_ids(obj(), binary()) -> [binary()].
+doc_ids(RObj, Partition) ->
+    Contents = riak_object:get_contents(RObj),
+    SiblingVtags = sibling_vtags(Contents),
+    [yz_doc:doc_id(RObj, Partition, Vtag) || Vtag <- SiblingVtags].
+
 -spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
     doc_id(O, Partition, none).
@@ -60,7 +67,10 @@ doc_id(O, Partition, Sibling) ->
             iolist_to_binary([IODocId,?YZ_ID_SEP,Sibling])
     end.
 
-% @doc count of Object contents that are siblings and not tombstones
+%% @doc grab all siblings' vtags from Object contents
+sibling_vtags(Cs) -> [get_vtag(MD) || {MD, _V} <- Cs].
+
+%% @doc count of Object contents that are siblings and not tombstones
 -spec live_siblings([{riak_object_dict(), riak_object:value()}]) -> non_neg_integer().
 live_siblings(Cs) -> length([1 || {MD, _V} <- Cs, not yz_kv:is_tombstone(MD)]).
 
@@ -121,10 +131,17 @@ make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
     Fields = make_fields({DocId, BKey, FPN, Partition, none, EntropyData}),
     [{?YZ_VTAG_FIELD, Vtag}|Fields].
 
+%% @doc Get vtag for MetaData entry.
+get_vtag(MD) ->
+    case yz_kv:get_md_entry(MD, ?MD_VTAG) of
+        none -> none;
+        Val -> list_to_binary(Val)
+    end.
+
 %% @doc If this is a sibling and not a tombstone val, return its binary vtag
 get_vtag(MD, LiveSiblings) ->
     case LiveSiblings > 1 of
-        true -> list_to_binary(yz_kv:get_md_entry(MD, ?MD_VTAG));
+        true -> get_vtag(MD);
         _ -> none
     end.
 

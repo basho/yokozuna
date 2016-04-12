@@ -52,7 +52,7 @@ start(Index, Preflist, YZTree, KVTree, Manager) ->
 %% Use at your own risk (or ignore).
 %% @end
 %%
--spec drain_error(pid(), term()) -> ok.
+-spec drain_error(pid(), Reason::term()) -> ok.
 drain_error(Pid, Reason) ->
     gen_fsm:send_event(Pid, {drain_error, Reason}).
 
@@ -206,7 +206,6 @@ key_exchange(timeout, S=#state{index=Index,
              end,
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
         0 ->
-            yz_stat:aae_repairs(0),
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
             yz_stat:aae_repairs(Count),
@@ -241,11 +240,11 @@ repair(Partition, {remote_missing, KeyBin}) ->
     case yz_kv:should_index(Index) of
         true ->
             Repair = full_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {delete, Repair}, Partition),
+            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
             Repair;
         false ->
             Repair = tree_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {delete, Repair}, Partition),
+            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
             Repair
     end;
 repair(Partition, {_Reason, KeyBin}) ->

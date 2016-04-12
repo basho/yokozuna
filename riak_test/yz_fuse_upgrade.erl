@@ -33,7 +33,7 @@
 -define(CONFIG,
         [{riak_core,
           [{ring_creation_size, 16}]},
-         {riak_search,
+         {yokozuna,
           [{enabled, true}]}
         ]).
 
@@ -48,7 +48,7 @@ confirm() ->
     yz_rt:create_index(Node1, ?OLD_INDEX),
     yz_rt:set_index(Node1, ?OLD_BUCKET, ?OLD_INDEX),
 
-    yz_rt:rolling_upgrade(Cluster, current),
+    yz_rt:rolling_upgrade(Cluster, current, ?CONFIG, [riak_kv, yokozuna]),
 
     yz_rt:create_index(Node1, ?NEW_INDEX),
     yz_rt:set_index(Node1, ?NEW_BUCKET, ?NEW_INDEX),

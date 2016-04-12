@@ -42,6 +42,15 @@
         }).
 
 -type index_info() :: #index_info{}.
+-type create_index_return() ::
+        ok |
+        {error, index_not_created_within_timeout} |
+        {error, schema_not_found} |
+        {error, invalid_name} |
+        {error, core_error_on_index_creation, binary()} |
+        {error, term()}.
+
+-export_type([create_index_return/0]).
 
 
 %%%===================================================================
@@ -57,15 +66,12 @@ associated_buckets(Index, Ring) ->
         proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE) == Index].
 
 %% @see create/2
--spec create(index_name()) -> ok.
+-spec create(index_name()) -> create_index_return().
 create(Name) ->
     create(Name, ?YZ_DEFAULT_SCHEMA_NAME).
 
 %% @see create/3
--spec create(index_name(), schema_name()) ->
-                    ok |
-                    {error, schema_not_found} |
-                    {error, invalid_name}.
+-spec create(index_name(), schema_name()) -> create_index_return().
 create(Name, SchemaName) ->
     DefaultNVal = riak_core_bucket:default_object_nval(),
     create(Name, SchemaName, DefaultNVal).
@@ -77,24 +83,16 @@ create(Name, SchemaName) ->
 %%
 %% `schema_not_found' - The `SchemaName' could not be found.
 %% @see create/4
--spec create(index_name(), schema_name(), n() | undefined) ->
-                    ok |
-                    {error, index_not_created_within_timeout} |
-                    {error, schema_not_found} |
-                    {error, invalid_name} |
-                    {error, core_error_on_index_creation, binary()}.
+-spec create(index_name(), schema_name(), n() | undefined)
+            -> create_index_return().
 create(Name, SchemaName, undefined) ->
     DefaultNVal = riak_core_bucket:default_object_nval(),
     create(Name, SchemaName, DefaultNVal, ?DEFAULT_IDX_CREATE_TIMEOUT);
 create(Name, SchemaName, NVal) ->
     create(Name, SchemaName, NVal, ?DEFAULT_IDX_CREATE_TIMEOUT).
 
--spec create(index_name(), schema_name(), n() | undefined, timeout()) ->
-                    ok |
-                    {error, index_not_created_within_timeout} |
-                    {error, schema_not_found} |
-                    {error, invalid_name} |
-                    {error, core_error_on_index_creation, binary()}.
+-spec create(index_name(), schema_name(), n() | undefined, timeout())
+            -> create_index_return().
 create(Name, SchemaName, undefined, Timeout) ->
     DefaultNVal = riak_core_bucket:default_object_nval(),
     create(Name, SchemaName, DefaultNVal, Timeout);
@@ -110,19 +108,26 @@ create(Name, SchemaName, NVal, Timeout) when is_integer(NVal),
                     %% Propagate index across cluster
                     ok = riak_core_metadata:put(?YZ_META_INDEXES, Name, Info),
 
-                    %% Spawn a process that spawns a linked child process that
-                    %% waits for the index to exist within the set timeout.
+                    %% Spawn(link) a process that spawns a linked child process
+                    %% that waits for the index to exist within the set timeout.
 
                     %% Propagation of the index can still occur, but may
                     %% take longer than the alloted timeout for the request.
-                    spawn(?MODULE, sync_index, [self(), Name, Timeout]),
+                    SyncIndexPid = spawn(?MODULE, sync_index,
+                                         [self(), Name, Timeout]),
+                    SyncRef = erlang:monitor(process, SyncIndexPid),
                     receive
                         ok ->
+                            erlang:demonitor(SyncRef, [flush]),
                             ok;
                         {core_error, Error} ->
+                            erlang:demonitor(SyncRef, [flush]),
                             {error, core_error_on_index_creation, Error};
                         timeout ->
-                            {error, index_not_created_within_timeout}
+                            erlang:demonitor(SyncRef, [flush]),
+                            {error, index_not_created_within_timeout};
+                        {'DOWN', SyncRef, process, _Pid, Reason} ->
+                            {error, Reason}
                     end
             end;
         {error, _} = Err ->
@@ -235,7 +240,7 @@ local_create(Name) ->
 
 %% @doc Wrapper around file:delete on the core properties file.
 %% Obeys the same return semantics as file:delete/1
--spec delete_core_props_file(string()) -> ok | enoent | term().
+-spec delete_core_props_file(PropsFile::string()) -> ok | enoent | term().
 delete_core_props_file(PropsFile) ->
     case file:delete(PropsFile) of
         ok ->
@@ -468,7 +473,8 @@ sync_index(Pid, IndexName, Timeout) ->
                                  [IndexName, Timeout]),
                     Pid ! timeout;
                 Error ->
-                    lager:error("Solr core error after trying to create index ~s: ~p",
+                    lager:error("Solr core error after trying to create index"
+                                " ~s: ~p",
                                 [IndexName, Error]),
                     Pid ! {core_error, Error}
             end

@@ -69,7 +69,7 @@ status(Pid) ->
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
 
--spec index_ready(index_name(), pid()) -> ok.
+-spec index_ready(index_name(), solrq_id()) -> ok.
 index_ready(Index, QPid) ->
     HPid = yz_solrq_sup:random_helper(),
     index_ready(HPid, Index, QPid).
@@ -77,8 +77,7 @@ index_ready(Index, QPid) ->
 %% @doc Mark the index as ready.  Separating into a two phase
 %%      rather than just blindly sending from the solrq adds the
 %%      backpressure on the KV vnode.
--spec index_ready(atom()|pid()|non_neg_integer(), index_name(), pid())
-                 -> ok.
+-spec index_ready(solrq_helper_id(), index_name(), solrq_id()) -> ok.
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
@@ -86,7 +85,11 @@ index_ready(Hash, Index, QPid) ->
     index_ready(HPid, Index, QPid).
 
 %% @doc Index a batch
--spec index_batch(atom()|pid(), index_name(), non_neg_integer(), pid(), solr_entries()) -> ok.
+-spec index_batch(solrq_helper_id(),
+                  index_name(),
+                  BatchMax :: non_neg_integer(),
+                  solrq_id(),
+                  solr_entries()) -> ok.
 index_batch(HPid, Index, BatchMax, QPid, Entries) ->
     gen_server:cast(HPid, {batch, Index, BatchMax, QPid, Entries}).
 
@@ -129,8 +132,13 @@ remove(Delivered, Entries) ->
     %% of having to handle bad requests.
     Entries -- Delivered.
 
--spec do_batches(index_name(), non_neg_integer(), solr_entries(), solr_entries()) ->
-    ok | {ok, Delivered :: solr_entries()} | {error, Undelivered :: solr_entries()}.
+-spec do_batches(index_name(),
+                 BatchMax :: non_neg_integer(),
+                 solr_entries(),
+                 solr_entries()) ->
+    ok |
+    {ok, Delivered :: solr_entries()} |
+    {error, Undelivered :: solr_entries()}.
 do_batches(_Index, _BatchMax, _Delivered, []) ->
     ok;
 do_batches(Index, BatchMax, Delivered, Entries) ->
@@ -147,7 +155,7 @@ do_batches(Index, BatchMax, Delivered, Entries) ->
 -spec do_batch(index_name(), solr_entries()) ->
       ok                                        % all entries were delivered
     | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered
-    | {error, term()}.                          % an error occurred; retry all of them
+    | {error, Reason :: term()}.                % an error occurred; retry all of them
 do_batch(Index, Entries0) ->
     try
         %% TODO: use ibrowse http worker
@@ -223,6 +231,13 @@ solr_ops(LI, Entries) ->
             ObjValues = riak_object:get_values(Obj),
             Reason = get_reason_action(Reason0),
             case {Reason, ObjValues} of
+                {anti_entropy_delete, _ObjValues} ->
+                    LP = yz_cover:logical_partition(LI, P),
+                    DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
+                    DeleteOps =
+                        [[{delete, yz_solr:encode_delete({id, DocId})}
+                            || DocId <- DocIds]],
+                    [DeleteOps | Ops];
                 {delete, _} ->
                     [[[{delete, yz_solr:encode_delete({bkey, BKey})}]] | Ops];
                 {_, [notfound]} ->
@@ -236,7 +251,8 @@ solr_ops(LI, Entries) ->
                     DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
                                                        LP),
 
-                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)}
+                                    || Doc <- AddOps],
                                    [{delete, yz_solr:encode_delete(DeleteOp)} ||
                                        DeleteOp <- DeleteOps]],
                     [OpsForEntry | Ops]
@@ -257,7 +273,7 @@ solr_ops(LI, Entries) ->
 send_solr_ops_for_entries(Index, Ops, Entries) ->
     try
         T1 = os:timestamp(),
-        ok = yz_solr:index_batch(Index, Ops),
+        ok = yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)),
         yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
         ok
     catch _:Err ->
@@ -266,7 +282,7 @@ send_solr_ops_for_entries(Index, Ops, Entries) ->
             ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
             case Err of
                 {_, badrequest, _} ->
-                    SuccessOps = send_solr_single_ops(Index, lists:reverse(Ops)),
+                    SuccessOps = send_solr_single_ops(Index, Ops),
                     {SuccessEntries, _} = lists:split(length(SuccessOps),
                                                       Entries),
                     {ok, SuccessEntries};
@@ -292,7 +308,7 @@ send_solr_single_ops(Index, Ops) ->
       fun(Op) ->
               try
                   T1 = os:timestamp(),
-                  ok = yz_solr:index_batch(Index, [Op]),
+                  ok = yz_solr:index_batch(Index, prepare_ops_for_batch([Op])),
                   yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
                   true
               catch _:Err ->
@@ -308,7 +324,7 @@ send_solr_single_ops(Index, Ops) ->
                               false
                       end
               end
-      end, Ops).
+      end, lists:reverse(Ops)).
 
 -spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
@@ -317,6 +333,7 @@ update_aae_and_repair_stats(Entries) ->
                         ReasonAction = get_reason_action(Reason),
                         Action = case ReasonAction of
                                      delete -> delete;
+                                     anti_entropy_delete -> delete;
                                      _ -> {insert, Hash}
                                  end,
                         yz_kv:update_hashtree(Action, P, ShortPL, BKey),
@@ -349,6 +366,12 @@ get_reason_action(Reason) when is_tuple(Reason) ->
 get_reason_action(Reason) ->
     Reason.
 
+-spec prepare_ops_for_batch(solr_ops()) -> solr_entries().
+prepare_ops_for_batch(Ops) ->
+    %% Flatten and Reverse Ops (Making sure deletes occurr first for
+    %% combined operators)
+    lists:reverse(lists:flatten(Ops)).
+
 handle_info(_Msg, State) ->
     {noreply, State}.
 
@@ -357,4 +380,3 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
