@@ -190,8 +190,8 @@ setup_index(Cluster, PBConn, Index, Bucket, YZBenchDir) ->
     ok = yz_rt:store_schema(PBConn, Index, RawSchema),
     ok = yz_rt:wait_for_schema(Cluster, Index, RawSchema),
     ok = create_bucket_type(Node, Bucket),
-    ok = yz_rt:create_index(Node, Index, Index),
-    ok = yz_rt:set_index(Node, Bucket, Index).
+    ok = yz_rt:create_index(Node, Index, Index, ?N),
+    ok = yz_rt:set_index(Node, Bucket, Index, ?N).
 
 create_bucket_type(Node, {BType, _Bucket}) ->
     ok = yz_rt:create_bucket_type(Node, BType);

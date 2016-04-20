@@ -92,9 +92,9 @@ drain_timeout() ->
     update(drain_timeout).
 
 %% @doc Send updates for aae repairs.
--spec aae_repairs(Count :: integer()) -> ok.
-aae_repairs(Count) ->
-    update({aae_repairs, Count}).
+-spec detected_repairs(Count :: integer()) -> ok.
+detected_repairs(Count) ->
+    update({detected_repairs, Count}).
 
 %% @doc Send stat updates for a search failure.
 -spec search_fail() -> ok.
@@ -138,6 +138,11 @@ create_dynamic_stats(Index, Stats) ->
 -spec delete_dynamic_stats(Index :: atom(), Stats :: [atom()]) -> [ok].
 delete_dynamic_stats(Index, Stats) ->
     [delete({Stat, Index}) || Stat <- Stats].
+
+-spec reset() -> [{stat_name(), ok | {error, any()}}].
+reset() ->
+    [{[?PFX, ?APP | Name], catch exometer:reset([?PFX, ?APP | Name])}
+        || {Name, _Type, _Args, _Aliases} <- stats()].
 
 %% @doc Optionally produce stats map based on ?YZ_ENABLED
 -spec stats_map() -> [] | proplists:proplist().
@@ -205,7 +210,7 @@ stats_map(true) -> [
     {search_queue_batch_latency_99, {{?YZ_APP_NAME, queue, batch, latency}, 99}, histogram_percentile},
     {search_queue_batch_latency_999, {{?YZ_APP_NAME, queue, batch, latency}, 999}, histogram_percentile},
 
-    {search_aae_repairs_count, {{?YZ_APP_NAME, aae_repairs}, value}, counter},
+    {search_detected_repairs_count, {{?YZ_APP_NAME, detected_repairs}, value}, counter},
 
     %% Query stats
     {search_query_throughput_count, {{?YZ_APP_NAME, 'query', throughput}, count}, spiral},
@@ -302,8 +307,8 @@ update(drain_fail) ->
     exometer:update([?PFX, ?APP, queue, drain, fail], 1);
 update(drain_timeout) ->
     exometer:update([?PFX, ?APP, queue, drain, timeout], 1);
-update({aae_repairs, Count}) ->
-    exometer:update([?PFX, ?APP, aae_repairs], Count);
+update({detected_repairs, Count}) ->
+    exometer:update([?PFX, ?APP, detected_repairs], Count);
 update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
@@ -383,8 +388,8 @@ stats() -> [
         {99,     search_queue_batch_latency_99},
         {999,    search_queue_batch_latency_999}
     ]},
-    {[aae_repairs], counter, [], [
-        {value,    search_aae_repairs_count}
+    {[detected_repairs], counter, [], [
+        {value,    search_detected_repairs_count}
     ]},
     {['query', fail], spiral, [], [
         {count, search_query_fail_count},

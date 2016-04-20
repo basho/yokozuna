@@ -282,12 +282,10 @@ handle_cast({drain, DPid, Token, Partition}, #state{indexqs = IndexQs} = State) 
     ?PULSE_DEBUG("drain.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
 
-%%
-%% @doc Set the fuse_blown state on the IndexQ associated with the supplied Index
-%%
+
+%% @doc The fuse for the specified index has blown.
 handle_cast({blown_fuse, Index}, State) ->
-    IndexQ = get_indexq(Index, State),
-    {noreply, update_indexq(Index, IndexQ#indexq{fuse_blown = true}, State)};
+    {noreply, handle_blown_fuse(Index, State)};
 
 %%
 %% @doc Clear the fuse_blown state on the IndexQ associated with the supplied Index
@@ -545,6 +543,24 @@ flush(Index, IndexQ, State) ->
     IndexQ2 = request_worker(Index, IndexQ),
     update_indexq(Index, IndexQ2, State).
 
+%% @doc handle a blown fuse by setting the fuse_blown flag,
+%%      purging any data if required, and unblocking any vnodes
+%%      if required.
+handle_blown_fuse(Index, #state{purge_strategy=PBIStrategy} = State) ->
+    IndexQ = get_indexq(Index, State),
+    State1 = update_indexq(Index, IndexQ#indexq{fuse_blown = true}, State),
+    State2 = maybe_purge([{Index, IndexQ}], PBIStrategy, State1),
+    maybe_unblock_vnodes(State2).
+
+%% @doc purge entries depending on purge strategy if we are over the HWM
+maybe_purge(Indices, PBIStrategy, State) ->
+    case over_hwm(State) of
+        true ->
+            purge(Indices, PBIStrategy, State);
+        _ ->
+            State
+    end.
+
 %% @doc Return true if queue is over the high water mark
 over_hwm(#state{all_queue_len = L, queue_hwm = HWM}) ->
     L > HWM.
@@ -583,7 +599,12 @@ maybe_purge_blown_indices(#state{indexqs=IndexQs,
     #state{}.
 purge(BlownIndices, PurgeStrategy, State) ->
     {NewState, NumPurged} = purge_internal(BlownIndices, PurgeStrategy, State),
-    yz_stat:hwm_purged(NumPurged),
+    case NumPurged of
+        0 ->
+            ok;
+        _ ->
+            yz_stat:hwm_purged(NumPurged)
+    end,
     NewState.
 
 -spec purge_internal([{index_name(), #indexq{}}], purge_strategy(), #state{}) ->
@@ -605,6 +626,8 @@ purge_idx(BlownIndex, {State, PurgeNumAccum}) ->
 -spec purge_idx(BlownIndex :: {index_name(), #indexq{}},
                 purge_strategy(),
                 #state{}) -> {#state{}, NumPurged :: non_neg_integer()}.
+purge_idx(_, ?PURGE_NONE, State) ->
+    {State, 0};
 purge_idx(
   {Index,
    #indexq{queue_len=QueueLen, queue=OldQueue, aux_queue=OldAuxQueue}=IndexQ
@@ -762,8 +785,7 @@ update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
 %% @doc Read settings from the application environment
 %% TODO: Update HWM for each Index when Ring-Resize occurrs
 read_appenv(State) ->
-    HWM = max(app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, 10000) -
-                  length(riak_core_vnode_manager:all_vnodes(riak_kv_vnode)), 1),
+    HWM = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, 10000),
     PBIStrategy = application:get_env(?YZ_APP_NAME, ?SOLRQ_HWM_PURGE_STRATEGY,
                                       ?PURGE_ONE),
     State#state{queue_hwm = HWM,

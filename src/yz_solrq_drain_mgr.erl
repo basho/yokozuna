@@ -57,7 +57,6 @@ drain() ->
 %% @doc Drain all queues to Solr
 -spec drain(drain_params()) -> ok | {error, Reason :: term()}.
 drain(Params) ->
-    T1 = os:timestamp(),
     ExchangeFSMPid = proplists:get_value(
         ?EXCHANGE_FSM_PID, Params, undefined
     ),
@@ -74,7 +73,6 @@ drain(Params) ->
                         yz_solrq_drain_fsm:start_prepare(),
                         receive
                             {'DOWN', Reference, process, Pid, normal} ->
-                                yz_stat:drain_end(?YZ_TIME_ELAPSED(T1)),
                                 ok;
                             {'DOWN', Reference, process, Pid, Reason} ->
                                 yz_stat:drain_fail(),
@@ -100,7 +98,6 @@ drain(Params) ->
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams
             ),
-            yz_stat:drain_end(?YZ_TIME_ELAPSED(T1)),
             ok
     end.
 

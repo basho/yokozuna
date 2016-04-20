@@ -101,17 +101,15 @@ init([]) ->
 
 handle_event({Index0, blown}, S) ->
     Index = yz_fuse:index_for_fuse_name(Index0),
-    handle_index_recovered(Index, down),
-    yz_solrq_sup:blown_fuse(Index),
+    cache_index_state(Index, down),
     {ok, S};
 handle_event({Index0, ok}, S) ->
     Index = yz_fuse:index_for_fuse_name(Index0),
-    handle_index_recovered(Index, up),
-    yz_solrq_sup:healed_fuse(Index),
+    cache_index_state(Index, up),
     {ok, S};
 handle_event({Index0, removed}, S) ->
     Index = yz_fuse:index_for_fuse_name(Index0),
-    handle_index_recovered(Index, removed),
+    cache_index_state(Index, removed),
     {ok, S};
 handle_event(_Msg, S) ->
     {ok, S}.
@@ -296,15 +294,26 @@ sync_indexes(Removed, Added, Same) ->
 %% @private
 %% @doc Check and update `yz_events' ETS if the index has recovered from it's
 %%      fuse being blown or has been reset/removed.
--spec handle_index_recovered(index_name(), down|removed|up) -> true.
-handle_index_recovered(Index, down) ->
-    ets:insert(?ETS, {Index, {state, down}});
-handle_index_recovered(Index, removed) ->
+-spec cache_index_state(index_name(), down|removed|up) -> true.
+cache_index_state(Index, down) ->
+    Entry = ets:lookup(?ETS, Index),
+    case proplists:get_value(Index, Entry) of
+        {state, down} ->
+            ok;
+        {state, up} ->
+            yz_solrq_sup:blown_fuse(Index),
+            %yz_stat:fuse_blown(?BIN_TO_ATOM(Index)),
+            ets:insert(?ETS, {Index, {state, down}});
+        undefined ->
+            ets:insert(?ETS, {Index, {state, down}})
+    end;
+cache_index_state(Index, removed) ->
     ets:delete(?ETS, Index);
-handle_index_recovered(Index, up) ->
+cache_index_state(Index, up) ->
     Recovered = ets:lookup(?ETS, Index),
     case proplists:get_value(Index, Recovered, []) of
         {state, down} ->
+            yz_solrq_sup:healed_fuse(Index),
             yz_stat:fuse_recovered(?BIN_TO_ATOM(Index)),
             ets:insert(?ETS, {Index, {state, up}});
         _ ->
