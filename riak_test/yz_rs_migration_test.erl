@@ -67,7 +67,7 @@ confirm() ->
             lager:info("YZBenchDir: ~p", [YZBenchDir]),
 
             TestMetaData = riak_test_runner:metadata(),
-            OldVsn = proplists:get_value(upgrade_version, TestMetaData, previous),
+            OldVsn = proplists:get_value(upgrade_version, TestMetaData, legacy),
 
             Cluster = rt:build_cluster(lists:duplicate(3, {OldVsn, ?CFG})),
 
@@ -79,7 +79,7 @@ confirm() ->
             %% and search operations during upgrade.  I'm avoiding them in
             %% this test because Riak Search can fail on search while in a
             %% mixed-cluster.
-            rolling_upgrade(Cluster, current),
+            rolling_upgrade(Cluster),
 
             load_data(Cluster, YZBenchDir, 5000),
             query_data(Cluster, YZBenchDir, 5000, 1, <<"value">>),
@@ -118,6 +118,12 @@ confirm() ->
             restart(Cluster),
             check_for_errors(Cluster),
 
+            %% Disabling anti-entropy here prevents a race condition we would occasionally
+            %% see when AAE kicked in during the load_data step. It was possible for more
+            %% data to be written to YZ between the KV and YZ trees being snapshotted, which
+            %% would then cause the data to be removed from YZ as a remote_missing repair.
+            %% (At least, until the next AAE sweep came around and fixed everything.)
+            [rpc:call(Node, yz_entropy_mgr, set_mode, [manual]) || Node <- Cluster],
             load_data(Cluster, YZBenchDir, 10000),
             query_data(Cluster, YZBenchDir, 10000, 1, <<"text">>),
             check_for_errors(Cluster),
@@ -224,6 +230,7 @@ create_pb_conn(Node) ->
 load_data(Cluster, YZBenchDir, NumKeys) ->
     {ExitCode, _} = yz_rt:load_data(Cluster, ?FRUIT_BUCKET, YZBenchDir, NumKeys),
     ?assertEqual(0,ExitCode),
+    yz_rt:drain_solrqs(Cluster),
     yz_rt:commit(Cluster, ?FRUIT_BUCKET).
 
 query_data(Cluster, YZBenchDir, NumKeys, Time, DefaultField) ->
@@ -262,8 +269,7 @@ http_get_bucket_prop({Host, Port}, Bucket, Prop, Default) ->
     {struct, Props} = element(2,hd(element(2, Struct))),
     proplists:get_value(Prop, Props, Default).
 
-rolling_upgrade(Cluster, Vsn) ->
-    lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
+rolling_upgrade(Cluster) ->
     SolrPorts = lists:seq(11000, 11000 + length(Cluster) - 1),
     Cluster2 = lists:zip(SolrPorts, Cluster),
     [begin
@@ -277,8 +283,8 @@ rolling_upgrade(Cluster, Vsn) ->
                             {anti_entropy_tick, 1000},
                             {enabled, true},
                             {solr_port, SolrPort}]}],
-         rt:upgrade(Node, Vsn, Cfg),
-         rt:wait_for_service(Node, riak_kv),
-         rt:wait_for_service(Node, riak_search),
-         rt:wait_for_service(Node, yokozuna)
+         yz_rt:rolling_upgrade(Node,
+                               current,
+                               Cfg,
+                               [riak_kv, riak_search, yokozuna])
      end || {SolrPort, Node} <- Cluster2].

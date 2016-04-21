@@ -22,11 +22,19 @@
 
 -export([start_link/0, start_link/2,
          queue_regname/1, helper_regname/1,
+         random_helper/0,
          num_queue_specs/0, resize_queues/1,
          num_helper_specs/0, resize_helpers/1,
          set_hwm/1,
          set_index/4,
-         reload_appenv/0]).
+         set_purge_strategy/1,
+         reload_appenv/0,
+         blown_fuse/1,
+         healed_fuse/1,
+         solrq_names/0,
+         solrq_helper_names/0,
+         start_drain_fsm/1,
+         queue_capacity/0]).
 
 -include("yokozuna.hrl").
 
@@ -74,6 +82,17 @@ helper_regname(Hash) ->
             element(Index, Names)
     end.
 
+%% @doc return a random helper
+-spec random_helper() -> regname().
+random_helper() ->
+    case get_solrq_helper_tuple() of
+        undefined ->
+            error(solrq_sup_not_started);
+        Names ->
+            Index = random:uniform(size(Names)),
+            element(Index, Names)
+    end.
+
 %% @doc Active queue count
 -spec num_queue_specs() -> non_neg_integer().
 num_queue_specs() ->
@@ -87,7 +106,7 @@ num_helper_specs() ->
 %% @doc Resize the number of queues. For debugging/testing only,
 %%      this will briefly cause the worker that queues remap to
 %%      to change so updates may be out of order briefly.
--spec resize_queues(pos_integer()) -> size_resps().
+-spec resize_queues(NewSize :: pos_integer()) -> size_resps().
 resize_queues(NewSize) when NewSize > 0 ->
     do_child_resize(NewSize, num_queue_specs(),
         fun set_solrq_tuple/1,
@@ -97,7 +116,7 @@ resize_queues(NewSize) when NewSize > 0 ->
 %% @doc Resize the number of helpers. For debugging/testing only,
 %%      this will briefly cause the worker that queues remap to
 %%      to change so updates may be out of order briefly.
--spec resize_helpers(pos_integer()) -> size_resps().
+-spec resize_helpers(NewSize :: pos_integer()) -> size_resps().
 resize_helpers(NewSize) when NewSize > 0 ->
     do_child_resize(NewSize, num_helper_specs(),
         fun set_solrq_helper_tuple/1,
@@ -112,11 +131,17 @@ set_hwm(HWM) ->
 
 %% @doc Set the index parameters for all queues (note, index goes back to appenv
 %%      queue is empty).
--spec set_index(index_name(), non_neg_integer(), non_neg_integer(),
-                non_neg_integer()) -> [{index_name(),
+-spec set_index(index_name(), solrq_batch_min(), solrq_batch_max(),
+    solrq_batch_flush_interval()) -> [{index_name(),
                                        tuple(Params :: non_neg_integer())}].
 set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, catch yz_solrq:set_index(Name, Index, Min, Max, DelayMsMax)} ||
+        Name <- tuple_to_list(get_solrq_tuple())].
+
+%% @doc Set the purge strategy on all queues
+-spec set_purge_strategy(purge_strategy()) -> [{index_name, {ok, purge_strategy()}}].
+set_purge_strategy(PurgeStrategy) ->
+    [{Name, catch yz_solrq:set_purge_strategy(Name, PurgeStrategy)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
@@ -124,6 +149,54 @@ set_index(Index, Min, Max, DelayMsMax) ->
 reload_appenv() ->
     [{Name, catch yz_solrq:reload_appenv(Name)} ||
         Name <- tuple_to_list(get_solrq_tuple())].
+
+%% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
+-spec blown_fuse(index_name()) -> ok.
+blown_fuse(Index) ->
+    lists:foreach(
+        fun(Name) ->
+            yz_solrq:blown_fuse(Name, Index)
+        end,
+        tuple_to_list(get_solrq_tuple())
+    ).
+
+%% @doc Signal to all Solrqs that a fuse has healed for the the specified index.
+-spec healed_fuse(index_name()) -> ok.
+healed_fuse(Index) ->
+    lists:foreach(
+        fun(Name) ->
+            yz_solrq:healed_fuse(Name, Index)
+        end,
+        tuple_to_list(get_solrq_tuple())
+    ).
+
+%% @doc Return the list of solrq names registered with this supervisor
+-spec solrq_names() -> [atom()].
+solrq_names() ->
+    tuple_to_list(get_solrq_tuple()).
+
+%% @doc Return the list of solrq names registered with this supervisor
+-spec solrq_helper_names() -> [atom()].
+solrq_helper_names() ->
+    tuple_to_list(get_solrq_helper_tuple()).
+
+
+%% @doc Start the drain supervsior, under this supervisor
+-spec start_drain_fsm(proplist()) -> {ok, pid()} | {error, Reason :: term()}.
+start_drain_fsm(CallbackList) ->
+    supervisor:start_child(
+        ?MODULE,
+        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
+    ).
+
+%% @doc return the queue capacity as a percentage in [0..100], representing the ratio of
+%% data stored in data in all the queues to the potential capacity of all the queues.
+-spec queue_capacity() -> capacity().
+queue_capacity() ->
+    TotalQueueLength = lists:sum([yz_solrq:all_queue_len(Name) || Name <- tuple_to_list(get_solrq_tuple())]),
+    TotalCapacity = lists:sum([yz_solrq:get_hwm(Name) || Name <- tuple_to_list(get_solrq_tuple())]),
+    round(100 * (TotalQueueLength / TotalCapacity)).
+
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -137,11 +210,12 @@ reload_appenv() ->
 init([NumQueues, NumHelpers]) ->
     set_solrq_tuple(NumQueues),
     set_solrq_helper_tuple(NumHelpers),
+    DrainMgrSpec = {yz_solrq_drain_mgr, {yz_solrq_drain_mgr, start_link, []}, permanent, 5000, worker, [yz_drain_mgr]},
     QueueChildren = [queue_child(Name) ||
                         Name <- tuple_to_list(get_solrq_tuple())],
     HelperChildren = [helper_child(Name) ||
                         Name <- tuple_to_list(get_solrq_helper_tuple())],
-    {ok, {{one_for_all, 10, 10}, HelperChildren ++ QueueChildren}}.
+    {ok, {{one_for_all, 10, 10}, [DrainMgrSpec | HelperChildren ++ QueueChildren]}}.
 
 %%%===================================================================
 %%% Internal functions
@@ -152,10 +226,12 @@ child_count(ChildType) ->
     length([true || {_,_,_,[Type]} <- supervisor:which_children(?MODULE),
                    Type == ChildType]).
 
--spec do_child_resize(pos_integer(), non_neg_integer(),
-                      fun((pos_integer()) -> ok),
-                      fun((non_neg_integer()) -> regname()),
-                      fun((regname()) -> {regname(), pid()})) -> size_resps().
+-spec do_child_resize(NewSize :: pos_integer(),
+                      OldSize :: non_neg_integer(),
+                      SetTupleFun :: fun((pos_integer()) -> ok),
+                      RegnameFun :: fun((non_neg_integer()) -> regname()),
+                      ChildSpecFun :: fun((regname()) -> {regname(), pid()}))
+                      -> size_resps().
 do_child_resize(NewSize, OldSize, SetTupleFun, RegnameFun, ChildSpecFun) ->
     case NewSize of
         OldSize ->
@@ -189,10 +265,10 @@ set_solrq_helper_tuple(Size) ->
     mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
 
 queue_procs() ->
-    application:get_env(yokozuna, num_solrq, 10).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_COUNT, 10).
 
 helper_procs() ->
-    application:get_env(yokozuna, num_solrq_helpers, 10).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_COUNT, 10).
 
 solrqs_tuple(Queues) ->
     list_to_tuple([int_to_queue_regname(I) || I <- lists:seq(1, Queues)]).

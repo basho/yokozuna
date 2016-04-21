@@ -20,7 +20,7 @@
 
 -module(yz_app).
 -behaviour(application).
--export([start/2, stop/1]). % prevent compile warnings
+-export([start/2, stop/1, prep_stop/1, components/0]).
 -compile(export_all).
 -include("yokozuna.hrl").
 
@@ -28,6 +28,13 @@
 %% 28 is message type rpbsearchqueryresp
 -define(QUERY_SERVICES, [{yz_pb_search, 27, 28}]).
 -define(ADMIN_SERVICES, [{yz_pb_admin, 54, 60}]).
+
+%% NOTE: These default values are duplicated in yokozuna.schema.
+-define(YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT, 100).
+-define(YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT, 1).
+
+components() ->
+    [index, search].
 
 %%%===================================================================
 %%% Callbacks
@@ -38,14 +45,8 @@ start(_StartType, _StartArgs) ->
     %% Disable indexing/searching from KV until properly started,
     %% otherwise restarting under load generates large numbers
     %% of failures in yz_kv:index/3.
-    yokozuna:disable(index),
-    yokozuna:disable(search),
+    disable_components(),
 
-    %% TODO: Consider moving into maybe_setup and
-    %%  having any YZ components that interact with KV
-    %%  delay until KV is up, then get started (e.g. yz_entropy_mgr
-    %%  in manual mode, and then set to configured value later in
-    %%  startup).
     %% Ensure that the KV service has fully loaded.
     riak_core:wait_for_service(riak_kv),
 
@@ -58,16 +59,46 @@ start(_StartType, _StartArgs) ->
             maybe_setup(Enabled),
 
             %% Now everything is started, permit usage by KV/query
-            yokozuna:enable(index),
-            yokozuna:enable(search),
+            enable_components(),
             {ok, Pid};
         Error ->
             Error
     end.
 
+%% @doc Prepare to stop - called before the supervisor tree is shutdown
+prep_stop(State) ->
+    try %% wrap with a try/catch - application carries on regardless,
+        %% no error message or logging about the failure otherwise.
+        lager:info("Stopping application yokozuna.", []),
+        riak_api_pb_service:deregister(?QUERY_SERVICES),
+        riak_api_pb_service:deregister(?ADMIN_SERVICES),
+        yz_solrq_drain_mgr:drain(),
+        disable_components()
+    catch
+        Type:Reason ->
+            lager:error("Stopping application yokozuna - ~p:~p.",
+                        [Type, Reason])
+    end,
+    State.
+
 stop(_State) ->
-    ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
-    ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
+    lager:info("Stopped application yokozuna.", []),
+    ok.
+
+%% @private
+%%
+%% @doc Enable all Yokozuna components.
+-spec enable_components() -> ok.
+enable_components() ->
+    lists:foreach(fun yokozuna:enable/1, components()),
+    ok.
+
+%% @private
+%%
+%% @doc Disable all Yokozuna components.
+-spec disable_components() -> ok.
+disable_components() ->
+    lists:foreach(fun yokozuna:disable/1, components()),
     ok.
 
 %% @private
@@ -92,7 +123,7 @@ maybe_setup(true) ->
     RSEnabled = yz_rs_migration:is_riak_search_enabled(),
     yz_rs_migration:strip_rs_hooks(RSEnabled, Ring),
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
-	yz_wm_index:routes() ++ yz_wm_schema:routes(),
+        yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
     ok = yz_events:add_guarded_handler(yz_events, []),
@@ -107,6 +138,7 @@ maybe_setup(true) ->
     ok = riak_core:register(yokozuna, [{bucket_validator, yz_bucket_validator}]),
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
+    ok = set_ibrowse_config(),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -131,3 +163,15 @@ setup_stats() ->
         false -> sidejob:new_resource(yz_stat_sj, yz_stat_worker, 10000)
     end,
     ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]).
+
+set_ibrowse_config() ->
+    Config = [{?YZ_SOLR_MAX_SESSIONS,
+               app_helper:get_env(?YZ_APP_NAME,
+                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS,
+                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT)},
+              {?YZ_SOLR_MAX_PIPELINE_SIZE,
+               app_helper:get_env(?YZ_APP_NAME,
+                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE,
+                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT)}
+             ],
+    yz_solr:set_ibrowse_config(Config).

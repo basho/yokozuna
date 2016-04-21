@@ -20,9 +20,7 @@
 
 -include("yokozuna.hrl").
 
-%%TODO: Dynamically add pulse. NOT PRODUCTION
-%% -compile([export_all,{parse_transform,pulse_instrument},{d,modargs}]).
-%% -compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+-behavior(gen_server).
 
 %% api
 -export([start_link/1, status/1, status/2]).
@@ -32,7 +30,20 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([index_ready/3, index_batch/3]).
+-export([index_ready/3, index_ready/2, index_batch/5]).
+
+%% TODO: Dynamically pulse_instrument.
+-ifdef(PULSE).
+-compile(export_all).
+-compile({parse_transform, pulse_instrument}).
+-compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
+
+-define(PULSE_DEBUG(S,F), pulse:format(S,F)).
+debug_entries(Entries) ->
+    [erlang:element(1, Entry) || Entry <- Entries].
+-else.
+-define(PULSE_DEBUG(S,F), ok).
+-endif.
 
 -record(state, {}).
 -type solr_op()      :: {add, {struct, [{atom(), binary()}]}} |
@@ -44,9 +55,6 @@
 %% All Ops: [[[adds], [deletes]]]
 -type solr_ops()     :: [solr_op_list()].
 
--type solr_entry()   :: {bkey(), obj(), write_reason(), p(), short_preflist(),
-                          hash()}.
--type solr_entries() :: [solr_entry()].
 
 %%%===================================================================
 %%% API
@@ -61,11 +69,15 @@ status(Pid) ->
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
 
+-spec index_ready(index_name(), solrq_id()) -> ok.
+index_ready(Index, QPid) ->
+    HPid = yz_solrq_sup:random_helper(),
+    index_ready(HPid, Index, QPid).
+
 %% @doc Mark the index as ready.  Separating into a two phase
 %%      rather than just blindly sending from the solrq adds the
 %%      backpressure on the KV vnode.
--spec index_ready(atom()|pid()|non_neg_integer(), index_name(), pid())
-                 -> ok.
+-spec index_ready(solrq_helper_id(), index_name(), solrq_id()) -> ok.
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
@@ -73,9 +85,13 @@ index_ready(Hash, Index, QPid) ->
     index_ready(HPid, Index, QPid).
 
 %% @doc Index a batch
--spec index_batch(atom()|pid(), index_name(), solr_entries()) -> ok.
-index_batch(HPid, Index, Entries) ->
-    gen_server:cast(HPid, {batch, Index, Entries}).
+-spec index_batch(solrq_helper_id(),
+                  index_name(),
+                  BatchMax :: non_neg_integer(),
+                  solrq_id(),
+                  solr_entries()) -> ok.
+index_batch(HPid, Index, BatchMax, QPid, Entries) ->
+    gen_server:cast(HPid, {batch, Index, BatchMax, QPid, Entries}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -84,15 +100,63 @@ index_batch(HPid, Index, Entries) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call(status, _From, #state{}) ->
-    {reply, []};
+handle_call(status, _From, State) ->
+    {reply, ok, State};
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
 handle_cast({ready, Index, QPid}, State) ->
     yz_solrq:request_batch(QPid, Index, self()),
     {noreply, State};
-handle_cast({batch, Index, Entries0}, State) ->
+handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
+    ?PULSE_DEBUG("Handling batch for index ~p.  Entries: ~p~n", [Index, debug_entries(Entries)]),
+    Message = case do_batches(Index, BatchMax, [], Entries) of
+        ok ->
+            {length(Entries), ok};
+        {ok, Delivered} ->
+            {length(Delivered), {retry, remove(Delivered, Entries)}};
+        {error, Undelivered} ->
+            ?PULSE_DEBUG("Error handling batch for index ~p.  Undelivered: ~p~n", [Index, debug_entries(Undelivered)]),
+            {length(Entries) - length(Undelivered), {retry, Undelivered}}
+    end,
+    yz_solrq:batch_complete(QPid, Index, Message),
+    {noreply, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+-spec remove(solr_entries(), solr_entries()) -> solr_entries().
+remove(Delivered, Entries) ->
+    %% TODO Performance stinks, but this will only be used in the (hopefully) degenerate
+    %% of having to handle bad requests.
+    Entries -- Delivered.
+
+-spec do_batches(index_name(),
+                 BatchMax :: non_neg_integer(),
+                 solr_entries(),
+                 solr_entries()) ->
+    ok |
+    {ok, Delivered :: solr_entries()} |
+    {error, Undelivered :: solr_entries()}.
+do_batches(_Index, _BatchMax, _Delivered, []) ->
+    ok;
+do_batches(Index, BatchMax, Delivered, Entries) ->
+    {Entries1, Rest} = lists:split(min(length(Entries), BatchMax), Entries),
+    case do_batch(Index, Entries1) of
+        ok ->
+            do_batches(Index, BatchMax, Delivered ++ Entries1, Rest);
+        {ok, DeliveredInBatch} ->
+            {ok, DeliveredInBatch ++ Delivered};
+        {error, _Reason} ->
+            {error, Entries}
+    end.
+
+-spec do_batch(index_name(), solr_entries()) ->
+      ok                                        % all entries were delivered
+    | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered
+    | {error, Reason :: term()}.                % an error occurred; retry all of them
+do_batch(Index, Entries0) ->
     try
         %% TODO: use ibrowse http worker
         %% TODO: batch updates to YZ AAE
@@ -106,32 +170,25 @@ handle_cast({batch, Index, Entries0}, State) ->
         Entries1 = [{BKey, Obj, Reason, P,
                     riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
                       {BKey, Obj, Reason, P} <-
-                          filter_out_fallbacks(OwnedAndNext, Entries0)],
+                          yz_misc:filter_out_fallbacks(OwnedAndNext, Entries0)],
         case update_solr(Index, LI, Entries1) of
             ok ->
-                update_aae_and_repair_stats(Entries1);
+                update_aae_and_repair_stats(Entries1),
+                ok;
             {ok, Entries2} ->
-                update_aae_and_repair_stats(Entries2);
+                update_aae_and_repair_stats(Entries2),
+                {ok, [{BKey, Obj, Reason, P} || {BKey, Obj, Reason, P, _, _} <- Entries2]};
             {error, Reason} ->
-                ok
-        end,
-        {noreply, State}
+                {error, Reason}
+        end
     catch
         _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            ?ERROR("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
-            {noreply, State}
+            ?DEBUG("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
+            {error, Err}
     end.
 
-%% @doc Filter out all entries for partitions that are not currently owned or
-%%      this node is a future owner of.
--spec filter_out_fallbacks(ordset(p), solr_entries()) -> [{bkey(), obj(),
-                                                          write_reason(), p()}].
-filter_out_fallbacks(OwnedAndNext, Entries) ->
-    lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
-                          ordsets:is_element(P, OwnedAndNext)
-                 end, Entries).
 
 %% @doc Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
 -spec update_solr(index_name(), logical_idx(), solr_entries()) ->
@@ -144,13 +201,12 @@ update_solr(Index, LI, Entries) ->
         false ->
             ok; % No need to send anything to SOLR, still need for AAE.
         _ ->
-            IndexName = (?BIN_TO_ATOM(Index)),
-            case yz_fuse:check(IndexName) of
+            case yz_fuse:check(Index) of
                 ok ->
                     send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
                                               Entries);
                 blown ->
-                    ?ERROR("Fuse Blown: can't currently send solr "
+                    ?DEBUG("Fuse Blown: can't currently send solr "
                            "operations for index ~s", [Index]),
                     {error, fuse_blown};
                 _ ->
@@ -174,6 +230,13 @@ solr_ops(LI, Entries) ->
             ObjValues = riak_object:get_values(Obj),
             Reason = get_reason_action(Reason0),
             case {Reason, ObjValues} of
+                {anti_entropy_delete, _ObjValues} ->
+                    LP = yz_cover:logical_partition(LI, P),
+                    DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
+                    DeleteOps =
+                        [[{delete, yz_solr:encode_delete({id, DocId})}
+                            || DocId <- DocIds]],
+                    [DeleteOps | Ops];
                 {delete, _} ->
                     [[[{delete, yz_solr:encode_delete({bkey, BKey})}]] | Ops];
                 {_, [notfound]} ->
@@ -187,7 +250,8 @@ solr_ops(LI, Entries) ->
                     DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
                                                        LP),
 
-                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)} || Doc <- AddOps],
+                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)}
+                                    || Doc <- AddOps],
                                    [{delete, yz_solr:encode_delete(DeleteOp)} ||
                                        DeleteOp <- DeleteOps]],
                     [OpsForEntry | Ops]
@@ -203,19 +267,18 @@ solr_ops(LI, Entries) ->
 %%      a Solr Internal error of sorts, for which we stop list-processing and
 %%      use the success-length to segment the entries list for `AAE-updates'.
 -spec send_solr_ops_for_entries(index_name(), solr_ops(), solr_entries()) ->
-                                       ok |
                                        {ok, SuccessEntries :: solr_entries()} |
                                        {error, tuple()}.
 send_solr_ops_for_entries(Index, Ops, Entries) ->
     try
         T1 = os:timestamp(),
-        ok = yz_solr:index_batch(Index, Ops),
-        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1))
+        ok = yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)),
+        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+        ok
     catch _:Err ->
             yz_stat:index_fail(),
             Trace = erlang:get_stacktrace(),
-            ?ERROR("batch for index ~s failed - ~p\n : ~p\n",
-                   [Index, Err, Trace]),
+            ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
             case Err of
                 {_, badrequest, _} ->
                     SuccessOps = send_solr_single_ops(Index, Ops),
@@ -244,13 +307,13 @@ send_solr_single_ops(Index, Ops) ->
       fun(Op) ->
               try
                   T1 = os:timestamp(),
-                  ok = yz_solr:index_batch(Index, [Op]),
+                  ok = yz_solr:index_batch(Index, prepare_ops_for_batch([Op])),
                   yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
                   true
               catch _:Err ->
                       yz_stat:index_fail(),
                       Trace = erlang:get_stacktrace(),
-                      ?ERROR("update for index ~s failed - ~p\n : ~p\n",
+                      ?DEBUG("update for index ~s failed - ~p\n : ~p\n",
                              [Index, Err, Trace]),
                       case Err of
                           {_, badrequest, _} ->
@@ -260,7 +323,7 @@ send_solr_single_ops(Index, Ops) ->
                               false
                       end
               end
-      end, Ops).
+      end, lists:reverse(Ops)).
 
 -spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
@@ -269,6 +332,7 @@ update_aae_and_repair_stats(Entries) ->
                         ReasonAction = get_reason_action(Reason),
                         Action = case ReasonAction of
                                      delete -> delete;
+                                     anti_entropy_delete -> delete;
                                      _ -> {insert, Hash}
                                  end,
                         yz_kv:update_hashtree(Action, P, ShortPL, BKey),
@@ -300,6 +364,12 @@ get_reason_action(Reason) when is_tuple(Reason) ->
     element(1, Reason);
 get_reason_action(Reason) ->
     Reason.
+
+-spec prepare_ops_for_batch(solr_ops()) -> solr_entries().
+prepare_ops_for_batch(Ops) ->
+    %% Flatten and Reverse Ops (Making sure deletes occurr first for
+    %% combined operators)
+    lists:reverse(lists:flatten(Ops)).
 
 handle_info(_Msg, State) ->
     {noreply, State}.

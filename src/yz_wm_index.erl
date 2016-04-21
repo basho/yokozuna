@@ -192,13 +192,14 @@ create_index(RD, S) ->
     Timeout =
         case S#ctx.timeout of
             undefined -> app_helper:get_env(
-                          yokozuna,
+                          ?YZ_APP_NAME,
                           index_put_timeout_ms,
                           ?DEFAULT_IDX_CREATE_TIMEOUT);
             Set -> Set
         end,
 
-    SchemaName = proplists:get_value(<<"schema">>, BodyProps, ?YZ_DEFAULT_SCHEMA_NAME),
+    SchemaName = proplists:get_value(<<"schema">>, BodyProps,
+                                     ?YZ_DEFAULT_SCHEMA_NAME),
     NVal = proplists:get_value(<<"n_val">>, BodyProps, undefined),
     case maybe_create_index(IndexName, SchemaName, NVal, Timeout) of
         ok ->
@@ -216,7 +217,10 @@ create_index(RD, S) ->
             Msg = "Invalid character in index name ~s~n",
             text_response({halt, 400}, Msg, [IndexName], RD, S);
         {error, core_error_on_index_creation, Error} ->
-            text_response({halt, 400}, binary_to_list(Error), [], RD, S)
+            text_response({halt, 400}, binary_to_list(Error), [], RD, S);
+        {error, Error} ->
+            Msg = "Error in creating index ~s: ~p~n",
+            text_response({halt, 400}, Msg, [IndexName, Error], RD, S)
     end.
 
 %% Responds to a GET request by returning index info for
@@ -335,13 +339,7 @@ index_body(IndexName) ->
     ]}.
 
 -spec maybe_create_index(index_name(), schema_name(), n() | undefined,
-                         timeout()) ->
-                                ok |
-                                {error, index_not_created_within_timeout} |
-                                {error, schema_not_found} |
-                                {error, bad_n_val} |
-                                {error, invalid_name} |
-                                {error, core_error_on_index_creation, binary()}.
+                         timeout()) -> yz_index:create_index_return().
 maybe_create_index(IndexName, SchemaName, NVal, Timeout) ->
     case exists(IndexName) of
         true  ->

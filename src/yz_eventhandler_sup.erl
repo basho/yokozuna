@@ -22,7 +22,6 @@
 
 %% @doc Supervise yz_eventhandler_guard processes.
 %%      Akin to (and wraps some of) riak_core_eventhandler_sup.erl and uses
-%%      TODO: Create generic eventhandler_sup and eventhandler_guard templates.
 
 -module(yz_eventhandler_sup).
 -behaviour(supervisor).
