@@ -151,8 +151,8 @@ verify_ibrowse_config([Node1|_] = Cluster) ->
       fun(Config) ->
               MaxSessions = proplists:get_value(?YZ_SOLR_MAX_SESSIONS, Config),
               MaxPipelineSize = proplists:get_value(?YZ_SOLR_MAX_PIPELINE_SIZE, Config),
-              ?assert(MaxSessions =:= ?MAX_SESSIONS),
-              ?assert(MaxPipelineSize =:= ?MAX_PIPELINE_SIZE)
+              ?assertEqual(MaxSessions, ?MAX_SESSIONS),
+              ?assertEqual(MaxPipelineSize, ?MAX_PIPELINE_SIZE)
       end,
       ResL),
 
@@ -163,7 +163,7 @@ verify_ibrowse_config([Node1|_] = Cluster) ->
                   [[{?YZ_SOLR_MAX_SESSIONS, NewMaxSessions},
                     {?YZ_SOLR_MAX_PIPELINE_SIZE, NewMaxPipelineSize}]]),
     NewConfig = rpc:call(Node1, yz_solr, get_ibrowse_config, []),
-    ?assert(NewMaxSessions =:= proplists:get_value(?YZ_SOLR_MAX_SESSIONS, NewConfig)),
-    ?assert(NewMaxPipelineSize =:=
+    ?assertEqual(NewMaxSessions, proplists:get_value(?YZ_SOLR_MAX_SESSIONS, NewConfig)),
+    ?assertEqual(NewMaxPipelineSize,
             proplists:get_value(?YZ_SOLR_MAX_PIPELINE_SIZE, NewConfig)).
 
