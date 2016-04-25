@@ -323,7 +323,7 @@ check_queue_capacity_stats(Node) ->
 check_aae_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
 
-    AAERepairs = proplists:get_value(?STAT_NAME([aae_repairs]), Stats),
+    AAERepairs = proplists:get_value(?STAT_NAME([detected_repairs]), Stats),
     AAERepairValue = proplists:get_value(value, AAERepairs),
 
     Pairs = [
