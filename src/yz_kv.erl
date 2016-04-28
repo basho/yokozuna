@@ -444,29 +444,31 @@ is_service_up(Service, Node) ->
 
 %% @private
 %%
-%% @doc Check if bucket props have 2.0 CRDT datatype entry or
-%%      property for strong consistency.
--spec is_datatype_or_consistent(riak_kv_bucket:props()) -> boolean().
-is_datatype_or_consistent(BProps) when is_list(BProps) ->
-    is_datatype(BProps) orelse lists:member({consistent, true}, BProps);
-is_datatype_or_consistent(_) -> false.
+%% @doc Check if bucket props have 2.0 CRDT datatype entry and object
+%%      matches-up or property for strong consistency.
+-spec is_datatype_or_consistent(riak_object:riak_object(),
+                                riak_kv_bucket:props()) -> boolean().
+is_datatype_or_consistent(Obj, BProps) when is_list(BProps) ->
+    is_datatype(Obj, BProps) orelse lists:member({consistent, true}, BProps);
+is_datatype_or_consistent(_, _) -> false.
 
 %% @private
 %%
-%% @doc Check if Bucket Properties contain CRDT datatype.
--spec is_datatype(riak_kv_bucket:props()) -> boolean().
-is_datatype(BProps) when is_list(BProps) ->
-    Type = proplists:get_value(datatype, BProps),
-    Mod = riak_kv_crdt:to_mod(Type),
-    riak_kv_crdt:supported(Mod);
-is_datatype(_) -> false.
+%% @doc Check if Bucket Properties contain CRDT datatype and object
+%%      matches-up as a CRDT object.
+-spec is_datatype(riak_object:riak_object(),
+                  riak_kv_bucket:props()) -> boolean().
+is_datatype(Obj, BProps) when is_list(BProps) ->
+    riak_kv_crdt:is_crdt(Obj, BProps);
+is_datatype(_, _) -> false.
 
 %% @private
 %%
 %% @doc Check if bucket props allow for siblings.
--spec siblings_permitted(riak_kv_bucket:props()) -> boolean().
-siblings_permitted(BProps) when is_list(BProps) ->
-    case {is_datatype_or_consistent(BProps),
+-spec siblings_permitted(riak_object:riak_object(),
+                         riak_kv_bucket:props()) -> boolean().
+siblings_permitted(Obj, BProps) when is_list(BProps) ->
+    case {is_datatype_or_consistent(Obj, BProps),
           proplists:get_bool(allow_mult, BProps),
           proplists:get_bool(last_write_wins, BProps)} of
         {true, _, _} -> false;
@@ -474,7 +476,7 @@ siblings_permitted(BProps) when is_list(BProps) ->
         {false, false, _} -> false;
         {_, _, _} -> true
     end;
-siblings_permitted(_) -> true.
+siblings_permitted(_, _) -> true.
 
 %% @private
 %%
@@ -484,7 +486,7 @@ siblings_permitted(_) -> true.
 -spec delete_operation(riak_kv_bucket:props(), obj(), [doc()],
                        bkey(), lp()) -> delops().
 delete_operation(BProps, Obj, Docs, BKey, LP) ->
-    case siblings_permitted(BProps) of
+    case siblings_permitted(Obj, BProps) of
         true -> cleanup_for_sibs(Docs,
                                 BKey,
                                 yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)));
@@ -496,13 +498,13 @@ delete_operation(BProps, Obj, Docs, BKey, LP) ->
 %% @doc Merge siblings for objects that shouldn't have them.
 -spec maybe_merge_siblings(riak_kv_bucket:props(), obj()) -> obj().
 maybe_merge_siblings(BProps, Obj) ->
-    case {siblings_permitted(BProps), riak_object:value_count(Obj)} of
+    case {siblings_permitted(Obj, BProps), riak_object:value_count(Obj)} of
         {true, _} ->
             Obj;
         {false, 1} ->
             Obj;
         _ ->
-            case is_datatype(BProps) of
+            case is_datatype(Obj, BProps) of
                 true -> riak_kv_crdt:merge(Obj);
                 false -> riak_object:reconcile([Obj], false)
             end
@@ -578,30 +580,49 @@ siblings_permitted_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(siblings_permitted(CheckBucketProps))
+                      ?assertNot(siblings_permitted(Object, CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
       ?_test(begin
                  BucketType1 = <<"counters">>,
                  BucketType2 = <<"maps">>,
+                 BucketType3 = <<"loopfors">>,
                  Bucket1 = {BucketType1, <<"crdt">>},
                  Bucket2 = {BucketType2, <<"crdtz">>},
-                 riak_core_bucket_type:create(BucketType1, [{datatype, counter}]),
+                 Bucket3 = {BucketType3, <<"crdtbz">>},
+                 riak_core_bucket_type:create(BucketType1,
+                                              [{datatype, counter}]),
                  riak_core_bucket_type:activate(BucketType1),
                  riak_core_bucket_type:create(BucketType2, [{datatype, map}]),
                  riak_core_bucket_type:activate(BucketType2),
+                 riak_core_bucket_type:create(BucketType3, []),
+                 riak_core_bucket_type:activate(BucketType3),
                  BTProps1 = riak_core_bucket:get_bucket(Bucket1),
                  BTProps2 = riak_core_bucket:get_bucket(Bucket2),
+                 BTProps3 = riak_core_bucket:get_bucket(Bucket3),
                  ?assertEqual(counter, proplists:get_value(datatype, BTProps1)),
                  ?assertEqual(map, proplists:get_value(datatype, BTProps2)),
+                 ?assertEqual(undefined, proplists:get_value(datatype,
+                                                             BTProps3)),
                  [begin
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(siblings_permitted(CheckBucketProps))
+                      ?assert(siblings_permitted(Object, CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
-                                     {Bucket2, <<"k2">>, hey}]]
+                                     {Bucket2, <<"k2">>, hey}]],
+                 [begin
+                      Object = riak_kv_crdt:new(B, K, Mod),
+                      CheckBucket = riak_object:bucket(Object),
+                      CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
+                      ?assertNot(siblings_permitted(Object, CheckBucketProps))
+                  end || {B, K, Mod} <- [{Bucket1, <<"k1">>, riak_dt_pncounter},
+                                       {Bucket2, <<"k2">>, riak_dt_map}]],
+                 Object2 = riak_kv_crdt:new(Bucket3, <<"kjfor3">>, riak_dt_map),
+                 CheckBucket2 = riak_object:bucket(Object2),
+                 CheckBucketProps2 = riak_core_bucket:get_bucket(CheckBucket2),
+                 ?assert(siblings_permitted(Object2, CheckBucketProps2))
              end),
       ?_test(begin
                  Bucket1 = <<"lww">>,
@@ -618,7 +639,7 @@ siblings_permitted_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assertNot(siblings_permitted(CheckBucketProps))
+                      ?assertNot(siblings_permitted(Object, CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end),
@@ -638,7 +659,7 @@ siblings_permitted_test_() ->
                       Object = riak_object:new(B, K, V),
                       CheckBucket = riak_object:bucket(Object),
                       CheckBucketProps = riak_core_bucket:get_bucket(CheckBucket),
-                      ?assert(siblings_permitted(CheckBucketProps))
+                      ?assert(siblings_permitted(Object, CheckBucketProps))
                   end || {B, K, V} <- [{Bucket1, <<"k1">>, hi},
                                      {Bucket2, <<"k2">>, hey}]]
              end)]}.
