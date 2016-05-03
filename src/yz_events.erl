@@ -26,12 +26,7 @@
 
 %% API
 -export([start_link/0,
-         add_handler/2,
-         add_callback/1,
-         add_guarded_callback/1,
-         add_guarded_handler/2,
-         add_sup_callback/1,
-         add_sup_handler/2]).
+         add_guarded_handler/2]).
 
 %% gen_event callbacks
 -export([code_change/3,
@@ -72,24 +67,11 @@
 start_link() ->
     gen_event:start_link({local, ?MODULE}).
 
-add_handler(Handler, Args) ->
-    gen_event:add_handler(?MODULE, Handler, Args).
-
-add_sup_handler(Handler, Args) ->
-    gen_event:add_sup_handler(?MODULE, Handler, Args).
-
+%% Call into riak_core's guarded event handler flow, which spawns a
+%% supervised child process for which this is wrapped by a
+%% riak_core_eventhandler_guard to persist the event handler.
 add_guarded_handler(Handler, Args) ->
-    yz_eventhandler_sup:start_guarded_handler(?MODULE, Handler, Args).
-
-add_callback(Fn) when is_function(Fn) ->
-    gen_event:add_handler(?MODULE, {?MODULE, make_ref()}, [Fn]).
-
-add_sup_callback(Fn) when is_function(Fn) ->
-    gen_event:add_sup_handler(?MODULE, {?MODULE, make_ref()}, [Fn]).
-
-add_guarded_callback(Fn) when is_function(Fn) ->
-    yz_eventhandler_sup:start_guarded_handler(?MODULE, {?MODULE, make_ref()},
-                                          [Fn]).
+    riak_core:add_guarded_event_handler(?MODULE, Handler, Args).
 
 %%%===================================================================
 %%% Callbacks
