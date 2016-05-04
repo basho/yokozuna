@@ -22,6 +22,7 @@
 
 -module(yz_fuse_upgrade).
 -export([confirm/0]).
+
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -38,8 +39,8 @@
         ]).
 
 confirm() ->
-    TestMetaData = riak_test_runner:metadata(),
-    OldVsn = proplists:get_value(upgrade_version, TestMetaData, previous),
+    %% Fixing to a "pre-batching/fuse" version, this can be version <= 2.0.6.
+    OldVsn = "2.0.5",
 
     Cluster = rt:build_cluster(lists:duplicate(?CLUSTER_SIZE,
                                                {OldVsn, ?CONFIG})),
@@ -53,11 +54,19 @@ confirm() ->
     yz_rt:create_index(Node1, ?NEW_INDEX),
     yz_rt:set_index(Node1, ?NEW_BUCKET, ?NEW_INDEX),
 
-    verify_fuse_for_index(Node1, ?OLD_INDEX),
-    verify_fuse_for_index(Node1, ?NEW_INDEX),
+    ?assertEqual(ok,
+                 yz_rt:wait_until(Cluster, fun verify_fuse_for_old_index/1)),
+    ?assertEqual(ok,
+                 yz_rt:wait_until(Cluster, fun verify_fuse_for_new_index/1)),
 
     pass.
 
-verify_fuse_for_index(Node, Index) ->
-    Result = rpc:call(Node, yz_fuse, check, [Index]),
-    ?assertMatch(ok, Result).
+verify_fuse_for_old_index(Node) ->
+    Result = rpc:call(Node, yz_fuse, check, [?OLD_INDEX]),
+    lager:info("Fuse Check Old Index ~p", [Result]),
+    ok =:= Result.
+
+verify_fuse_for_new_index(Node) ->
+    Result = rpc:call(Node, yz_fuse, check, [?NEW_INDEX]),
+    lager:info("Fuse Check New Index ~p", [Result]),
+    ok =:= Result.
