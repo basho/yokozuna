@@ -222,41 +222,51 @@ update_solr(Index, LI, Entries) ->
 %% @doc Build the SOLR query
 -spec solr_ops(logical_idx(), solr_entries()) -> solr_ops().
 solr_ops(LI, Entries) ->
-      lists:foldl(
-        fun({BKey, Obj0, Reason0, P, ShortPL, Hash}, Ops) ->
-            {Bucket, _} = BKey,
-            BProps = riak_core_bucket:get_bucket(Bucket),
-            Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
-            ObjValues = riak_object:get_values(Obj),
-            Reason = get_reason_action(Reason0),
-            case {Reason, ObjValues} of
-                {anti_entropy_delete, _ObjValues} ->
-                    LP = yz_cover:logical_partition(LI, P),
-                    DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
-                    DeleteOps =
-                        [[{delete, yz_solr:encode_delete({id, DocId})}
-                            || DocId <- DocIds]],
-                    [DeleteOps | Ops];
-                {delete, _} ->
-                    [[[{delete, yz_solr:encode_delete({bkey, BKey})}]] | Ops];
-                {_, [notfound]} ->
-                    [[[{delete, yz_solr:encode_delete({bkey, BKey})}]] | Ops];
-                _ ->
-                    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-                    LP = yz_cover:logical_partition(LI, P),
-                    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
-                                            ?INT_TO_BIN(LP)),
-                    AddOps = yz_doc:adding_docs(Docs),
-                    DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
-                                                       LP),
+      [get_ops_for_entry(Entry, LI) || Entry <- Entries].
 
-                    OpsForEntry = [[{add, yz_solr:encode_doc(Doc)}
-                                    || Doc <- AddOps],
-                                   [{delete, yz_solr:encode_delete(DeleteOp)} ||
-                                       DeleteOp <- DeleteOps]],
-                    [OpsForEntry | Ops]
-            end
-        end, [], Entries).
+-spec get_ops_for_entry(solr_entry(), logical_idx()) -> solr_ops().
+get_ops_for_entry({BKey, Obj0, Reason0, P, ShortPL, Hash}, LI) ->
+    {Bucket, _} = BKey,
+    BProps = riak_core_bucket:get_bucket(Bucket),
+    Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
+    ObjValues = riak_object:get_values(Obj),
+    Reason = get_reason_action(Reason0),
+    get_ops_for_entry_reason(Reason, ObjValues, LI, P, Obj, BKey, ShortPL,
+        Hash, BProps).
+
+-spec get_ops_for_entry_reason(write_reason(), [riak_object:value()],
+        logical_idx(), p(), obj(), bkey(), short_preflist(), hash(),
+        riak_core_bucket:properties()) -> solr_ops().
+get_ops_for_entry_reason(anti_entropy_delete, _ObjValues, LI, P, Obj, _BKey,
+        _ShortPL, _Hash, _BProps) ->
+    LP = yz_cover:logical_partition(LI, P),
+    DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
+    DeleteOps =
+        [{delete, yz_solr:encode_delete({id, DocId})}
+            || DocId <- DocIds],
+    [DeleteOps];
+get_ops_for_entry_reason(delete, _ObjValues, _LI, _P, _Obj, BKey,
+        _ShortPL, _Hash, _BProps) ->
+    [{delete, yz_solr:encode_delete({bkey, BKey})}];
+get_ops_for_entry_reason(_Reason, [notfound], _LI, _P, _Obj, BKey,
+        _ShortPL, _Hash, _BProps) ->
+    [{delete, yz_solr:encode_delete({bkey, BKey})}];
+get_ops_for_entry_reason(_Reason, _ObjValues, LI, P, Obj, BKey,
+        ShortPL, Hash, BProps) ->
+            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+            LP = yz_cover:logical_partition(LI, P),
+            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
+                ?INT_TO_BIN(LP)),
+            AddOps = yz_doc:adding_docs(Docs),
+            DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
+                LP),
+
+            OpsForEntry = [[{delete, yz_solr:encode_delete(DeleteOp)} ||
+                DeleteOp <- DeleteOps],
+                [{add, yz_solr:encode_doc(Doc)}
+                    || Doc <- AddOps]
+            ],
+            [OpsForEntry].
 
 %% @doc A function that takes in an `Index', a list of `Ops' and the list
 %%      of `Entries', and attempts to batch_index them into Solr.
@@ -323,7 +333,7 @@ send_solr_single_ops(Index, Ops) ->
                               false
                       end
               end
-      end, lists:reverse(Ops)).
+      end, Ops).
 
 -spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
@@ -367,9 +377,8 @@ get_reason_action(Reason) ->
 
 -spec prepare_ops_for_batch(solr_ops()) -> solr_entries().
 prepare_ops_for_batch(Ops) ->
-    %% Flatten and Reverse Ops (Making sure deletes occurr first for
-    %% combined operators)
-    lists:reverse(lists:flatten(Ops)).
+    %% Flatten combined operators for a batch.
+    lists:flatten(Ops).
 
 handle_info(_Msg, State) ->
     {noreply, State}.
