@@ -500,6 +500,7 @@
 -type solrq_batch_min()            :: pos_integer().
 -type solrq_batch_max()            :: pos_integer().
 -type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
+-type solrq_hwm()                  :: pos_integer().
 -type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX|?PURGE_ALL.
 
 %%%===================================================================
@@ -511,6 +512,7 @@
 -define(DRAIN_PARTITION, drain_partition).
 -define(SOLRQ_DRAIN_TIMEOUT, solrq_drain_timeout).
 -define(SOLRQ_DRAIN_ENABLE, solrq_drain_enable).
+-define(SOLRQ_DRAIN_CANCEL_TIMEOUT, solrq_drain_cancel_timeout).
 
 -type drain_param() ::
     {?EXCHANGE_FSM_PID, pid()} |

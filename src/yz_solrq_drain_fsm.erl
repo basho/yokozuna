@@ -21,7 +21,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, start_link/1, cancel/0]).
+-export([start_link/0, start_link/1, cancel/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -94,21 +94,26 @@ drain_complete(DPid, Token) ->
 %%
 -spec start_prepare() -> no_proc | timeout | term().
 start_prepare() ->
-    gen_fsm:send_event(?MODULE, start).
+    gen_fsm:send_event(?SERVER, start).
 
 %% @doc Cancel a drain.  This operation will result in sending a cancel
 %% message to each of the solrqs, putting them back into a batching state.
 %% @end
 %%
--spec cancel() -> no_proc | timeout | ok.
-cancel() ->
-    case catch gen_fsm:sync_send_all_state_event(?MODULE, cancel, 5000) of
-        {'EXIT', {noproc, _}} ->
+-spec cancel(non_neg_integer()) -> ok | no_proc | timeout.
+cancel(Timeout) ->
+    try
+        gen_fsm:sync_send_all_state_event(?SERVER, cancel, Timeout)
+    catch
+        _:{normal, _}  ->
+            %% It's possible that the drain FSM terminates "naturally"
+            %% between the time that we initiate a cancel and the time
+            %% the cancel message is received and processed.
+            ok;
+        _:{no_proc, _}  ->
             no_proc;
-        {'EXIT', {timeout, _}} ->
-            timeout;
-        ok ->
-            ok
+        _:{timeout, _} ->
+            timeout
     end.
 
 %%%===================================================================
@@ -129,9 +134,9 @@ init(Params) ->
 %% @end
 %%
 prepare(start, #state{partition = P} = State) ->
-    SolrqIds = yz_solrq_sup:solrq_names(),
+    SolrqIds = yz_solrq:solrq_worker_names(),
     TS = os:timestamp(),
-    Tokens = [yz_solrq:drain(SolrqId, P) || SolrqId <- SolrqIds],
+    Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
     {next_state, wait, State#state{tokens = Tokens, time_start=TS}}.
 
 %% @doc While in the wait state, we wait for drain_complete messages with accompanying
@@ -154,7 +159,7 @@ wait({drain_complete, Token},
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams
             ),
-            [yz_solrq:drain_complete(Name) || Name <- yz_solrq_sup:solrq_names()],
+            [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()],
             {stop, normal, NewState};
         _ ->
             {next_state, wait, NewState}
@@ -164,7 +169,7 @@ handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
 handle_sync_event(cancel, _From, _StateName, State) ->
-    [yz_solrq:cancel_drain(Name) || Name <- yz_solrq_sup:solrq_names()],
+    [yz_solrq_worker:cancel_drain(Name) || Name <- yz_solrq:solrq_worker_names()],
     {stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->

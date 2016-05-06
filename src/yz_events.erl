@@ -283,7 +283,7 @@ cache_index_state(Index, down) ->
         {state, down} ->
             ok;
         {state, up} ->
-            yz_solrq_sup:blown_fuse(Index),
+            yz_solrq:blown_fuse(Index),
             %yz_stat:fuse_blown(?BIN_TO_ATOM(Index)),
             ets:insert(?ETS, {Index, {state, down}});
         undefined ->
@@ -295,7 +295,7 @@ cache_index_state(Index, up) ->
     Recovered = ets:lookup(?ETS, Index),
     case proplists:get_value(Index, Recovered, []) of
         {state, down} ->
-            yz_solrq_sup:healed_fuse(Index),
+            yz_solrq:healed_fuse(Index),
             yz_stat:fuse_recovered(?BIN_TO_ATOM(Index)),
             ets:insert(?ETS, {Index, {state, up}});
         _ ->

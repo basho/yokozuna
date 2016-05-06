@@ -549,19 +549,17 @@ maybe_build(S) ->
 close_trees(S=#state{trees=Trees, closed=false}) ->
     Trees2 = [begin
                   NewTree =
-                      try
-                          case hashtree:next_rebuild(Tree) of
-                              %% Not marking close cleanly to avoid the
-                              %% cost of a full rebuild on shutdown.
-                              full ->
-                                  lager:info("Deliberately marking YZ hashtree ~p"
-                                             ++ " for full rebuild on next restart",
-                                             [IdxN]),
-                                  hashtree:flush_buffer(Tree);
-                              incremental ->
-                                  HT = hashtree:update_tree(Tree),
-                                  hashtree:mark_clean_close(IdxN, HT)
-                          end
+                      try hashtree:next_rebuild(Tree) of
+                          %% Not marking close cleanly to avoid the
+                          %% cost of a full rebuild on shutdown.
+                          full ->
+                              lager:info("Deliberately marking YZ hashtree ~p"
+                                         ++ " for full rebuild on next restart",
+                                         [IdxN]),
+                              hashtree:flush_buffer(Tree);
+                          incremental ->
+                              HT = hashtree:update_tree(Tree),
+                              hashtree:mark_clean_close(IdxN, HT)
                       catch _:Err ->
                               lager:warning("Failed to flush/update trees"
                                             ++ " during close | Error: ~p", [Err]),
