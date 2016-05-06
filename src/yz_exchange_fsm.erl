@@ -113,30 +113,15 @@ prepare_exchange(start_exchange, S) ->
     YZTree = S#state.yz_tree,
     KVTree = S#state.kv_tree,
 
-    case yz_entropy_mgr:get_lock(?MODULE) of
-        ok ->
-            case yz_index_hashtree:get_lock(YZTree, ?MODULE) of
-                ok ->
-                    case riak_kv_entropy_manager:get_lock(?MODULE) of
-                        ok ->
-                            case riak_kv_index_hashtree:get_lock(KVTree,
-                                                                 ?MODULE) of
-                                ok ->
-                                    update_trees(start_exchange, S);
-                                _ ->
-                                    send_exchange_status(already_locked, S),
-                                    {stop, normal, S}
-                            end;
-                        Error ->
-                            send_exchange_status(Error, S),
-                            {stop, normal, S}
-                    end;
-                _ ->
-                    send_exchange_status(already_locked, S),
-                    {stop, normal, S}
-            end;
-        Error ->
-            send_exchange_status(Error, S),
+    try
+        ok = yz_entropy_mgr:get_lock(?MODULE),
+        ok = yz_index_hashtree:get_lock(YZTree, ?MODULE),
+        ok = riak_kv_entropy_manager:get_lock(?MODULE),
+        ok = riak_kv_index_hashtree:get_lock(KVTree, ?MODULE),
+        update_trees(start_exchange, S)
+    catch
+        error:{badmatch, Reason} ->
+            send_exchange_status(Reason, S),
             {stop, normal, S}
     end;
 
@@ -161,7 +146,7 @@ update_trees(start_exchange, S=#state{kv_tree=KVTree,
     {next_state, update_trees, S};
 
 update_trees({drain_error, Reason}, S) ->
-    lager:debug("Drain failed with reason ~p", [Reason]),
+    lager:error("Drain failed with reason ~p", [Reason]),
     send_exchange_status(drain_failed, S),
     {stop, normal, S};
 

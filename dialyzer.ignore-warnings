@@ -24,6 +24,7 @@ yz_search_http.erl:87: The variable _ can never match since previous clauses com
 yz_solr_start_timeout.erl:28: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_wm_extract_test.erl:45: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_siblings.erl:141: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_solrq_test.erl:131: The variable _ can never match since previous clauses completely covered the type 'false'
 Unknown functions:
   make_certs:endusers/3
   make_certs:rootCA/2

@@ -223,7 +223,7 @@ index_url({Host, Port}, Index, Timeout) ->
 search_url({Host, Port}, Index) ->
     search_url({Host, Port}, Index, "").
 
--spec search_url({string(), portnum()}, index_name(), string()) -> ok.
+-spec search_url({host(), portnum()}, index_name(), string()) -> string().
 search_url({Host, Port}, Index, Params) ->
     FmtStr = "http://~s:~B/search/query/~s",
     FmtParams = case Params of
@@ -741,23 +741,23 @@ clear_kv_trees(Cluster) ->
 -spec set_index([node()], index_name(), solrq_batch_min(), solrq_batch_max(),
     solrq_batch_flush_interval()) -> {[any()],[atom()]}.
 set_index(Cluster, Index, Min, Max, DelayMsMax) ->
-    rpc:multicall(Cluster, yz_solrq_sup, set_index, [Index, Min, Max, DelayMsMax]).
+    rpc:multicall(Cluster, yz_solrq, set_index, [Index, Min, Max, DelayMsMax]).
 
 -spec set_hwm([node()], pos_integer()) -> {[any()],[atom()]}.
 set_hwm(Cluster, Hwm) ->
-    rpc:multicall(Cluster, yz_solrq_sup, set_hwm, [Hwm]).
+    rpc:multicall(Cluster, yz_solrq, set_hwm, [Hwm]).
 
 -spec set_purge_strategy([node()], purge_strategy()) -> {[any()],[atom()]}.
 set_purge_strategy(Cluster, PurgeStrategy) ->
-    rpc:multicall(Cluster, yz_solrq_sup, set_purge_strategy, [PurgeStrategy]).
+    rpc:multicall(Cluster, yz_solrq, set_purge_strategy, [PurgeStrategy]).
 
 -spec wait_until_fuses_blown(node() | [node()], solrq_id(), [index_name()]) ->
     ok | [ok].
 wait_until_fuses_blown(Cluster, SolrqId, Indices) when is_list(Cluster) ->
     [wait_until_fuses_blown(Node, SolrqId, Indices) || Node <- Cluster];
 wait_until_fuses_blown(Node, SolrqId, Indices) ->
-    F = fun(IndexQ) ->
-        lager:info("Waiting for fuse to blow for index ~p", [IndexQ]),
+    F = fun({Index, IndexQ}) ->
+        lager:info("Waiting for fuse to blow for index ~p", [{Index, IndexQ}]),
         proplists:get_value(fuse_blown, IndexQ)
         end,
     check_fuse_status(Node, SolrqId, Indices, F).
@@ -767,8 +767,8 @@ wait_until_fuses_blown(Node, SolrqId, Indices) ->
 wait_until_fuses_reset(Cluster, SolrqId, Indices) when is_list(Cluster) ->
     [wait_until_fuses_reset(Node, SolrqId, Indices) || Node <- Cluster];
 wait_until_fuses_reset(Node, SolrqId, Indices) ->
-    F = fun(IndexQ) ->
-        lager:info("Waiting for fuse to reset for index ~p", [IndexQ]),
+    F = fun({Index, IndexQ}) ->
+        lager:info("Waiting for fuse to reset for index ~p", [{Index, IndexQ}]),
         not proplists:get_value(fuse_blown, IndexQ)
         end,
     check_fuse_status(Node, SolrqId, Indices, F).
@@ -776,19 +776,14 @@ wait_until_fuses_reset(Node, SolrqId, Indices) ->
 %% @private
 check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
     F = fun(N) ->
-        Solrqs = rpc:call(N, yz_debug, solrqs, []),
+        Solrqs = rpc:call(N, yz_solrq, status, []),
         Solrq = proplists:get_value(SolrqId, Solrqs),
         IndexQs = proplists:get_value(indexqs, Solrq),
         MatchingIndexQs = lists:filter(
             FuseCheckFunction,
             IndexQs
         ),
-        MatchingIndices = lists:map(
-            fun(IndexQ) ->
-                proplists:get_value(index, IndexQ)
-            end,
-            MatchingIndexQs
-        ),
+        MatchingIndices = [Index || {Index, _IndexQ} <- MatchingIndexQs],
         sets:is_subset(sets:from_list(Indices), sets:from_list(MatchingIndices))
         end,
     wait_until([Node], F).
@@ -806,3 +801,11 @@ set_yz_aae_mode(Cluster, Mode) when is_list(Cluster) ->
     [set_yz_aae_mode(Node, Mode) || Node <- Cluster];
 set_yz_aae_mode(Node, Mode) ->
     rpc:call(Node, yz_entropy_mgr, set_mode, [Mode]).
+
+%% @doc Generate `SeqMax' keys. Yokozuna supports only UTF-8 compatible keys.
+-spec gen_keys(pos_integer()) -> [binary()].
+gen_keys(SeqMax) ->
+    [<<N:64/integer>> || N <- lists:seq(1, SeqMax),
+                         not lists:any(
+                               fun(E) -> E > 127 end,
+                               binary_to_list(<<N:64/integer>>))].

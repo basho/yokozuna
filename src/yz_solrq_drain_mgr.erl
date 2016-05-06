@@ -22,7 +22,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, drain/0, drain/1]).
+-export([start_link/0, drain/0, drain/1, cancel/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -109,7 +109,6 @@ init([]) ->
     schedule_tick(),
     {ok, #state{}}.
 
-
 handle_call({get_lock, Pid}, _From, #state{lock=undefined} = State) ->
     Ref = monitor(process, Pid),
     State2 = State#state{lock={Ref, Pid}},
@@ -136,7 +135,7 @@ handle_info({'DOWN', Ref, _, _Obj, _Status}, State) ->
     {noreply, maybe_release_lock(State, Ref)};
 
 handle_info(tick, State) ->
-    yz_stat:queue_capacity(yz_solrq_sup:queue_capacity()),
+    yz_stat:queue_capacity(yz_solrq:queue_capacity()),
     schedule_tick(),
     {noreply, State};
 handle_info(_Info, State) ->

@@ -100,6 +100,8 @@ confirm() ->
     confirm_no_contenttype_data(Cluster, PBConn, ?BUCKET4, ?INDEX4),
     confirm_purge_strategy(Cluster, PBConn),
 
+    %% TODO: test cancel intercept of drain
+
     yz_rt:close_pb_conns(PBConns),
     pass.
 
@@ -119,14 +121,15 @@ confirm_batching(Cluster, PBConn, BKey, Index) ->
     verify_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING),
 
     %% Finally, put another batch of one less than solrq_batch_min, but this
-    %% time wait until solrq_delayms_max milliseconds (plus a small fudge
-    %% factor) have passed and expect that a flush will be triggered and all
-    %% objects have been indexed.
+    %% time wait until the data has been flushed, and then verify that we
+    %% have waited at least SOLRQ_DELAYMS_MAX ms.
     Count = put_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING),
-    timer:sleep(?SOLRQ_DELAYMS_MAX + 100),
-    verify_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING + Count),
+    StarMS = current_ms(),
+    wait_until_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING + Count),
+    ?assert((current_ms() - StarMS) >= ?SOLRQ_DELAYMS_MAX),
+
     lager:info("confirm_batching ok"),
     ok.
 
@@ -135,7 +138,7 @@ confirm_draining(Cluster, PBConn, BKey, Index) ->
     Count = put_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, 0),
-    yz_rt:drain_solrqs(hd(Cluster)),
+    yz_rt:drain_solrqs(Cluster),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, Count),
     lager:info("confirm_draining ok"),
@@ -341,9 +344,9 @@ do_purge([Node|_] = Cluster, PBConn,
         [Index1BKey2] = put_bkey_objects(PBConn, [Index1BKey2]),
         [Index2BKey1] = put_bkey_objects(PBConn, [Index2BKey1]),
         [Index2BKey2] = put_bkey_objects(PBConn, [Index2BKey2]),
-        yz_rt:wait_until_fuses_blown(Node, yz_solrq_0001, [Index1, Index2]),
+        yz_rt:wait_until_fuses_blown(Node, yz_solrq_worker_0001, [Index1, Index2]),
         %%
-        %% At this point, the two indexqs in yz_solrq_001 corresponding
+        %% At this point, the two indexqs in yz_solrq_worker_001 corresponding
         %% to Index1 and Index2, respectively, should be blown.
         %% Send one more message through one of the Indexqs, which
         %% will trigger a purge.
@@ -363,7 +366,7 @@ do_purge([Node|_] = Cluster, PBConn,
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
         yz_rt:intercept_index_batch(Node, index_batch_call_orig),
-        yz_rt:wait_until_fuses_reset(Node, yz_solrq_0001, [Index1, Index2]),
+        yz_rt:wait_until_fuses_reset(Node, yz_solrq_worker_0001, [Index1, Index2]),
         yz_rt:drain_solrqs(Node),
         yz_rt:commit(Cluster, Index1),
         yz_rt:commit(Cluster, Index2)
@@ -392,25 +395,9 @@ search_bkeys(PBConn, Index) ->
         end,
         SearchResults).
 
-
-%% TODO Revisit re-using Indices and Buckets w/ delete_mode=keep
-%cleanup(PBConn, Index1, Index2) ->
-%    Index1SearchBKeys = search_bkeys(PBConn, Index1),
-%    Index2SearchBKeys = search_bkeys(PBConn, Index2),
-%    cleanup(PBConn, Index1SearchBKeys ++ Index2SearchBKeys).
-
-%cleanup(PBConn, BKeys) ->
-%    lists:foreach(
-%        fun({Bucket, Key}) ->
-%            riakc_pb_socket:delete(PBConn, Bucket, Key)
-%        end,
-%        BKeys
-%    ),
-%    timer:sleep(500).
-
 -spec find_representative_bkeys(node(), index_name(), bucket()) -> [bkey()].
 find_representative_bkeys(Node, Index, Bucket) ->
-    find_representative_bkeys(Node, Index, Bucket, yz_solrq_0001).
+    find_representative_bkeys(Node, Index, Bucket, yz_solrq_worker_0001).
 
 -spec find_representative_bkeys(node(),
                                 index_name(),
@@ -437,7 +424,7 @@ find_representatives(Node, Index, Bucket) ->
 
 -spec get_solrq(node(), index_name(), bkey()) -> module().
 get_solrq(Node, Index, BKey) ->
-    rpc:call(Node, yz_solrq_sup, queue_regname, [erlang:phash2({Index, BKey})]).
+    rpc:call(Node, yz_solrq, worker_regname, [erlang:phash2({Index, BKey})]).
 
 -spec put_no_contenttype_objects(pid(), bucket(), non_neg_integer()) -> non_neg_integer().
 put_no_contenttype_objects(PBConn, Bucket, Count) ->
@@ -450,7 +437,7 @@ put_objects(PBConn, Bucket, Count) ->
 -spec put_objects(pid(), bucket(), non_neg_integer(), string()|undefined) -> non_neg_integer().
 put_objects(PBConn, Bucket, Count, ContentType) ->
     %% Using the same key for every object ensures that they all hash to the
-    %% same yz_solrq and the batching is therefore predictable.
+    %% same yz_solrq_worker and the batching is therefore predictable.
     Key = <<"same_key_for_everyone">>,
     RandVals = [yz_rt:random_binary(16) || _ <- lists:seq(1, Count)],
     Objects = [case ContentType of
@@ -485,4 +472,15 @@ verify_search_count(PBConn, Index, Count) ->
         riakc_pb_socket:search(PBConn, Index, <<"*:*">>),
     ?assertEqual(Count, Found).
 
+wait_until_search_count(PBConn, Index, Count) ->
+    F = fun() ->
+        {ok, {search_results, _R, _Score, Found}} =
+            riakc_pb_socket:search(PBConn, Index, <<"*:*">>),
+        Found =:= Count
+        end,
+    rt:wait_until(F).
+
+current_ms() ->
+    {MegaSecs, Secs, MicroSecs} = os:timestamp(),
+    (MegaSecs * 1000000 + Secs) * 1000 + round(MicroSecs / 1000).
 

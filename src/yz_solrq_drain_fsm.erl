@@ -94,7 +94,7 @@ drain_complete(DPid, Token) ->
 %%
 -spec start_prepare() -> no_proc | timeout | term().
 start_prepare() ->
-    gen_fsm:send_event(?MODULE, start).
+    gen_fsm:send_event(?SERVER, start).
 
 %% @doc Cancel a drain.  This operation will result in sending a cancel
 %% message to each of the solrqs, putting them back into a batching state.
@@ -102,7 +102,9 @@ start_prepare() ->
 %%
 -spec cancel() -> no_proc | timeout | ok.
 cancel() ->
-    case catch gen_fsm:sync_send_all_state_event(?MODULE, cancel, 5000) of
+    %% This works best as just a catch, due to the crash hierarchy for this
+    %% event. Looking at some of Ulf's gproc code, and this pattern is fine.
+    case catch gen_fsm:sync_send_all_state_event(?SERVER, cancel, 5000) of
         {'EXIT', {noproc, _}} ->
             no_proc;
         {'EXIT', {timeout, _}} ->
@@ -129,9 +131,9 @@ init(Params) ->
 %% @end
 %%
 prepare(start, #state{partition = P} = State) ->
-    SolrqIds = yz_solrq_sup:solrq_names(),
+    SolrqIds = yz_solrq:solrq_worker_names(),
     TS = os:timestamp(),
-    Tokens = [yz_solrq:drain(SolrqId, P) || SolrqId <- SolrqIds],
+    Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
     {next_state, wait, State#state{tokens = Tokens, time_start=TS}}.
 
 %% @doc While in the wait state, we wait for drain_complete messages with accompanying
@@ -154,7 +156,7 @@ wait({drain_complete, Token},
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams
             ),
-            [yz_solrq:drain_complete(Name) || Name <- yz_solrq_sup:solrq_names()],
+            [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()],
             {stop, normal, NewState};
         _ ->
             {next_state, wait, NewState}
@@ -164,7 +166,7 @@ handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
 handle_sync_event(cancel, _From, _StateName, State) ->
-    [yz_solrq:cancel_drain(Name) || Name <- yz_solrq_sup:solrq_names()],
+    [yz_solrq_worker:cancel_drain(Name) || Name <- yz_solrq:solrq_worker_names()],
     {stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->

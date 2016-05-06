@@ -456,11 +456,26 @@ is_datatype_or_consistent(_, _) -> false.
 %%
 %% @doc Check if Bucket Properties contain CRDT datatype and object
 %%      matches-up as a CRDT object.
+%%
+%%      We use the separate riak_kv_crdt functions because we want to
+%%      dismiss ?TOMBSTONE (<<>>) handling from doc encoding and only
+%%      to the merge after we retrun the truthiness of the datatype
+%%      check.
 -spec is_datatype(riak_object:riak_object(),
                   riak_kv_bucket:props()) -> boolean().
 is_datatype(Obj, BProps) when is_list(BProps) ->
-    riak_kv_crdt:is_crdt(Obj, BProps);
+    case riak_kv_crdt:is_crdt_supported(BProps) of
+        true ->
+            ObjVals = lists:dropwhile(fun is_tombstone_value/1,
+                                      riak_object:get_values(Obj)),
+            riak_kv_crdt:is_crdt_object(ObjVals);
+        _ ->
+            false
+    end;
 is_datatype(_, _) -> false.
+
+is_tombstone_value(ObjVal) ->
+    ObjVal == ?TOMBSTONE.
 
 %% @private
 %%

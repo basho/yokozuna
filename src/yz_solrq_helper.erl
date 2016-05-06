@@ -50,6 +50,9 @@ debug_entries(Entries) ->
                         {delete, {struct, [{atom(), binary()}]}}.
 -type solr_op_list() :: [[solr_op()]].
 
+-type write_action() :: put | delete | anti_entropy |
+                        anti_entropy_delete | handoff.
+
 %% Would look like:
 %% Ops per Entry: [[adds], [deletes]]
 %% All Ops: [[[adds], [deletes]]]
@@ -71,7 +74,7 @@ status(Pid, Timeout) ->
 
 -spec index_ready(index_name(), solrq_id()) -> ok.
 index_ready(Index, QPid) ->
-    HPid = yz_solrq_sup:random_helper(),
+    HPid = yz_solrq:random_helper(),
     index_ready(HPid, Index, QPid).
 
 %% @doc Mark the index as ready.  Separating into a two phase
@@ -81,7 +84,7 @@ index_ready(Index, QPid) ->
 index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
     gen_server:cast(HPid, {ready, Index, QPid});
 index_ready(Hash, Index, QPid) ->
-    HPid = yz_solrq_sup:helper_regname(Hash),
+    HPid = yz_solrq:helper_regname(Hash),
     index_ready(HPid, Index, QPid).
 
 %% @doc Index a batch
@@ -106,7 +109,7 @@ handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
 handle_cast({ready, Index, QPid}, State) ->
-    yz_solrq:request_batch(QPid, Index, self()),
+    yz_solrq_worker:request_batch(QPid, Index, self()),
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
     ?PULSE_DEBUG("Handling batch for index ~p.  Entries: ~p~n", [Index, debug_entries(Entries)]),
@@ -119,7 +122,7 @@ handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
             ?PULSE_DEBUG("Error handling batch for index ~p.  Undelivered: ~p~n", [Index, debug_entries(Undelivered)]),
             {length(Entries) - length(Undelivered), {retry, Undelivered}}
     end,
-    yz_solrq:batch_complete(QPid, Index, Message),
+    yz_solrq_worker:batch_complete(QPid, Index, Message),
     {noreply, State}.
 
 %%%===================================================================
@@ -225,19 +228,22 @@ solr_ops(LI, Entries) ->
       [get_ops_for_entry(Entry, LI) || Entry <- Entries].
 
 -spec get_ops_for_entry(solr_entry(), logical_idx()) -> solr_ops().
-get_ops_for_entry({BKey, Obj0, Reason0, P, ShortPL, Hash}, LI) ->
+get_ops_for_entry({BKey, Obj0, Reason, P, ShortPL, Hash}, LI) ->
     {Bucket, _} = BKey,
     BProps = riak_core_bucket:get_bucket(Bucket),
     Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
     ObjValues = riak_object:get_values(Obj),
-    Reason = get_reason_action(Reason0),
-    get_ops_for_entry_reason(Reason, ObjValues, LI, P, Obj, BKey, ShortPL,
+    Action = get_reason_action(Reason),
+    get_ops_for_entry_action(Action, ObjValues, LI, P, Obj, BKey, ShortPL,
         Hash, BProps).
 
--spec get_ops_for_entry_reason(write_reason(), [riak_object:value()],
+-spec get_ops_for_entry_action(write_action(), [riak_object:value()],
         logical_idx(), p(), obj(), bkey(), short_preflist(), hash(),
         riak_core_bucket:properties()) -> solr_ops().
-get_ops_for_entry_reason(anti_entropy_delete, _ObjValues, LI, P, Obj, _BKey,
+get_ops_for_entry_action(_Action, [notfound], _LI, _P, _Obj, BKey,
+        _ShortPL, _Hash, _BProps) ->
+    [{delete, yz_solr:encode_delete({bkey, BKey})}];
+get_ops_for_entry_action(anti_entropy_delete, _ObjValues, LI, P, Obj, _BKey,
         _ShortPL, _Hash, _BProps) ->
     LP = yz_cover:logical_partition(LI, P),
     DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
@@ -245,14 +251,13 @@ get_ops_for_entry_reason(anti_entropy_delete, _ObjValues, LI, P, Obj, _BKey,
         [{delete, yz_solr:encode_delete({id, DocId})}
             || DocId <- DocIds],
     [DeleteOps];
-get_ops_for_entry_reason(delete, _ObjValues, _LI, _P, _Obj, BKey,
+get_ops_for_entry_action(delete, _ObjValues, _LI, _P, _Obj, BKey,
         _ShortPL, _Hash, _BProps) ->
     [{delete, yz_solr:encode_delete({bkey, BKey})}];
-get_ops_for_entry_reason(_Reason, [notfound], _LI, _P, _Obj, BKey,
-        _ShortPL, _Hash, _BProps) ->
-    [{delete, yz_solr:encode_delete({bkey, BKey})}];
-get_ops_for_entry_reason(_Reason, _ObjValues, LI, P, Obj, BKey,
-        ShortPL, Hash, BProps) ->
+get_ops_for_entry_action(Action, _ObjValues, LI, P, Obj, BKey,
+        ShortPL, Hash, BProps) when Action == handoff;
+                                    Action == put;
+                                    Action == anti_entropy ->
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
@@ -340,11 +345,7 @@ update_aae_and_repair_stats(Entries) ->
     Repairs = lists:foldl(
                 fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
                         ReasonAction = get_reason_action(Reason),
-                        Action = case ReasonAction of
-                                     delete -> delete;
-                                     anti_entropy_delete -> delete;
-                                     _ -> {insert, Hash}
-                                 end,
+                        Action = hashtree_action(ReasonAction, Hash),
                         yz_kv:update_hashtree(Action, P, ShortPL, BKey),
                         gather_counts({P, ShortPL, Reason}, StatsD)
                 end, dict:new(), Entries),
@@ -361,6 +362,17 @@ update_aae_and_repair_stats(Entries) ->
              end, Repairs),
     ok.
 
+-spec hashtree_action(write_action(), hash()) ->
+    delete | {insert, hash()}.
+hashtree_action(delete, _Hash) ->
+    delete;
+hashtree_action(anti_entropy_delete, _Hash) ->
+    delete;
+hashtree_action(Action, Hash) when Action == put;
+                                   Action == handoff;
+                                   Action == anti_entropy ->
+    {insert, Hash}.
+
 -spec gather_counts({p(), {p(), n()}, write_reason()}, yz_dict()) -> yz_dict().
 gather_counts({Index, IndexN, Reason}, StatsD) ->
     case Reason of
@@ -369,7 +381,7 @@ gather_counts({Index, IndexN, Reason}, StatsD) ->
         _ -> dict:update_counter({Index, IndexN}, 0, StatsD)
     end.
 
--spec get_reason_action(write_reason()) -> write_reason().
+-spec get_reason_action(write_reason()) -> write_action().
 get_reason_action(Reason) when is_tuple(Reason) ->
     element(1, Reason);
 get_reason_action(Reason) ->
