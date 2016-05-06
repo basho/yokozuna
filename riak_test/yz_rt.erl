@@ -686,7 +686,9 @@ drain_solrqs(Node) ->
     rpc:call(Node, yz_solrq_drain_mgr, drain, []),
     ok.
 
--spec load_intercept_code(node()) -> ok.
+-spec load_intercept_code(node() | [node()]) -> ok.
+load_intercept_code(Cluster) when is_list(Cluster) ->
+    [load_intercept_code(Node) || Node <- Cluster];
 load_intercept_code(Node) ->
     CodePath = filename:join([rt_config:get(yz_dir),
                               "riak_test",
@@ -789,12 +791,18 @@ check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
     wait_until([Node], F).
 
 -spec intercept_index_batch(node() | [node()], module()) -> ok | [ok].
-intercept_index_batch(Cluster, Intercept) when is_list(Cluster) ->
-    [intercept_index_batch(Node, Intercept) || Node <- Cluster];
-intercept_index_batch(Node, Intercept) ->
+intercept_index_batch(Cluster, Intercept) ->
+    add_intercept(
+        Cluster,
+        yz_solr, index_batch, 2, Intercept).
+
+-spec add_intercept(node() | [node()], module(), atom(), non_neg_integer(), module()) -> ok | [ok].
+add_intercept(Cluster, Module, Function, Arity, Intercept) when is_list(Cluster) ->
+    [add_intercept(Node, Module, Function, Arity, Intercept) || Node <- Cluster];
+add_intercept(Node, Module, Function, Arity, Intercept) ->
     rt_intercept:add(
         Node,
-        {yz_solr, [{{index_batch, 2}, Intercept}]}).
+        {Module, [{{Function, Arity}, Intercept}]}).
 
 -spec set_yz_aae_mode(node() | [node()], automatic | manual) -> ok | [ok].
 set_yz_aae_mode(Cluster, Mode) when is_list(Cluster) ->
@@ -809,3 +817,20 @@ gen_keys(SeqMax) ->
                          not lists:any(
                                fun(E) -> E > 127 end,
                                binary_to_list(<<N:64/integer>>))].
+
+-spec check_stat_values(
+    proplists:proplist() | {error, Reason :: term()},
+    [{StatName::atom(), LHS::term(), Comparator::atom(), RHS::term()}])
+        -> boolean().
+check_stat_values(Stats, Pairs) ->
+    lager:info("STATS: ~p", [Stats]),
+    lager:info("Pairs: ~p", [Pairs]),
+    StillWaiting = [S || S = {_, Value, Cmp, Arg} <- Pairs,
+        not (erlang:Cmp(Value, Arg))],
+    case StillWaiting of
+        [] ->
+            true;
+        _ ->
+            lager:info("Waiting for stats: ~p", [StillWaiting]),
+            false
+    end.

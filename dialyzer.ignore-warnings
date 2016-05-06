@@ -99,3 +99,8 @@ Unknown functions:
   rt:wait_until_transfers_complete/1
   yz_solr_orig:index_batch_orig/2
   yz_solrq_drain_mgr_orig:drain_orig/1
+  yz_solrq_drain_mgr_orig:unlink_and_kill_orig/2
+  yz_solrq_drain_fsm_orig:prepare_orig/2
+  yz_solrq_drain_mgr_orig:unlink_and_kill_orig/2
+  yokozuna_rt:commit/2
+  yokozuna_rt:gen_keys/1

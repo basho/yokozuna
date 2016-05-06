@@ -21,7 +21,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, start_link/1, cancel/0]).
+-export([start_link/0, start_link/1, cancel/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -100,17 +100,20 @@ start_prepare() ->
 %% message to each of the solrqs, putting them back into a batching state.
 %% @end
 %%
--spec cancel() -> no_proc | timeout | ok.
-cancel() ->
-    %% This works best as just a catch, due to the crash hierarchy for this
-    %% event. Looking at some of Ulf's gproc code, and this pattern is fine.
-    case catch gen_fsm:sync_send_all_state_event(?SERVER, cancel, 5000) of
-        {'EXIT', {noproc, _}} ->
+-spec cancel(non_neg_integer()) -> ok | no_proc | timeout.
+cancel(Timeout) ->
+    try
+        gen_fsm:sync_send_all_state_event(?SERVER, cancel, Timeout)
+    catch
+        _:{normal, _}  ->
+            %% It's possible that the drain FSM terminates "naturally"
+            %% between the time that we initiate a cancel and the time
+            %% the cancel message is received and processed.
+            ok;
+        _:{no_proc, _}  ->
             no_proc;
-        {'EXIT', {timeout, _}} ->
-            timeout;
-        ok ->
-            ok
+        _:{timeout, _} ->
+            timeout
     end.
 
 %%%===================================================================

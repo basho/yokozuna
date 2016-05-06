@@ -34,7 +34,7 @@
         {?SOLRQ_BATCH_FLUSH_INTERVAL, 100000},
         {?SOLRQ_HWM, 10},
         {?ERR_THRESH_FAIL_COUNT, 1},
-        {?ERR_THRESH_RESET_INTERVAL, 1000},
+        {?ERR_THRESH_RESET_INTERVAL, 3000},
         %% allow AAE to build trees and exchange rapidly
         {anti_entropy_tick, 1000},
         {anti_entropy_build_limit, {100, 1000}},
@@ -281,7 +281,7 @@ check_index_stats(Node) ->
         {queue_drain_latency_min, QDrainLatencyMin, '>', 0},
         {queue_drain_latency_max, QDrainLatencyMax, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_index_fail_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -294,7 +294,7 @@ check_index_fail_stats(Node) ->
         {index_fail_count, IFailCount, '>', 0},
         {index_fail_one, IFailOne, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_query_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -307,7 +307,7 @@ check_query_stats(Node) ->
         {query_throughput_count, SThruCount, '>', 0},
         {query_throughput_one, SThruOne, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_queue_capacity_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -318,7 +318,7 @@ check_queue_capacity_stats(Node) ->
     Pairs = [
         {queue_capacity, QDCapacityValue, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_aae_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -329,7 +329,7 @@ check_aae_stats(Node) ->
     Pairs = [
         {aae_repairs, AAERepairValue, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_fuse_and_purge_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -385,17 +385,4 @@ check_fuse_and_purge_stats(Node) ->
         {error_threshold_recovered_count, ErrorThresholdRecoveredCountValue, '>', 0},
         {error_threshold_recovered_one, ErrorThresholdRecoveredOneValue, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
-
-check_stat_values(Stats, Pairs) ->
-    lager:info("STATS: ~p", [Stats]),
-    lager:info("Pairs: ~p", [Pairs]),
-    StillWaiting = [S || S = {_, Value, Cmp, Arg} <- Pairs,
-        not (erlang:Cmp(Value, Arg))],
-    case StillWaiting of
-        [] ->
-            true;
-        _ ->
-            lager:info("Waiting for stats: ~p", [StillWaiting]),
-            false
-    end.
+    yz_rt:check_stat_values(Stats, Pairs).
