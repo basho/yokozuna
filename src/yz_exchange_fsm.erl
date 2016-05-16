@@ -28,7 +28,7 @@
          terminate/3, code_change/4]).
 
 -record(state, {index :: p(),
-                index_n :: {p(),n()},
+                index_n :: short_preflist(),
                 yz_tree :: tree(),
                 kv_tree :: tree(),
                 built :: integer(),
@@ -44,6 +44,27 @@
                    {ok, pid()} | {error, any()}.
 start(Index, Preflist, YZTree, KVTree, Manager) ->
     gen_fsm:start(?MODULE, [Index, Preflist, YZTree, KVTree, Manager], []).
+
+%% @doc Send this FSM a drain_error message, with the supplied reason.  Calling
+%% drain error while the FSM is in the update_trees state will cause the FSM to stop
+%%
+%% IMPORTANT: This API call is really only intended to be used from the yz_solrq_drain_mgr
+%% Use at your own risk (or ignore).
+%% @end
+%%
+-spec drain_error(pid(), Reason::term()) -> ok.
+drain_error(Pid, Reason) ->
+    gen_fsm:send_event(Pid, {drain_error, Reason}).
+
+%% @doc  Update the yz index hashtree.
+%%
+%% IMPORTANT: This API call is really only intended to be used from the yz_solrq_drain_fsm
+%% Use at your own risk (or ignore).
+%% @end
+%%
+-spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist()) -> ok.
+update_yz_index_hashtree(Pid, YZTree, Index, IndexN) ->
+    do_update(Pid, yz_index_hashtree, YZTree, Index, IndexN).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -92,57 +113,56 @@ prepare_exchange(start_exchange, S) ->
     YZTree = S#state.yz_tree,
     KVTree = S#state.kv_tree,
 
-    case yz_entropy_mgr:get_lock(?MODULE) of
-        ok ->
-            case yz_index_hashtree:get_lock(YZTree, ?MODULE) of
-                ok ->
-                    case riak_kv_entropy_manager:get_lock(?MODULE) of
-                        ok ->
-                            case riak_kv_index_hashtree:get_lock(KVTree,
-                                                                 ?MODULE) of
-                                ok ->
-                                    update_trees(start_exchange, S);
-                                _ ->
-                                    send_exchange_status(already_locked, S),
-                                    {stop, normal, S}
-                            end;
-                        Error ->
-                            send_exchange_status(Error, S),
-                            {stop, normal, S}
-                    end;
-                _ ->
-                    send_exchange_status(already_locked, S),
-                    {stop, normal, S}
-            end;
-        Error ->
-            send_exchange_status(Error, S),
+    try
+        ok = yz_entropy_mgr:get_lock(?MODULE),
+        ok = yz_index_hashtree:get_lock(YZTree, ?MODULE),
+        ok = riak_kv_entropy_manager:get_lock(?MODULE),
+        ok = riak_kv_index_hashtree:get_lock(KVTree, ?MODULE),
+        update_trees(start_exchange, S)
+    catch
+        error:{badmatch, Reason} ->
+            send_exchange_status(Reason, S),
             {stop, normal, S}
     end;
 
 prepare_exchange(timeout, S) ->
     do_timeout(S).
 
-update_trees(start_exchange, S=#state{yz_tree=YZTree,
-                                      kv_tree=KVTree,
+update_trees(start_exchange, S=#state{kv_tree=KVTree,
+                                      yz_tree = YZTree,
                                       index=Index,
                                       index_n=IndexN}) ->
-
-    update_request(yz_index_hashtree, YZTree, Index, IndexN),
-    update_request(riak_kv_index_hashtree, KVTree, Index, IndexN),
+    Self = self(),
+    update_request(
+        riak_kv_index_hashtree, KVTree, Index, IndexN,
+        fun() ->
+            yz_solrq_drain_mgr:drain([
+                {?EXCHANGE_FSM_PID, Self},
+                {?YZ_INDEX_HASHTREE_PARAMS, {YZTree, Index, IndexN}},
+                {?DRAIN_PARTITION, Index}
+            ])
+        end
+    ),
     {next_state, update_trees, S};
+
+update_trees({drain_error, Reason}, S) ->
+    lager:error("Drain failed with reason ~p", [Reason]),
+    send_exchange_status(drain_failed, S),
+    {stop, normal, S};
 
 update_trees({not_responsible, Index, IndexN}, S) ->
     lager:debug("Index ~p does not cover preflist ~p", [Index, IndexN]),
     send_exchange_status({not_responsible, Index, IndexN}, S),
     {stop, normal, S};
 
-update_trees({tree_built, _, _}, S) ->
+update_trees({tree_built, Module, _, _}, S) ->
     Built = S#state.built + 1,
     case Built of
         2 ->
-            lager:debug("Moving to key exchange"),
+            lager:debug("Tree ~p built; Moving to key exchange", [Module]),
             {next_state, key_exchange, S, 0};
         _ ->
+            lager:debug("Tree ~p built; staying in update_trees state", [Module]),
             {next_state, update_trees, S#state{built=Built}}
     end.
 
@@ -163,21 +183,18 @@ key_exchange(timeout, S=#state{index=Index,
 
     AccFun = fun(KeyDiff, Count) ->
                      lists:foldl(fun(Diff, InnerCount) ->
-                                         case repair(Index, Diff) of
-                                             full_repair -> InnerCount + 1;
-                                             _ -> InnerCount
-                                         end
+                                     case repair(Index, Diff) of
+                                         full_repair -> InnerCount + 1;
+                                         _ -> InnerCount
+                                     end
                                  end, Count, KeyDiff)
              end,
-
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
         0 ->
-            yz_kv:update_aae_exchange_stats(Index, IndexN, 0),
-            ok;
+            yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
-            yz_kv:update_aae_exchange_stats(Index, IndexN, Count),
-            lager:info("Repaired ~b keys during active anti-entropy exchange "
-                       "of partition ~p for preflist ~p",
+            yz_stat:detected_repairs(Count),
+            lager:info("Will repair ~b keys of partition ~p for preflist ~p",
                        [Count, Index, IndexN])
     end,
     {stop, normal, S}.
@@ -195,54 +212,46 @@ exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
 %% @private
--spec repair(p(), keydiff()) -> full_repair | tree_repair | failed_repair.
+%%
+%% @doc If Yokozuna gets {remote_missing, _} b/c yz has it, but kv doesn't.
+%%      If Yokozuna gets any other repair, then it's either b/c
+%%      yz is missing the key or the hash doesn't match. For those cases,
+%%      we must reindex.
+-spec repair(p(), keydiff()) -> repair().
 repair(Partition, {remote_missing, KeyBin}) ->
-    %% Yokozuna has it but KV doesn't
-    Ring = yz_misc:get_ring(transformed),
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
-    ShortPL = riak_kv_util:get_index_n(BKey),
     FakeObj = fake_kv_object(BKey),
-    %% Repeat some logic in `yz_kv:index/3' to avoid extra work.  Can
-    %% assume that Yokozuna is enabled and current node is owner.
     case yz_kv:should_index(Index) of
         true ->
-            yz_kv:index(FakeObj, delete, Ring, Partition, BKey, ShortPL, Index),
-            full_repair;
+            Repair = full_repair,
+            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
+            Repair;
         false ->
-            yz_kv:dont_index(FakeObj, delete, Partition, BKey, ShortPL),
-            tree_repair
+            Repair = tree_repair,
+            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
+            Repair
     end;
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
-    ShortPL = riak_kv_util:get_index_n(BKey),
     %% Can assume here that Yokozua is enabled and current
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
             case yz_kv:should_index(Index) of
-                    true ->
-                        Ring = yz_misc:get_ring(transformed),
-                    try
-                        yz_kv:index(Obj, anti_entropy, Ring, Partition, BKey, ShortPL, Index),
-                        full_repair
-                    catch _:_Err ->
-                            %% The key can't be indexed; just repair the tree
-                            %% We already track the 'failed to index'
-                            %% error trace in yz_kv:index/3
-                            lager:notice("failed to repair object ~p, as it failed to index properly",
-                                         [BKey]),
-                            yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                            tree_repair
-                    end;
-                    false ->
-                        %% TODO: pass obj hash to repair fun to avoid
-                        %% object read just to update hash.
-                        yz_kv:dont_index(Obj, anti_entropy, Partition, BKey, ShortPL),
-                        tree_repair
+                true ->
+                    Repair = full_repair,
+                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
+                                   Partition),
+                    Repair;
+                false ->
+                    Repair = tree_repair,
+                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
+                                   Partition),
+                    Repair
             end;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
@@ -260,22 +269,33 @@ fake_kv_object({Bucket, Key}) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
 
 %% @private
-update_request(Module, Tree, Index, IndexN) ->
-    as_event(fun() ->
-                     case Module:update(IndexN, Tree) of
-                         ok -> {tree_built, Index, IndexN};
-                         not_responsible -> {not_responsible, Index, IndexN}
-                     end
-             end).
+do_update(ToWhom, Module, Tree, Index, IndexN) ->
+    do_update(ToWhom, Module, Tree, Index, IndexN, undefined).
 
 %% @private
-as_event(F) ->
-    Self = self(),
-    spawn_link(fun() ->
-                       Result = F(),
-                       gen_fsm:send_event(Self, Result)
-               end),
-    ok.
+do_update(ToWhom, Module, Tree, Index, IndexN, Callback) ->
+    UpdateResult = module_update(Module, IndexN, Tree, Callback),
+    Result = case UpdateResult of
+                 ok -> {tree_built, Module, Index, IndexN};
+                 not_responsible -> {not_responsible, Index, IndexN}
+             end,
+    gen_fsm:send_event(ToWhom, Result),
+    UpdateResult.
+
+%% @private
+module_update(riak_kv_index_hashtree, Index, Tree, Callback) ->
+    riak_kv_index_hashtree:update(Index, Tree, Callback);
+module_update(yz_index_hashtree, Index, Tree, undefined) ->
+    yz_index_hashtree:update(Index, Tree).
+
+%% @private
+update_request(Module, Tree, Index, IndexN, Callback) ->
+    spawn_update_request(self(), Module, Tree, Index, IndexN, Callback).
+
+
+%% @private
+spawn_update_request(ToWhom, Module, Tree, Index, IndexN, Callback) ->
+    spawn_link(?MODULE, do_update, [ToWhom, Module, Tree, Index, IndexN, Callback]).
 
 %% @private
 do_timeout(S=#state{index=Index, index_n=Preflist}) ->

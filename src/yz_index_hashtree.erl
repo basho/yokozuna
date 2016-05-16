@@ -188,6 +188,7 @@ handle_call({update_tree, Id}, From, S) ->
     apply_tree(Id,
                fun(Tree) ->
                        {SnapTree, Tree2} = hashtree:update_snapshot(Tree),
+                       Tree3 = hashtree:set_next_rebuild(Tree2, full),
                        Self = self(),
                        spawn_link(
                          fun() ->
@@ -195,7 +196,7 @@ handle_call({update_tree, Id}, From, S) ->
                                  gen_server:cast(Self, {updated, Id}),
                                  gen_server:reply(From, ok)
                          end),
-                       {noreply, Tree2}
+                       {noreply, Tree3}
                end,
                S);
 
@@ -312,11 +313,10 @@ load_built(#state{trees=Trees}) ->
         _ -> false
     end.
 
--spec fold_keys(p(), tree()) -> ok.
-fold_keys(Partition, Tree) ->
+-spec fold_keys(p(), tree(), [index_name()]) -> [ok|timeout|not_available].
+fold_keys(Partition, Tree, Indexes) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
-    Indexes = yz_index:get_indexes_from_meta(),
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -324,8 +324,7 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
-    ok.
+    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
 
 %% @see riak_kv_index_hashtree:do_new_tree/3
 -spec do_new_tree({p(),n()}, state(), mark_open|mark_empty) -> state().
@@ -550,19 +549,17 @@ maybe_build(S) ->
 close_trees(S=#state{trees=Trees, closed=false}) ->
     Trees2 = [begin
                   NewTree =
-                      try
-                          case hashtree:next_rebuild(Tree) of
-                              %% Not marking close cleanly to avoid the
-                              %% cost of a full rebuild on shutdown.
-                              full ->
-                                  lager:info("Deliberately marking YZ hashtree ~p"
-                                             ++ " for full rebuild on next restart",
-                                             [IdxN]),
-                                  hashtree:flush_buffer(Tree);
-                              incremental ->
-                                  HT = hashtree:update_tree(Tree),
-                                  hashtree:mark_clean_close(IdxN, HT)
-                          end
+                      try hashtree:next_rebuild(Tree) of
+                          %% Not marking close cleanly to avoid the
+                          %% cost of a full rebuild on shutdown.
+                          full ->
+                              lager:info("Deliberately marking YZ hashtree ~p"
+                                         ++ " for full rebuild on next restart",
+                                         [IdxN]),
+                              hashtree:flush_buffer(Tree);
+                          incremental ->
+                              HT = hashtree:update_tree(Tree),
+                              hashtree:mark_clean_close(IdxN, HT)
                       catch _:Err ->
                               lager:warning("Failed to flush/update trees"
                                             ++ " during close | Error: ~p", [Err]),
@@ -589,9 +586,16 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
     case {Locked, Type} of
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
-            fold_keys(Index, Tree),
-            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
-            gen_server:cast(Tree, build_finished);
+            Indexes = yz_index:get_indexes_from_meta(),
+            case yz_fuse:check_all_fuses_not_blown(Indexes) of
+                true ->
+                    IterKeys = fold_keys(Index, Tree, Indexes),
+                    handle_iter_keys(Tree, Index, IterKeys);
+                false ->
+                    ?ERROR("YZ AAE did not run due to blown fuses/solr_cores."),
+                    lager:debug("YZ AAE tree build failed: ~p", [Index]),
+                    gen_server:cast(Tree, build_failed)
+            end;
         {true, rehash} ->
             lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
@@ -645,4 +649,19 @@ maybe_expire_caps_check(S) ->
         true ->
             S#state{expired=true};
         false -> S
+    end.
+
+-spec handle_iter_keys(pid(), p(), [ok|timeout|not_available|error]) -> ok.
+handle_iter_keys(Tree, Index, []) ->
+    lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+    gen_server:cast(Tree, build_finished),
+    ok;
+handle_iter_keys(Tree, Index, IterKeys) ->
+    case lists:all(fun(V) -> V == ok end, IterKeys)  of
+        true ->
+            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+            gen_server:cast(Tree, build_finished);
+        _ ->
+            lager:debug("YZ AAE tree build failed: ~p", [Index]),
+            gen_server:cast(Tree, build_failed)
     end.

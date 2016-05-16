@@ -228,6 +228,16 @@ owned_and_next_partitions(Node, Ring) ->
     Next = lists:filter(is_owner(Node), riak_core_ring:all_next_owners(Ring)),
     ordsets:from_list([P || {P,_} <- Next ++ Owned]).
 
+%% @doc Filter out all entries for partitions that are not currently owned or
+%%      this node is a future owner of.
+-spec filter_out_fallbacks(ordset(p), solr_entries()) -> [{bkey(), obj(),
+    write_reason(), p()}].
+filter_out_fallbacks(OwnedAndNext, Entries) ->
+    lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->
+        ordsets:is_element(P, OwnedAndNext)
+    end, Entries).
+
+
 %% @doc Calculate the primary preflist for a given Bucket/Key and N
 %%      value.  It is a "primary" preflist because it assumes all nodes
 %%      in the cluster are reachable.

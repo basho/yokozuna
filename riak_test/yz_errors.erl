@@ -2,9 +2,7 @@
 -module(yz_errors).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
-                run_bb/2, search_expect/5,
-                select_random/1, verify_count/2,
-                write_terms/2]).
+                run_bb/2, search_expect/5]).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
