@@ -32,15 +32,16 @@
 -export([fuse_name_for_index/1, index_for_fuse_name/1]).
 
 %% stats helpers
--export([aggregate_index_stats/2, stats/0, get_stats_for_index/1, print_stats_for_index/1]).
+-export([aggregate_index_stats/3, stats/0, get_stats_for_index/1, print_stats_for_index/1]).
 
 %% types
 -export_type([fuse_check/0, fuse_namespace/0, fuse_name/0,
               encoded_fuse_name/0]).
 
--define(DYNAMIC_STATS, [fuse_recovered]).
+-define(DYNAMIC_STATS, [fuse_recovered, fuse_blown]).
 
 -type fuse_check() :: ok | blown | melt.
+-type application_name() :: atom().
 -type fuse_namespace() :: atom().
 -type fuse_name() :: binary().
 -type encoded_fuse_name() :: atom().
@@ -79,7 +80,7 @@ create(Index) ->
             Strategy = {standard, MaxR, MaxT},
             Opts = {Strategy, Refresh},
             fuse:install(FuseName, Opts),
-            yz_stat:create_dynamic_stats(?BIN_TO_ATOM(Index), ?DYNAMIC_STATS),
+            yz_stat:create_dynamic_stats(Index, ?DYNAMIC_STATS),
             ok;
         _ -> ok
 end.
@@ -88,7 +89,7 @@ end.
 remove(Index) ->
     FuseName = fuse_name_for_index(Index),
     fuse:remove(FuseName),
-    yz_stat:delete_dynamic_stats(?BIN_TO_ATOM(Index), ?DYNAMIC_STATS),
+    yz_stat:delete_dynamic_stats(Index, ?DYNAMIC_STATS),
     ok.
 
 -spec reset(index_name()) -> ok.
@@ -158,26 +159,26 @@ stats() ->
            end,
     [Spec(N, M, F, As) ||
         {N, M, F, As} <- [{search_index_error_threshold_ok_count, yz_fuse,
-                          aggregate_index_stats, [ok, count]},
+                          aggregate_index_stats, [fuse, ok, count]},
                          {search_index_error_threshold_ok_one, yz_fuse,
-                          aggregate_index_stats, [ok, one]},
+                          aggregate_index_stats, [fuse, ok, one]},
                          {search_index_error_threshold_failure_count, yz_fuse,
-                          aggregate_index_stats, [melt, count]},
+                          aggregate_index_stats, [fuse, melt, count]},
                          {search_index_error_threshold_failure_one, yz_fuse,
-                          aggregate_index_stats, [melt, one]},
+                          aggregate_index_stats, [fuse, melt, one]},
                          {search_index_error_threshold_blown_count, yz_fuse,
-                          aggregate_index_stats, [blown, count]},
+                          aggregate_index_stats, [yz_fuse, blown, count]},
                          {search_index_error_threshold_blown_one, yz_fuse,
-                          aggregate_index_stats, [blown, one]},
+                          aggregate_index_stats, [yz_fuse, blown, one]},
                          {search_index_error_threshold_recovered_count, yz_fuse,
-                          aggregate_index_stats, [recovered, count]},
+                          aggregate_index_stats, [yz_fuse, recovered, count]},
                          {search_index_error_threshold_recovered_one, yz_fuse,
-                          aggregate_index_stats, [recovered, one]}]].
+                          aggregate_index_stats, [yz_fuse, recovered, one]}]].
 
--spec aggregate_index_stats(fuse_check(), count|one) -> non_neg_integer().
-aggregate_index_stats(FuseCheck, Stat) ->
+-spec aggregate_index_stats(application_name(), fuse_check(), count|one) -> non_neg_integer().
+aggregate_index_stats(Application, FuseCheck, Stat) ->
     proplists:get_value(Stat,
-                        exometer:aggregate([{{[fuse, '_', FuseCheck],'_','_'},
+                        exometer:aggregate([{{[Application, '_', FuseCheck],'_','_'},
                                              [], [true]}], [Stat])).
 
 %% @doc NB.  This function is meant to be called manually from the console.
@@ -206,18 +207,10 @@ get_stats_for_index(Index) ->
         {error, _} ->
             {error, {no_stats_for_index, Index}};
         _ ->
+            FuseName = fuse_name_for_index(Index),
             lists:map(
-                fun(Check) ->
-                    FuseName = fuse_name_for_index(Index),
-                    Stats =
-                        case exometer:get_value([fuse, FuseName, Check]) of
-                            {ok, S} -> S;
-                            _ ->
-                                {ok, S} =
-                                    exometer:get_value(
-                                        [fuse, ?BIN_TO_ATOM(Index), Check]),
-                                S
-                        end,
+                fun({Application, Check}) ->
+                    {ok, Stats} = exometer:get_value([Application, FuseName, Check]),
                     {Check, Stats}
-                end, [ok, melt, blown, recovered])
+                end, [{fuse, ok}, {fuse, melt}, {yz_fuse, blown}, {yz_fuse, recovered}])
     end.

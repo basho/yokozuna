@@ -130,17 +130,22 @@ hwm_purged(NumPurged) ->
     update({hwm_purged, NumPurged}).
 
 %% @doc Update fuse recovered statistic.
--spec fuse_recovered(Index :: atom()) -> ok.
+-spec fuse_blown(Index :: index_name()) -> ok.
+fuse_blown(Index) ->
+    update({fuse_blown, Index}).
+
+%% @doc Update fuse recovered statistic.
+-spec fuse_recovered(Index :: index_name()) -> ok.
 fuse_recovered(Index) ->
     update({fuse_recovered, Index}).
 
 %% @doc Create dynamic stats for search index.
--spec create_dynamic_stats(Index :: atom(), Stats :: [atom()]) -> [ok].
+-spec create_dynamic_stats(Index :: index_name(), Stats :: [atom()]) -> [ok].
 create_dynamic_stats(Index, Stats) ->
     [create({Stat, Index}) || Stat <- Stats].
 
 %% @doc Delete dynamic stats for search index.
--spec delete_dynamic_stats(Index :: atom(), Stats :: [atom()]) -> [ok].
+-spec delete_dynamic_stats(Index :: index_name(), Stats :: [atom()]) -> [ok].
 delete_dynamic_stats(Index, Stats) ->
     [delete({Stat, Index}) || Stat <- Stats].
 
@@ -274,7 +279,11 @@ stat_name(Name) ->
 %%      term.
 -spec create(StatUpdate::term()) -> ok.
 create({fuse_recovered, Index}) ->
-    exometer:update_or_create([fuse, Index, recovered], 0, spiral, []);
+    FuseName = yz_fuse:fuse_name_for_index(Index),
+    exometer:update_or_create([yz_fuse, FuseName, recovered], 0, spiral, []);
+create({fuse_blown, Index}) ->
+    FuseName = yz_fuse:fuse_name_for_index(Index),
+    exometer:update_or_create([yz_fuse, FuseName, blown], 0, spiral, []);
 create(_Stat) ->
     ok.
 
@@ -325,7 +334,9 @@ update({search_end, Time}) ->
 update(search_fail) ->
     exometer:update([?PFX, ?APP, 'query', fail], 1);
 update({fuse_recovered, Index}) ->
-    exometer:update([fuse, Index, recovered], 1).
+    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), recovered], 1);
+update({fuse_blown, Index}) ->
+    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1).
 
 %% @private
 -spec stats() -> [{stat_name(), stat_type(), stat_opts(), stat_map()}].

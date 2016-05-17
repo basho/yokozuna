@@ -81,16 +81,16 @@ init([]) ->
     ok = set_tick(),
     {ok, #state{}}.
 
-handle_event({Index0, blown}, S) ->
-    Index = yz_fuse:index_for_fuse_name(Index0),
+handle_event({FuseName, blown}, S) ->
+    Index = yz_fuse:index_for_fuse_name(FuseName),
     cache_index_state(Index, down),
     {ok, S};
-handle_event({Index0, ok}, S) ->
-    Index = yz_fuse:index_for_fuse_name(Index0),
+handle_event({FuseName, ok}, S) ->
+    Index = yz_fuse:index_for_fuse_name(FuseName),
     cache_index_state(Index, up),
     {ok, S};
-handle_event({Index0, removed}, S) ->
-    Index = yz_fuse:index_for_fuse_name(Index0),
+handle_event({FuseName, removed}, S) ->
+    Index = yz_fuse:index_for_fuse_name(FuseName),
     cache_index_state(Index, removed),
     {ok, S};
 handle_event(_Msg, S) ->
@@ -284,7 +284,7 @@ cache_index_state(Index, down) ->
             ok;
         {state, up} ->
             yz_solrq:blown_fuse(Index),
-            %yz_stat:fuse_blown(?BIN_TO_ATOM(Index)),
+            yz_stat:fuse_blown(Index),
             ets:insert(?ETS, {Index, {state, down}});
         undefined ->
             ets:insert(?ETS, {Index, {state, down}})
@@ -296,7 +296,7 @@ cache_index_state(Index, up) ->
     case proplists:get_value(Index, Recovered, []) of
         {state, down} ->
             yz_solrq:healed_fuse(Index),
-            yz_stat:fuse_recovered(?BIN_TO_ATOM(Index)),
+            yz_stat:fuse_recovered(Index),
             ets:insert(?ETS, {Index, {state, up}});
         _ ->
             ets:insert(?ETS, {Index, {state, up}})
