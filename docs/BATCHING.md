@@ -5,30 +5,30 @@ In Yokozuna versions prior to 2.0.4, update operations on Solr (notably, `add` a
 
 Yokozuna version 2.0.4 introduces batching and asynchronous delivery of Solr operations.  The primary objective of this work is to decouple update operations in Solr from the Riak vnodes that are responsible for managment of replicas of Riak objects across the cluster.  Without batching and asynchronous delivery, Riak vnodes have to wait for Solr operations to complete, sometimes an inordinate amount of time, which can have an impact on read and write operations in a Riak cluster, even for Riak objects that aren't being indexed through Yokozuna!  This feature is intended to free up Riak vnodes to do other work, thus allowing Riak vnodes to service requests from more clients concurrently, and increasing operational throughput throughout the cluster.
 
-De-coupling indexing operations from Riak vnode activity, however introduces some complexity into the system, as there is now the possibility for indeterimate latency between the time that an object is available in Riak versus its availability in Yokozuna and Solr.  This latency can introduce  divergence between the Riak AAE trees stored in Riak/KV and the AAE trees stored in Yokozuna, with which the Riak/KV trees are compared.
+De-coupling indexing operations from Riak vnode activity, however introduces some complexity into the system, as there is now the possibility for indeterminate latency between the time that an object is available in Riak versus its availability in Yokozuna and Solr.  This latency can introduce  divergence between the Riak AAE trees stored in Riak/KV and the AAE trees stored in Yokozuna, with which the Riak/KV trees are compared.
 
 This document describes the batching and asynchronous delivery subsystem introduced in Yokozuna 2.0.4, from both the end-users' and implementors' point of view, as well as the methods by which divergence between Riak and Solr is mitigated.
 
 
 # Overview
 
-The Yokozuna batching subsystem introduces two sets of additional `gen_server` processes into each Riak node, a set of "workers", and a set of "helpers".  The job of the worker processes is to enqueue updates from components inside of Riak -- typically Riak vnides, but also sometimes parts of the Yokozuna AAE subsystem -- and to make enqueued objects available to helper processes, which, in turn, are responsible for dispatching batches of operations to Solr.
+The Yokozuna batching subsystem introduces two sets of additional `gen_server` processes into each Riak node, a set of "workers", and a set of "helpers".  The job of the worker processes is to enqueue updates from components inside of Riak -- typically Riak vnodes, but also sometimes parts of the Yokozuna AAE subsystem -- and to make enqueued objects available to helper processes, which, in turn, are responsible for dispatching batches of operations to Solr.
 
-For each Riak nodes, there is a fixed, but configurable, number of helper and worker processes, and by default, 10 of each are created.  A change to the number of workers or helpers requires a restart of the Yokozuna OTP application.
+For each Riak node, there is a fixed, but configurable, number of helper and worker processes, and by default, 10 of each are created.  A change to the number of workers or helpers requires a restart of the Yokozuna OTP application.
 
 When enqueuing an object, a worker process is selected by hashing the Solr index (core) with which the operation is associated, along with the Riak bucket and key (bkey).  This hash, modulo the number of workers, determines the worker process on which the datum is enqueued.  When a batch of objects is dequeued from a worker process, a helper is randomly selected from among the set of configured helpers using a uniform PRNG.  These algorithms for selecting workers and helpers is designed to provide as even a distribution of load across all workers and helpers as possible.
 
-Once a batch is dequeued from a worker, the Riak objects are transformed to Solr operations, and a single HTTP request is formed, containing a batch of Solr operations (encoded in a JSON payload).  The batch is then delivered to Solr.
+Once a batch is dequeued from a worker, the Riak objects are transformed into Solr operations, and a single HTTP request is formed, containing a batch of Solr operations (encoded in a JSON payload).  The batch is then delivered to Solr.
 
 The following diagram illustrates the relationship between Riak vnodes, Yokozuna workers and helpers, and Apache Solr:
 
 ![YZ Batching Overview](https://raw.githubusercontent.com/basho/yokozuna/feature-solr-batching-rebased/docs/yz-batching-overview.png)
 
-Each helper process is stateless; a helper's only role is to dequeue batches from the workers, to transofrm those batches into something that Solr can understand, and to dispatch the transformed batches to Solr (and report the results back to the worker process, on who's behalf it is doing the work).
+Each helper process is stateless; a helper's only role is to dequeue batches from the workers, to transform those batches into something that Solr can understand, and to dispatch the transformed batches to Solr (and report the results back to the worker process, on whose behalf it is doing the work).
 
 The worker processes, on the other hand, maintain the queues of objects that are ready for update in Solr, in addition to managing the run-time behavior between the batching subsystem and the collection of vnodes and other processes that are communicating with the workers.
 
-In order to batch operations into a single HTTP POST into Solr, all operations must be organized under the same Solr core, i.e., Riak search index.  As a consequence, each Yokozuna worker process maintains a table (`dict`) of "indexq" structures, keyed off the Riak search index.  These indexq structures include, most critically, the enqueued object
+In order to batch operations into a single HTTP POST into Solr, all operations must be organized under the same Solr core, i.e. Riak search index.  As a consequence, each Yokozuna worker process maintains a table (`dict`) of "indexq" structures, keyed off the Riak search index.  These indexq structures include, most critically, the enqueued object
 
 Indexq structures are created on-demand in each worker process, as data is added to the system.  In most cases, all worker processes will contain entries for each Riak serch index, but it is sometimes possible for a worker process to be missing an entry for given index because, for example, it has not yet seen an object that needs to be updated for a given search index.  This is expected behavior.
 
@@ -58,9 +58,9 @@ This way, the batching subsystem exerts back-pressure on the vnode and AAE syste
 
 ## Failure Scenarios, Error Thresholds, and Retry
 
-In most desireable scenarios, batches that are dequeued from worker processes are immediately translated and dispatched to Solr with no error.
+In most desirable scenarios, batches that are dequeued from worker processes are immediately translated and dispatched to Solr with no error.
 
-In the undesirable cases where Solr become unresponsive (e.g., data corruption, excessively long garabage collection), Yokozuna has a mechanism for detecting transient failure in the HTTP POST requests, and tracking how frequently failures occur for a given Solr core.  If too many errors occur within a given time window, then the Yokozuna batching system will re-enqueue failed messages for subsequent delivery, once the Solr core again becomes responsive.  This error threshold prevents Yokozuna from unecessarily adding load to Solr, if for some reason a particular search index has become unresponsive.
+In the undesirable cases where Solr becomes unresponsive (e.g., data corruption, excessively long garabage collection), Yokozuna has a mechanism for detecting transient failure in the HTTP POST requests, and for tracking how frequently failures occur for a given Solr core.  If too many errors occur within a given time window, then the Yokozuna batching system will re-enqueue failed messages for subsequent delivery, once the Solr core again becomes responsive.  This error threshold prevents Yokozuna from unecessarily adding load to Solr, if for some reason a particular search index has become unresponsive.
 
 ## Purge Strategies
 
@@ -77,11 +77,11 @@ Note that purging enqueued messages should be considered safe, as long as Active
 
 ## Anti-Entropy
 
-Yokozuna supports active anti-entropy by maintaining a set of AAE trees in parallel with the Riak/KV AAE trees stored on the local node.  Periodically, comparable AAE trees are exchanged locally between the Riak/KV AAE subsystem and the Yokozuna AAE subsystem.  If any differences are detected, then the data is Solr is corrected.  Specifically, if any data is detected in the YS AAE tree that is not in the Riak/KV AAE tree, a Solr delete operation is generated.  Conversely, if data is missing in a YZ AAE tree, or the hashes are not the same, then the entry is Solr is updated.  In this sense, the data in Riak/KV is "canonical".
+Yokozuna supports Active Anti-Entropy by maintaining a set of AAE trees in parallel with the Riak/KV AAE trees stored on the local node.  Periodically, comparable AAE trees are exchanged locally between the Riak/KV AAE subsystem and the Yokozuna AAE subsystem.  If any differences are detected, then the data in Solr is corrected.  Specifically, if any data is detected in the YZ AAE tree that is not in the Riak/KV AAE tree, a Solr delete operation is generated.  Conversely, if data is missing in a YZ AAE tree, or the hashes are not the same, then the entry is Solr is updated.  In this sense, the data in Riak/KV is "canonical".
 
-In both Riak/KV and Yokozuna, the AAE trees are representations of data that is stored in Riak/KV and Solr, respectively.  They are not part of the Riak/KV or Solr data, but are instead auxiliary data structures (and persitent storage) alongside the actual data.  In the case of Yokozuna, the YZ AAE trees are, with respect to the VNode, asynchronosly updated in the helper process, which may occur many milliseconds after the vnode has sent the message to the batching subsystem.
+In both Riak/KV and Yokozuna, the AAE trees are representations of data that is stored in Riak/KV and Solr, respectively.  They are not part of the Riak/KV or Solr data, but are instead auxiliary data structures (and persitent storage) alongside the actual data.  In the case of Yokozuna, the YZ AAE trees are, with respect to the VNode, asynchronosly updated in the helper process, which may occur many milliseconds after the VNode has sent the message to the batching subsystem.
 
-Because the Yokozuna batching subsystem introduces latency between the time that data is written to the Riak/KV AAE trees and the Yokozuna AAE trees, there is an increased liklihood that the AAE trees will diverge.
+Because the Yokozuna batching subsystem introduces latency between the time that data is written to the Riak/KV AAE trees and the Yokozuna AAE trees, there is an increased likelihood that the AAE trees will diverge.
 
 Yokozuna manages this divergence by attempting to ensure that the Riak/KV and YZ AAE trees are as close as possible to being in sync.  It minimizes differences between hash trees during a given hash tree exchange by first taking a snapshot of the Riak/KV hashtree, and then draining all enqueued messages for a given Riak exchange partition to Solr.  Once drained, the YZ AAE trees are up to date, and the YZ AAE tree can then be compared with the snapshot of the Riak/KV AAE tree.
 
@@ -97,7 +97,7 @@ In order for Riak/KV and YZ AAE trees to be comparable, they must represent the 
 
 The batching subsystem is designed to be primarily invisible to the user, except perhaps for improved throughput under high load.  However, some parameters of the batching subsystem are tunable via Cuttlefish configuration properties in the `riak.conf` configuration file (or, alternatively, via the `advanced.config` file).  Changes to this file require a restart of Riak (or, alternatively, of just the Yokozuna application, via the Riak console).
 
-The batching subsystem also introduces a set of statistics, which provides operators visibility into such measrements as available queue capacity, averages and histograms for batch sizes, AAE activity, and so forth.
+The batching subsystem also introduces a set of statistics, which provides operators visibility into such measurements as available queue capacity, averages and histograms for batch sizes, AAE activity, and so forth.
 
 This section describes the configuration parameters and statistics of the batching subsystem, from the user's point of view.
 
@@ -107,15 +107,15 @@ The behavior of the batching subsystem may be controlled via the following Cuttl
 
 * `search.queue.batch.minimum` (default: 1) The minimum batch size, in number of Riak objects. Any batches that are smaller than this amount will not be immediately flushed to Solr, but are guaranteed to be flushed within the value specified in `search.queue.batch.flush_interval`.
 
-* `search.queue.batch.maximum` (default: 100)  The maximim batch size, in number of Riak objects. Any batches that are larger than this amount will be split, where the first `search.queue.batch.maximum` objects will be flushed to Solr, and the remaining objects enqueued for that index will be retained until the next batch is delivered.  This parameter ensures that at most `search.queue.batch.maximum` objects will be delivered into Solr in any given request.
+* `search.queue.batch.maximum` (default: 100)  The maximum batch size, in number of Riak objects. Any batches that are larger than this amount will be split, where the first `search.queue.batch.maximum` objects will be flushed to Solr, and the remaining objects enqueued for that index will be retained until the next batch is delivered.  This parameter ensures that at most `search.queue.batch.maximum` objects will be delivered into Solr in any given request.
 
-* `search.queue.batch.flush_interval` (default: 1 second)  The maximim delay between notification to flush batches to Solr.  This setting is used to increase or decrease the frequency of batch delivery into Solr, specifically for relatively low-volume input into Riak.  This setting ensures that data will be delivered into Solr in accordance with the `search.queue.batch.maximum` and `search.queue.batch.maximum` settings within the specified interval.  Batches that are smaller than `search.queue.batch.maximum` will be delivered to Solr within this interval.  This setting will generally have no effect on heavily loaded systems.
+* `search.queue.batch.flush_interval` (default: 1 second)  The maximum delay between notification to flush batches to Solr.  This setting is used to increase or decrease the frequency of batch delivery into Solr, specifically for relatively low-volume input into Riak.  This setting ensures that data will be delivered into Solr in accordance with the `search.queue.batch.maximum` and `search.queue.batch.maximum` settings within the specified interval.  Batches that are smaller than `search.queue.batch.maximum` will be delivered to Solr within this interval.  This setting will generally have no effect on heavily loaded systems.
 
-* `search.queue.high_watermark` (default: 10000)  The queue high water mark.  If the total number of queued messages in a Solrq worker instance exceed this limit, then the calling vnode will be blocked until the total number falls below this limit.  This parameter exercises flow control between Riak and the Yokozuna batching subsystem, if writes into Solr start to fall behind.
+* `search.queue.high_watermark` (default: 10000)  The queue high water mark.  If the total number of queued messages in a Solrq worker instance exceeds this limit, then the calling vnode will be blocked until the total number falls below this limit.  This parameter exercises flow control between Riak and the Yokozuna batching subsystem, if writes into Solr start to fall behind.
 
-* `search.queue.worker_count` (default: 10)  The number of solr queue workers to instantiate in the Yokozuna application.  Solr queue workers are responsible for enqueing objects for insertion or update into Solr. Increasing the number of solrq distributes the queuing of objects, and can lead to greater throughput under high load, potentially at the expense of smaller batch sizes.
+* `search.queue.worker_count` (default: 10)  The number of solr queue workers to instantiate in the Yokozuna application.  Solr queue workers are responsible for enqueing objects for insertion or update into Solr. Increasing the number of solr queue workers distributes the queuing of objects, and can lead to greater throughput under high load, potentially at the expense of smaller batch sizes.
 
-* `search.queue.helper_count` (default: 10)  The number of solr queue helpers to instantiate in the Yokozuna application.  Solr queue helpers are responsible for delivering batches of data into Solr.  Increasing the number of solrq helpers may increase concurrent writes into Solr.
+* `search.queue.helper_count` (default: 10)  The number of solr queue helpers to instantiate in the Yokozuna application.  Solr queue helpers are responsible for delivering batches of data into Solr.  Increasing the number of solr queue helpers may increase concurrent writes into Solr.
 
 * `search.index.error_threshold.failure_count` (default: 3)  The number of failures within the specified `search.index.error_threshold.failure_interval` before writes into Solr will be short-circuited.  Once the error threshold is crossed for a given Riak index (i.e., Solr core), Yokozuna will make no further attempts to write to Solr for objects destined for that index until the error is reset.
 
@@ -126,7 +126,7 @@ The behavior of the batching subsystem may be controlled via the following Cuttl
 * `search.queue.high_watermark.purge_strategy` (default: `purge_one`)  The high watermrk purge strategy.  If a Solr core threshold is traversed, and if the number of enqueued messages in a solr worker exceeds `search.queue.high_watermark`, then Yokozuna will use the defined purge strategy to purge enqueued messages.  Valid values are `purge_one`, `purge_index`, `purge_all`, and `off`.
 
 
-The following options are hidden from the default `solr.conf` file:
+The following options are hidden from the default `riak.conf` file:
 
 * `search.queue.drain.timeout` (default: 1 minute)  The amount of time to wait before a drain operation times out.  If a drain times out during an AAE exchange, the exchange is cancelled and retried at a later time.
 
@@ -236,11 +236,11 @@ Each Solrq process manages this partitioning by maintaining a dictionary of inde
 
 > **Note.**  This mapping is encpasulated in an Erlang `dict` structure, but the population of entries in this dictionary are done lazily.  Initially, the dictionary on a `yz_solrq` instance is empty, and as operations are performed on an index, entries are added.  Eventually, a given worker instance may contain an entry for each index configured by the user, but due to the luck of the draw, there may be some solrq instances that do not contain entries for some indices (e.g., if objects map to a strict subset of partitons on a given node, for example).
 
-The `indexq` structure contains book keeping information, such as the queue of data for that index, it's length, cached configuration information for that queue, such as it's minimum and maximum batch size, and other state information described in more detail below.
+The `indexq` structure contains book keeping information, such as the queue of data for that index, its length, cached configuration information for that queue, such as its minimum and maximum batch size, and other state information described in more detail below.
 
 The Yokozuna Solrq worker process is illustrated in the following diagram:
 
-![YS Solrq Worker](https://github.com/basho/internal_wiki/blob/master/images/yokozuna/yz-solrq-worker.png)
+![YZ Solrq Worker](https://github.com/basho/internal_wiki/blob/master/images/yokozuna/yz-solrq-worker.png)
 
 ### Solrq Helper Process(es) and Batching Protocol
 
@@ -286,7 +286,7 @@ Upon receipt of the `batch_complete` message, the worker will:
 
 The Yokozuna batching protocol between vnodes, workers, and helpers is illustrated in the following diagram.
 
-![YS Solrq Batching Protocol](https://github.com/basho/internal_wiki/blob/master/images/yokozuna/yz-batching-sequence.png)
+![YZ Solrq Batching Protocol](https://github.com/basho/internal_wiki/blob/master/images/yokozuna/yz-batching-sequence.png)
 
 
 
@@ -318,7 +318,7 @@ Yokozuna uses this pattern in its handling of communication with Solr.  For each
 
 The Fuse library makes use of Erlang alarm handling, whereby fuse events (fuse "trips" and "heals") are delivered through Erlang alarm handlers.  The `yz_events` event handler subscribes to these events, and will notify the batching subsystem when a fuse blows or heals.
 
-If a fuse trips, this has the effect of effectively pausing the delivery of any batches to Solr, of ra given Solr index (the index associated with the tripped fuse).  Once a fuse heals, delivery of batches is resumed.
+If a fuse trips, this has the effect of effectively pausing the delivery of any batches to Solr, for a given Solr index (the index associated with the tripped fuse).  Once a fuse heals, delivery of batches is resumed.
 
 If delivery of batches to Solr is paused, then it is possible that enqueued messages will pile up, potentially reaching the configured high water mark (and thus causing back-pressure on the calling vnodes).  If the `purge_blown_indices` yokozuna configuration variable is set to true (its default value), then when the high water mark is reached, then entries will be discarded on indices that are blocked.  A warning will be logged to the system logs, indicating which index has had data discarded (but not the data contents).
 
@@ -328,7 +328,7 @@ If the `purge_blown_indices` yokozuna configuration variable is set to false, th
 
 ## Draining
 
-Some applications have the need not only to periodically flush idle queues, but also to completely drain the contents of all queues on demand, or at least all of the messages associated with a given Riak partition.  These applications include stopping the Yokozuna application (to ensure everything in memory is flushed to Solr), as well as the YZ AAE subsystem, which, when exchanging hash trees between Riak K/V and Yokozuna, snapshots the Riak K/V hash tree, drains the queues, and then snapshots the Yokozuna hash tree, in order to minimize divergence between the two hash trees.
+Some applications have the need to not only to periodically flush idle queues, but also to completely drain the contents of all queues on demand, or at least all of the messages associated with a given Riak partition.  These applications include stopping the Yokozuna application (to ensure everything in memory is flushed to Solr), as well as the YZ AAE subsystem, which, when exchanging hash trees between Riak K/V and Yokozuna, snapshots the Riak K/V hash tree, drains the queues, and then snapshots the Yokozuna hash tree, in order to minimize divergence between the two hash trees.
 
 Draining is provided as a `drain` function in the `yz_solrq_mgr` module, which, when invoked, will spawn and monitor a `gen_fsm` process, `yz_solrq_drain_fsm`.  The role of the FSM is to trigger a drain on all of the `yz_solrq` workers in the pool, and then to wait for all of the drains to complete.  Once all of the queues have been drained, the FSM terminates, and the calling process will receive a `'DOWN'` message from the FSM it is monitoring, and the drain function can then return to the caller.  If not all of the queues have drained within a configured timeout, the drain function will return `{error, timeout}`.
 
@@ -350,4 +350,4 @@ The `yz_solrq_drain_fsm` will stay in the waiting state until all of the tokens 
 
 The relationship between the caller of the `drain` function (in this example, `yz_exchange_fsm`), the `yz_solrq_drain_fsm`, and the Solrq workers and helpers is illustrated in the following sequence diagram:
 
-![YS Solrq Draining](https://github.com/basho/internal_wiki/blob/master/images/yokozuna/yz-solrq-draining.png)
+![YZ Solrq Draining](https://github.com/basho/internal_wiki/blob/master/images/yokozuna/yz-solrq-draining.png)

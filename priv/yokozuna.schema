@@ -175,7 +175,7 @@
   {validators, ["positive_integer"]}
 ]}.
 
-%% @doc The maximim delay between notification to flush batches to Solr. This
+%% @doc The maximum delay between notification to flush batches to Solr. This
 %%      setting is used to increase or decrease the frequency of batch delivery
 %%      into Solr, specifically for relatively low-volume input into Riak. This
 %%      setting ensures that data will be delivered into Solr in accordance with
