@@ -76,7 +76,7 @@ gen_partition() ->
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
 -endif.
 gen_index() ->
-    oneof([<<"idx1">>, <<"idx2">>, ?YZ_INDEX_TOMBSTONE]).
+    oneof([<<"idx1">>, <<"idx2">>, <<"芭蕉">>, <<"idx3:with:colons">>, <<":idx4">>, <<"idx5:">>, ?YZ_INDEX_TOMBSTONE]).
 
 gen_bucket() ->
     {<<"default">>, <<"b">>}.
