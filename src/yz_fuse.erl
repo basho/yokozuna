@@ -18,6 +18,9 @@
 %% -------------------------------------------------------------------
 -module(yz_fuse).
 -include("yokozuna.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% setup
 -export([setup/0]).
@@ -215,3 +218,15 @@ get_stats_for_index(Index) ->
                     {Check, Stats}
                 end, [{fuse, ok}, {fuse, melt}, {yz_fuse, blown}, {yz_fuse, recovered}])
     end.
+
+-ifdef(TEST).
+    index_names_round_trip_test_() ->
+        [
+            {"normal latin characters", ?_assertMatch(<<"foo">>, round_trip_through_fuse_name(<<"foo">>))},
+            {"UTF8 characters", ?_assertMatch(<<"芭蕉">>, round_trip_through_fuse_name(<<"芭蕉">>))}
+        ].
+
+round_trip_through_fuse_name(IndexName) ->
+    FuseName = fuse_name_for_index(IndexName),
+    index_for_fuse_name(FuseName).
+-endif.
