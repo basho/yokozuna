@@ -130,6 +130,8 @@ The following options are hidden from the default `solr.conf` file:
 
 * `search.queue.drain.timeout` (default: 1 minute)  The amount of time to wait before a drain operation times out.  If a drain times out during an AAE exchange, the exchange is cancelled and retried at a later time.
 
+* `search.queue.drain.cancel.timeout` (default: 5 seconds)  The amount of time to wait before a drain cancel times out.  If a drain cancel times out during an AAE exchange, the entity responsible for draining is forcibly terminated, and the exchange is cancelled and retried at a later time.
+
 * `search.queue.drain.enable` (default: true)  When enabled, enqueued Riak objects are drained prior to an AAE exchange, in order to minimize AAE activity, and during shutdown. If AAE is disabled, this setting only has an effect on shutdown behavior. Users generally have little reason to disable draining.
 
 * `search.ibrowse_max_sessions` (default: 100)  The value to use for the `max_sessions` configuration for the ibrowse process used by Yokozuna.

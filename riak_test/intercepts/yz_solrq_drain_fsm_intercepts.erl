@@ -17,24 +17,29 @@
 %% under the License.
 %%
 %% -------------------------------------------------------------------
--module(yz_solrq_drain_mgr_intercepts).
+-module(yz_solrq_drain_fsm_intercepts).
 -compile(export_all).
 
--define(M, yz_solrq_drain_mgr_orig).
+-define(M, yz_solrq_drain_fsm_orig).
 
-%% Add some sleep before the drain begins, in order to introduce
-%% a race condition in YZ AAE which we test for and accomodate.
-%% This is primarily needed to bring about the race on MacOS (and
-%% possibly other BSD systems); linux scheduling seems more aggressive.
-delay_drain(Params) ->
-    timer:sleep(100),
-    ?M:drain_orig(Params).
+%% Crash the start_prepare message, in order to property handle
+%% failures in the drain manager handling code.
+prepare_crash(start, State) ->
+    {stop, {error, something_bad_happened}, State}.
 
-%% Send a ping to the yz_test_listener every time we unlink and kill
-count_unlink_and_kill(Reference, Pid) ->
-    gen_server:call({global, yz_test_listener}, {message, ping}),
-    ?M:unlink_and_kill_orig(Reference, Pid).
 
-%% delegate to the original
-unlink_and_kill_orig(Reference, Pid) ->
-    ?M:unlink_and_kill_orig(Reference, Pid).
+%% Put a 5 second sleep in front of prepare.
+prepare_sleep_5s(start, State) ->
+    timer:sleep(5000),
+    ?M:prepare_orig(start, State).
+
+
+%% Put a 5 second sleep in front of prepare.
+prepare_sleep_1s(start, State) ->
+    timer:sleep(1000),
+    ?M:prepare_orig(start, State).
+
+
+%% restore the original
+prepare_orig(start, State) ->
+    ?M:prepare_orig(start, State).

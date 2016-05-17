@@ -50,7 +50,7 @@
 -type indexq_status() ::
       {queue, yz_queue()}
     | {queue_len, non_neg_integer()}
-    | {timer_ref, reference()}
+    | {timer_ref, reference() | undefined}
     | {pending_helper, boolean()}
     | {batch_min, solrq_batch_min()}
     | {batch_max, solrq_batch_max()}
@@ -131,9 +131,10 @@ set_hwm(_, _)  ->
     {error, bad_hwm_value}.
 
 -spec set_index(solrq_id(), index_name(), solrq_batch_min(), solrq_batch_max(),
-    solrq_batch_flush_interval()) -> {ok, {solrq_batch_min(),
-    solrq_batch_max(),
-    solrq_batch_flush_interval()}}.
+                solrq_batch_flush_interval()) -> 
+                    {ok, {solrq_batch_min(),
+                         solrq_batch_max(),
+                         solrq_batch_flush_interval()}}.
 set_index(QPid, Index, Min, Max, DelayMax)
     when Min > 0, Min =< Max, DelayMax >= 0 orelse DelayMax == infinity ->
     gen_server:call(QPid, {set_index, Index, Min, Max, DelayMax});
@@ -726,15 +727,9 @@ send_entries(HPid, Index, State) ->
     end.
 
 %% @doc Get up to batch_max entries and reset the pending worker/timer ref.
-%%
-%%      If previous `TimerRef' was set, but not yet triggered, cancel it
-%%      first as it's invalid for the next batch of this IndexQ.
-get_batch(#indexq{timer_ref=TimerRef} = IndexQ) when
-      TimerRef =/= undefined andalso is_reference(TimerRef) ->
-    erlang:cancel_timer(TimerRef),
-    get_batch(IndexQ#indexq{timer_ref = undefined});
 get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max,
-                  draining = Draining} = IndexQ) ->
+                  draining = Draining} = IndexQ0) ->
+    IndexQ1 = maybe_cancel_timer(IndexQ0),
     {BatchQ, RestQ} =
         case Draining of
             true ->
@@ -744,10 +739,18 @@ get_batch(#indexq{queue = Q, queue_len = L, batch_max = Max,
         end,
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
-    IndexQ2 = IndexQ#indexq{queue = RestQ, queue_len = L - BatchLen,
+    IndexQ2 = IndexQ1#indexq{queue = RestQ, queue_len = L - BatchLen,
                             in_flight_len = BatchLen,
                             batch_start = os:timestamp()},
     {Batch, BatchLen, IndexQ2}.
+
+%%      If previous `TimerRef' was set, but not yet triggered, cancel it
+%%      first as it's invalid for the next batch of this IndexQ.
+maybe_cancel_timer(#indexq{timer_ref=undefined} = IndexQ) ->
+	IndexQ;
+maybe_cancel_timer(#indexq{timer_ref=TimerRef} = IndexQ) ->
+    erlang:cancel_timer(TimerRef),
+    IndexQ#indexq{timer_ref=undefined}.
 
 %% @doc Send replies to blocked vnodes if under the high water mark
 %%      and return updated state

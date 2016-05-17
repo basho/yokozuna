@@ -512,6 +512,7 @@
 -define(DRAIN_PARTITION, drain_partition).
 -define(SOLRQ_DRAIN_TIMEOUT, solrq_drain_timeout).
 -define(SOLRQ_DRAIN_ENABLE, solrq_drain_enable).
+-define(SOLRQ_DRAIN_CANCEL_TIMEOUT, solrq_drain_cancel_timeout).
 
 -type drain_param() ::
     {?EXCHANGE_FSM_PID, pid()} |
