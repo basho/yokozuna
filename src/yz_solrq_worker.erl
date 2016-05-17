@@ -351,7 +351,7 @@ handle_cast(drain_complete, #state{indexqs = IndexQs} = State) ->
     NewIndexQs = dict:fold(
         fun(Index, #indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue} = IndexQ, IndexQAccum) ->
             NewIndexQ = IndexQ#indexq{
-                queue = queue:join(Queue, AuxQueue),
+                queue = queue:join(AuxQueue, Queue),
                 queue_len = QueueLen + queue:len(AuxQueue),
                 aux_queue = queue:new(),
                 draining = false
@@ -401,13 +401,9 @@ timer_running(_) -> true.
 %%
 %% @doc
 %% A drain is not in progress.  There are two cases to consider:
-%%   1. The result is ok; This means all batched messages were delivered; Reduce the
-%%      all_queue_len by the number of messages delivered.
+%%   1. The result is ok; This means all batched messages were delivered.
 %%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
 %%      for this index, and request a new worker, if we are over the requested minimum.
-%%      Reduce the all_queue_len by the number of messages delivered.
-%%
-%% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
 %% @end
 %%
 handle_batch(
@@ -431,15 +427,17 @@ handle_batch(
 %%
 %% @doc
 %% This queue is being drained.  There are two cases to consider:
-%%    1. The batch succeeded.  In this case, move any data we
-%%       have accumulated in aux_queue to the main queue,
-%%       and remove ourselves from the list
-%%       of remaining indices that need to be flushed.
+%%    1. The batch succeeded.  If there is nothing left in the queue,
+%%       then remove ourselves from the list
+%%       of remaining indices that need to be flushed, and
+%%       wait for t a drain_complete message to come back from the
+%%       drain FSM.
 %%    2. The batch did not succeed.  In this case, we got back a list
 %%       of undelivered messages.  Put the undelivered messages back onto
 %%       the queue and request another worker.
 %%
-%% Since the ACL has been adjusted, unblock any vnodes that might be waiting.
+%% If there are no remaining indexqs to drain, then send the drain FSM
+%% a drain_complete message for this solrq.
 %% @end
 %%
 handle_batch(

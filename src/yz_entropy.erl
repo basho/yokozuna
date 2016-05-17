@@ -40,7 +40,7 @@ iterate_entropy_data(Index, Filter, Fun) ->
                     Err
             end;
         _ ->
-            ?NOTICE("Can't ping Solr to start iterating over entropy data"),
+            ?NOTICE("Can't ping Solr index ~p to start iterating over entropy data", [Index]),
             not_available
     end.
 
