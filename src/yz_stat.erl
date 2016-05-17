@@ -91,6 +91,11 @@ drain_fail() ->
 drain_timeout() ->
     update(drain_timeout).
 
+%% @doc Send stat updates for a drain cancel timeout.
+-spec drain_cancel_timeout() -> ok.
+drain_cancel_timeout() ->
+    update(drain_cancel_timeout).
+
 %% @doc Send updates for aae repairs.
 -spec detected_repairs(Count :: integer()) -> ok.
 detected_repairs(Count) ->
@@ -193,6 +198,9 @@ stats_map(true) -> [
 
     {search_queue_drain_timeout_count, {{?YZ_APP_NAME, queue, drain, timeout}, count}, spiral},
     {search_queue_drain_timeout_one, {{?YZ_APP_NAME, queue, drain, timeout}, one}, spiral},
+
+    {search_queue_drain_cancel_timeout_count, {{?YZ_APP_NAME, queue, drain, cancel, timeout}, count}, spiral},
+    {search_queue_drain_cancel_timeout_one, {{?YZ_APP_NAME, queue, drain, cancel, timeout}, one}, spiral},
 
     {search_queue_drain_latency_min, {{?YZ_APP_NAME, queue, drain, latency}, min}, histogram},
     {search_queue_drain_latency_max, {{?YZ_APP_NAME, queue, drain, latency}, max}, histogram},
@@ -307,6 +315,8 @@ update(drain_fail) ->
     exometer:update([?PFX, ?APP, queue, drain, fail], 1);
 update(drain_timeout) ->
     exometer:update([?PFX, ?APP, queue, drain, timeout], 1);
+update(drain_cancel_timeout) ->
+    exometer:update([?PFX, ?APP, queue, drain, cancel, timeout], 1);
 update({detected_repairs, Count}) ->
     exometer:update([?PFX, ?APP, detected_repairs], Count);
 update({search_end, Time}) ->
@@ -369,6 +379,10 @@ stats() -> [
     {[queue, drain, timeout], spiral, [], [
         {count, search_queue_drain_timeout_count},
         {one,   search_queue_drain_timeout_one}
+    ]},
+    {[queue, drain, cancel, timeout], spiral, [], [
+        {count, search_queue_drain_cancel_timeout_count},
+        {one,   search_queue_drain_cancel_timeout_one}
     ]},
     {[queue, drain, latency], histogram, [], [
         {min,    search_queue_drain_latency_min},

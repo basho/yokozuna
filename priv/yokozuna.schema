@@ -253,6 +253,16 @@
   hidden
 ]}.
 
+%% @doc The amount of time to wait before a drain cancel times out.
+%%      If a drain cancel times out during an AAE exchange, the entity
+%%      responsible for draining is forcibly terminated, and the exchange
+%%      is cancelled and retried at a later time.
+{mapping, "search.queue.drain.cancel.timeout", "yokozuna.solrq_drain_cancel_timeout", [
+  {default, "5s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
 %% @doc When enabled, enqueued Riak objects are drained prior to an AAE
 %%      exchange, in order to minimize AAE activity, and during shutdown.
 %%      If AAE is disabled, this setting only has an effect on shutdown

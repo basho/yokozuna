@@ -34,7 +34,7 @@
         {?SOLRQ_BATCH_FLUSH_INTERVAL, 100000},
         {?SOLRQ_HWM, 10},
         {?ERR_THRESH_FAIL_COUNT, 1},
-        {?ERR_THRESH_RESET_INTERVAL, 1000},
+        {?ERR_THRESH_RESET_INTERVAL, 3000},
         %% allow AAE to build trees and exchange rapidly
         {anti_entropy_tick, 1000},
         {anti_entropy_build_limit, {100, 1000}},
@@ -181,9 +181,9 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         %%
         lager:info("Writing one entry to blow fuse..."),
         populate_data(PBConn, Bucket, 1),
-        yz_rt:wait_until_fuses_blown(Cluster, yz_solrq_0001, [Index]),
+        yz_rt:wait_until_fuses_blown(Cluster, yz_solrq_worker_0001, [Index]),
         %%
-        %% At this point, the indexq in yz_solrq_001 corresponding
+        %% At this point, the indexq in yz_solrq_worker_0001 corresponding
         %% to the Index should be blown.
         %% Send one more message through one of the Indexqs, which
         %% will trigger a purge.
@@ -196,7 +196,7 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
         yz_rt:intercept_index_batch(Cluster, index_batch_call_orig),
-        yz_rt:wait_until_fuses_reset(Cluster, yz_solrq_0001, [Index]),
+        yz_rt:wait_until_fuses_reset(Cluster, yz_solrq_worker_0001, [Index]),
         lager:info("Writing one last entry to set the threshold ok stat ..."),
         populate_data(PBConn, Bucket, 1),
         yz_rt:drain_solrqs(Cluster),
@@ -281,7 +281,7 @@ check_index_stats(Node) ->
         {queue_drain_latency_min, QDrainLatencyMin, '>', 0},
         {queue_drain_latency_max, QDrainLatencyMax, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_index_fail_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -294,7 +294,7 @@ check_index_fail_stats(Node) ->
         {index_fail_count, IFailCount, '>', 0},
         {index_fail_one, IFailOne, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_query_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -307,7 +307,7 @@ check_query_stats(Node) ->
         {query_throughput_count, SThruCount, '>', 0},
         {query_throughput_one, SThruOne, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_queue_capacity_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -318,7 +318,7 @@ check_queue_capacity_stats(Node) ->
     Pairs = [
         {queue_capacity, QDCapacityValue, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_aae_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -329,7 +329,7 @@ check_aae_stats(Node) ->
     Pairs = [
         {aae_repairs, AAERepairValue, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
+    yz_rt:check_stat_values(Stats, Pairs).
 
 check_fuse_and_purge_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
@@ -385,17 +385,4 @@ check_fuse_and_purge_stats(Node) ->
         {error_threshold_recovered_count, ErrorThresholdRecoveredCountValue, '>', 0},
         {error_threshold_recovered_one, ErrorThresholdRecoveredOneValue, '>', 0}
     ],
-    check_stat_values(Stats, Pairs).
-
-check_stat_values(Stats, Pairs) ->
-    lager:info("STATS: ~p", [Stats]),
-    lager:info("Pairs: ~p", [Pairs]),
-    StillWaiting = [S || S = {_, Value, Cmp, Arg} <- Pairs,
-        not (erlang:Cmp(Value, Arg))],
-    case StillWaiting of
-        [] ->
-            true;
-        _ ->
-            lager:info("Waiting for stats: ~p", [StillWaiting]),
-            false
-    end.
+    yz_rt:check_stat_values(Stats, Pairs).

@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2015 Basho Technologies, Inc.
+%% Copyright (c) 2016 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -78,7 +78,14 @@ confirm() ->
     [PBConn|_] = PBConns = yz_rt:open_pb_conns(Cluster),
 
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET1, ?INDEX1),
+    confirm_batching(Cluster, PBConn, ?BUCKET1, ?INDEX1),
+
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET2, ?INDEX2),
+    confirm_draining(Cluster, PBConn, ?BUCKET2, ?INDEX2),
+    confirm_drain_fsm_failure(Cluster),
+    confirm_drain_fsm_timeout(Cluster),
+    confirm_drain_fsm_kill(Cluster),
+
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET3, ?INDEX3),
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET4, ?INDEX4),
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET5, ?INDEX5),
@@ -90,8 +97,6 @@ confirm() ->
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET11, ?INDEX11),
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET12, ?INDEX12),
 
-    confirm_batching(Cluster, PBConn, ?BUCKET1, ?INDEX1),
-    confirm_draining(Cluster, PBConn, ?BUCKET2, ?INDEX2),
 
     %% confirm_requeue_undelivered must be last since it installs an interrupt
     %% that intentionally causes failures
@@ -100,8 +105,113 @@ confirm() ->
     confirm_no_contenttype_data(Cluster, PBConn, ?BUCKET4, ?INDEX4),
     confirm_purge_strategy(Cluster, PBConn),
 
+    %% TODO: test cancel intercept of drain
+
     yz_rt:close_pb_conns(PBConns),
     pass.
+
+confirm_drain_fsm_failure(Cluster) ->
+    yz_stat:reset(),
+    try
+        yz_rt:load_intercept_code(Cluster),
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_crash),
+        %% drain solrqs and wait until the drain failure stats are touched
+        yz_rt:drain_solrqs(Cluster),
+        yz_rt:wait_until(Cluster, fun check_drain_failure_stats/1),
+
+        lager:info("confirm_drain_fsm_failure ok")
+    after
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_orig)
+    end.
+
+check_drain_failure_stats(Node) ->
+    Stats = rpc:call(Node, yz_stat, get_stats, []),
+
+    QDrainFail = proplists:get_value(yz_stat:stat_name([queue, drain, fail]), Stats),
+    QDrainFailCount = proplists:get_value(count, QDrainFail),
+    QDrainFailOne = proplists:get_value(one, QDrainFail),
+
+    Pairs = [
+        {queue_drain_fail_count, QDrainFailCount, '>', 0},
+        {queue_drain_fail_one, QDrainFailOne, '>', 0}
+    ],
+    yz_rt:check_stat_values(Stats, Pairs).
+
+confirm_drain_fsm_timeout(Cluster) ->
+    yz_stat:reset(),
+    [rpc:call(
+        Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 500])
+            || Node <- Cluster],
+    try
+        yz_rt:load_intercept_code(Cluster),
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_sleep_1s),
+        yz_rt:drain_solrqs(Cluster),
+        yz_rt:wait_until(Cluster, fun check_drain_timeout_stats/1),
+
+        lager:info("confirm_drain_fsm_timeout ok")
+    after
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_orig),
+        [rpc:call(
+            Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 60000])
+                || Node <- Cluster]
+    end.
+
+check_drain_timeout_stats(Node) ->
+    Stats = rpc:call(Node, yz_stat, get_stats, []),
+
+    QDrainTimeout = proplists:get_value(yz_stat:stat_name([queue, drain, timeout]), Stats),
+    QDrainTimeoutCount = proplists:get_value(count, QDrainTimeout),
+    QDrainTimeoutOne = proplists:get_value(one, QDrainTimeout),
+
+    Pairs = [
+        {queue_drain_timeout_count, QDrainTimeoutCount, '>', 0},
+        {queue_drain_timeout_one, QDrainTimeoutOne, '>', 0}
+    ],
+    yz_rt:check_stat_values(Stats, Pairs).
+
+confirm_drain_fsm_kill(Cluster) ->
+    [rpc:call(
+        Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 10])
+        || Node <- Cluster],
+    [rpc:call(
+        Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 10])
+        || Node <- Cluster],
+    try
+        yz_test_listener:start(),
+        yz_rt:load_intercept_code(Cluster),
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_sleep_5s),
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_mgr, unlink_and_kill, 2, count_unlink_and_kill),
+        yz_rt:drain_solrqs(Cluster),
+        yz_rt:wait_until(Cluster, fun check_drain_cancel_timeout_stats/1),
+
+        ?assertEqual(1, length(yz_test_listener:messages())),
+
+        lager:info("confirm_drain_fsm_kill ok")
+    after
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_orig),
+        yz_rt:add_intercept(Cluster, yz_solrq_drain_mgr, unlink_and_kill, 2, unlink_and_kill_orig),
+        yz_test_listener:stop(),
+        [rpc:call(
+            Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 60000])
+            || Node <- Cluster],
+        [rpc:call(
+            Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 5000])
+            || Node <- Cluster]
+    end.
+
+check_drain_cancel_timeout_stats(Node) ->
+    Stats = rpc:call(Node, yz_stat, get_stats, []),
+
+    QDrainTimeout = proplists:get_value(yz_stat:stat_name([queue, drain, cancel, timeout]), Stats),
+    QDrainTimeoutCount = proplists:get_value(count, QDrainTimeout),
+    QDrainTimeoutOne = proplists:get_value(one, QDrainTimeout),
+
+    Pairs = [
+        {queue_drain_cancel_timeout_count, QDrainTimeoutCount, '>', 0},
+        {queue_drain_cancel_timeout_one, QDrainTimeoutOne, '>', 0}
+    ],
+    yz_rt:check_stat_values(Stats, Pairs).
+
 
 confirm_batching(Cluster, PBConn, BKey, Index) ->
     %% First, put one less than the min batch size and expect that there are no
@@ -119,23 +229,32 @@ confirm_batching(Cluster, PBConn, BKey, Index) ->
     verify_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING),
 
     %% Finally, put another batch of one less than solrq_batch_min, but this
-    %% time wait until solrq_delayms_max milliseconds (plus a small fudge
-    %% factor) have passed and expect that a flush will be triggered and all
-    %% objects have been indexed.
+    %% time wait until the data has been flushed, and then verify that we
+    %% have waited at least SOLRQ_DELAYMS_MAX ms.
     Count = put_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING),
-    timer:sleep(?SOLRQ_DELAYMS_MAX + 100),
-    verify_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING + Count),
+    StartMS = current_ms(),
+    wait_until_search_count(PBConn, Index, ?SOLRQ_BATCH_MIN_SETTING + Count),
+    Condition = gteq(current_ms() - StartMS, ?SOLRQ_DELAYMS_MAX),
+    case Condition of
+        false -> lager:error("Flush interval is less than ~pms", [?SOLRQ_DELAYMS_MAX]);
+        true -> ok
+    end,
+    ?assertEqual(Condition, true),
+
     lager:info("confirm_batching ok"),
     ok.
+
+-spec gteq(number(), number()) -> boolean().
+gteq(A, B) -> A >= B.
 
 confirm_draining(Cluster, PBConn, BKey, Index) ->
     Count = ?SOLRQ_BATCH_MIN_SETTING - 1,
     Count = put_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, 0),
-    yz_rt:drain_solrqs(hd(Cluster)),
+    yz_rt:drain_solrqs(Cluster),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, Count),
     lager:info("confirm_draining ok"),
@@ -341,9 +460,9 @@ do_purge([Node|_] = Cluster, PBConn,
         [Index1BKey2] = put_bkey_objects(PBConn, [Index1BKey2]),
         [Index2BKey1] = put_bkey_objects(PBConn, [Index2BKey1]),
         [Index2BKey2] = put_bkey_objects(PBConn, [Index2BKey2]),
-        yz_rt:wait_until_fuses_blown(Node, yz_solrq_0001, [Index1, Index2]),
+        yz_rt:wait_until_fuses_blown(Node, yz_solrq_worker_0001, [Index1, Index2]),
         %%
-        %% At this point, the two indexqs in yz_solrq_001 corresponding
+        %% At this point, the two indexqs in yz_solrq_worker_001 corresponding
         %% to Index1 and Index2, respectively, should be blown.
         %% Send one more message through one of the Indexqs, which
         %% will trigger a purge.
@@ -363,7 +482,7 @@ do_purge([Node|_] = Cluster, PBConn,
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
         yz_rt:intercept_index_batch(Node, index_batch_call_orig),
-        yz_rt:wait_until_fuses_reset(Node, yz_solrq_0001, [Index1, Index2]),
+        yz_rt:wait_until_fuses_reset(Node, yz_solrq_worker_0001, [Index1, Index2]),
         yz_rt:drain_solrqs(Node),
         yz_rt:commit(Cluster, Index1),
         yz_rt:commit(Cluster, Index2)
@@ -392,25 +511,9 @@ search_bkeys(PBConn, Index) ->
         end,
         SearchResults).
 
-
-%% TODO Revisit re-using Indices and Buckets w/ delete_mode=keep
-%cleanup(PBConn, Index1, Index2) ->
-%    Index1SearchBKeys = search_bkeys(PBConn, Index1),
-%    Index2SearchBKeys = search_bkeys(PBConn, Index2),
-%    cleanup(PBConn, Index1SearchBKeys ++ Index2SearchBKeys).
-
-%cleanup(PBConn, BKeys) ->
-%    lists:foreach(
-%        fun({Bucket, Key}) ->
-%            riakc_pb_socket:delete(PBConn, Bucket, Key)
-%        end,
-%        BKeys
-%    ),
-%    timer:sleep(500).
-
 -spec find_representative_bkeys(node(), index_name(), bucket()) -> [bkey()].
 find_representative_bkeys(Node, Index, Bucket) ->
-    find_representative_bkeys(Node, Index, Bucket, yz_solrq_0001).
+    find_representative_bkeys(Node, Index, Bucket, yz_solrq_worker_0001).
 
 -spec find_representative_bkeys(node(),
                                 index_name(),
@@ -437,7 +540,7 @@ find_representatives(Node, Index, Bucket) ->
 
 -spec get_solrq(node(), index_name(), bkey()) -> module().
 get_solrq(Node, Index, BKey) ->
-    rpc:call(Node, yz_solrq_sup, queue_regname, [erlang:phash2({Index, BKey})]).
+    rpc:call(Node, yz_solrq, worker_regname, [erlang:phash2({Index, BKey})]).
 
 -spec put_no_contenttype_objects(pid(), bucket(), non_neg_integer()) -> non_neg_integer().
 put_no_contenttype_objects(PBConn, Bucket, Count) ->
@@ -450,7 +553,7 @@ put_objects(PBConn, Bucket, Count) ->
 -spec put_objects(pid(), bucket(), non_neg_integer(), string()|undefined) -> non_neg_integer().
 put_objects(PBConn, Bucket, Count, ContentType) ->
     %% Using the same key for every object ensures that they all hash to the
-    %% same yz_solrq and the batching is therefore predictable.
+    %% same yz_solrq_worker and the batching is therefore predictable.
     Key = <<"same_key_for_everyone">>,
     RandVals = [yz_rt:random_binary(16) || _ <- lists:seq(1, Count)],
     Objects = [case ContentType of
@@ -485,4 +588,15 @@ verify_search_count(PBConn, Index, Count) ->
         riakc_pb_socket:search(PBConn, Index, <<"*:*">>),
     ?assertEqual(Count, Found).
 
+wait_until_search_count(PBConn, Index, Count) ->
+    F = fun() ->
+        {ok, {search_results, _R, _Score, Found}} =
+            riakc_pb_socket:search(PBConn, Index, <<"*:*">>),
+        Found =:= Count
+        end,
+    rt:wait_until(F).
+
+current_ms() ->
+    {MegaSecs, Secs, MicroSecs} = os:timestamp(),
+    (MegaSecs * 1000000 + Secs) * 1000 + round(MicroSecs / 1000).
 

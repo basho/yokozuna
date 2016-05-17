@@ -112,7 +112,7 @@ prop_ok() ->
                 true = lists:member({'PULSE-REPLACE-MODULE',1},
                                            ?MODULE:module_info(exports)),
                 true = lists:member({'PULSE-REPLACE-MODULE',1},
-                                           yz_solrq:module_info(exports)),
+                                           yz_solrq_worker:module_info(exports)),
                 true = lists:member({'PULSE-REPLACE-MODULE',1},
                                            yz_solrq_helper:module_info(exports)),
 
@@ -144,11 +144,11 @@ prop_ok() ->
                     {SolrQ, Helper, IBrowseKeys, MeltsByIndex},
                     begin
                         reset(), % restart the processes
-                        unlink_kill(yz_solrq_0001),
+                        unlink_kill(yz_solrq_worker_0001),
                         unlink_kill(yz_solrq_helper_0001),
                         unlink_kill(yz_solrq_eqc_fuse),
                         unlink_kill(yz_solrq_eqc_ibrowse),
-                        {ok, SolrQ} = yz_solrq:start_link(yz_solrq_0001),
+                        {ok, SolrQ} = yz_solrq_worker:start_link(yz_solrq_worker_0001),
                         {ok, Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
                         {ok, _} = yz_solrq_eqc_fuse:start_link(),
                         {ok, _} = yz_solrq_eqc_ibrowse:start_link(KeyRes),
@@ -224,8 +224,8 @@ setup() ->
     application:start(goldrush),
     application:start(lager),
 
-    yz_solrq_sup:set_solrq_tuple(1), % for yz_solrq_sup:regname
-    yz_solrq_sup:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
+    yz_solrq:set_solrq_worker_tuple(1), % for yz_solrq_sup:regname
+    yz_solrq:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
 
     meck:new(ibrowse),
     %% meck:expect(ibrowse, send_req, fun(_A, _B, _C, _D, _E, _F) ->

@@ -22,7 +22,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, drain/0, drain/1]).
+-export([start_link/0, drain/0, drain/1, cancel/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -36,9 +36,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {
-    lock = undefined
-}).
+-record(state, {draining = false :: boolean()}).
 
 %%%===================================================================
 %%% API
@@ -57,49 +55,7 @@ drain() ->
 %% @doc Drain all queues to Solr
 -spec drain(drain_params()) -> ok | {error, Reason :: term()}.
 drain(Params) ->
-    ExchangeFSMPid = proplists:get_value(
-        ?EXCHANGE_FSM_PID, Params, undefined
-    ),
-    case enabled() of
-        true ->
-            case get_lock() of
-                ok ->
-                    DrainTimeout = application:get_env(?YZ_APP_NAME,
-                                                       ?SOLRQ_DRAIN_TIMEOUT,
-                                                       60000),
-                    try
-                        {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
-                        Reference = erlang:monitor(process, Pid),
-                        yz_solrq_drain_fsm:start_prepare(),
-                        receive
-                            {'DOWN', Reference, process, Pid, normal} ->
-                                ok;
-                            {'DOWN', Reference, process, Pid, Reason} ->
-                                yz_stat:drain_fail(),
-                                maybe_exchange_fsm_drain_error(ExchangeFSMPid, Reason),
-                                {error, Reason}
-                        after DrainTimeout ->
-                            yz_stat:drain_timeout(),
-                            cancel(Reference, Pid),
-                            maybe_exchange_fsm_drain_error(ExchangeFSMPid, timeout),
-                            {error, timeout}
-                        end
-                    after
-                        release_lock()
-                    end;
-                drain_already_locked ->
-                    maybe_exchange_fsm_drain_error(ExchangeFSMPid, in_progress),
-                    {error, in_progress}
-            end;
-        _ ->
-            YZIndexHashtreeUpdateParams = proplists:get_value(
-                ?YZ_INDEX_HASHTREE_PARAMS, Params
-            ),
-            maybe_update_yz_index_hashtree(
-                ExchangeFSMPid, YZIndexHashtreeUpdateParams
-            ),
-            ok
-    end.
+    gen_server:call(?SERVER, {drain, Params}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -109,39 +65,37 @@ init([]) ->
     schedule_tick(),
     {ok, #state{}}.
 
+handle_call({drain, _Params}, _From, #state{draining=true} = State) ->
+    {reply, {error, in_progress}, State};
+handle_call({drain, Params}, From, State) ->
+    ExchangeFSMPid = proplists:get_value(
+        ?EXCHANGE_FSM_PID, Params, undefined
+    ),
+    spawn_link(
+        fun() ->
+            Result = try
+                maybe_drain(enabled(), ExchangeFSMPid, Params)
+            catch
+                _:E ->
+                    {error, E}
+            end,
+            gen_server:cast(?SERVER, drain_complete),
+            gen_server:reply(From, Result)
+        end
+    ),
+    {noreply, State#state{draining = true}}.
 
-handle_call({get_lock, Pid}, _From, #state{lock=undefined} = State) ->
-    Ref = monitor(process, Pid),
-    State2 = State#state{lock={Ref, Pid}},
-    {reply, ok, State2};
+handle_cast(drain_complete, State) ->
+    {noreply, State#state{draining = false}}.
 
-handle_call({get_lock, Pid}, _From, #state{lock={_Ref, Pid}} = State) ->
-    {reply, ok, State};
-
-handle_call({get_lock, _Pid}, _From, State) ->
-    {reply, drain_already_locked, State};
-
-handle_call({release_lock, Pid}, _From, State) ->
-    {reply, ok, maybe_release_lock(State, Pid)};
-
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
-
-
-handle_cast(_Request, State) ->
-    {noreply, State}.
-
-
-handle_info({'DOWN', Ref, _, _Obj, _Status}, State) ->
-    {noreply, maybe_release_lock(State, Ref)};
+%% Handle race conditions in monitor/receive timeout
+handle_info({'DOWN', _Ref, _, _Obj, _Status}, State) ->
+    {noreply, State};
 
 handle_info(tick, State) ->
-    yz_stat:queue_capacity(yz_solrq_sup:queue_capacity()),
+    yz_stat:queue_capacity(yz_solrq:queue_capacity()),
     schedule_tick(),
-    {noreply, State};
-handle_info(_Info, State) ->
     {noreply, State}.
-
 
 terminate(_Reason, _State) ->
     ok.
@@ -154,40 +108,55 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-get_lock() ->
-    gen_server:call(?SERVER, {get_lock, self()}, infinity).
+maybe_drain(true, ExchangeFSMPid, Params) ->
+    actual_drain(Params, ExchangeFSMPid);
 
-release_lock() ->
-    gen_server:call(?SERVER, {release_lock, self()}, infinity).
+maybe_drain(false, ExchangeFSMPid, Params) ->
+    YZIndexHashtreeUpdateParams = proplists:get_value(
+        ?YZ_INDEX_HASHTREE_PARAMS, Params
+    ),
+    maybe_update_yz_index_hashtree(
+        ExchangeFSMPid, YZIndexHashtreeUpdateParams
+    ),
+    ok.
+
+actual_drain(Params, ExchangeFSMPid) ->
+    DrainTimeout = application:get_env(?YZ_APP_NAME,
+                                       ?SOLRQ_DRAIN_TIMEOUT, 60000),
+    {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
+    Reference = erlang:monitor(process, Pid),
+    yz_solrq_drain_fsm:start_prepare(),
+    try
+        receive
+            {'DOWN', Reference, process, Pid, normal} ->
+                ok;
+            {'DOWN', Reference, process, Pid, Reason} ->
+                yz_stat:drain_fail(),
+                maybe_exchange_fsm_drain_error(ExchangeFSMPid, Reason),
+                {error, Reason}
+        after DrainTimeout ->
+            yz_stat:drain_timeout(),
+            _ = cancel(Reference, Pid),
+            maybe_exchange_fsm_drain_error(ExchangeFSMPid, timeout),
+            {error, timeout}
+        end
+    after
+        erlang:demonitor(Reference)
+    end.
 
 enabled() ->
     application:get_env(?YZ_APP_NAME, ?SOLRQ_DRAIN_ENABLE, true).
 
-maybe_release_lock(#state{lock=undefined} = S, _) ->
-    S;
-maybe_release_lock(#state{lock={Ref, Pid}} = S, Pid) ->
-    demonitor(Ref),
-    S#state{lock=undefined};
-maybe_release_lock(#state{lock={Ref, _Pid}} = S, Ref) ->
-    S#state{lock=undefined};
-maybe_release_lock(#state{lock={_Ref, _Pid}} = S, _) ->
-    S.
-
 cancel(Reference, Pid) ->
-    case yz_solrq_drain_fsm:cancel() of
-        ok ->
-            receive
-                {'DOWN', Reference, process, Pid, normal} ->
-                    ok
-            after 5000 ->
-                unlink_and_kill(Reference, Pid),
-                {error, timeout}
-            end;
-        no_proc ->
-            ok;
+    CancelTimeout = application:get_env(
+        ?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 5000),
+    case yz_solrq_drain_fsm:cancel(CancelTimeout) of
         timeout ->
+            yz_stat:drain_cancel_timeout(),
             unlink_and_kill(Reference, Pid),
-            {error, timeout}
+            {error, timeout};
+        _ ->
+            ok
     end.
 
 unlink_and_kill(Reference, Pid) ->
