@@ -233,8 +233,8 @@ local_create(Name) ->
 
             core_create(Name, SchemaName, CoreProps);
         {error, _Reason} ->
-            lager:error("Couldn't create index ~s because the schema ~s isn't found",
-                        [Name, SchemaName]),
+            lager:error("Couldn't create index ~s because the schema ~s"
+                        "isn't found", [Name, SchemaName]),
             ok
     end.
 

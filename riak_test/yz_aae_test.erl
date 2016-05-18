@@ -65,7 +65,7 @@ aae_run(Cluster, Bucket, Index) ->
             ?assertEqual(?N, proplists:get_value(n_val, BProps)),
 
             lager:info("Verify data was indexed"),
-            verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+            yz_rt:verify_num_match(Cluster, Index, ?TOTAL_KEYS),
 
             %% Wait for a full round of exchange and then get total repair
             %% count.  Need to do this because setting AAE so agressive means
@@ -78,7 +78,7 @@ aae_run(Cluster, Bucket, Index) ->
             yz_rt:wait_for_full_exchange_round(Cluster, TS1),
 
             lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
-            verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
+            yz_rt:verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
 
             RepairCountBefore = get_cluster_repair_count(Cluster),
             yz_rt:count_calls(Cluster, ?REPAIR_MFA),
@@ -94,7 +94,8 @@ aae_run(Cluster, Bucket, Index) ->
             lager:info("Deleting ~p keys", [length(AllDelKeys)]),
             [delete_key_in_solr(Cluster, Index, K) || K <- AllDelKeys],
             lager:info("Verify Solr indexes missing"),
-            verify_num_match(Cluster, Index, ?TOTAL_KEYS - length(AllDelKeys)),
+            yz_rt:verify_num_match(Cluster, Index,
+                                   ?TOTAL_KEYS - length(AllDelKeys)),
 
             verify_exchange_after_clear(Cluster, Index),
 
@@ -189,13 +190,13 @@ setup_index(Cluster, PBConn, Index, Bucket, YZBenchDir) ->
     RawSchema = read_schema(YZBenchDir),
     ok = yz_rt:store_schema(PBConn, Index, RawSchema),
     ok = yz_rt:wait_for_schema(Cluster, Index, RawSchema),
-    ok = create_bucket_type(Node, Bucket),
-    ok = yz_rt:create_index(Node, Index, Index, ?N),
+    ok = create_bucket_type(Cluster, Bucket),
+    ok = yz_rt:create_index(Cluster, Index, Index, ?N),
     ok = yz_rt:set_index(Node, Bucket, Index, ?N).
 
-create_bucket_type(Node, {BType, _Bucket}) ->
-    ok = yz_rt:create_bucket_type(Node, BType);
-create_bucket_type(_Node, _Bucket) ->
+create_bucket_type(Cluster, {BType, _Bucket}) ->
+    ok = yz_rt:create_bucket_type(Cluster, BType);
+create_bucket_type(_Cluster, _Bucket) ->
     ok.
 
 %% @doc Verify that expired trees do not prevent exchange from
@@ -216,10 +217,10 @@ verify_exchange_after_expire(Cluster, Index) ->
 
     ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
 
-    verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+    yz_rt:verify_num_match(Cluster, Index, ?TOTAL_KEYS),
 
     %% Check against the internal_solr replica count
-    verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
+    yz_rt:verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
 
     lager:info("Set anti_entropy_build_limit to 100 so trees can build again"),
     _ = [ok = rpc:call(Node, application, set_env, [riak_kv, anti_entropy_build_limit, {100, 1000}])
@@ -240,9 +241,9 @@ verify_exchange_after_clear(Cluster, Index) ->
     TS2 = erlang:now(),
     yz_rt:wait_for_full_exchange_round(Cluster, TS2),
     lager:info("Verify AAE repairs missing Solr documents"),
-    verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+    yz_rt:verify_num_match(Cluster, Index, ?TOTAL_KEYS),
     lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
-    verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
+    yz_rt:verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
     ok.
 
 %% @doc Verify that Yokozuna deletes postings which have no
@@ -258,9 +259,9 @@ verify_removal_of_orphan_postings(Cluster, Index, Bucket) ->
     ok = yz_rt:stop_tracing(),
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
     lager:info("Verifying data was indexed"),
-    verify_num_match(Cluster, Index, ?TOTAL_KEYS),
+    yz_rt:verify_num_match(Cluster, Index, ?TOTAL_KEYS),
     lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
-    verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
+    yz_rt:verify_num_match(solr, Cluster, Index, ?TOTAL_KEYS_REP),
     ok.
 
 %% @doc Verify that there is no indefinite repair.  There have been
@@ -372,24 +373,6 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
     ok;
 verify_count_and_repair_after_error_value(_Cluster, _Bucket, _Index, _PBConns) ->
     ok.
-
-verify_num_match(Cluster, Index, Num) ->
-    verify_num_match(yokozuna, Cluster, Index, Num).
-
-verify_num_match(Type, Cluster, Index, Num) ->
-    F = fun(Node) ->
-            {Host, _Port} = HP = hd(yz_rt:host_entries(
-                                      rt:connection_info([Node]))),
-            if Type =:= solr ->
-                    Shards = [{N, yz_rt:node_solr_port(N)} || N <- Cluster],
-                    yz_rt:search_expect(Type, {Host, yz_rt:node_solr_port(Node)},
-                                        Index, "*", "*", Shards, Num);
-               true ->
-                    yz_rt:search_expect(Type, HP,
-                                        Index, "*", "*", Num)
-            end
-        end,
-    yz_rt:wait_until(Cluster, F).
 
 %% @doc Verify the repair count stored in the AAE info server matches
 %%      what is expected.

@@ -25,8 +25,8 @@ confirm() ->
     Cluster2 = take_node_down(Cluster),
     write_obj(Cluster2, ?INDEX, ?BUCKET, ?KEY),
     check_fallbacks(Cluster2, ?INDEX, ?BUCKET, ?KEY),
-    HP = riak_hp(yz_rt:select_random(Cluster2), Cluster2),
-    ?assert(yz_rt:search_expect(yokozuna, HP, ?INDEX, "*", "*", 1)),
+    ANode = yz_rt:select_random(Cluster2),
+    ?assertEqual(ok, yz_rt:search_expect(ANode, ?INDEX, "*", "*", 1)),
     pass.
 
 check_fallbacks(Cluster, Index, Bucket, Key) ->
@@ -34,17 +34,13 @@ check_fallbacks(Cluster, Index, Bucket, Key) ->
     KVPreflist = kv_preflist(Node, Bucket, Key),
     FallbackPreflist = filter_fallbacks(KVPreflist),
     LogicalFallbackPL = make_logical(Node, FallbackPreflist),
-    [begin
-         {H, P} = solr_hp(FNode, Cluster),
-         ?assert(yz_rt:search_expect(solr, {H, P}, Index, "_yz_pn", integer_to_list(LPN), 0))
-     end
+    [?assertEqual(ok, yz_rt:search_expect(FNode, solr, Index, "_yz_pn",
+                                          integer_to_list(LPN), 0))
      || {LPN, FNode} <- LogicalFallbackPL].
 
 create_index(Cluster, Index) ->
-    Node = yz_rt:select_random(Cluster),
-    yz_rt:create_index(Node, Index),
-    yz_rt:wait_for_index(Cluster, Index),
-    ok = yz_rt:set_bucket_type_index(Node, Index),
+    yz_rt:create_index(Cluster, Index),
+    ok = yz_rt:set_bucket_type_index(Cluster, Index),
     timer:sleep(5000).
 
 make_logical(Node, Preflist) ->
@@ -60,10 +56,6 @@ kv_preflist(Node, Bucket, Key) ->
     N = proplists:get_value(n_val,BucketProps),
     UpNodes = rpc:call(Node, riak_core_node_watcher, nodes, [riak_kv]),
     riak_core_apl:get_apl_ann(DocIdx, N, Ring, UpNodes).
-
-solr_hp(Node, Cluster) ->
-    CI = yz_rt:connection_info(Cluster),
-    yz_rt:solr_http(proplists:get_value(Node, CI)).
 
 take_node_down(Cluster) ->
     DownNode = yz_rt:select_random(Cluster),

@@ -62,10 +62,10 @@
         ]).
 
 confirm() ->
-    [Node1|_] = Cluster = rt:build_cluster(4, ?CONFIG),
+    Cluster = rt:build_cluster(4, ?CONFIG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
 
-    ok = yz_rt:create_indexed_bucket_type(Node1, ?TYPE, ?INDEX,
+    ok = yz_rt:create_indexed_bucket_type(Cluster, ?TYPE, ?INDEX,
                                           ?SCHEMANAME, ?FACETED_SCHEMA),
 
     put_restaurants(Cluster, ?BUCKET),

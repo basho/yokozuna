@@ -197,6 +197,7 @@
 -define(YZ_SEARCH_CMD, #yz_search_cmd).
 -define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
+-define(YZ_APP_ATOM(Suffix), yokozuna_Suffix).
 -define(YZ_META_INDEXES, {yokozuna, indexes}).
 -define(YZ_META_SCHEMAS, {yokozuna, schemas}).
 -define(YZ_META_EXTRACTORS, {yokozuna, extractors}).

@@ -75,44 +75,42 @@ confirm_stats(Cluster) ->
 
     yz_rt:set_yz_aae_mode(Cluster, manual),
 
-    yz_stat:reset(),
+    yz_rt:reset_stats(Cluster),
     Values = populate_data_and_wait(PBConn, Cluster, Bucket, Index, ?NUM_ENTRIES),
-    verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
-    verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL),
+    yz_rt:verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
+    yz_rt:verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL),
     yz_rt:wait_until(Cluster, fun check_index_stats/1),
 
-    yz_stat:reset(),
+    yz_rt:reset_stats(Cluster),
     search_values(PBConn, Index, Values),
     yz_rt:wait_until(Cluster, fun check_query_stats/1),
 
-    yz_stat:reset(),
+    yz_rt:reset_stats(Cluster),
     [delete_key_in_solr(Cluster, Index, {Bucket, K}) || K <- Values],
-    verify_num_match(yokozuna, Cluster, Index, 0),
+    yz_rt:verify_num_match(yokozuna, Cluster, Index, 0),
     yz_rt:set_yz_aae_mode(Cluster, automatic),
     yz_rt:clear_aae_trees(Cluster),
     yz_rt:wait_for_full_exchange_round(Cluster),
     yz_rt:drain_solrqs(Cluster),
     yz_rt:wait_until(Cluster, fun check_aae_stats/1),
 
-    yz_stat:reset(),
-    verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
-    verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL),
+    yz_rt:reset_stats(Cluster),
+    yz_rt:verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
+    yz_rt:verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL),
 
-    yz_stat:reset(),
+    yz_rt:reset_stats(Cluster),
     write_bad_json(Cluster, PBConn, Bucket, 1),
     yz_rt:wait_until(Cluster, fun check_index_fail_stats/1),
 
-    yz_stat:reset(),
+    yz_rt:reset_stats(Cluster),
     blow_fuses(Cluster, PBConn, Index, Bucket),
     yz_rt:wait_until(Cluster, fun check_fuse_and_purge_stats/1),
 
     riakc_pb_socket:stop(PBConn).
 
-
 clear_hashtrees(Cluster) ->
     yz_rt:clear_kv_trees(Cluster),
     yz_rt:clear_aae_trees(Cluster).
-
 
 populate_data(Pid, Bucket, Count) ->
     populate_data(Pid, Bucket, Count, []).
@@ -202,21 +200,6 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         yz_rt:drain_solrqs(Cluster),
         yz_rt:commit(Cluster, Index)
     end.
-
-verify_num_match(Type, Cluster, Index, Num) ->
-    F = fun(Node) ->
-        {Host, _Port} = HP = hd(yz_rt:host_entries(
-            rt:connection_info([Node]))),
-        if Type =:= solr ->
-            Shards = [{N, yz_rt:node_solr_port(N)} || N <- Cluster],
-            yz_rt:search_expect(Type, {Host, yz_rt:node_solr_port(Node)},
-                Index, "*", "*", Shards, Num);
-            true ->
-                yz_rt:search_expect(Type, HP,
-                    Index, "*", "*", Num)
-        end
-        end,
-    yz_rt:wait_until(Cluster, F).
 
 delete_solr_entries(Cluster, Index, Bucket, Keys) ->
     [rpc:call(Node, yz_solr, delete, [Index, {bkey, {Bucket, Key}}])

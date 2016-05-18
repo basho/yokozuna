@@ -227,7 +227,7 @@ index_batch(Core, Ops) ->
 -spec is_up() -> boolean().
 is_up() ->
     case cores() of
-        {ok, _} -> true;
+        {ok, _Cores} -> true;
         _ -> false
     end.
 
@@ -267,11 +267,13 @@ partition_list(Core) ->
 -spec ping(index_name()) -> boolean()|error.
 ping(Core) ->
     URL = ?FMT("~s/~s/admin/ping", [base_url(), Core]),
-    case ibrowse:send_req(URL, [], head) of
+    Response = ibrowse:send_req(URL, [], get),
+    Result = case Response of
         {ok, "200", _, _} -> true;
         {ok, "404", _, _} -> false;
         _ -> error
-    end.
+    end,
+    Result.
 
 -spec port() -> non_neg_integer().
 port() ->
@@ -307,8 +309,11 @@ search(Core, Headers, Params) ->
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
         {ok, CodeStr, _, Err} ->
             {Code, _} = string:to_integer(CodeStr),
+            lager:error("Solr search ~p failed. Response was: ~p:~p", [URL, Err, CodeStr]),
             throw({solr_error, {Code, URL, Err}});
-        Err -> throw({"Failed to search", URL, Err})
+        Err ->
+            lager:error("ibrowse error making Solr search ~p request. Error was: ~p", [URL, Err]),
+            throw({"Failed to search", URL, Err})
     end.
 
 -spec set_ibrowse_config(ibrowse_config()) -> ok.

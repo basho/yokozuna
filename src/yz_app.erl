@@ -100,21 +100,8 @@ enable_components() ->
 %% @doc Disable all Yokozuna components.
 -spec disable_components() -> ok.
 disable_components() ->
-    lists:foreach(fun disable_component/1, components()),
+    lists:foreach(fun yokozuna:disable/1, components()),
     ok.
-
--spec disable_component(component()) -> ok.
-disable_component(Component) ->
-    try
-        yokozuna:disable(Component)
-    catch
-        %% This timeout error happens when we try to disable
-        %% components during the shutdown sequence. Since we are
-        %% shutting down anyway, we don't actually care whether or not
-        %% the component is marked as disabled. Therefore, just catch
-        %% and ignore the timeout error.
-        exit:{timeout, _Details} -> ok
-    end.
 
 %% @private
 %%

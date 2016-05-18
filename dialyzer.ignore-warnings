@@ -1,11 +1,6 @@
 yokozuna.erl:37: The call application:set_env('yokozuna',{'component',_},'false') breaks the contract (Application,Par,Val) -> 'ok' when is_subtype(Application,atom()), is_subtype(Par,atom()), is_subtype(Val,term())
 yokozuna.erl:44: The call application:set_env('yokozuna',{'component',_},'true') breaks the contract (Application,Par,Val) -> 'ok' when is_subtype(Application,atom()), is_subtype(Par,atom()), is_subtype(Val,term())
-yz_entropy_data.erl:72: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_entropy_data.erl:109: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_errors.erl:54: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_errors.erl:72: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_fallback.erl:29: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_fallback.erl:39: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_rt.erl:131: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_languages.erl:59: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_pb.erl:236: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_pb.erl:237: The variable _ can never match since previous clauses completely covered the type 'false'
@@ -18,14 +13,16 @@ yz_schema_admin.erl:315: The variable _ can never match since previous clauses c
 yz_schema_admin.erl:326: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_schema_admin.erl:337: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_schema_admin.erl:347: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_search_http.erl:73: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_search_http.erl:80: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_search_http.erl:87: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_solr_start_timeout.erl:28: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_wm_extract_test.erl:45: The variable _ can never match since previous clauses completely covered the type 'false'
-yz_siblings.erl:141: The variable _ can never match since previous clauses completely covered the type 'false'
 yz_solrq_test.erl:131: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_entropy_data.erl:108: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_search_http.erl:80: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_search_http.erl:87: The variable _ can never match since previous clauses completely covered the type 'false'
+yz_siblings.erl:143: The variable _ can never match since previous clauses completely covered the type 'false'
 Unknown functions:
+  rt:pbc_really_deleted/3
+  sidejob:resource_exists/1
   make_certs:endusers/3
   make_certs:rootCA/2
   riak_test_runner:metadata/0
@@ -95,12 +92,14 @@ Unknown functions:
   rt:pmap/2
   rt:wait_until_bucket_type_visible/2
   rt:wait_until_ready/1
+  rt:wait_until_bucket_type_status/3
   rt_config:get/1
   rt_intercept:add/2
   rt_intercept:load_code/2
   rt:heal/1
   rt:partition/2
   rt:wait_until_transfers_complete/1
+  rt:log_to_nodes/2
   yz_solr_orig:index_batch_orig/2
   yz_solrq_drain_mgr_orig:drain_orig/1
   yz_solrq_drain_mgr_orig:unlink_and_kill_orig/2

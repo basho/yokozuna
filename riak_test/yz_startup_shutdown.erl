@@ -116,15 +116,20 @@ verify_ibrowse_config([Node1|_] = Cluster) ->
 %% from query coverage plans and index operations until it is fully restarted and
 %% ready for service.
 verify_node_restart(Cluster) ->
+    lager:info("Starting verify_node_restart"),
     IndexedBuckets = setup_indexed_buckets(Cluster, 5),
     {Bucket, Index} = lists:nth(3, IndexedBuckets),
     NodeToRestart = lists:nth(?CLUSTER_SIZE - 1, Cluster),
     HP = lists:last(yz_rt:host_entries(rt:connection_info(Cluster))),
     Pids = start_background_processes(HP, Bucket, Index),
-    restart_and_wait_for_service(NodeToRestart, yokozuna),
-    stop_background_processes(Pids),
+    rt:log_to_nodes(Cluster, "RIAK TEST: Shutting Down - look for node_watcher_events"),
+    rt:stop_and_wait(NodeToRestart),
+    check_background_processes(Pids, check),
+    start_and_wait_for_service(NodeToRestart, yokozuna),
+    timer:sleep(5000), %% wait an extra 5 seconds to give queries more time to break things
+    check_background_processes(Pids, stop),
     assert_no_index_failed(NodeToRestart),
-    assert_no_query_failures(Cluster),
+    lager:info("Completed verify_node_restart"),
     ok.
 
 %%%===================================================================
@@ -139,11 +144,11 @@ check_yz_components([], _Enabled) ->
     ok;
 check_yz_components([Node|Rest], Enabled) ->
     Components = yz_app:components(),
-    lists:all(
-      fun(Component) ->
-              Enabled =:= rpc:call(Node, yokozuna, is_enabled, [Component])
-      end,
-      Components),
+    ?assertEqual(
+        [Enabled || _C <- Components],
+        [rpc:call(Node, yokozuna, is_enabled, [Component]) ||
+            Component <- Components]
+    ),
     check_yz_components(Rest, Enabled).
 
 %% @private
@@ -170,16 +175,13 @@ are_services_registered(Services, Node) ->
                            -> [{bucket(), index_name()}].
 setup_indexed_buckets(Cluster, Count) ->
     random:seed(now()),
-    Node = yz_rt:select_random(Cluster),
     IndexedBuckets =
     [begin
          Index = list_to_binary(io_lib:format("index~B", [I])),
          BucketType = list_to_binary(io_lib:format("bt~B", [I])),
          Bucket = {BucketType,
                    list_to_binary(io_lib:format("bucket~B", [I]))},
-         yz_rt:create_indexed_bucket_type(Node, BucketType, Index),
-         yz_rt:wait_for_index(Cluster, Index),
-         rt:wait_until_bucket_type_visible(Cluster, BucketType),
+         yz_rt:create_indexed_bucket_type(Cluster, BucketType, Index),
          yz_rt:write_objs(Cluster, Bucket, 10),
          yz_rt:commit(Cluster, Index),
          {Bucket, Index}
@@ -187,18 +189,37 @@ setup_indexed_buckets(Cluster, Count) ->
     IndexedBuckets.
 
 start_background_processes(HP, Bucket, Index) ->
-    %% This delay value of 150 was arrived at experimentally and is frequent
-    %% enough to reproduce the error conditions but not so frequent as to
-    %% contribute to global warming via processor overheating.
-    Delay = 150,
+    %% Global warming be damned, we have to use a short delay time to make sure
+    %% we're producing enough load to really reproduce the query/index issues.
+    Delay = 5,
     QueryPid = spawn_and_repeat(query_fun(HP, Index, "*", "*"), [{delay, Delay}]),
     PutPid = spawn_and_repeat(put_objects_fun(HP, Bucket), [{delay, Delay}]),
-    [QueryPid, PutPid].
+    %% Due to lack of retry in Solr 4.7.0's HTTP client, we must accept _some_
+    %% small number of query/put failures. However, they should be small.
+    %% Once these distributed Solr issues are resolved, we should test
+    %% with these set to 0 as Solr should be able to handle stale connections
+    %% in its distributed Solr implementation.
+    MaxQueryFailures = 2,
+    MaxPutFailures = 1,
+    [{query, QueryPid, MaxQueryFailures}, {put, PutPid, MaxPutFailures}].
 
 query_fun(HP, Index, Name, Term) ->
     fun() ->
-            yz_rt:search(yokozuna, HP, Index, Name, Term)
+        case yz_rt:search(yokozuna, HP, Index, Name, Term, "", false) of
+            {ok, "200", _, _R} -> true;
+            _Res ->
+                increment_process_failures(),
+                false
+        end
     end.
+
+increment_process_failures() ->
+    CurFails = case get(loop_val) of
+                   undefined -> 0;
+                   Val -> Val
+               end,
+    put(loop_val, CurFails + 1),
+    lager:info("Incremented loop_val to ~p", [get(loop_val)]).
 
 put_objects_fun(HP, Bucket) ->
     fun() ->
@@ -206,19 +227,40 @@ put_objects_fun(HP, Bucket) ->
               fun(_) ->
                       Key = yz_rt:random_binary(10),
                       Body = yz_rt:random_binary(100),
-                      yz_rt:http_put(HP, Bucket, Key, Body)
+                      try
+                          yz_rt:http_put(HP, Bucket, Key, Body)
+                      catch Err:Reason ->
+                          index_failed({Err, Reason})
+                      end
               end,
               lists:seq(1, 10))
     end.
 
-stop_background_processes(Pids) ->
-    [exit(Pid, kill) || Pid <- Pids].
+index_failed(Err) ->
+    lager:info("Index failed: ~p", [Err]),
+    increment_process_failures().
 
-restart_and_wait_for_service(Node, Service) ->
-    rt:stop_and_wait(Node),
+check_background_processes(Pids, StopOrCheck) ->
+    lists:foreach(
+        fun({Type, Pid, ErrorThreshold}) ->
+            IsAlive = erlang:is_process_alive(Pid),
+            Pid ! {StopOrCheck, self()},
+            ErrorCount = receive
+                             undefined -> 0;
+                             Count -> Count
+                         end,
+            ?assertEqual({Type, true}, {Type, IsAlive}),
+            lager:info("Checking error count for ~p: ~p =< ~p", [Type, ErrorCount, ErrorThreshold]),
+            Condition = ErrorCount =< ErrorThreshold,
+            ?assertEqual(Condition, true)
+        end,
+        Pids).
+
+start_and_wait_for_service(Node, Service) ->
     rt:start_and_wait(Node),
     rt:wait_until_ready(Node),
     rt:wait_for_cluster_service([Node], Service),
+    timer:sleep(5000), %% wait an extra 5 seconds to give queries more time to break things
     ?assert(rpc:call(Node, yz_solr, is_up, [])).
 
 -define(INDEX_FAILED_MESSAGE, "Index failed").
@@ -227,13 +269,6 @@ restart_and_wait_for_service(Node, Service) ->
 %% the shutdown sequence.
 assert_no_index_failed(Node) ->
     assert_not_in_logs(Node, ?INDEX_FAILED_MESSAGE).
-
--define(QUERY_FAILURE_MESSAGE, "IOException occured when talking to server").
-%% @doc Assert that there are no log messages on any node in `Cluster' that
-%% indicate failed queries. Failed queries are a symptom of yz_app not
-%% properly notifying the riak_core_node_watcher that it is shutting down.
-assert_no_query_failures(Cluster) ->
-    assert_not_in_logs(Cluster, ?QUERY_FAILURE_MESSAGE).
 
 %% @private
 %% @doc Spawns a process that repeatedly executes the given `Fun'. A `delay'
@@ -248,11 +283,16 @@ spawn_and_repeat(Fun, Options) ->
 
 loop(Fun, Delay) ->
     Fun(),
-    timer:sleep(Delay),
-    loop(Fun, Delay).
+    receive
+        {stop, From} -> From ! get(loop_val);
+        {check, From} ->
+            From ! get(loop_val),
+            put(loop_val, 0),
+            loop(Fun, Delay)
+    after Delay ->
+        loop(Fun, Delay)
+    end.
 
-assert_not_in_logs(Nodes, Pattern) when is_list(Nodes) ->
-    [assert_not_in_logs(Node, Pattern) || Node <- Nodes];
 assert_not_in_logs(Node, Pattern) ->
     ?assert(rt:expect_not_in_logs(Node, Pattern)).
 
