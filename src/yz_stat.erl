@@ -48,10 +48,7 @@
     fuse_recovered/1,
     create_dynamic_stats/2,
     delete_dynamic_stats/2,
-    %% TODO: This is called from the yz_stats_worker, which it appears we've decided
-    %% to no longer use. Either kill yz_stats_worker and remove update/1 from export
-    %% or make it work again.
-    update/1]).
+    perform_update/1]).
 
 %% Testing API
 -export([reset/0, stat_name/1]).
@@ -184,6 +181,46 @@ reset() ->
     [{[?PFX, ?APP | Name], catch exometer:reset([?PFX, ?APP | Name])}
         || {Name, _Type, _Args, _Aliases} <- stats()].
 
+%% @doc Notify specific metrics in exometer based on the `StatUpdate' term
+%% passed in.
+-spec perform_update(StatUpdate::term()) -> ok.
+perform_update({index_end, BatchSize, Time}) ->
+    exometer:update([?PFX, ?APP, index, latency], Time),
+    exometer:update([?PFX, ?APP, index, throughput], BatchSize),
+    exometer:update([?PFX, ?APP, queue, batch, throughput], 1),
+    exometer:update([?PFX, ?APP, queue, batchsize], BatchSize);
+perform_update(index_fail) ->
+    exometer:update([?PFX, ?APP, index, fail], 1);
+perform_update({batch_end, Time}) ->
+    exometer:update([?PFX, ?APP, queue, batch, latency], Time);
+perform_update(blockedvnode) ->
+    exometer:update([?PFX, ?APP, blockedvnode], 1);
+perform_update({queue_capacity, Length}) ->
+    exometer:update([?PFX, ?APP, queue, capacity], Length);
+perform_update({hwm_purged, NumPurged}) ->
+    exometer:update([?PFX, ?APP, queue, hwm, purged], NumPurged);
+perform_update({drain_end, Time}) ->
+    exometer:update([?PFX, ?APP, queue, drain, latency], Time),
+    exometer:update([?PFX, ?APP, queue, drain], 1);
+perform_update(drain_fail) ->
+    exometer:update([?PFX, ?APP, queue, drain, fail], 1);
+perform_update(drain_timeout) ->
+    exometer:update([?PFX, ?APP, queue, drain, timeout], 1);
+perform_update(drain_cancel_timeout) ->
+    exometer:update([?PFX, ?APP, queue, drain, cancel, timeout], 1);
+perform_update({detected_repairs, Count}) ->
+    exometer:update([?PFX, ?APP, detected_repairs], Count);
+perform_update({search_end, Time}) ->
+    exometer:update([?PFX, ?APP, 'query', latency], Time),
+    exometer:update([?PFX, ?APP, 'query', throughput], 1);
+perform_update(search_fail) ->
+    exometer:update([?PFX, ?APP, 'query', fail], 1);
+perform_update({fuse_recovered, Index}) ->
+    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), recovered], 1);
+perform_update({fuse_blown, Index}) ->
+    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1).
+
+
 %% -------------------------------------------------------------------
 %% Callbacks
 %% -------------------------------------------------------------------
@@ -209,6 +246,7 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
 
 %% -------------------------------------------------------------------
 %% Private
@@ -244,44 +282,15 @@ delete(_Stat) ->
 
 %% @private
 %%
-%% @doc Notify specific metrics in exometer based on the `StatUpdate' term
-%% passed in.
--spec update(StatUpdate::term()) -> ok.
-update({index_end, BatchSize, Time}) ->
-    exometer:update([?PFX, ?APP, index, latency], Time),
-    exometer:update([?PFX, ?APP, index, throughput], BatchSize),
-    exometer:update([?PFX, ?APP, queue, batch, throughput], 1),
-    exometer:update([?PFX, ?APP, queue, batchsize], BatchSize);
-update(index_fail) ->
-    exometer:update([?PFX, ?APP, index, fail], 1);
-update({batch_end, Time}) ->
-    exometer:update([?PFX, ?APP, queue, batch, latency], Time);
-update(blockedvnode) ->
-    exometer:update([?PFX, ?APP, blockedvnode], 1);
-update({queue_capacity, Length}) ->
-    exometer:update([?PFX, ?APP, queue, capacity], Length);
-update({hwm_purged, NumPurged}) ->
-    exometer:update([?PFX, ?APP, queue, hwm, purged], NumPurged);
-update({drain_end, Time}) ->
-    exometer:update([?PFX, ?APP, queue, drain, latency], Time),
-    exometer:update([?PFX, ?APP, queue, drain], 1);
-update(drain_fail) ->
-    exometer:update([?PFX, ?APP, queue, drain, fail], 1);
-update(drain_timeout) ->
-    exometer:update([?PFX, ?APP, queue, drain, timeout], 1);
-update(drain_cancel_timeout) ->
-    exometer:update([?PFX, ?APP, queue, drain, cancel, timeout], 1);
-update({detected_repairs, Count}) ->
-    exometer:update([?PFX, ?APP, detected_repairs], Count);
-update({search_end, Time}) ->
-    exometer:update([?PFX, ?APP, 'query', latency], Time),
-    exometer:update([?PFX, ?APP, 'query', throughput], 1);
-update(search_fail) ->
-    exometer:update([?PFX, ?APP, 'query', fail], 1);
-update({fuse_recovered, Index}) ->
-    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), recovered], 1);
-update({fuse_blown, Index}) ->
-    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1).
+%% @doc Determine the correct channel through which to send the
+%% `StatUpdate'.
+-spec update(term()) -> ok.
+update(StatUpdate) ->
+    case sidejob:resource_exists(yz_stat_sj) of
+        true -> yz_stat_worker:update(StatUpdate);
+        false -> perform_update(StatUpdate)
+    end,
+    ok.
 
 %% @private
 -spec stats() -> [{stat_name(), stat_type(), stat_opts(), stat_map()}].
