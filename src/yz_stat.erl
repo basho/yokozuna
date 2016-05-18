@@ -152,16 +152,16 @@ stat_name(Name) ->
 %%
 %% @doc Notify specific metrics in exometer based on the `StatUpdate' term
 %% passed in.
--spec update(StatUpdate::term()) -> ok.
-update({index_end, Time}) ->
+-spec perform_update(StatUpdate::term()) -> ok.
+perform_update({index_end, Time}) ->
     exometer:update([?PFX, ?APP, index, latency], Time),
     exometer:update([?PFX, ?APP, index, throughput], 1);
-update(index_fail) ->
+perform_update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
-update({search_end, Time}) ->
+perform_update({search_end, Time}) ->
     exometer:update([?PFX, ?APP, 'query', latency], Time),
     exometer:update([?PFX, ?APP, 'query', throughput], 1);
-update(search_fail) ->
+perform_update(search_fail) ->
     exometer:update([?PFX, ?APP, 'query', fail], 1).
 
 %% @private
@@ -191,3 +191,19 @@ stats() ->
      {['query', throughput], spiral, [], [{count,search_query_throughput_count},
                                           {one  ,search_query_throughput_one}]}
     ].
+
+-spec update(term()) -> ok.
+update(StatUpdate) ->
+    case sidejob_resource_exists(yz_stat_sj) of
+        true -> yz_stat_worker:update(StatUpdate);
+        false -> perform_update(StatUpdate)
+    end,
+    ok.
+
+sidejob_resource_exists(Mod) ->
+    try
+        _ = Mod:width(),
+        true
+    catch _:_ ->
+        false
+    end.
