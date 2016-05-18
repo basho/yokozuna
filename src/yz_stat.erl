@@ -21,10 +21,36 @@
 %%      from administration to querying
 -module(yz_stat).
 -behaviour(gen_server).
--compile(export_all).
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3]).
+%% Public API
+-export([start_link/0,
+    get_stats/0,
+    index_fail/0,
+    index_end/3,
+    drain_end/1,
+    batch_end/1,
+    drain_fail/0,
+    drain_timeout/0,
+    drain_cancel_timeout/0,
+    detected_repairs/1,
+    search_fail/0,
+    search_end/1,
+    blocked_vnode/1,
+    queue_capacity/1,
+    hwm_purged/1,
+    fuse_blown/1,
+    fuse_recovered/1,
+    create_dynamic_stats/2,
+    delete_dynamic_stats/2]).
+
+%% Testing API
+-export([reset/0, stat_name/1]).
 
 -include("yokozuna.hrl").
 %% -type microseconds() :: integer().
@@ -153,91 +179,6 @@ delete_dynamic_stats(Index, Stats) ->
 reset() ->
     [{[?PFX, ?APP | Name], catch exometer:reset([?PFX, ?APP | Name])}
         || {Name, _Type, _Args, _Aliases} <- stats()].
-
-%% @doc Optionally produce stats map based on ?YZ_ENABLED
--spec stats_map() -> [] | proplists:proplist().
-stats_map() ->
-     stats_map(?YZ_ENABLED).
-
-%% @doc Map to format stats for legacy "blob" if YZ_ENABLED,
-%% else [].
--spec stats_map(true | false) -> [] | proplists:proplist().
-stats_map(false) -> [];
-stats_map(true) -> [
-    %% Index stats
-    {search_index_throughput_count, {{?YZ_APP_NAME, index, throughput}, count}, spiral},
-    {search_index_throughput_one, {{?YZ_APP_NAME, index, throughput}, one}, spiral},
-
-    {search_index_fail_count, {{?YZ_APP_NAME, index, fail}, count}, spiral},
-    {search_index_fail_one, {{?YZ_APP_NAME, index, fail}, one}, spiral},
-
-    {search_index_latency_min, {{?YZ_APP_NAME, index, latency}, min}, histogram},
-    {search_index_latency_max, {{?YZ_APP_NAME, index, latency}, max}, histogram},
-    {search_index_latency_mean, {{?YZ_APP_NAME, index, latency}, mean}, histogram},
-    {search_index_latency_median, {{?YZ_APP_NAME, index, latency}, median}, histogram},
-    {search_index_latency_95, {{?YZ_APP_NAME, index, latency}, 95}, histogram_percentile},
-    {search_index_latency_99, {{?YZ_APP_NAME, index, latency}, 99}, histogram_percentile},
-    {search_index_latency_999, {{?YZ_APP_NAME, index, latency}, 999}, histogram_percentile},
-
-    {search_queue_batch_throughput_count, {{?YZ_APP_NAME, queue, batch, throughput}, count}, spiral},
-    {search_queue_batch_throughput_one, {{?YZ_APP_NAME, queue, batch, throughput}, one}, spiral},
-
-    {search_queue_batchsize_min, {{?YZ_APP_NAME, queue, batchsize}, min}, histogram},
-    {search_queue_batchsize_max, {{?YZ_APP_NAME, queue, batchsize}, max}, histogram},
-    {search_index_latency_mean, {{?YZ_APP_NAME, queue, batchsize}, mean}, histogram},
-    {search_index_latency_median, {{?YZ_APP_NAME, queue, batchsize}, median}, histogram},
-
-    {search_queue_capacity, {{?YZ_APP_NAME, queue, capacity}, value}, gauge},
-
-    {search_queue_hwm_purged_count, {{?YZ_APP_NAME, queue, hwm, purged}, count}, spiral},
-    {search_queue_hwm_purged_one, {{?YZ_APP_NAME, queue, hwm, purged}, one}, spiral},
-
-    {search_blockedvnode_count, {{?YZ_APP_NAME, blockedvnode}, count}, spiral},
-    {search_blockedvnode_one, {{?YZ_APP_NAME, blockedvnode}, one}, spiral},
-
-    {search_queue_drain_count, {{?YZ_APP_NAME, queue, drain}, count}, spiral},
-    {search_queue_drain_one, {{?YZ_APP_NAME, queue, drain}, one}, spiral},
-
-    {search_queue_drain_fail_count, {{?YZ_APP_NAME, queue, drain, fail}, count}, spiral},
-    {search_queue_drain_fail_one, {{?YZ_APP_NAME, queue, drain, fail}, one}, spiral},
-
-    {search_queue_drain_timeout_count, {{?YZ_APP_NAME, queue, drain, timeout}, count}, spiral},
-    {search_queue_drain_timeout_one, {{?YZ_APP_NAME, queue, drain, timeout}, one}, spiral},
-
-    {search_queue_drain_cancel_timeout_count, {{?YZ_APP_NAME, queue, drain, cancel, timeout}, count}, spiral},
-    {search_queue_drain_cancel_timeout_one, {{?YZ_APP_NAME, queue, drain, cancel, timeout}, one}, spiral},
-
-    {search_queue_drain_latency_min, {{?YZ_APP_NAME, queue, drain, latency}, min}, histogram},
-    {search_queue_drain_latency_max, {{?YZ_APP_NAME, queue, drain, latency}, max}, histogram},
-    {search_queue_drain_latency_mean, {{?YZ_APP_NAME, queue, drain, latency}, mean}, histogram},
-    {search_queue_drain_latency_median, {{?YZ_APP_NAME, queue, drain, latency}, median}, histogram},
-    {search_queue_drain_latency_95, {{?YZ_APP_NAME, queue, drain, latency}, 95}, histogram_percentile},
-    {search_queue_drain_latency_99, {{?YZ_APP_NAME, queue, drain, latency}, 99}, histogram_percentile},
-    {search_queue_drain_latency_999, {{?YZ_APP_NAME, queue, drain, latency}, 999}, histogram_percentile},
-
-    {search_queue_batch_latency_min, {{?YZ_APP_NAME, queue, batch, latency}, min}, histogram},
-    {search_queue_batch_latency_max, {{?YZ_APP_NAME, queue, batch, latency}, max}, histogram},
-    {search_queue_batch_latency_mean, {{?YZ_APP_NAME, queue, batch, latency}, mean}, histogram},
-    {search_queue_batch_latency_median, {{?YZ_APP_NAME, queue, batch, latency}, median}, histogram},
-    {search_queue_batch_latency_95, {{?YZ_APP_NAME, queue, batch, latency}, 95}, histogram_percentile},
-    {search_queue_batch_latency_99, {{?YZ_APP_NAME, queue, batch, latency}, 99}, histogram_percentile},
-    {search_queue_batch_latency_999, {{?YZ_APP_NAME, queue, batch, latency}, 999}, histogram_percentile},
-
-    {search_detected_repairs_count, {{?YZ_APP_NAME, detected_repairs}, value}, counter},
-
-    %% Query stats
-    {search_query_throughput_count, {{?YZ_APP_NAME, 'query', throughput}, count}, spiral},
-    {search_query_throughput_one, {{?YZ_APP_NAME, 'query', throughput}, one}, spiral},
-    {search_query_fail_count, {{?YZ_APP_NAME, 'query', fail}, count}, spiral},
-    {search_query_fail_one, {{?YZ_APP_NAME, 'query', fail}, one}, spiral},
-    {search_query_latency_min, {{?YZ_APP_NAME, 'query', latency}, min}, histogram},
-    {search_query_latency_mean, {{?YZ_APP_NAME, 'query', latency}, mean}, histogram},
-    {search_query_latency_max, {{?YZ_APP_NAME, 'query', latency}, max}, histogram},
-    {search_query_latency_median, {{?YZ_APP_NAME, 'query', latency}, median}, histogram},
-    {search_query_latency_95, {{?YZ_APP_NAME, 'query', latency}, 95}, histogram_percentile},
-    {search_query_latency_99, {{?YZ_APP_NAME, 'query', latency}, 99}, histogram_percentile},
-    {search_query_latency_999, {{?YZ_APP_NAME, 'query', latency}, 999}, histogram_percentile}
-].
 
 %% -------------------------------------------------------------------
 %% Callbacks
