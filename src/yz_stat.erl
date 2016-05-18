@@ -47,7 +47,11 @@
     fuse_blown/1,
     fuse_recovered/1,
     create_dynamic_stats/2,
-    delete_dynamic_stats/2]).
+    delete_dynamic_stats/2,
+    %% TODO: This is called from the yz_stats_worker, which it appears we've decided
+    %% to no longer use. Either kill yz_stats_worker and remove update/1 from export
+    %% or make it work again.
+    update/1]).
 
 %% Testing API
 -export([reset/0, stat_name/1]).
