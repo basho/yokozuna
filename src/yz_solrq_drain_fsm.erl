@@ -134,6 +134,7 @@ init(Params) ->
 %% @end
 %%
 prepare(start, #state{partition = P} = State) ->
+    lager:debug("Starting a drain for partition ~p", [P]),
     SolrqIds = yz_solrq:solrq_worker_names(),
     TS = os:timestamp(),
     Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
@@ -155,6 +156,7 @@ wait({drain_complete, Token},
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
+            lager:debug("Drain completed for all workers.  Resuming batching."),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(StartTS)),
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams

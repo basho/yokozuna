@@ -77,6 +77,8 @@ handle_call({drain, Params}, From, State) ->
                 maybe_drain(enabled(), ExchangeFSMPid, Params)
             catch
                 _:E ->
+                    lager:debug("An error occurred draining: ~p", [E]),
+                    maybe_exchange_fsm_drain_error(ExchangeFSMPid, E),
                     {error, E}
             end,
             gen_server:cast(?SERVER, drain_complete),
@@ -129,12 +131,15 @@ actual_drain(Params, ExchangeFSMPid) ->
     try
         receive
             {'DOWN', Reference, process, Pid, normal} ->
+                lager:debug("Drain ~p completed normally.", [Pid]),
                 ok;
             {'DOWN', Reference, process, Pid, Reason} ->
+                lager:debug("Drain ~p failed with reason ~p", [Pid, Reason]),
                 yz_stat:drain_fail(),
                 maybe_exchange_fsm_drain_error(ExchangeFSMPid, Reason),
                 {error, Reason}
         after DrainTimeout ->
+            lager:debug("Drain ~p timed out.  Cancelling...", [Pid]),
             yz_stat:drain_timeout(),
             _ = cancel(Reference, Pid),
             maybe_exchange_fsm_drain_error(ExchangeFSMPid, timeout),
@@ -152,6 +157,7 @@ cancel(Reference, Pid) ->
         ?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 5000),
     case yz_solrq_drain_fsm:cancel(CancelTimeout) of
         timeout ->
+            lager:debug("Drain cancel timed out.  Killing..."),
             yz_stat:drain_cancel_timeout(),
             unlink_and_kill(Reference, Pid),
             {error, timeout};
@@ -161,6 +167,7 @@ cancel(Reference, Pid) ->
 
 unlink_and_kill(Reference, Pid) ->
     try
+        lager:debug("Killing drain FSM pid ~p ...", [Pid]),
         demonitor(Reference),
         unlink(Pid),
         exit(Pid, kill)

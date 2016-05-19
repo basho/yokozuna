@@ -681,7 +681,9 @@ requeue_exchange(Index, {StartIdx, N}, S) ->
 set_debug(Enabled) ->
     Modules = [yz_index_hashtree,
                yz_entropy_mgr,
-               yz_exchange_fsm],
+               yz_exchange_fsm,
+               yz_solrq_drain_mgr,
+               yz_solrq_drain_fsm],
     case Enabled of
         true ->
             [lager:trace_console([{module, Mod}]) || Mod <- Modules];

@@ -118,9 +118,11 @@ prepare_exchange(start_exchange, S) ->
         ok = yz_index_hashtree:get_lock(YZTree, ?MODULE),
         ok = riak_kv_entropy_manager:get_lock(?MODULE),
         ok = riak_kv_index_hashtree:get_lock(KVTree, ?MODULE),
-        update_trees(start_exchange, S)
+        gen_fsm:send_event(self(), start_exchange),
+        {next_state, update_trees, S}
     catch
         error:{badmatch, Reason} ->
+            lager:debug("An error occurred preparing exchange ~p", [Reason]),
             send_exchange_status(Reason, S),
             {stop, normal, S}
     end;
