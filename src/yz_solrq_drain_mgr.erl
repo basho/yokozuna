@@ -65,7 +65,12 @@ init([]) ->
     schedule_tick(),
     {ok, #state{}}.
 
-handle_call({drain, _Params}, _From, #state{draining=true} = State) ->
+handle_call({drain, Params}, _From, #state{draining=true} = State) ->
+    ExchangeFSMPid = proplists:get_value(
+        ?EXCHANGE_FSM_PID, Params, undefined
+    ),
+    lager:debug("Drain in progress."),
+    maybe_exchange_fsm_drain_error(ExchangeFSMPid, {error, in_progress}),
     {reply, {error, in_progress}, State};
 handle_call({drain, Params}, From, State) ->
     ExchangeFSMPid = proplists:get_value(
@@ -157,7 +162,7 @@ cancel(Reference, Pid) ->
         ?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 5000),
     case yz_solrq_drain_fsm:cancel(CancelTimeout) of
         timeout ->
-            lager:debug("Drain cancel timed out.  Killing..."),
+            lager:warning("Drain cancel timed out.  Killing FSM pid ~p...", [Pid]),
             yz_stat:drain_cancel_timeout(),
             unlink_and_kill(Reference, Pid),
             {error, timeout};
@@ -167,7 +172,6 @@ cancel(Reference, Pid) ->
 
 unlink_and_kill(Reference, Pid) ->
     try
-        lager:debug("Killing drain FSM pid ~p ...", [Pid]),
         demonitor(Reference),
         unlink(Pid),
         exit(Pid, kill)
