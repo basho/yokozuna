@@ -246,8 +246,6 @@ primary_preflist(BKey, Ring, N) ->
     Idx = riak_core_util:chash_key(BKey),
     lists:sublist(riak_core_ring:preflist(Idx, Ring), N).
 
-%% NOTE: This could get in inifinite loop if `Queue' runs out and
-%%       `Refill' produces [].
 -spec queue_pop(list(), function()) ->
                        {Items::any(), NewQueue::list()} | empty.
 queue_pop([], Refill) ->

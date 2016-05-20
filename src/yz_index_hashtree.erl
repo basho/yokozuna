@@ -587,12 +587,14 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
             Indexes = yz_index:get_indexes_from_meta(),
-            case yz_fuse:check_all_fuses_not_blown(Indexes) of
+            InSync = yz_events:in_sync_with_metadata(),
+            FusesNotBlown = yz_fuse:check_all_fuses_not_blown(Indexes),
+            case InSync andalso FusesNotBlown of
                 true ->
                     IterKeys = fold_keys(Index, Tree, Indexes),
                     handle_iter_keys(Tree, Index, IterKeys);
                 false ->
-                    ?ERROR("YZ AAE did not run due to blown fuses/solr_cores."),
+                    ?ERROR("YZ AAE did not run due to blown fuses/solr_cores or out-of-sync indexes."),
                     lager:debug("YZ AAE tree build failed: ~p", [Index]),
                     gen_server:cast(Tree, build_failed)
             end;
