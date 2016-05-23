@@ -603,7 +603,8 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
             lager:debug("Finished YZ AAE tree rehash: ~p", [Index]),
             gen_server:cast(Tree, build_finished);
-        {_, _} ->
+        {Locked, Type} ->
+            lager:debug("Could not build. {~p, ~p}", [Locked, Type]),
             gen_server:cast(Tree, build_failed)
     end.
 
@@ -641,7 +642,9 @@ get_all_locks(Type, Pid) ->
     %% Yokozuna will not bother with the Solr lock for now.
     try yz_entropy_mgr:get_lock(Type, Pid) of
         ok -> true;
-        _ -> false
+        Other ->
+            lager:debug("Could not get lock: ~p", [Other]),
+            false
     catch exit:{timeout,_} ->
         yz_entropy_mgr:release_lock(Pid),
         false

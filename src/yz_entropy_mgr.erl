@@ -52,7 +52,6 @@ start_link() ->
 get_lock(Type) ->
     get_lock(Type, self()).
 
--define(YZ_ENTROPY_LOCK_TIMEOUT, 10000).
 -spec get_lock(term(), pid()) -> ok | max_concurrency.
 get_lock(Type, Pid) ->
     gen_server:call(?MODULE, {get_lock, Type, Pid}, ?YZ_ENTROPY_LOCK_TIMEOUT).
