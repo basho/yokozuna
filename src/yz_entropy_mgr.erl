@@ -52,9 +52,14 @@ start_link() ->
 get_lock(Type) ->
     get_lock(Type, self()).
 
+-define(YZ_ENTROPY_LOCK_TIMEOUT, 10000).
 -spec get_lock(term(), pid()) -> ok | max_concurrency.
 get_lock(Type, Pid) ->
-    gen_server:call(?MODULE, {get_lock, Type, Pid}, infinity).
+    gen_server:call(?MODULE, {get_lock, Type, Pid}, ?YZ_ENTROPY_LOCK_TIMEOUT).
+
+-spec release_lock(term()) -> ok.
+release_lock(Pid) ->
+    gen_server:cast(?MODULE, {release_lock, Pid}).
 
 -spec get_tree(p()) -> {ok, tree()} | not_registered.
 get_tree(Index) ->
@@ -219,6 +224,10 @@ handle_cast(clear_trees, S) ->
 handle_cast(expire_trees, S) ->
     ok = expire_all_trees(S#state.trees),
     {noreply, S};
+
+handle_cast({release_lock, Pid}, S) ->
+    S2 = maybe_release_lock(Pid, S),
+    {noreply, S2};
 
 handle_cast(_Msg, S) ->
     lager:warning("Unexpected cast: ~p", [_Msg]),

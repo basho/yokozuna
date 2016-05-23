@@ -124,6 +124,10 @@ prepare_exchange(start_exchange, S) ->
         error:{badmatch, Reason} ->
             lager:debug("An error occurred preparing exchange ~p", [Reason]),
             send_exchange_status(Reason, S),
+            {stop, normal, S};
+        error:{timeout, Reason} ->
+            lager:debug("Timed out attempting to get a lock: ~p", [Reason]),
+            send_exchange_status(build_limit_reached, S),
             {stop, normal, S}
     end;
 

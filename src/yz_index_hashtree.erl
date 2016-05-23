@@ -109,7 +109,7 @@ clear(Tree) ->
 
 %% @doc Expire the tree.
 expire(Tree) ->
-    gen_server:call(Tree, expire, infinity).
+    gen_server:cast(Tree, expire).
 
 %% @doc Terminate the `Tree'.
 stop(Tree) ->
@@ -208,10 +208,6 @@ handle_call(destroy, _From, S) ->
     S2 = destroy_trees(S),
     {stop, normal, ok, S2};
 
-handle_call(expire, _From, S) ->
-    S2 = S#state{expired=true},
-    {reply, ok, S2};
-
 handle_call(_Request, _From, S) ->
     Reply = ok,
     {reply, Reply, S}.
@@ -221,6 +217,7 @@ handle_cast(poke, S) ->
     {noreply, S2};
 
 handle_cast(build_failed, S) ->
+    lager:debug("Requeuing tree ~p", [S#state.index]),
     yz_entropy_mgr:requeue_poke(S#state.index),
     S2 = S#state{built=false},
     {noreply, S2};
@@ -250,6 +247,10 @@ handle_cast({updated, Id}, State) ->
               {noreply, hashtree:set_next_rebuild(Tree, incremental)}
           end,
     apply_tree(Id, Fun, State);
+
+handle_cast(expire, S) ->
+    S2 = S#state{expired=true},
+    {noreply, S2};
 
 handle_cast(_Msg, S) ->
     {noreply, S}.
@@ -587,9 +588,8 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
             Indexes = yz_index:get_indexes_from_meta(),
-            InSync = yz_events:in_sync_with_metadata(),
             FusesNotBlown = yz_fuse:check_all_fuses_not_blown(Indexes),
-            case InSync andalso FusesNotBlown of
+            case FusesNotBlown of
                 true ->
                     IterKeys = fold_keys(Index, Tree, Indexes),
                     handle_iter_keys(Tree, Index, IterKeys);
@@ -639,7 +639,13 @@ get_all_locks(Type, Pid) ->
     %% file page cache but the bg manager stuff is kind of convoluted
     %% and there isn't time to figure this all out for 2.0. Thus,
     %% Yokozuna will not bother with the Solr lock for now.
-    ok == yz_entropy_mgr:get_lock(Type, Pid).
+    try yz_entropy_mgr:get_lock(Type, Pid) of
+        ok -> true;
+        _ -> false
+    catch exit:{timeout,_} ->
+        yz_entropy_mgr:release_lock(Pid),
+        false
+    end.
 
 %% @doc Maybe expire trees for rebuild depending on riak_core_capability
 %%      checks/changes. Used for possible upgrade path.
