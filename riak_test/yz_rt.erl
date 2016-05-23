@@ -654,8 +654,31 @@ merge_config(Change, Base) ->
 
 -spec write_objs([node()], bucket()) -> ok.
 write_objs(Cluster, Bucket) ->
-    lager:info("Writing 1000 objects"),
-    lists:foreach(write_obj(Cluster, Bucket), lists:seq(1,1000)).
+    write_objs(Cluster, Bucket, 1000).
+
+-spec write_objs([node()], bucket(), pos_integer()) -> ok.
+write_objs(Cluster, Bucket, Count) ->
+    write_objs(Cluster, Bucket, 1, Count).
+
+-spec write_objs([node()], bucket(), pos_integer(), pos_integer()) -> ok.
+write_objs(Cluster, Bucket, StartIndex, Count) ->
+    lager:info("Writing ~p objects", [Count]),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(StartIndex,
+                                                        StartIndex + Count - 1)).
+
+write_objs_parallel(Cluster, Bucket, Count, NumWorkers) ->
+    write_objs_parallel(Cluster, Bucket, 1, Count, NumWorkers).
+
+write_objs_parallel(Cluster, Bucket, StartIndex, Count, NumWorkers) ->
+    lager:info("Parallel writing ~p objects from ~p using ~p workers",
+               [Count, StartIndex, NumWorkers]),
+    ObjsPerWorker = Count div NumWorkers,
+    rt:pmap(
+      fun(WorkerIdx) ->
+              WorkerStartIndex = StartIndex + (WorkerIdx - 1) * ObjsPerWorker,
+              write_objs(Cluster, Bucket, WorkerStartIndex, ObjsPerWorker)
+      end,
+      lists:seq(1, NumWorkers)).
 
 -spec write_obj([node()], bucket()) -> fun().
 write_obj(Cluster, Bucket) ->

@@ -67,13 +67,15 @@ start(_StartType, _StartArgs) ->
 
 %% @doc Prepare to stop - called before the supervisor tree is shutdown
 prep_stop(State) ->
-    try %% wrap with a try/catch - application carries on regardless,
-        %% no error message or logging about the failure otherwise.
+    %% Wrap shutdown code with a try/catch - application carries on regardless,
+    %% no error message or logging about the failure otherwise.
+    try
         lager:info("Stopping application yokozuna.", []),
+        riak_core_node_watcher:service_down(yokozuna),
+        disable_components(),
         riak_api_pb_service:deregister(?QUERY_SERVICES),
         riak_api_pb_service:deregister(?ADMIN_SERVICES),
-        yz_solrq_drain_mgr:drain(),
-        disable_components()
+        yz_solrq_drain_mgr:drain()
     catch
         Type:Reason ->
             lager:error("Stopping application yokozuna - ~p:~p.",
@@ -98,8 +100,21 @@ enable_components() ->
 %% @doc Disable all Yokozuna components.
 -spec disable_components() -> ok.
 disable_components() ->
-    lists:foreach(fun yokozuna:disable/1, components()),
+    lists:foreach(fun disable_component/1, components()),
     ok.
+
+-spec disable_component(component()) -> ok.
+disable_component(Component) ->
+    try
+        yokozuna:disable(Component)
+    catch
+        %% This timeout error happens when we try to disable
+        %% components during the shutdown sequence. Since we are
+        %% shutting down anyway, we don't actually care whether or not
+        %% the component is marked as disabled. Therefore, just catch
+        %% and ignore the timeout error.
+        exit:{timeout, _Details} -> ok
+    end.
 
 %% @private
 %%
