@@ -258,6 +258,9 @@
             app_helper:get_env(riak_kv, anti_entropy_build_limit, {1, 3600000})
         )).
 
+-define(YZ_ENTROPY_LOCK_TIMEOUT,
+    app_helper:get_env(?YZ_APP_NAME, anti_entropy_lock_timeout, 10000)).
+
 -type hashtree() :: hashtree:hashtree().
 -type exchange() :: {p(), {p(), n()}}.
 -type exchange_mode() :: automatic | manual.

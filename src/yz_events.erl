@@ -37,8 +37,7 @@
          terminate/2]).
 
 %% other
--export([create_table/0,
-         in_sync_with_metadata/0]).
+-export([create_table/0]).
 
 -include("yokozuna.hrl").
 
@@ -74,8 +73,6 @@ start_link() ->
 add_guarded_handler(Handler, Args) ->
     riak_core:add_guarded_event_handler(?MODULE, Handler, Args).
 
-in_sync_with_metadata() ->
-    gen_event:call(whereis(yz_events), yz_events, in_sync_with_metadata).
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
@@ -118,10 +115,6 @@ handle_info(tick, S) ->
     S2 = S#state{num_ticks=NumTicks2,
                  prev_index_hash=CurrHash},
     {ok, S2}.
-
-handle_call(in_sync_with_metadata, S) ->
-    IndexHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
-    {ok, S#state.prev_index_hash == IndexHash, S};
 
 handle_call(Req, S) ->
     ?WARN("unexpected request ~p", [Req]),
