@@ -39,6 +39,7 @@
     drain_timeout/0,
     drain_cancel_timeout/0,
     detected_repairs/1,
+    initialize_fuse_stats/1,
     search_fail/0,
     search_end/1,
     blocked_vnode/1,
@@ -80,6 +81,11 @@ register_stats() ->
 -spec get_stats() -> proplists:proplist() | {error, Reason :: term()}.
 get_stats() ->
     riak_core_stat:get_stats(?APP).
+
+%% @doc Initialize the Fuse stats subsystem for a given fuse.
+-spec initialize_fuse_stats(Name :: atom()) -> ok.
+initialize_fuse_stats(Name) ->
+    fuse_stats_exometer:init(Name).
 
 %% @doc Send stat updates for an index failure.
 -spec index_fail() -> ok.
@@ -218,7 +224,9 @@ perform_update(search_fail) ->
 perform_update({fuse_recovered, Index}) ->
     exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), recovered], 1);
 perform_update({fuse_blown, Index}) ->
-    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1).
+    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1);
+perform_update({update_fuse_stat, Name, Counter}) ->
+    fuse_stats_exometer:increment(Name, Counter).
 
 
 %% -------------------------------------------------------------------
