@@ -91,6 +91,10 @@ Unknown functions:
   rt:wait_until_no_pending_changes/1
   rt:wait_until_nodes_ready/1
   rt:wait_until_unpingable/1
+  rt:expect_not_in_logs/2
+  rt:pmap/2
+  rt:wait_until_bucket_type_visible/2
+  rt:wait_until_ready/1
   rt_config:get/1
   rt_intercept:add/2
   rt_intercept:load_code/2
