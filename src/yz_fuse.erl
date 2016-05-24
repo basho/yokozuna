@@ -59,7 +59,7 @@ setup() ->
     ok = fuse_event:add_handler(yz_events, []),
 
     %% Set up fuse stats
-    application:set_env(fuse, stats_plugin, fuse_stats_exometer).
+    application:set_env(fuse, stats_plugin, yz_fuse_stats_sidejob).
 
 %%%===================================================================
 %%% API
