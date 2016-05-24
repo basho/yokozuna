@@ -73,6 +73,7 @@
            {?SOLRQ_BATCH_FLUSH_INTERVAL, ?SOLRQ_DELAYMS_MAX},
            {?SOLRQ_BATCH_MIN, ?SOLRQ_BATCH_MIN_SETTING},
            {?SOLRQ_BATCH_MAX, ?SOLRQ_BATCH_MAX_SETTING},
+           {?SOLRQ_HWM, 1000},
            {?ERR_THRESH_FAIL_COUNT, 1},
            {?ERR_THRESH_RESET_INTERVAL, ?MELT_RESET_REFRESH},
            {anti_entropy, {off, []}}
@@ -85,10 +86,12 @@ confirm() ->
     [PBConn|_] = PBConns = yz_rt:open_pb_conns(Cluster),
 
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET1, ?INDEX1),
-    confirm_batching(Cluster, PBConn, ?BUCKET1, ?INDEX1),
+    confirm_batch_size(Cluster, PBConn, ?BUCKET1, ?INDEX1),
+    [confirm_hwm(Cluster, PBConn, ?BUCKET1, ?INDEX1, HWM) || HWM <- lists:seq(0, 10)],
 
     ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET2, ?INDEX2),
     confirm_draining(Cluster, PBConn, ?BUCKET2, ?INDEX2),
+
     confirm_drain_fsm_failure(Cluster),
     confirm_drain_fsm_timeout(Cluster),
     confirm_drain_fsm_kill(Cluster),
@@ -211,7 +214,7 @@ check_drain_cancel_timeout_stats(Node) ->
     yz_rt:check_stat_values(Stats, Pairs).
 
 
-confirm_batching(Cluster, PBConn, BKey, Index) ->
+confirm_batch_size(Cluster, PBConn, BKey, Index) ->
     %% First, put one less than the min batch size and expect that there are no
     %% search results (because the index operations are queued).
     Count = ?SOLRQ_BATCH_MIN_SETTING - 1,
@@ -240,8 +243,25 @@ confirm_batching(Cluster, PBConn, BKey, Index) ->
         true -> ok
     end,
     ?assertEqual(Condition, true),
+    lager:info("confirm_batch_size ok"),
+    ok.
 
-    lager:info("confirm_batching ok"),
+confirm_hwm(Cluster, PBConn, Bucket, Index, HWM) ->
+    yz_rt:drain_solrqs(Cluster),
+    {OldMin, OldMax, OldDelay} = set_index(Cluster, Index, 1, 100, 100),
+    try
+        yz_rt:load_intercept_code(Cluster),
+        yz_rt:intercept_index_batch(Cluster, index_batch_throw_exception),
+        yz_rt:set_hwm(Cluster, HWM),
+        yz_rt:set_purge_strategy(Cluster, ?PURGE_NONE),
+        ?assertEqual(HWM, put_objects(PBConn, Bucket, HWM + 1))
+    after
+        yz_rt:intercept_index_batch(Cluster, index_batch_call_orig),
+        yz_rt:set_purge_strategy(Cluster, ?PURGE_ONE),
+        yz_rt:set_hwm(Cluster, 10000),
+        yz_rt:set_index(Cluster, Index, OldMin, OldMax, OldDelay)
+    end,
+    lager:info("confirm_hwm ok for HWM ~p", [HWM]),
     ok.
 
 -spec gteq(number(), number()) -> boolean().
@@ -597,4 +617,9 @@ wait_until_search_count(PBConn, Index, Count) ->
 current_ms() ->
     {MegaSecs, Secs, MicroSecs} = os:timestamp(),
     (MegaSecs * 1000000 + Secs) * 1000 + round(MicroSecs / 1000).
+
+set_index(Cluster, Index, Min, Max, Delay) ->
+    {[[{_WorkerId, {ok, {OldMin, OldMax, OldDelay}}}|_]], _} =
+        yz_rt:set_index(Cluster, Index, Min, Max, Delay),
+    {OldMin, OldMax, OldDelay}.
 

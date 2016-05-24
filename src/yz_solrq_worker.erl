@@ -125,7 +125,7 @@ index(QPid, Index, BKey, Obj, Reason, P) ->
 
 -spec set_hwm(solrq_id(), HWM :: solrq_hwm()) ->
     {ok, OldHWM :: solrq_hwm()} | {error, bad_hwm_value}.
-set_hwm(QPid, HWM) when HWM > 0 ->
+set_hwm(QPid, HWM) when HWM >= 0 ->
     gen_server:call(QPid, {set_hwm, HWM});
 set_hwm(_, _)  ->
     {error, bad_hwm_value}.
@@ -816,7 +816,7 @@ update_indexq(Index, IndexQ, #state{indexqs = IndexQs} = State) ->
 %% @doc Read settings from the application environment
 %% TODO: Update HWM for each Index when Ring-Resize occurrs
 read_appenv(State) ->
-    HWM = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, 10000),
+    HWM = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, 1),
     PBIStrategy = application:get_env(?YZ_APP_NAME, ?SOLRQ_HWM_PURGE_STRATEGY,
                                       ?PURGE_ONE),
     State#state{queue_hwm = HWM,

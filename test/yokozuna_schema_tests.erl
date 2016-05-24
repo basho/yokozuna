@@ -42,7 +42,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_max", 100),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_flush_interval",
                                   1000),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 10000),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 1),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_worker_count", 10),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_helper_count", 10),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout", 60000),

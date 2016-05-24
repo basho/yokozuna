@@ -179,7 +179,12 @@ solrq_helper_names() ->
 queue_capacity() ->
     TotalQueueLength = lists:sum([yz_solrq_worker:all_queue_len(Name) || Name <- tuple_to_list(get_solrq_worker_tuple())]),
     TotalCapacity = lists:sum([yz_solrq_worker:get_hwm(Name) || Name <- tuple_to_list(get_solrq_worker_tuple())]),
-    round(100 * (TotalQueueLength / TotalCapacity)).
+    case TotalCapacity of
+        0 ->
+            100;
+        _ ->
+            round(100 * (TotalQueueLength / TotalCapacity))
+    end.
 
 %%%===================================================================
 %%% Internal functions

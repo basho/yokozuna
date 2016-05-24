@@ -115,7 +115,7 @@
   {default, 3},
   {datatype, integer},
   hidden,
-  {validators, ["integer"]}
+  {validators, ["non_negative_integer"]}
 ]}.
 
 %% @doc The window of time during which
@@ -196,9 +196,9 @@
 %%      parameter exercises flow control between Riak and the Riak
 %%      Search batching subsystem if writes into Solr start to fall behind.
 {mapping, "search.queue.high_watermark", "yokozuna.solrq_hwm", [
-  {default, 10000},
+  {default, 0},
   {datatype, integer},
-  {validators, ["positive_integer"]}
+  {validators, ["non_negative_integer"]}
 ]}.
 
 %% @doc The strategy for how we handle purging when we hit the
@@ -296,5 +296,5 @@
 {validator, "positive_integer", "must be a positive integer > 0",
   fun(X) -> X > 0 end}.
 
-{validator, "integer", "must be an integer >= 0",
+{validator, "non_negative_integer", "must be an integer >= 0",
   fun(X) -> X >= 0 end}.
