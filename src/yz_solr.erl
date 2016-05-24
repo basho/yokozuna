@@ -35,14 +35,19 @@
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit, n}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
--define(SOLR_TIMEOUT, 60000).
+-define(LOCALHOST, "localhost").
 
 -type delete_op() :: {id, binary()}
                    | {bkey, bkey()}
                    | {siblings, bkey()}
                    | {'query', binary()}.
 
+-type ibrowse_config_key() :: max_sessions | max_pipeline_size.
+-type ibrowse_config_value() :: pos_integer().
+-type ibrowse_config() :: [{ibrowse_config_key(), ibrowse_config_value()}].
+
 -export_type([delete_op/0]).
+-export_type([ibrowse_config_key/0, ibrowse_config_value/0, ibrowse_config/0]).
 
 %%%===================================================================
 %%% API
@@ -67,12 +72,13 @@ build_partition_delete_query(LPartitions) ->
 -spec commit(index_name()) -> ok.
 commit(Core) ->
     JSON = encode_commit(),
-    Params = [{commit, true}],
+    Params = [{commit, true}, {waitFlush, true}, {waitSearcher, true}],
     Encoded = mochiweb_util:urlencode(Params),
     URL = ?FMT("~s/~s/update?~s", [base_url(), Core, Encoded]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
+                          ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to commit", Err})
     end.
@@ -81,7 +87,7 @@ commit(Core) ->
 -spec core(atom(), proplist()) -> {ok, list(), binary()} |
                                   {error, term()}.
 core(Action, Props) ->
-    core(Action, Props, ?SOLR_TIMEOUT).
+    core(Action, Props, ?YZ_SOLR_REQUEST_TIMEOUT).
 
 -spec core(atom(), proplist(), ms()) -> {ok, list(), binary()} |
                                         {error, term()}.
@@ -137,7 +143,8 @@ delete(Index, Ops) ->
     URL = ?FMT("~s/~s/update", [base_url(), Index]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
+                          ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> {error, Err}
     end.
@@ -172,7 +179,7 @@ entropy_data(Core, Filter) ->
     Opts = [{response_format, binary}],
     URL = ?FMT("~s/~s/entropy_data?~s",
                [base_url(), Core, mochiweb_util:urlencode(Params2)]),
-    case ibrowse:send_req(URL, [], get, [], Opts) of
+    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_ED_REQUEST_TIMEOUT) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
             More = kvc:path([<<"more">>], R),
@@ -196,9 +203,24 @@ index(Core, Docs, DelOps) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
+
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
+                          ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to index docs", Err})
+    end.
+
+index_batch(Core, Ops) ->
+    JSON = mochijson2:encode({struct, Ops}),
+    URL = ?FMT("~s/~s/update", [base_url(), Core]),
+    Headers = [{content_type, "application/json"}],
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
+                          ?YZ_SOLR_REQUEST_TIMEOUT) of
+        {ok, "200", _, _} -> ok;
+        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
+                                         ErrBody});
+        Err -> throw({"Failed to index docs", other, Err})
     end.
 
 %% @doc Determine if Solr is running.
@@ -236,7 +258,7 @@ partition_list(Core) ->
     Encoded = mochiweb_util:urlencode(Params),
     URL = ?FMT("~s/~s/select?~s", [base_url(), Core, Encoded]),
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, [], get, [], Opts, ?SOLR_TIMEOUT) of
+    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, Resp} -> {ok, Resp};
         Err -> {error, Err}
     end.
@@ -245,7 +267,7 @@ partition_list(Core) ->
 -spec ping(index_name()) -> boolean()|error.
 ping(Core) ->
     URL = ?FMT("~s/~s/admin/ping", [base_url(), Core]),
-    case ibrowse:send_req(URL, [], get) of
+    case ibrowse:send_req(URL, [], head) of
         {ok, "200", _, _} -> true;
         {ok, "404", _, _} -> false;
         _ -> error
@@ -280,7 +302,8 @@ search(Core, Headers, Params) ->
     URL = ?FMT("~s/~s/select", [base_url(), Core]),
     Headers2 = [{content_type, "application/x-www-form-urlencoded"}|Headers],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers2, post, Body, Opts, ?SOLR_TIMEOUT) of
+    case ibrowse:send_req(URL, Headers2, post, Body, Opts,
+                          ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", RHeaders, Resp} -> {RHeaders, Resp};
         {ok, CodeStr, _, Err} ->
             {Code, _} = string:to_integer(CodeStr),
@@ -288,6 +311,28 @@ search(Core, Headers, Params) ->
         Err -> throw({"Failed to search", URL, Err})
     end.
 
+-spec set_ibrowse_config(ibrowse_config()) -> ok.
+set_ibrowse_config(Config) ->
+    lists:foreach(
+      fun({Key, Value}) -> set_ibrowse_config(Key, Value) end,
+      Config),
+    ok.
+
+set_ibrowse_config(?YZ_SOLR_MAX_SESSIONS, Max) when is_integer(Max), Max > 0 ->
+    ibrowse:set_max_sessions(?LOCALHOST, port(), Max);
+set_ibrowse_config(?YZ_SOLR_MAX_PIPELINE_SIZE, Max) when is_integer(Max), Max > 0 ->
+    ibrowse:set_max_pipeline_size(?LOCALHOST, port(), Max).
+
+get_ibrowse_config() ->
+    [{?YZ_SOLR_MAX_SESSIONS, get_ibrowse_config(?YZ_SOLR_MAX_SESSIONS)},
+     {?YZ_SOLR_MAX_PIPELINE_SIZE, get_ibrowse_config(?YZ_SOLR_MAX_PIPELINE_SIZE)}].
+
+get_ibrowse_config(Key) ->
+    try
+        ibrowse:get_config_value({Key, ?LOCALHOST, port()}, undefined)
+    catch
+        _ -> undefined
+    end.
 
 %%%===================================================================
 %%% Private
@@ -295,7 +340,8 @@ search(Core, Headers, Params) ->
 
 %% @doc Get the base URL.
 base_url() ->
-    "http://localhost:" ++ integer_to_list(port()) ++ ?SOLR_HOST_CONTEXT.
+    "http://" ++ ?LOCALHOST ++ ":" ++ integer_to_list(port()) ++
+        ?SOLR_HOST_CONTEXT.
 
 %% @private
 %%
@@ -317,7 +363,7 @@ build_shard_fq(LCoverSet, Mapping) ->
 %% the port if the RPC fails.
 -spec host_port(node()) -> {string(), string() | unknown}.
 host_port(Node) ->
-    case rpc:call(Node, yz_solr, port, [], 1000) of
+    case rpc:call(Node, yz_solr, port, [], ?YZ_SOLR_PORT_RPC_TIMEOUT) of
         {badrpc, Reason} ->
             ?DEBUG("error retrieving Solr port ~p ~p", [Node, Reason]),
             {yz_misc:hostname(Node), unknown};
@@ -386,7 +432,7 @@ encode_delete({id, Id}) ->
     {struct, [{id, Id}]}.
 
 encode_doc({doc, Fields}) ->
-    {struct, [{doc, lists:map(fun encode_field/1,Fields)}]}.
+    {struct, [{doc, lists:map(fun encode_field/1, Fields)}]}.
 
 encode_field({Name,Value}) when is_list(Value) ->
     {Name, list_to_binary(Value)};

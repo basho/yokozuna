@@ -20,7 +20,7 @@
 
 -module(yz_app).
 -behaviour(application).
--export([start/2, stop/1]). % prevent compile warnings
+-export([start/2, stop/1, prep_stop/1, components/0]).
 -compile(export_all).
 -include("yokozuna.hrl").
 
@@ -29,26 +29,92 @@
 -define(QUERY_SERVICES, [{yz_pb_search, 27, 28}]).
 -define(ADMIN_SERVICES, [{yz_pb_admin, 54, 60}]).
 
+%% NOTE: These default values are duplicated in yokozuna.schema.
+-define(YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT, 100).
+-define(YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT, 1).
+
+components() ->
+    [index, search].
+
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
 
 start(_StartType, _StartArgs) ->
+
+    %% Disable indexing/searching from KV until properly started,
+    %% otherwise restarting under load generates large numbers
+    %% of failures in yz_kv:index/3.
+    disable_components(),
+
+    %% Ensure that the KV service has fully loaded.
+    riak_core:wait_for_service(riak_kv),
+
+
     initialize_atoms(),
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
         {ok, Pid} ->
             _ = application:set_env(ibrowse, inactivity_timeout, 600000),
             maybe_setup(Enabled),
+
+            %% Now everything is started, permit usage by KV/query
+            enable_components(),
             {ok, Pid};
         Error ->
             Error
     end.
 
+%% @doc Prepare to stop - called before the supervisor tree is shutdown
+prep_stop(State) ->
+    %% Wrap shutdown code with a try/catch - application carries on regardless,
+    %% no error message or logging about the failure otherwise.
+    try
+        lager:info("Stopping application yokozuna.", []),
+        riak_core_node_watcher:service_down(yokozuna),
+        disable_components(),
+        riak_api_pb_service:deregister(?QUERY_SERVICES),
+        riak_api_pb_service:deregister(?ADMIN_SERVICES),
+        yz_solrq_drain_mgr:drain()
+    catch
+        Type:Reason ->
+            lager:error("Stopping application yokozuna - ~p:~p.",
+                        [Type, Reason])
+    end,
+    State.
+
 stop(_State) ->
-    ok = riak_api_pb_service:deregister(?QUERY_SERVICES),
-    ok = riak_api_pb_service:deregister(?ADMIN_SERVICES),
+    lager:info("Stopped application yokozuna.", []),
     ok.
+
+%% @private
+%%
+%% @doc Enable all Yokozuna components.
+-spec enable_components() -> ok.
+enable_components() ->
+    lists:foreach(fun yokozuna:enable/1, components()),
+    ok.
+
+%% @private
+%%
+%% @doc Disable all Yokozuna components.
+-spec disable_components() -> ok.
+disable_components() ->
+    lists:foreach(fun disable_component/1, components()),
+    ok.
+
+-spec disable_component(component()) -> ok.
+disable_component(Component) ->
+    try
+        yokozuna:disable(Component)
+    catch
+        %% This timeout error happens when we try to disable
+        %% components during the shutdown sequence. Since we are
+        %% shutting down anyway, we don't actually care whether or not
+        %% the component is marked as disabled. Therefore, just catch
+        %% and ignore the timeout error.
+        exit:{timeout, _Details} -> ok
+    end.
 
 %% @private
 %%
@@ -72,9 +138,11 @@ maybe_setup(true) ->
     RSEnabled = yz_rs_migration:is_riak_search_enabled(),
     yz_rs_migration:strip_rs_hooks(RSEnabled, Ring),
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
-	yz_wm_index:routes() ++ yz_wm_schema:routes(),
+        yz_wm_index:routes() ++ yz_wm_schema:routes(),
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
+    ok = yz_events:add_guarded_handler(yz_events, []),
+    yz_fuse:setup(),
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],
                                        false),
@@ -85,6 +153,7 @@ maybe_setup(true) ->
     ok = riak_core:register(yokozuna, [{bucket_validator, yz_bucket_validator}]),
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
+    ok = set_ibrowse_config(),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -109,3 +178,15 @@ setup_stats() ->
         false -> sidejob:new_resource(yz_stat_sj, yz_stat_worker, 10000)
     end,
     ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]).
+
+set_ibrowse_config() ->
+    Config = [{?YZ_SOLR_MAX_SESSIONS,
+               app_helper:get_env(?YZ_APP_NAME,
+                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS,
+                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT)},
+              {?YZ_SOLR_MAX_PIPELINE_SIZE,
+               app_helper:get_env(?YZ_APP_NAME,
+                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE,
+                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT)}
+             ],
+    yz_solr:set_ibrowse_config(Config).

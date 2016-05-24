@@ -110,14 +110,15 @@ process(#rpbyokozunaindexputreq{
                 name = IndexName,
                 schema = SchemaName,
                 n_val = Nval}}, State) ->
-    Timeout = app_helper:get_env(yokozuna, index_put_timeout_ms,
+    Timeout = app_helper:get_env(?YZ_APP_NAME, index_put_timeout_ms,
                                  ?DEFAULT_IDX_CREATE_TIMEOUT),
 
     case maybe_create_index(IndexName, SchemaName, Nval, Timeout) of
         ok ->
             {reply, #rpbputresp{}, State};
         {error, index_not_created_within_timeout} ->
-            Msg = io_lib:format("Index ~s not created on all the nodes within ~p ms timeout~n",
+            Msg = io_lib:format("Index ~s not created on all the nodes"
+                                " within ~p ms timeout~n",
                                 [IndexName, Timeout]),
             {error, Msg, State};
         {error, schema_not_found} ->
@@ -126,7 +127,10 @@ process(#rpbyokozunaindexputreq{
             {error, "Invalid character in index name", State};
         {error, core_error_on_index_creation, Error} ->
             {error, {format, "Error creating index '~s': ~p",
-                    [IndexName, Error]}, State}
+                     [IndexName, Error]}, State};
+        {error, Error} ->
+            {error, {format, "Error creating index '~s': ~p",
+                     [IndexName, Error]}, State}
     end;
 
 process(rpbyokozunaindexgetreq, State) ->
@@ -153,11 +157,7 @@ process_stream(_,_,State) ->
 %% ---------------------------------
 
 -spec maybe_create_index(binary(), schema_name(), n(), timeout()) ->
-                                ok |
-                                {error, index_not_created_within_timeout} |
-                                {error, invalid_name} |
-                                {error, schema_not_found} |
-                                {error, core_error_on_index_creation, binary()}.
+                                yz_index:create_index_return().
 maybe_create_index(IndexName, SchemaName, Nval, Timeout)->
     case yz_index:exists(IndexName) of
         true  ->

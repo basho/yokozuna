@@ -8,8 +8,14 @@
 -define(IBROWSE_TIMEOUT, 60000).
 -define(SOFTCOMMIT, 1000).
 
--type host() :: string().
--type portnum() :: integer().
+-type host() :: string()|atom().
+-type portnum() :: non_neg_integer()|port().
+-type method() :: get | post | head | options | put | delete | trace |
+                  mkcol | propfind | proppatch | lock | unlock | move | copy.
+-type response() :: {ok, string(), [{string(), string()}], string()|binary()} |
+                    {error, term()}.
+
+-export_type([host/0, portnum/0]).
 
 %% Copied from rt.erl, would be nice if there was a rt.hrl
 -type interface() :: {http, tuple()} | {pb, tuple()}.
@@ -19,6 +25,8 @@
 -type props() :: [prop()].
 
 -type cluster() :: [node()].
+
+-export_type([prop/0, props/0, cluster/0]).
 
 %% @doc Get {Host, Port} from `Cluster'.
 -spec host_port(cluster()) -> {host(), portnum()}.
@@ -32,6 +40,17 @@ host_port(Cluster) ->
 close_pb_conns(PBConns) ->
     [riakc_pb_socket:stop(C) || C <- PBConns],
     ok.
+
+%% @doc Prepare a cluster of `NumNodes' nodes using the given `Config', wait for
+%% all the nodes to join the cluster, and wait for the yokozuna service to start.
+-spec prepare_cluster(NumNodes :: non_neg_integer(), Config :: props())
+                     -> cluster().
+prepare_cluster(NumNodes, Config) ->
+    Nodes = rt:deploy_nodes(NumNodes, Config),
+    Cluster = yz_rt:join_all(Nodes),
+    yz_rt:wait_for_joins(Cluster),
+    rt:wait_for_cluster_service(Cluster, yokozuna),
+    Cluster.
 
 -spec connection_info(list()) -> orddict:orddict().
 connection_info(Cluster) ->
@@ -157,30 +176,31 @@ get_yz_conn_info(Node) ->
 host_entries(ClusterConnInfo) ->
     [riak_http(I) || {_,I} <- ClusterConnInfo].
 
--spec http(ibrowse:method(), string(), list(), string()) -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[]) -> response().
 http(Method, URL, Headers, Body) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT).
 
--spec http(ibrowse:method(), string(), list(), string(), list()|timeout())
-          -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[], list()|timeout())
+          -> response().
 http(Method, URL, Headers, Body, Opts) when is_list(Opts)  ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, ?IBROWSE_TIMEOUT);
 http(Method, URL, Headers, Body, Timeout) when is_integer(Timeout) ->
     Opts = [],
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http(ibrowse:method(), string(), list(), string(), list(), timeout())
-          -> ibrowse:response().
+-spec http(method(), string(), list(), binary()|[], list(), timeout())
+          -> response().
 http(Method, URL, Headers, Body, Opts, Timeout) when
       is_list(Opts) andalso is_integer(Timeout) ->
     ibrowse:send_req(URL, Headers, Method, Body, Opts, Timeout).
 
--spec http_put({string(), portnum()}, bucket(), binary(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary()|string(), binary()) -> ok.
 http_put(HP, Bucket, Key, Value) ->
     http_put(HP, Bucket, Key, "text/plain", Value).
 
--spec http_put({string(), portnum()}, bucket(), binary(), string(), binary()) -> ok.
+-spec http_put({host(), portnum()}, bucket(), binary()|string(), string(),
+               binary()) -> ok.
 http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
                [Host, integer_to_list(Port), BType, BName, Key]),
@@ -189,22 +209,21 @@ http_put({Host, Port}, {BType, BName}, Key, CT, Value) ->
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Value, Opts),
     ok.
 
--spec schema_url({string(), portnum()}, schema_name()) -> ok.
+-spec schema_url({host(), portnum()}, schema_name()) -> string().
 schema_url({Host,Port}, Name) ->
     ?FMT("http://~s:~B/search/schema/~s", [Host, Port, Name]).
 
--spec index_url({string(), portnum()}, index_name()) -> ok.
+-spec index_url({host(), portnum()}, index_name()) -> string().
 index_url({Host,Port}, Index) ->
     ?FMT("http://~s:~B/search/index/~s", [Host, Port, Index]).
 index_url({Host, Port}, Index, Timeout) ->
     ?FMT("http://~s:~B/search/index/~s?timeout=~B", [Host, Port, Index,
                                                      Timeout]).
-
--spec search_url({string(), portnum()}, index_name()) -> ok.
+-spec search_url({host(), portnum()}, index_name()) -> string().
 search_url({Host, Port}, Index) ->
     search_url({Host, Port}, Index, "").
 
--spec search_url({string(), portnum()}, index_name(), string()) -> ok.
+-spec search_url({host(), portnum()}, index_name(), string()) -> string().
 search_url({Host, Port}, Index, Params) ->
     FmtStr = "http://~s:~B/search/query/~s",
     FmtParams = case Params of
@@ -283,6 +302,14 @@ random_keys(MaxKey) ->
 random_keys(Num, MaxKey) ->
     lists:usort([?INT_TO_BIN(random:uniform(MaxKey))
                  || _ <- lists:seq(1, Num)]).
+
+-spec random_binary(pos_integer()) -> binary().
+random_binary(Length) when Length >= 1 ->
+    Chars = "abcdefghijklmnopqrstuvwxyz1234567890",
+    Value = lists:foldl(fun(_, Acc) ->
+            [lists:nth(random:uniform(length(Chars)), Chars)] ++ Acc
+        end, [], lists:seq(1, Length)),
+    list_to_binary(Value).
 
 -spec riak_http({node(), interfaces()} | interfaces()) -> {host(), portnum()}.
 riak_http({_Node, ConnInfo}) ->
@@ -442,6 +469,23 @@ set_bucket_type_index(Node, BucketType, Index, NVal) ->
     lager:info("Set bucket type ~s index to ~s [~p]", [BucketType, Index, Node]),
     create_bucket_type(Node, BucketType, [{?YZ_INDEX, Index},{n_val,NVal}]).
 
+%%TODO: consolidate this with create_index_bucket_type if possible
+-spec create_indexed_bucket(pid(),
+                            cluster(),
+                            {binary(), binary()},
+                            index_name()) -> ok.
+create_indexed_bucket(PBConn, Cluster, Bucket, Index) ->
+    create_indexed_bucket(PBConn, Cluster, Bucket, Index, 1).
+
+-spec create_indexed_bucket(pid(),
+    cluster(),
+    {binary(), binary()},
+    index_name(),
+    pos_integer()) -> ok.
+create_indexed_bucket(PBConn, [Node|_], {BType, _Bucket}, Index, NVal) ->
+    ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, NVal}]),
+    ok = yz_rt:set_bucket_type_index(Node, BType, Index, NVal).
+
 solr_http({_Node, ConnInfo}) ->
     solr_http(ConnInfo);
 solr_http(ConnInfo) ->
@@ -480,10 +524,14 @@ wait_for_bucket_type(Cluster, BucketType) ->
     wait_until(Cluster, F),
     ok.
 
+-spec wait_for_full_exchange_round([node()]) -> ok.
+wait_for_full_exchange_round(Cluster) ->
+    wait_for_full_exchange_round(Cluster, erlang:now()).
+
 %% @doc Wait for a full exchange round since `Timestamp'.  This means
 %% that all `{Idx,N}' for all partitions must have exchanged after
 %% `Timestamp'.
--spec wait_for_full_exchange_round([node()], os:now()) -> ok.
+-spec wait_for_full_exchange_round([node()], timestamp()) -> ok.
 wait_for_full_exchange_round(Cluster, Timestamp) ->
     lager:info("wait for full AAE exchange round on cluster ~p", [Cluster]),
     MoreRecent =
@@ -535,8 +583,9 @@ wait_for_schema(Cluster, Name, Content) ->
     ok.
 
 verify_count(Expected, Resp) ->
-    lager:info("E: ~p, A: ~p", [Expected, get_count(Resp)]),
-    Expected == get_count(Resp).
+    Count = get_count(Resp),
+    lager:info("E: ~p, A: ~p", [Expected, Count]),
+    Expected =:= Count.
 
 -spec wait_for_index(list(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
@@ -578,15 +627,71 @@ node_solr_port(Node) ->
                                       [yokozuna, solr_port]),
     P.
 
+-spec internal_solr_url(host(), portnum(), index_name()) -> string().
 internal_solr_url(Host, Port, Index) ->
     ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
+
+-spec internal_solr_url(host(), portnum(), index_name(), [{host(), portnum()}])
+                   -> string().
 internal_solr_url(Host, Port, Index, Shards) ->
-    internal_solr_url(Host, Port, Index, Shards, <<"*">>, <<"*">>).
+    internal_solr_url(Host, Port, Index, <<"*">>, <<"*">>, Shards).
+
+-spec internal_solr_url(host(), portnum(), index_name(), binary()|string(),
+                        binary()|string(), [{host(), portnum()}]) -> string().
 internal_solr_url(Host, Port, Index, Name, Term, Shards) ->
     Ss = [internal_solr_url(Host, ShardPort, Index)
           || {_, ShardPort} <- Shards],
     ?FMT("http://~s:~B/internal_solr/~s/select?wt=json&q=~s:~s&shards=~s",
          [Host, Port, Index, Name, Term, string:join(Ss, ",")]).
+
+entropy_data_url({Host, Port}, Index, Params) ->
+    ?FMT("http://~s:~B/internal_solr/~s/entropy_data?~s",
+         [Host, Port, Index, mochiweb_util:urlencode(Params)]).
+
+-spec merge_config(proplist(), proplist()) -> proplist().
+merge_config(Change, Base) ->
+    lists:ukeymerge(1, lists:keysort(1, Change), lists:keysort(1, Base)).
+
+-spec write_objs([node()], bucket()) -> ok.
+write_objs(Cluster, Bucket) ->
+    write_objs(Cluster, Bucket, 1000).
+
+-spec write_objs([node()], bucket(), pos_integer()) -> ok.
+write_objs(Cluster, Bucket, Count) ->
+    write_objs(Cluster, Bucket, 1, Count).
+
+-spec write_objs([node()], bucket(), pos_integer(), pos_integer()) -> ok.
+write_objs(Cluster, Bucket, StartIndex, Count) ->
+    lager:info("Writing ~p objects", [Count]),
+    lists:foreach(write_obj(Cluster, Bucket), lists:seq(StartIndex,
+                                                        StartIndex + Count - 1)).
+
+write_objs_parallel(Cluster, Bucket, Count, NumWorkers) ->
+    write_objs_parallel(Cluster, Bucket, 1, Count, NumWorkers).
+
+write_objs_parallel(Cluster, Bucket, StartIndex, Count, NumWorkers) ->
+    lager:info("Parallel writing ~p objects from ~p using ~p workers",
+               [Count, StartIndex, NumWorkers]),
+    ObjsPerWorker = Count div NumWorkers,
+    rt:pmap(
+      fun(WorkerIdx) ->
+              WorkerStartIndex = StartIndex + (WorkerIdx - 1) * ObjsPerWorker,
+              write_objs(Cluster, Bucket, WorkerStartIndex, ObjsPerWorker)
+      end,
+      lists:seq(1, NumWorkers)).
+
+-spec write_obj([node()], bucket()) -> fun().
+write_obj(Cluster, Bucket) ->
+    fun(N) ->
+            PL = [{name_s,<<"yokozuna">>}, {num_i,N}],
+            Key = list_to_binary(io_lib:format("key_~B", [N])),
+            Body = mochijson2:encode(PL),
+            HP = yz_rt:select_random(yz_rt:host_entries(rt:connection_info(
+                                                          Cluster))),
+            CT = "application/json",
+            lager:info("Writing object with bkey ~p [~p]", [{Bucket, Key}, HP]),
+            yz_rt:http_put(HP, Bucket, Key, CT, Body)
+    end.
 
 -spec commit([node()], index_name()) -> ok.
 commit(Nodes, Index) ->
@@ -596,3 +701,159 @@ commit(Nodes, Index) ->
                [Index, ?SOFTCOMMIT]),
     rpc:multicall(Nodes, yz_solr, commit, [Index]),
     ok.
+
+-spec drain_solrqs(node() | [node()]) -> ok.
+drain_solrqs(Cluster) when is_list(Cluster) ->
+    [drain_solrqs(Node) || Node <- Cluster];
+drain_solrqs(Node) ->
+    rpc:call(Node, yz_solrq_drain_mgr, drain, []),
+    ok.
+
+-spec load_intercept_code(node() | [node()]) -> ok.
+load_intercept_code(Cluster) when is_list(Cluster) ->
+    [load_intercept_code(Node) || Node <- Cluster];
+load_intercept_code(Node) ->
+    CodePath = filename:join([rt_config:get(yz_dir),
+                              "riak_test",
+                              "intercepts",
+                              "*.erl"]),
+    rt_intercept:load_code(Node, [CodePath]).
+
+-spec rolling_upgrade(cluster() | node(),
+                      current | previous | legacy,
+                      UpgradeConfig :: props(),
+                      WaitForServices :: [atom()]) -> ok.
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices)
+  when is_list(Cluster) ->
+    lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
+    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices)
+     || Node <- Cluster],
+    ok;
+rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
+    rt:upgrade(Node, Version, UpgradeConfig),
+    [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
+    ok.
+
+-spec setup_drain_intercepts(cluster()) -> ok.
+setup_drain_intercepts(Cluster) ->
+    [yz_rt:load_intercept_code(Node) || Node <- Cluster],
+    [rt_intercept:add(
+        N,
+        {yz_solrq_drain_mgr, [{{drain, 1}, delay_drain}]}
+    ) || N <- Cluster],
+    ok.
+
+-spec expire_aae_trees(cluster()) -> [ok].
+expire_aae_trees(Cluster) ->
+    lager:info("Expiring YZ AAE trees across cluster"),
+    [ok = rpc:call(Node, yz_entropy_mgr, expire_trees, []) || Node <- Cluster].
+
+-spec clear_aae_trees(cluster()) -> [ok].
+clear_aae_trees(Cluster) ->
+    lager:info("Clearing YZ AAE trees across cluster"),
+    [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, []) || Node <- Cluster].
+
+-spec expire_kv_trees(cluster()) -> [ok].
+expire_kv_trees(Cluster) ->
+    lager:info("Expiring KV AAE trees across cluster"),
+    [ok = rpc:call(Node, riak_kv_entropy_manager, expire_trees, []) || Node <- Cluster].
+
+-spec clear_kv_trees(cluster()) -> [ok].
+clear_kv_trees(Cluster) ->
+    lager:info("Clearing KV AAE trees across cluster"),
+    [ok = rpc:call(Node, riak_kv_entropy_manager, clear_trees, []) || Node <- Cluster].
+
+-spec set_index([node()], index_name(), solrq_batch_min(), solrq_batch_max(),
+    solrq_batch_flush_interval()) -> {[any()],[atom()]}.
+set_index(Cluster, Index, Min, Max, DelayMsMax) ->
+    rpc:multicall(Cluster, yz_solrq, set_index, [Index, Min, Max, DelayMsMax]).
+
+-spec set_hwm([node()], pos_integer()) -> {[any()],[atom()]}.
+set_hwm(Cluster, Hwm) ->
+    rpc:multicall(Cluster, yz_solrq, set_hwm, [Hwm]).
+
+-spec set_purge_strategy([node()], purge_strategy()) -> {[any()],[atom()]}.
+set_purge_strategy(Cluster, PurgeStrategy) ->
+    rpc:multicall(Cluster, yz_solrq, set_purge_strategy, [PurgeStrategy]).
+
+-spec wait_until_fuses_blown(node() | [node()], solrq_id(), [index_name()]) ->
+    ok | [ok].
+wait_until_fuses_blown(Cluster, SolrqId, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_blown(Node, SolrqId, Indices) || Node <- Cluster];
+wait_until_fuses_blown(Node, SolrqId, Indices) ->
+    F = fun({Index, IndexQ}) ->
+        lager:info("Waiting for fuse to blow for index ~p", [{Index, IndexQ}]),
+        proplists:get_value(fuse_blown, IndexQ)
+        end,
+    check_fuse_status(Node, SolrqId, Indices, F).
+
+-spec wait_until_fuses_reset(node() | [node()], module(), [index_name()]) ->
+    ok | [ok].
+wait_until_fuses_reset(Cluster, SolrqId, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_reset(Node, SolrqId, Indices) || Node <- Cluster];
+wait_until_fuses_reset(Node, SolrqId, Indices) ->
+    F = fun({Index, IndexQ}) ->
+        lager:info("Waiting for fuse to reset for index ~p", [{Index, IndexQ}]),
+        not proplists:get_value(fuse_blown, IndexQ)
+        end,
+    check_fuse_status(Node, SolrqId, Indices, F).
+
+%% @private
+check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
+    F = fun(N) ->
+        Solrqs = rpc:call(N, yz_solrq, status, []),
+        Solrq = proplists:get_value(SolrqId, Solrqs),
+        IndexQs = proplists:get_value(indexqs, Solrq),
+        MatchingIndexQs = lists:filter(
+            FuseCheckFunction,
+            IndexQs
+        ),
+        MatchingIndices = [Index || {Index, _IndexQ} <- MatchingIndexQs],
+        sets:is_subset(sets:from_list(Indices), sets:from_list(MatchingIndices))
+        end,
+    wait_until([Node], F).
+
+-spec intercept_index_batch(node() | [node()], module()) -> ok | [ok].
+intercept_index_batch(Cluster, Intercept) ->
+    add_intercept(
+        Cluster,
+        yz_solr, index_batch, 2, Intercept).
+
+-spec add_intercept(node() | [node()], module(), atom(), non_neg_integer(), module()) -> ok | [ok].
+add_intercept(Cluster, Module, Function, Arity, Intercept) when is_list(Cluster) ->
+    [add_intercept(Node, Module, Function, Arity, Intercept) || Node <- Cluster];
+add_intercept(Node, Module, Function, Arity, Intercept) ->
+    rt_intercept:add(
+        Node,
+        {Module, [{{Function, Arity}, Intercept}]}).
+
+-spec set_yz_aae_mode(node() | [node()], automatic | manual) -> ok | [ok].
+set_yz_aae_mode(Cluster, Mode) when is_list(Cluster) ->
+    [set_yz_aae_mode(Node, Mode) || Node <- Cluster];
+set_yz_aae_mode(Node, Mode) ->
+    rpc:call(Node, yz_entropy_mgr, set_mode, [Mode]).
+
+%% @doc Generate `SeqMax' keys. Yokozuna supports only UTF-8 compatible keys.
+-spec gen_keys(pos_integer()) -> [binary()].
+gen_keys(SeqMax) ->
+    [<<N:64/integer>> || N <- lists:seq(1, SeqMax),
+                         not lists:any(
+                               fun(E) -> E > 127 end,
+                               binary_to_list(<<N:64/integer>>))].
+
+-spec check_stat_values(
+    proplists:proplist() | {error, Reason :: term()},
+    [{StatName::atom(), LHS::term(), Comparator::atom(), RHS::term()}])
+        -> boolean().
+check_stat_values(Stats, Pairs) ->
+    lager:info("STATS: ~p", [Stats]),
+    lager:info("Pairs: ~p", [Pairs]),
+    StillWaiting = [S || S = {_, Value, Cmp, Arg} <- Pairs,
+        not (erlang:Cmp(Value, Arg))],
+    case StillWaiting of
+        [] ->
+            true;
+        _ ->
+            lager:info("Waiting for stats: ~p", [StillWaiting]),
+            false
+    end.
