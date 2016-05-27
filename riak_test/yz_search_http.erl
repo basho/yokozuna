@@ -51,7 +51,7 @@
 confirm() ->
     [Node1|_] = Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
-    ok = yz_rt:create_bucket_type(Node1, ?TYPE),
+    ok = yz_rt:create_bucket_type(Cluster, ?TYPE),
     ok = yz_rt:create_index_http(Cluster, ?INDEX),
     yz_rt:set_index(Node1, ?BUCKET, ?INDEX),
     HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
@@ -61,16 +61,16 @@ confirm() ->
     yz_rt:commit(Cluster, ?INDEX),
     URL = yz_rt:search_url(HP, ?INDEX),
 
-    test_search_get_and_post_query(HP, URL, ?INDEX),
+    test_search_get_and_post_query(Node1, HP, URL, ?INDEX),
     test_post_as_get(URL),
     test_post_as_get_with_wrong_content_types(URL),
     test_get_and_post_no_params(URL),
 
     pass.
 
-test_search_get_and_post_query(HP, URL, Index) ->
+test_search_get_and_post_query(Node, HP, URL, Index) ->
     {ok, "200", _, _} = yz_rt:search(HP, Index, "*", "*"),
-    ?assert(yz_rt:search_expect(yokozuna, HP, Index, "text", "F*", 1)),
+    ?assertEqual(ok, yz_rt:search_expect(Node, Index, "text", "F*", 1)),
     CT = {content_type, "application/x-www-form-urlencoded"},
     Headers = [CT],
     Params = [{q, "text:F*"}, {wt, "json"}],

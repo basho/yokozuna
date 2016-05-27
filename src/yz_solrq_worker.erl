@@ -131,7 +131,7 @@ set_hwm(_, _)  ->
     {error, bad_hwm_value}.
 
 -spec set_index(solrq_id(), index_name(), solrq_batch_min(), solrq_batch_max(),
-                solrq_batch_flush_interval()) -> 
+                solrq_batch_flush_interval()) ->
                     {ok, {solrq_batch_min(),
                          solrq_batch_max(),
                          solrq_batch_flush_interval()}}.
@@ -351,7 +351,7 @@ handle_cast(drain_complete, #state{indexqs = IndexQs} = State) ->
     NewIndexQs = dict:fold(
         fun(Index, #indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue} = IndexQ, IndexQAccum) ->
             NewIndexQ = IndexQ#indexq{
-                queue = queue:join(AuxQueue, Queue),
+                queue = queue:join(Queue, AuxQueue),
                 queue_len = QueueLen + queue:len(AuxQueue),
                 aux_queue = queue:new(),
                 draining = false

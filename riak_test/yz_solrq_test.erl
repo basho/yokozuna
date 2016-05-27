@@ -51,6 +51,13 @@
 -define(BUCKET11, {<<"solrq11">>, <<"solrq_bucket11">>}).
 -define(BUCKET12, {<<"solrq12">>, <<"solrq_bucket12">>}).
 
+-define(BUCKETS, [?BUCKET1, ?BUCKET2, ?BUCKET3, ?BUCKET4, ?BUCKET5,
+                  ?BUCKET6, ?BUCKET7, ?BUCKET8, ?BUCKET9, ?BUCKET10,
+                  ?BUCKET11, ?BUCKET12]).
+-define(INDEXES, [?INDEX1, ?INDEX2, ?INDEX3, ?INDEX4, ?INDEX5,
+                  ?INDEX6, ?INDEX7, ?INDEX8, ?INDEX9, ?INDEX10,
+                  ?INDEX11, ?INDEX12]).
+
 -define(NUM_SOLRQ, 3).
 -define(NUM_SOLRQ_HELPERS, 3).
 -define(SOLRQ_DELAYMS_MAX, 3000).
@@ -86,17 +93,10 @@ confirm() ->
     confirm_drain_fsm_timeout(Cluster),
     confirm_drain_fsm_kill(Cluster),
 
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET3, ?INDEX3),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET4, ?INDEX4),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET5, ?INDEX5),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET6, ?INDEX6),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET7, ?INDEX7),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET8, ?INDEX8),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET9, ?INDEX9),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET10, ?INDEX10),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET11, ?INDEX11),
-    ok = yz_rt:create_indexed_bucket(PBConn, Cluster, ?BUCKET12, ?INDEX12),
-
+    %% Buckets and Indexes 3 - 12.
+    [ok = yz_rt:create_indexed_bucket(PBConn, Cluster, Bucket, Index)
+     || {Bucket, Index} <- lists:zip(lists:nthtail(2, ?BUCKETS),
+                                   lists:nthtail(2, ?INDEXES))],
 
     %% confirm_requeue_undelivered must be last since it installs an interrupt
     %% that intentionally causes failures
@@ -104,8 +104,6 @@ confirm() ->
 
     confirm_no_contenttype_data(Cluster, PBConn, ?BUCKET4, ?INDEX4),
     confirm_purge_strategy(Cluster, PBConn),
-
-    %% TODO: test cancel intercept of drain
 
     yz_rt:close_pb_conns(PBConns),
     pass.

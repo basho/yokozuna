@@ -1,9 +1,8 @@
 -module(yokozuna_essential).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
-                run_bb/2,
                 search_expect/5, search_expect/6,
-                wait_for_joins/1, write_terms/2]).
+                wait_for_joins/1]).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 
@@ -14,7 +13,7 @@
 -define(INDEX_N_VAL, 4).
 -define(BUCKET, {?BUCKET_TYPE, <<"fruit">>}).
 -define(NUM_KEYS, 10000).
--define(SUCCESS, 0).
+-define(REAP_TIME_IN_MS, 10000).
 -define(CFG,
         [{riak_core,
           [
@@ -34,16 +33,16 @@
            %% handoff of primary key-value data.
            %% Set to prevent a race-condition when propagating cluster
            %% meta to newly joined nodes.
-           {handoff_rejected_max, infinity}
+           {handoff_rejected_max, infinity},
+           %% Set delete_mode on a chosen time.
+           {riak_kv, [{delete_mode, ?REAP_TIME_IN_MS}]}
           ]},
          {yokozuna,
           [
           {enabled, true},
 
            %% Perform a full check every second so that non-owned
-           %% postings are deleted promptly. This makes sure that
-           %% postings are removed concurrent to async query during
-           %% join.
+           %% postings are deleted promptly.
            {events_full_check_after, 2},
            %% Adjust batching to force flushing ASAP
            {solrq_batch_max, 1000000},
@@ -64,17 +63,20 @@ confirm() ->
             verify_non_existent_index(Cluster, <<"froot">>),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
             yz_rt:commit(Cluster, ?INDEX),
-            Ref = async_query(Cluster, YZBenchDir),
+            yz_rt:verify_num_match(Cluster, ?INDEX, ?NUM_KEYS),
             %% Verify data exists before running join
-            timer:sleep(30000),
             Cluster2 = join_rest(Cluster, Nodes),
+            rt:wait_for_cluster_service(Cluster2, riak_kv),
             rt:wait_for_cluster_service(Cluster2, yokozuna),
-            check_bb_status(wait_for(Ref)),
             verify_non_owned_data_deleted(Cluster, ?INDEX),
-            ok = test_tagging_http(Cluster),
-            ok = test_tagging_pb(Cluster),
-            KeysDeleted = delete_some_data(Cluster2, reap_sleep()),
-            verify_deletes(Cluster2, KeysDeleted, YZBenchDir),
+            wait_for_indexes(Cluster2),
+            ok = test_tagging_http(Cluster2),
+            ok = test_tagging_pb(Cluster2),
+            KeysDeleted = delete_some_data(Cluster2, ?BUCKET, ?NUM_KEYS,
+                                           ?REAP_TIME_IN_MS),
+            test_really_deleted(Cluster2, ?BUCKET, KeysDeleted),
+            yz_rt:commit(Cluster2, ?INDEX),
+            verify_deletes(Cluster2, ?INDEX, ?NUM_KEYS, KeysDeleted),
             ok = test_escaped_key(Cluster2),
             verify_unique_id(Cluster2, PBConns),
             yz_rt:close_pb_conns(PBConns),
@@ -156,15 +158,10 @@ verify_unique_id(Cluster, PBConns) ->
     O7 = riakc_obj:new(B7, Key, Val, CT),
 
     %% Associate index with bucket-types
-    Node = yz_rt:select_random(Cluster),
-    yz_rt:set_bucket_type_index(Node, T1, Index),
-    yz_rt:set_bucket_type_index(Node, T2, Index),
-    yz_rt:set_bucket_type_index(Node, T3, Index),
-    yz_rt:set_bucket_type_index(Node, T4, Index),
-    rt:wait_until_bucket_type_status(T1, active, Cluster),
-    rt:wait_until_bucket_type_status(T2, active, Cluster),
-    rt:wait_until_bucket_type_status(T3, active, Cluster),
-    rt:wait_until_bucket_type_status(T4, active, Cluster),
+    yz_rt:set_bucket_type_index(Cluster, T1, Index),
+    yz_rt:set_bucket_type_index(Cluster, T2, Index),
+    yz_rt:set_bucket_type_index(Cluster, T3, Index),
+    yz_rt:set_bucket_type_index(Cluster, T4, Index),
 
     lager:info("Write 4 objects, verify query result"),
     {ok, O1R} = riakc_pb_socket:put(?RC(PBConns), O1, [return_body]),
@@ -270,24 +267,30 @@ http_get({Host, Port}, {BType, BName}, Key) ->
     {ok, "200", _, _} = ibrowse:send_req(URL, Headers, get, [], []),
     ok.
 
+test_really_deleted(Cluster, Bucket, DelKeys) ->
+    lager:info("Test if keys really deleted from riak"),
+    ANode = yz_rt:select_random(Cluster),
+    rt:pbc_really_deleted(rt:pbc(ANode), Bucket, DelKeys).
+
 test_tagging_http(Cluster) ->
     lager:info("Test tagging http"),
     HP = hd(host_entries(rt:connection_info(Cluster))),
+    ANode = yz_rt:select_random(Cluster),
     ok = write_with_tag_http(HP),
-    %% TODO: the test fails if this sleep isn't here
-    timer:sleep(5000),
-    true = search_expect(HP, <<"tagging_http">>, "user_s", "rzezeski", 1),
-    true = search_expect(HP, <<"tagging_http">>, "desc_t", "description", 1),
-    ok.
+    Index = <<"tagging_http">>,
+    yz_rt:commit(Cluster, Index),
+    ok = search_expect(ANode, Index, "user_s", "rzezeski", 1),
+    ok = search_expect(ANode, Index, "desc_t", "description", 1).
 
 test_tagging_pb(Cluster) ->
     lager:info("Test tagging pb"),
     HP = hd(host_entries(rt:connection_info(Cluster))),
+    ANode = yz_rt:select_random(Cluster),
     ok = write_with_tag_pb(HP),
-    timer:sleep(5000),
-    true = search_expect(HP, <<"tagging_pb">>, "user_s", "rzezeski", 1),
-    true = search_expect(HP, <<"tagging_pb">>, "desc_t", "description", 1),
-    ok.
+    Index = <<"tagging_pb">>,
+    yz_rt:commit(Cluster, Index),
+    ok = search_expect(ANode, Index, "user_s", "rzezeski", 1),
+    ok = search_expect(ANode, Index, "desc_t", "description", 1).
 
 write_with_tag_http({Host, Port}) ->
     lager:info("Tag the object tagging/test (http)"),
@@ -321,40 +324,6 @@ write_with_tag_pb({Host, Port}) ->
     riakc_pb_socket:stop(Pid),
     ok.
 
-async_query(Cluster, YZBenchDir) ->
-    lager:info("Run async query against cluster ~p", [Cluster]),
-    Hosts = host_entries(rt:connection_info(Cluster)),
-    Concurrent = length(Hosts),
-    Operations = [{{random_fruit_search, <<"_yz_id">>, 3, ?NUM_KEYS}, 1}],
-    Cfg = [{mode, {rate,8}},
-           {duration, 2},
-           {concurrent, Concurrent},
-           {code_paths, [YZBenchDir]},
-           {driver, yz_driver},
-           {operations, Operations},
-           {http_conns, Hosts},
-           {pb_conns, []},
-           {bucket, ?BUCKET},
-           {index, ?INDEX},
-           {shutdown_on_error, true}],
-    File = "bb-query-fruit",
-    write_terms(File, Cfg),
-    run_bb(async, File).
-
-check_bb_status({Status,_}) ->
-    %% If we see an error, it'll be helpful to have the basho bench output here
-    %% in the riak_test log, since otherwise it may get wiped off of the build
-    %% machines before we get a chance to investigate the failure.
-    case Status of
-        ?SUCCESS ->
-            ok;
-        _ ->
-            lager:info("basho_bench returned error status ~p", [Status]),
-            lager:info("basho_bench log dump follows:"),
-            dump_bb_logs(),
-            ?assertEqual(?SUCCESS, Status)
-    end.
-
 dump_bb_logs() ->
     Logs = filelib:wildcard("/tmp/yz-bb-results/current/*.log"),
     lists:foreach(fun dump_log/1, Logs).
@@ -374,18 +343,18 @@ dump_file(File) ->
             dump_file(File)
     end.
 
-delete_key(Cluster, Key) ->
+delete_key(Cluster, Bucket, Key) ->
     Node = yz_rt:select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
-    C:delete(?BUCKET, Key).
+    ok = C:delete(Bucket, Key).
 
-delete_some_data(Cluster, ReapSleep) ->
-    Keys = yz_rt:random_keys(?NUM_KEYS),
+delete_some_data(Cluster, Bucket, NumKeys, ReapSleep) ->
+    Keys = lists:usort(yz_rt:random_keys(NumKeys)),
     lager:info("Deleting ~p keys", [length(Keys)]),
-    [delete_key(Cluster, K) || K <- Keys],
-    lager:info("Sleeping ~ps to allow for reap", [ReapSleep]),
-    timer:sleep(timer:seconds(ReapSleep)),
+    [ok = delete_key(Cluster, Bucket, K) || K <- Keys],
+    lager:info("Sleeping ~ps to allow for reap", [ReapSleep/1000]),
+    timer:sleep(ReapSleep),
     Keys.
 
 -spec join([node()], pos_integer()) -> [node()].
@@ -404,53 +373,34 @@ read_schema(YZBenchDir) ->
     {ok, RawSchema} = file:read_file(Path),
     RawSchema.
 
-reap_sleep() ->
-    %% NOTE: This is hardcoded to 5s now but if this test ever allows
-    %%       configuation of deletion policy then this should be
-    %%       calculated.
-    10.
-
 setup_indexing(Cluster, PBConns, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     PBConn = yz_rt:select_random(PBConns),
 
-    yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
+    yz_rt:create_bucket_type(Cluster, ?BUCKET_TYPE),
 
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
-    ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
-    ok = yz_rt:create_index(Node, <<"tagging_http">>),
-    ok = yz_rt:create_index(Node, <<"tagging_pb">>),
-    ok = yz_rt:create_index(Node, <<"escaped">>),
-    ok = yz_rt:create_index(Node, <<"unique">>),
+    ok = yz_rt:create_index(Cluster, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
+    ok = yz_rt:create_index(Cluster, <<"tagging_http">>),
+    ok = yz_rt:create_index(Cluster, <<"tagging_pb">>),
+    ok = yz_rt:create_index(Cluster, <<"escaped">>),
+    ok = yz_rt:create_index(Cluster, <<"unique">>),
 
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging_http">>}, <<"tagging_http">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"tagging_pb">>}, <<"tagging_pb">>),
     yz_rt:set_index(Node, {?BUCKET_TYPE, <<"escaped">>}, <<"escaped">>).
 
-verify_deletes(Cluster, KeysDeleted, YZBenchDir) ->
+wait_for_indexes(Cluster) ->
+    ok = yz_rt:wait_for_index(Cluster, ?INDEX),
+    ok = yz_rt:wait_for_index(Cluster, <<"tagging_http">>),
+    ok = yz_rt:wait_for_index(Cluster, <<"tagging_pb">>),
+    ok = yz_rt:wait_for_index(Cluster, <<"escaped">>),
+    ok = yz_rt:wait_for_index(Cluster, <<"unique">>).
+
+verify_deletes(Cluster, Index, NumKeys, KeysDeleted) ->
     NumDeleted = length(KeysDeleted),
     lager:info("Verify ~p keys were deleted", [NumDeleted]),
-    Hosts = host_entries(rt:connection_info(Cluster)),
-    Concurrent = length(Hosts),
-    Apple = {search,"apple","id",?NUM_KEYS - NumDeleted},
-
-    Cfg = [{mode, max},
-           {duration, 1},
-           {concurrent, Concurrent},
-           {driver, yz_driver},
-           {code_paths, [YZBenchDir]},
-           {operations, [{Apple,1}]},
-           {http_conns, Hosts},
-           {pb_conns, []},
-           {bucket, ?BUCKET},
-           {index, ?INDEX},
-           {shutdown_on_error, true}],
-    File = "bb-verify-deletes",
-    write_terms(File, Cfg),
-    check_bb_status(run_bb(sync, File)).
-
-wait_for(Ref) ->
-    rt:wait_for_cmd(Ref).
+    yz_rt:verify_num_match(Cluster, Index, NumKeys - NumDeleted).
