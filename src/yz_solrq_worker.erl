@@ -759,7 +759,7 @@ maybe_unblock_vnodes(#state{pending_vnodes = PendingVnodes} = State) ->
         true ->
             State;
         _ ->
-            _ = [gen_server:reply(From, unblocked) || From <- PendingVnodes],
+            _ = [gen_server:reply(From, ok) || From <- PendingVnodes],
             State#state{pending_vnodes = []}
     end.
 
