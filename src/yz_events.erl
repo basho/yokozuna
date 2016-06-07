@@ -103,7 +103,7 @@ handle_info(tick, S) ->
     IsFullCheck = (NumTicks == ?NUM_TICKS_START),
     DidHashChange = PrevHash /= CurrHash,
 
-    ok = ?MAYBE(yz_solr:is_up() andalso (IsFullCheck orelse DidHashChange),
+    ok = ?MAYBE(IsFullCheck orelse DidHashChange,
                 sync_indexes()),
 
     ok = ?MAYBE(IsFullCheck,
