@@ -34,14 +34,19 @@ find_startup_wait_log([]) ->
 find_startup_wait_log([{Path, Port}|Rest]) ->
     case re:run(Path, "console\.log$") of
         {match, _} ->
+            lager:info("Searching console log ~p ...", [Path]),
             find_line(Port, file:read_line(Port));
         nomatch ->
             find_startup_wait_log(Rest)
     end.
 
+find_line(_Port, eof) ->
+    lager:info("Reached EOF but did not find timeout log entry."),
+    false;
 find_line(Port, {ok, Data}) ->
     case re:run(Data, "solr didn't start in alloted time") of
         {match, _} ->
+            lager:info("Found timeout log entry."),
             true;
         nomatch ->
             find_line(Port, file:read_line(Port))

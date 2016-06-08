@@ -18,24 +18,31 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc Functionality related to events.  This is the single producer of
-%% writes to the ETS table `yz_events'.
-%%
-%% NOTE: Store the raw ring in the state because that is what is being
-%%       delivered during a ring event.
+%% @doc Functionality related to events. This is the single producer of
+%%      writes to the ETS table `yz_events'.
 
 -module(yz_events).
--behavior(gen_server).
--compile(export_all).
+-behavior(gen_event).
+
+%% API
+-export([start_link/0,
+         add_guarded_handler/2]).
+
+%% gen_event callbacks
 -export([code_change/3,
-         handle_call/3,
-         handle_cast/2,
+         handle_call/2,
+         handle_event/2,
          handle_info/2,
          init/1,
          terminate/2]).
+
+%% other
+-export([create_table/0]).
+
 -include("yokozuna.hrl").
 
 -define(NUM_TICKS_START, 1).
+-define(ETS, ets_yz_events).
 
 -record(state, {
           %% The number of ticks since the last time this value was
@@ -50,7 +57,6 @@
           prev_index_hash = undefined   :: term()
          }).
 
-
 -define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
 -define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
 
@@ -59,7 +65,13 @@
 %%%===================================================================
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_event:start_link({local, ?MODULE}).
+
+%% Call into riak_core's guarded event handler flow, which spawns a
+%% supervised child process for which this is wrapped by a
+%% riak_core_eventhandler_guard to persist the event handler.
+add_guarded_handler(Handler, Args) ->
+    riak_core:add_guarded_event_handler(?MODULE, Handler, Args).
 
 %%%===================================================================
 %%% Callbacks
@@ -69,8 +81,20 @@ init([]) ->
     ok = set_tick(),
     {ok, #state{}}.
 
-handle_cast(Msg, _S) ->
-    ?WARN("unknown message ~p", [Msg]).
+handle_event({FuseName, blown}, S) ->
+    Index = yz_fuse:index_for_fuse_name(FuseName),
+    cache_index_state(Index, down),
+    {ok, S};
+handle_event({FuseName, ok}, S) ->
+    Index = yz_fuse:index_for_fuse_name(FuseName),
+    cache_index_state(Index, up),
+    {ok, S};
+handle_event({FuseName, removed}, S) ->
+    Index = yz_fuse:index_for_fuse_name(FuseName),
+    cache_index_state(Index, removed),
+    {ok, S};
+handle_event(_Msg, S) ->
+    {ok, S}.
 
 handle_info(tick, S) ->
     PrevHash = S#state.prev_index_hash,
@@ -79,7 +103,7 @@ handle_info(tick, S) ->
     IsFullCheck = (NumTicks == ?NUM_TICKS_START),
     DidHashChange = PrevHash /= CurrHash,
 
-    ok = ?MAYBE(yz_solr:is_up() andalso (IsFullCheck orelse DidHashChange),
+    ok = ?MAYBE(IsFullCheck orelse DidHashChange,
                 sync_indexes()),
 
     ok = ?MAYBE(IsFullCheck,
@@ -90,11 +114,11 @@ handle_info(tick, S) ->
     NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
     S2 = S#state{num_ticks=NumTicks2,
                  prev_index_hash=CurrHash},
-    {noreply, S2}.
+    {ok, S2}.
 
-handle_call(Req, _, S) ->
+handle_call(Req, S) ->
     ?WARN("unexpected request ~p", [Req]),
-    {noreply, S}.
+    {ok, ok, S}.
 
 code_change(_, S, _) ->
     {ok, S}.
@@ -106,12 +130,24 @@ terminate(_Reason, _S) ->
 %%% Private
 %%%===================================================================
 
+%% @doc Called by {@link yz_general_sup} to create the p ETS table used to
+%% track registered events. Created when we add the handler after the supervisor
+%% is already up for yz_events.
+-spec create_table() -> ok.
+create_table() ->
+    _ = ets:new(?ETS, [named_table, public, set,
+                          {write_concurrency, true},
+                          {read_concurrency, true},
+                          {keypos, 1}]),
+    ok.
+
 -spec add_index(index_name()) -> ok.
 add_index(Name) ->
     case yz_index:exists(Name) of
         true -> ok;
         false -> ok = yz_index:local_create(Name)
-    end.
+    end,
+    yz_fuse:create(Name).
 
 -spec add_indexes(index_set()) -> ok.
 add_indexes(Names) ->
@@ -163,7 +199,9 @@ maybe_log({Index, Removed}) ->
 -spec remove_index(index_name()) -> ok.
 remove_index(Name) ->
     case yz_solr:ping(Name) of
-        true -> ok = yz_index:local_remove(Name);
+        true ->
+            ok = yz_index:local_remove(Name),
+            yz_fuse:remove(Name);
         _ -> ok
     end.
 
@@ -234,3 +272,32 @@ sync_indexes() ->
 sync_indexes(Removed, Added, Same) ->
     ok = remove_indexes(Removed),
     ok = add_indexes(Added ++ Same).
+
+%% @private
+%% @doc Check and update `yz_events' ETS if the index has recovered from it's
+%%      fuse being blown or has been reset/removed.
+-spec cache_index_state(index_name(), down|removed|up) -> true.
+cache_index_state(Index, down) ->
+    Entry = ets:lookup(?ETS, Index),
+    case proplists:get_value(Index, Entry) of
+        {state, down} ->
+            ok;
+        {state, up} ->
+            yz_solrq:blown_fuse(Index),
+            yz_stat:fuse_blown(Index),
+            ets:insert(?ETS, {Index, {state, down}});
+        undefined ->
+            ets:insert(?ETS, {Index, {state, down}})
+    end;
+cache_index_state(Index, removed) ->
+    ets:delete(?ETS, Index);
+cache_index_state(Index, up) ->
+    Recovered = ets:lookup(?ETS, Index),
+    case proplists:get_value(Index, Recovered, []) of
+        {state, down} ->
+            yz_solrq:healed_fuse(Index),
+            yz_stat:fuse_recovered(Index),
+            ets:insert(?ETS, {Index, {state, up}});
+        _ ->
+            ets:insert(?ETS, {Index, {state, up}})
+    end.
