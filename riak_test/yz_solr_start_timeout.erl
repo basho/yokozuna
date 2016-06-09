@@ -35,7 +35,10 @@ find_startup_wait_log([{Path, Port}|Rest]) ->
     case re:run(Path, "console\.log$") of
         {match, _} ->
             lager:info("Searching console log ~p ...", [Path]),
-            find_line(Port, file:read_line(Port));
+            case find_line(Port, file:read_line(Port)) of
+                true -> true;
+                _ -> find_startup_wait_log(Rest)
+            end;
         nomatch ->
             find_startup_wait_log(Rest)
     end.
