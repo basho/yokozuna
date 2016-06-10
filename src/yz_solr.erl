@@ -33,7 +33,7 @@
                        {delete_index, deleteIndex},
                        {delete_data_dir, deleteDataDir}]).
 -define(FIELD_ALIASES, [{continuation, continue},
-                        {limit, n}]).
+                        {limit,n}]).
 -define(CURSOR_FIELD_ALIASES, [{continuation, cursorMark},
                         {limit, rows}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
