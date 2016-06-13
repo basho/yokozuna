@@ -107,7 +107,7 @@ put_restaurant(Pid, Bucket, Key, Restaurant) ->
 
 verify_field_faceting(Cluster, Index) ->
     HP = yz_rt:host_port(Cluster),
-    Params = [{facet, true}, {'facet.field', state}],
+    Params = [{facet, true}, {'facet.field', state}, {'facet.mincount', 3}],
     lager:info("Field faceting: ~p, ~p, ~p", [HP, Index, Params]),
     {ok, "200", _Hdr, Res} = yz_rt:search(HP, Index, "name", "*", Params),
     Struct = mochijson2:decode(Res),
@@ -120,15 +120,24 @@ verify_field_faceting(Cluster, Index) ->
                             <<"facet_fields">>,
                             <<"state">>],
                            Struct),
-    ?assertEqual([<<"Ohio">>,4,<<"Kentucky">>,1], StateCounts).
+    %% We expect to see all 4 Ohio restaurants in the search results, but none
+    %% of the Kentucky restaurants because there is only one in the test data
+    %% set, and facet.mincount is set to 3.
+    ?assertEqual([<<"Ohio">>,4], StateCounts).
 
 -define(PRICE_RANGE_1, <<"price:[1 TO 29]">>).
 -define(PRICE_RANGE_2, <<"price:[30 TO 100]">>).
 verify_query_faceting(Cluster, Index) ->
     HP = yz_rt:host_port(Cluster),
     Params = [{facet, true},
+              {'facet.mincount', 1},
               {'facet.query', "price:[1 TO 29]"},
               {'facet.query', "price:[30 TO 100]"}],
+    %% Verify 10 times because of non-determinism in coverage
+    [verify_query_facets(HP, Index, Params) || _ <- lists:seq(1, 10)],
+    ok.
+
+verify_query_facets(HP, Index, Params) ->
     lager:info("Query faceting: ~p, ~p, ~p", [HP, Index, Params]),
     {ok, "200", _Hdr, Res} = yz_rt:search(HP, Index, "state", "Ohio", Params),
     Struct = mochijson2:decode(Res),
