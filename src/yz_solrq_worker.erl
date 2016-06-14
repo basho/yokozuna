@@ -651,7 +651,7 @@ purge_idx(_, ?PURGE_NONE, State) ->
     {State, 0};
 purge_idx(
   {Index,
-   #indexq{queue_len=QueueLen, queue=OldQueue, aux_queue=OldAuxQueue}=IndexQ
+   #indexq{queue=OldQueue, aux_queue=OldAuxQueue}=IndexQ
   },
   ?PURGE_ONE,
   #state{all_queue_len=AllQueueLen} = State) ->
@@ -659,11 +659,11 @@ purge_idx(
     NewIndexQ =
         case OldAuxQueueLen > 0 of
             true ->
-                {{value, _Item}, NewAuxQueue} = queue:out(OldAuxQueue),
+                NewAuxQueue = maybe_pop_queue(OldAuxQueue),
                 IndexQ#indexq{aux_queue=NewAuxQueue};
             _ ->
-                {{value, _Item}, NewQueue} = queue:out(OldQueue),
-                IndexQ#indexq{queue=NewQueue, queue_len=QueueLen - 1}
+                NewQueue = maybe_pop_queue(OldQueue),
+                IndexQ#indexq{queue=NewQueue, queue_len=queue:len(NewQueue)}
         end,
     ?DEBUG("Removing item from queue because we have hit the high"
            " watermark and the fuse is blown for index ~p, using"
@@ -684,6 +684,12 @@ purge_idx({Index, #indexq{queue_len=QueueLen, aux_queue=AuxQueue}=IndexQ},
     {update_indexq(
        Index, NewIndexQ, State#state{all_queue_len = AllQueueLen - NumPurged}),
      NumPurged}.
+
+maybe_pop_queue(Queue) ->
+    case queue:out(Queue) of
+        {{value, _Item}, NewQueue} -> NewQueue;
+        {empty, _Queue} -> Queue
+    end.
 
 %% @doc Request a worker to pull the queue
 maybe_request_worker(Index, #indexq{batch_min = Min} = IndexQ) ->

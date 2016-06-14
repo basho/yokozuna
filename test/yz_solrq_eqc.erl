@@ -216,13 +216,14 @@ prop_ok() ->
 
 setup() ->
     %% Todo: Try trapping lager_msg:new/4 instead
-    %% meck:new(lager, [passthrough]),
-    %% meck:expect(lager, log, fun(_,_,Fmt,Args) ->
-    %%                                 io:format(user, "LAGER: " ++ Fmt, Args)
+    meck:new(lager, [passthrough]),
+    meck:expect(lager, log,
+        fun(_, _, Fmt, Args) ->
+            io:format(user, "LAGER: " ++ Fmt, Args)
+        end),
     application:start(syntax_tools),
     application:start(compiler),
     application:start(goldrush),
-    application:start(lager),
 
     yz_solrq:set_solrq_worker_tuple(1), % for yz_solrq_sup:regname
     yz_solrq:set_solrq_helper_tuple(1), % for yz_solrq_helper_sup:regname
@@ -293,7 +294,6 @@ cleanup() ->
 
     catch application:stop(fuse),
 
-    catch application:stop(lager),
     catch application:stop(goldrush),
     catch application:stop(compiler),
     catch application:stop(syntax_tools),
@@ -567,13 +567,13 @@ drain([P | Rest] = _Partitions) ->
                 {error, Info}
         after 10000 ->
             erlang:demonitor(Reference),
-            lager:error("Warning!  Drain timed out.  Cancelling..."),
+            %lager:error("Warning!  Drain timed out.  Cancelling..."),
             yz_solrq_drain_fsm:cancel(),
             {error, timeout}
         end
     catch
         _:badarg ->
-            lager:error("Error! Drain in progress."),
+            %lager:error("Error! Drain in progress."),
             {error, in_progress}
     end,
     timer:sleep(500),

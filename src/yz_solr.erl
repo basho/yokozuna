@@ -211,7 +211,11 @@ index(Core, Docs, DelOps) ->
     end.
 
 index_batch(Core, Ops) ->
-    JSON = mochijson2:encode({struct, Ops}),
+    JSON = try
+               mochijson2:encode({struct, Ops})
+           catch _:E ->
+               throw({"Failed to encode ops", bad_data, E})
+           end,
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
