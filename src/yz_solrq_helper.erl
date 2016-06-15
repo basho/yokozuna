@@ -295,16 +295,19 @@ send_solr_ops_for_entries(Index, Ops, Entries) ->
             Trace = erlang:get_stacktrace(),
             ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
             case Err of
-                {_, badrequest, _} ->
-                    SuccessOps = send_solr_single_ops(Index, Ops),
-                    {SuccessEntries, _} = lists:split(length(SuccessOps),
-                                                      Entries),
-                    {ok, SuccessEntries};
+                {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
+                    handle_bad_entries(Index, Ops, Entries);
                 _ ->
+                    ?ERROR("Updating a batch of Solr operations failed for index ~p with error ~p", [Index, Err]),
                     yz_fuse:melt(Index),
                     {error, {Err, Trace}}
             end
     end.
+
+handle_bad_entries(Index, Ops, Entries) ->
+    SuccessOps = send_solr_single_ops(Index, Ops),
+    {SuccessEntries, _} = lists:split(length(SuccessOps), Entries),
+    {ok, SuccessEntries}.
 
 %% @doc If solr batch fails on a `400' bad request, then retry individual ops
 %%      in the batch that would/should have passed.
@@ -326,14 +329,17 @@ send_solr_single_ops(Index, Ops) ->
                   yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
                   true
               catch _:Err ->
+                      %% TODO This results in double counting index failures when
+                      %% we get a bad request back from Solr.
+                      %% We should probably refine our stats so that
+                      %% they differentiate between bad data and Solr going wonky
                       yz_stat:index_fail(),
-                      Trace = erlang:get_stacktrace(),
-                      ?DEBUG("update for index ~s failed - ~p\n : ~p\n",
-                             [Index, Err, Trace]),
                       case Err of
-                          {_, badrequest, _} ->
+                          {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
+                              ?ERROR("Updating a single Solr operation failed for index ~p with bad request.", [Index]),
                               true;
                           _ ->
+                              ?ERROR("Updating a single Solr operation failed for index ~p with error ~p", [Index, Err]),
                               yz_fuse:melt(Index),
                               false
                       end
