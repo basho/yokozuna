@@ -199,8 +199,8 @@
 %%      parameter exercises flow control between Riak and the Riak
 %%      Search batching subsystem if writes into Solr start to fall behind.
 {mapping, "search.queue.high_watermark", "yokozuna.solrq_hwm", [
-  {default, 0},
-  {commented, 0},
+  {default, 10},
+  {commented, 10},
   {datatype, integer},
   {validators, ["non_negative_integer"]}
 ]}.
@@ -272,10 +272,12 @@
 %% @doc When enabled, enqueued Riak objects are drained prior to an AAE
 %%      exchange, in order to minimize AAE activity, and during shutdown.
 %%      If AAE is disabled, this setting only has an effect on shutdown
-%%      behavior. Users generally have little reason to disable draining.
+%%      behavior. Enabling draining may introduce blocking of put requests
+%%      while the drain is happening, but can reduce AAE repairs when the 
+%%      High Water Mark is set higher than the default.
 {mapping, "search.queue.drain.enable", "yokozuna.solrq_drain_enable", [
-  {default, on},
-  {commented, on},
+  {default, off},
+  {commented, off},
   {datatype, flag},
   hidden
 ]}.
