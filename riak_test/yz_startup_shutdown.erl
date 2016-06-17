@@ -10,6 +10,7 @@
 -define(MAX_PIPELINE_SIZE, 9).
 -define(CONFIG,
         [{yokozuna, [{enabled, true},
+                     {?SOLRQ_DRAIN_ENABLE, true},
                      {?YZ_CONFIG_IBROWSE_MAX_SESSIONS, ?MAX_SESSIONS},
                      {?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE, ?MAX_PIPELINE_SIZE}]}]
 ).

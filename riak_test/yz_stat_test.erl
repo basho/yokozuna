@@ -35,6 +35,7 @@
         {?SOLRQ_HWM, 10},
         {?ERR_THRESH_FAIL_COUNT, 1},
         {?ERR_THRESH_RESET_INTERVAL, 3000},
+        {?SOLRQ_DRAIN_ENABLE, true},
         %% allow AAE to build trees and exchange rapidly
         {anti_entropy_tick, 1000},
         {anti_entropy_build_limit, {100, 1000}},

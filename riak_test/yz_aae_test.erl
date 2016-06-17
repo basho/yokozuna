@@ -26,6 +26,7 @@
          {yokozuna,
           [
            {enabled, true},
+           {?SOLRQ_DRAIN_ENABLE, true},
            {anti_entropy_tick, 1000},
            %% allow AAE to build trees and exchange rapidly
            {anti_entropy_build_limit, {100, 1000}},

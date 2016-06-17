@@ -669,7 +669,7 @@ wait_for_index(Cluster, Index) ->
         fun(Node) ->
                 lager:info("Waiting for index ~s to be avaiable on node ~p",
                            [Index, Node]),
-                rpc:call(Node, yz_solr, ping, [Index])
+                rpc:call(Node, yz_index, exists, [Index])
         end,
     wait_until(Cluster, IsIndexUp),
     ok.
