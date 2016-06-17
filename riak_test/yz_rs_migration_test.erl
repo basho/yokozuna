@@ -55,7 +55,8 @@
          {riak_search,
           [
            {enabled, true}
-          ]}
+          ]},
+          {yokozuna, [{?SOLRQ_DRAIN_ENABLE, true}]}
         ]).
 -define(FRUIT_BUCKET, <<"fruit">>).
 

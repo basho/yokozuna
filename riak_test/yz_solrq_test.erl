@@ -76,6 +76,7 @@
            {?SOLRQ_HWM, 1000},
            {?ERR_THRESH_FAIL_COUNT, 1},
            {?ERR_THRESH_RESET_INTERVAL, ?MELT_RESET_REFRESH},
+           {?SOLRQ_DRAIN_ENABLE, true},
            {anti_entropy, {off, []}}
           ]}]).
 
