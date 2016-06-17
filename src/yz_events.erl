@@ -97,23 +97,27 @@ handle_event(_Msg, S) ->
     {ok, S}.
 
 handle_info(tick, S) ->
-    PrevHash = S#state.prev_index_hash,
-    CurrHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
     NumTicks = S#state.num_ticks,
-    IsFullCheck = (NumTicks == ?NUM_TICKS_START),
-    DidHashChange = PrevHash /= CurrHash,
-
-    ok = ?MAYBE(IsFullCheck orelse DidHashChange,
-                sync_indexes()),
-
-    ok = ?MAYBE(IsFullCheck,
-                remove_non_owned_data(yz_cover:get_ring_used())),
-
+    CurrHash = riak_core_metadata:prefix_hash(?YZ_META_INDEXES),
+    try
+        PrevHash = S#state.prev_index_hash,
+        IsFullCheck = (NumTicks == ?NUM_TICKS_START),
+        DidHashChange = PrevHash /= CurrHash,
+        ok = ?MAYBE(IsFullCheck orelse DidHashChange, sync_indexes()),
+        ok = ?MAYBE(IsFullCheck,
+            remove_non_owned_data(yz_cover:get_ring_used()))
+    catch
+        _:E  ->
+            lager:warning(
+                "An error occurred syncronizing metadata with Solr: ~p"
+                "  An attempt will be retried after the next tick.", [E])
+    end,
     ok = set_tick(),
-
     NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
-    S2 = S#state{num_ticks=NumTicks2,
-                 prev_index_hash=CurrHash},
+    S2 = S#state{
+        num_ticks=NumTicks2,
+        prev_index_hash=CurrHash
+    },
     {ok, S2}.
 
 handle_call(Req, S) ->
