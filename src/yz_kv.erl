@@ -89,9 +89,7 @@ get(C, Bucket, Key) ->
 %% @doc calculates the hash of a riak object, returns binary
 -spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
-    Vclock = riak_object:vclock(Obj),
-    Obj2 = riak_object:set_vclock(Obj, lists:sort(Vclock)),
-    Hash = erlang:phash2(term_to_binary(Obj2)),
+    Hash = riak_object:hash(Obj),
     term_to_binary(Hash).
 
 %% @doc Get the content-type of the object.
