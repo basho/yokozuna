@@ -96,14 +96,14 @@ create_index(Cluster, BucketType, Index, Props) when is_list(Props) ->
     end,
     NvalT = {n_val, Nval},
     %% set index in props with the same name as the bucket
-    ?assertEqual(ok,
-                 riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT])),
+    _ = riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT]),
+    ?assertEqual(ok, yz_rt:wait_for_index(Cluster, Index)),
     %% Check that the index exists
     {ok, IndexData} = riakc_pb_socket:get_search_index(Pid, Index),
     ?assertEqual([{index, Index}, {schema, SchemaName}, NvalT], IndexData),
 
     %% Add the index to the bucket props
-    yz_rt:set_bucket_type_index(Node, BucketType, Index, [{n_val, Nval} | Props]),
+    yz_rt:set_bucket_type_index(Cluster, BucketType, Index, Nval),
     yz_rt:wait_for_bucket_type(Cluster, BucketType),
     riakc_pb_socket:stop(Pid),
     ok.

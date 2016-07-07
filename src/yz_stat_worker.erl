@@ -45,7 +45,7 @@ handle_call(_Req, _From, S) ->
     {reply, unexpected_req, S}.
 
 handle_cast({update, StatUpdate}, S) ->
-    yz_stat:update(StatUpdate),
+    yz_stat:perform_update(StatUpdate),
     {noreply, S};
 handle_cast(_Req, S) ->
     ?WARN("Unexpected request received ~p", [_Req]),

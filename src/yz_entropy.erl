@@ -40,7 +40,7 @@ iterate_entropy_data(Index, Filter, Fun) ->
                     Err
             end;
         _ ->
-            ?NOTICE("Can't ping Solr to start iterating over entropy data"),
+            ?NOTICE("Can't ping Solr index ~p to start iterating over entropy data", [Index]),
             not_available
     end.
 
@@ -73,7 +73,7 @@ get_entropy_data(Index, Filter) ->
         {error, {error, req_timedout}} ->
             ?ERROR("failed to iterate over entropy data due to request"
                    ++ " exceeding timeout ~b for filter params ~p",
-                   [?YZ_SOLR_REQUEST_TIMEOUT, Filter]),
+                   [?YZ_SOLR_ED_REQUEST_TIMEOUT, Filter]),
             {error, #entropy_data{more=false, pairs=[]}};
         {error, Err} ->
             ?ERROR("failed to iterate over entropy data due to request"
