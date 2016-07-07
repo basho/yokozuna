@@ -53,16 +53,11 @@ confirm() ->
             setup_indexing(Cluster, PBConns, YZBenchDir),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
             yz_rt:commit(Cluster, ?INDEX),
-
-            %% Start a query and wait for it to start
-            Ref1 = async_query(Cluster, YZBenchDir),
-            timer:sleep(30000),
-
+            yz_rt:verify_num_match(Cluster, ?INDEX, ?NUM_KEYS),
             %% Resize the ring -- size up, and make sure it completes
             lager:info("Resizing ring to ~p", [?EXPAND_SIZE]),
             submit_resize(?EXPAND_SIZE, ANode),
             ensure_ring_resized(Cluster),
-            check_status(wait_for(Ref1)),
             pass;
         {error, bb_driver_build_failed} ->
             lager:info("Failed to build the yokozuna basho_bench driver"
@@ -86,28 +81,8 @@ confirm() ->
 %%    check_status(wait_for(Ref2)),
 %%    yz_rt:close_pb_conns(PBConns),
 
-async_query(Cluster, YZBenchDir) ->
-    lager:info("Run async query against cluster ~p", [Cluster]),
-    Hosts = yz_rt:host_entries(rt:connection_info(Cluster)),
-    Concurrent = length(Hosts),
-    Operations = [{{random_fruit_search, <<"_yz_id">>, 3, ?NUM_KEYS}, 1}],
-    Cfg = [{mode, {rate,8}},
-           {duration, 2},
-           {concurrent, Concurrent},
-           {code_paths, [YZBenchDir]},
-           {driver, yz_driver},
-           {operations, Operations},
-           {http_conns, Hosts},
-           {pb_conns, []},
-           {bucket, ?BUCKET},
-           {index, ?INDEX},
-           {shutdown_on_error, true}],
-    File = "bb-query-fruit",
-    yz_rt:write_terms(File, Cfg),
-    yz_rt:run_bb(async, File).
-
-check_status({Status,_}) ->
-    ?assertEqual(?SUCCESS, Status).
+%% check_status({Status,_}) ->
+%%     ?assertEqual(?SUCCESS, Status).
 
 read_schema(YZBenchDir) ->
     Path = filename:join([YZBenchDir, "schemas", "fruit_schema.xml"]),
@@ -118,12 +93,12 @@ setup_indexing(Cluster, PBConns, YZBenchDir) ->
     Node = yz_rt:select_random(Cluster),
     PBConn = yz_rt:select_random(PBConns),
 
-    yz_rt:create_bucket_type(Node, ?BUCKET_TYPE),
+    yz_rt:create_bucket_type(Cluster, ?BUCKET_TYPE),
 
     RawSchema = read_schema(YZBenchDir),
     yz_rt:store_schema(PBConn, ?FRUIT_SCHEMA_NAME, RawSchema),
     yz_rt:wait_for_schema(Cluster, ?FRUIT_SCHEMA_NAME, RawSchema),
-    ok = yz_rt:create_index(Node, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
+    ok = yz_rt:create_index(Cluster, ?INDEX, ?FRUIT_SCHEMA_NAME, ?INDEX_N_VAL),
     yz_rt:set_index(Node, ?BUCKET, ?INDEX, ?INDEX_N_VAL).
 
 wait_for(Ref) ->

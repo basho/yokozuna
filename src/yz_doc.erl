@@ -29,12 +29,25 @@
 -define(YZ_ID_VER, "1").
 -define(YZ_ED_VER, <<"3">>).
 
+-ifdef(namespaced_types).
+-type riak_object_dict() :: dict:dict().
+-else.
+-type riak_object_dict() :: dict().
+-endif.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 add_to_doc({doc, Fields}, Field) ->
     {doc, [Field|Fields]}.
+
+%% @doc Get all doc ids for an object, possibly including docids for siblings
+-spec doc_ids(obj(), binary()) -> [binary()].
+doc_ids(RObj, Partition) ->
+    Contents = riak_object:get_contents(RObj),
+    SiblingVtags = sibling_vtags(Contents),
+    [yz_doc:doc_id(RObj, Partition, Vtag) || Vtag <- SiblingVtags].
 
 -spec doc_id(obj(), binary()) -> binary().
 doc_id(O, Partition) ->
@@ -54,26 +67,38 @@ doc_id(O, Partition, Sibling) ->
             iolist_to_binary([IODocId,?YZ_ID_SEP,Sibling])
     end.
 
-% @doc `true' if this Object has multiple contents
-has_siblings(O) -> riak_object:value_count(O) > 1.
+%% @doc grab all siblings' vtags from Object contents
+sibling_vtags(Cs) -> [get_vtag(MD) || {MD, _V} <- Cs].
+
+%% @doc count of Object contents that are siblings and not tombstones
+-spec live_siblings([{riak_object_dict(), riak_object:value()}]) -> non_neg_integer().
+live_siblings(Cs) -> length([1 || {MD, _V} <- Cs, not yz_kv:is_tombstone(MD)]).
 
 %% @doc Given an object generate the doc to be indexed by Solr.
 -spec make_docs(obj(), hash(), binary(), binary()) -> [doc()].
 make_docs(O, Hash, FPN, Partition) ->
-    [make_doc(O, Hash, Content, FPN, Partition)
-     || Content <- riak_object:get_contents(O)].
+    Contents = riak_object:get_contents(O),
+    LiveSiblings = live_siblings(Contents),
+    [make_doc(O, Hash, LiveSiblings, Content, FPN, Partition)
+     || Content <- Contents].
 
--spec make_doc(obj(), hash(), {yz_dict(), yz_dict()}, binary(), binary()) -> doc().
-make_doc(O, Hash, {MD, V}, FPN, Partition) ->
-    Vtag = get_vtag(O, MD),
-    DocId = doc_id(O, Partition, Vtag),
-    EntropyData = gen_ed(O, Hash, Partition),
-    Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
-    Fields = make_fields({DocId, Bkey, FPN,
-                          Partition, Vtag, EntropyData}),
-    ExtractedFields = extract_fields({MD, V}),
-    Tags = extract_tags(MD),
-    {doc, lists:append([Tags, ExtractedFields, Fields])}.
+-spec make_doc(obj(), hash(), non_neg_integer(), {yz_dict(), yz_dict()}, binary(),
+               binary()) -> doc().
+make_doc(O, Hash, LiveSiblings, {MD, V}, FPN, Partition) ->
+    case yz_kv:is_tombstone(MD) of
+        false ->
+            Vtag = get_vtag(MD, LiveSiblings),
+            DocId = doc_id(O, Partition, Vtag),
+            EntropyData = gen_ed(O, Hash, Partition),
+            Bkey = {yz_kv:get_obj_bucket(O), yz_kv:get_obj_key(O)},
+            Fields = make_fields({DocId, Bkey, FPN,
+                                  Partition, Vtag, EntropyData}),
+            ExtractedFields = extract_fields({MD, V}),
+            Tags = extract_tags(MD),
+            {doc, lists:append([Tags, ExtractedFields, Fields])};
+        true ->
+            {doc, [{tombstone, ?TOMBSTONE}]}
+    end.
 
 %% @private
 %% @doc encode `*' as %1, and `%' as %2. This is so we can reasonably use
@@ -106,38 +131,41 @@ make_fields({DocId, BKey, FPN, Partition, Vtag, EntropyData}) ->
     Fields = make_fields({DocId, BKey, FPN, Partition, none, EntropyData}),
     [{?YZ_VTAG_FIELD, Vtag}|Fields].
 
-%% @doc If this is a sibling, return its binary vtag
-get_vtag(O, MD) ->
-    case has_siblings(O) of
-        true -> list_to_binary(yz_kv:get_md_entry(MD, ?MD_VTAG));
+%% @doc Get vtag for MetaData entry.
+get_vtag(MD) ->
+    case yz_kv:get_md_entry(MD, ?MD_VTAG) of
+        none -> none;
+        Val -> list_to_binary(Val)
+    end.
+
+%% @doc If this is a sibling and not a tombstone val, return its binary vtag
+get_vtag(MD, LiveSiblings) ->
+    case LiveSiblings > 1 of
+        true -> get_vtag(MD);
         _ -> none
     end.
 
--spec extract_fields({obj_metadata(), term()}) ->  fields() | {error, any()}.
+-spec extract_fields({obj_metadata(), term()}) -> fields() | [{error, any()}].
 extract_fields({MD, V}) ->
-    case yz_kv:is_tombstone(MD) of
-        false ->
-            CT = yz_kv:get_obj_ct(MD),
-            ExtractorDef = yz_extractor:get_def(CT, [check_default]),
-            try
-                case yz_extractor:run(V, ExtractorDef) of
-                    {error, Reason} ->
-                        yz_stat:index_fail(),
-                        ?ERROR("failed to index fields from value with reason ~s~nValue: ~s", [Reason, V]),
-                        [{?YZ_ERR_FIELD_S, 1}];
-                    Fields ->
-                        Fields
-                end
-            catch _:Err ->
-                    yz_stat:index_fail(),
-                    Trace = erlang:get_stacktrace(),
-                    ?ERROR("failed to index fields from value with reason ~s ~p~nValue: ~s", [Err, Trace, V]),
-                    [{?YZ_ERR_FIELD_S, 1}]
-            end;
-        true ->
-            []
+    try
+        CT = yz_kv:get_obj_ct(MD),
+        ExtractorDef = yz_extractor:get_def(CT, [check_default]),
+        case yz_extractor:run(V, ExtractorDef) of
+            {error, Reason} ->
+                %% TODO is this an index failure, or should we track this with a different stat?
+                yz_stat:index_fail(),
+                ?ERROR("Failed to extract fields from value with reason ~p.  Value: ~p", [Reason, V]),
+                [{?YZ_ERR_FIELD_S, 1}];
+            Fields ->
+                Fields
+        end
+    catch _:Err ->
+            %% TODO is this an index failure, or should we track this with a different stat?
+            yz_stat:index_fail(),
+            Trace = erlang:get_stacktrace(),
+            ?ERROR("An exception occurred extracting fields from value with reason ~p. Trace: ~p.  Value: ~p", [Err, Trace, V]),
+            [{?YZ_ERR_FIELD_S, 1}]
     end.
-
 
 %% @private
 %%
@@ -192,6 +220,10 @@ strip_prefix(_) ->
     %% bad tag, silently discard
     ignore.
 
+-spec adding_docs([doc()]) -> [doc()].
+adding_docs(Docs) ->
+    [{doc, Fields} || {doc, Fields} <- Docs,
+                     not proplists:is_defined(tombstone, Fields)].
 
 %% @private
 %%
