@@ -31,6 +31,7 @@
 -define(DEFAULT_MAP, [{default, yz_noop_extractor},
                       {"application/json",yz_json_extractor},
                       {"application/riak_counter", yz_dt_extractor},
+                      {"application/riak_gset", yz_dt_extractor},
                       {"application/riak_map", yz_dt_extractor},
                       {"application/riak_set", yz_dt_extractor},
                       {"application/xml",yz_xml_extractor},
