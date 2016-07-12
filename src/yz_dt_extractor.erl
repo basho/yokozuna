@@ -72,7 +72,7 @@
          }).
 -type state() :: #state{}.
 -type field_path_name() :: undefined | {binary() | undefined, binary()}.
--type datatype() :: map | set | counter | register | flag.
+-type datatype() :: map | set | gset | counter | register | flag.
 -spec extract(binary()) -> fields() | {error, any()}.
 extract(Value) ->
     extract(Value, ?NO_OPTIONS).
@@ -98,6 +98,9 @@ extract_fields(Name0, map, Pairs, #state{field_separator=Sep}=State) ->
 extract_fields(Name0, set, Entries, #state{field_separator=Sep}=State) ->
     Name = field_name(Name0, set, Sep),
     lists:foldl(extract_set(Name), State, Entries);
+extract_fields(Name0, gset, Entries, #state{field_separator=Sep}=State) ->
+    Name = field_name(Name0, gset, Sep),
+    lists:foldl(extract_gset(Name), State, Entries);
 extract_fields(Name, counter, Value, #state{fields=Fields, field_separator=Sep}=State) ->
     FieldName = field_name(Name, counter, Sep),
     State#state{fields=[{FieldName, ?INT_TO_BIN(Value)}|Fields]};
@@ -121,6 +124,12 @@ field_name({Prefix, Name}, Type, Sep) ->
 
 -spec extract_set(binary()) -> fun((binary(), state()) -> state()).
 extract_set(Name) ->
+    fun(Elem, #state{fields=Fields}=Acc) ->
+            Acc#state{fields=[{Name, Elem}|Fields]}
+    end.
+
+-spec extract_gset(binary()) -> fun((binary(), state()) -> state()).
+extract_gset(Name) ->
     fun(Elem, #state{fields=Fields}=Acc) ->
             Acc#state{fields=[{Name, Elem}|Fields]}
     end.
