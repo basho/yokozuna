@@ -39,7 +39,8 @@
           dir=exit(dir_undefined),
           port=exit(port_undefined),
           solr_port=exit(solr_port_undefined),
-          solr_jmx_port=exit(solr_jmx_port_undefined)
+          solr_jmx_port=exit(solr_jmx_port_undefined),
+          is_up=false
          }).
 
 -define(SHUTDOWN_MSG, "INT\n").
@@ -63,6 +64,10 @@ start_link(Dir, TempDir, SolrPort, SolrJMXPort) ->
 -spec getpid() -> undefined | pos_integer().
 getpid() ->
     gen_server:call(?MODULE, getpid).
+
+-spec is_up() -> boolean().
+is_up() ->
+    gen_server:call(?MODULE, is_up).
 
 %%%===================================================================
 %%% Callbacks
@@ -123,7 +128,8 @@ handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
             %% solr finished its startup, be merry
             ?INFO("solr is up", []),
             riak_core_node_watcher:service_up(yokozuna, self()),
-            {noreply, S};
+            schedule_tick(),
+            {noreply, S#state{is_up=true}};
         false when WaitTimeSecs > 0 ->
             %% solr hasn't finished yet, keep waiting
             schedule_solr_check(WaitTimeSecs),
@@ -133,6 +139,19 @@ handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
             %% crashed and the exit message is on its way, shutdown
             {stop, "solr didn't start in alloted time", S}
     end;
+handle_info(tick, #state{is_up=IsUp} = S) ->
+    NewIsUp = yz_solr:is_up(),
+    case {IsUp, NewIsUp} of
+        {false, true} ->
+            ?INFO("Solr was down but is now up.  Notifying cluster.", []),
+            riak_core_node_watcher:service_up(yokozuna, self());
+        {true, false} ->
+            ?INFO("Solr was up but is now down.  Notifying cluster.", []),
+            riak_core_node_watcher:service_down(yokozuna);
+        _ -> ok
+    end,
+    schedule_tick(),
+    {noreply, S#state{is_up=NewIsUp}};
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
     ?INFO("solr stdout/err: ~s", [Data]),
     {noreply, S};
@@ -150,6 +169,8 @@ code_change(_, S, _) ->
     {ok, S}.
 
 terminate(_, S) ->
+    %% service_down is a gen_server:call with infinite timeout
+    spawn(fun() -> riak_core_node_watcher:service_down(yokozuna) end),
     Port = ?S_PORT(S),
     case get_pid(Port) of
         undefined ->
@@ -266,6 +287,14 @@ run_cmd(Cmd, Args) ->
 -spec schedule_solr_check(seconds()) -> reference().
 schedule_solr_check(WaitTimeSecs) ->
     erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
+
+%% @private
+%%
+%% @doc Schedule next tick to be sent to this server.
+-spec schedule_tick() -> ok.
+schedule_tick() ->
+    erlang:send_after(?YZ_SOLR_TICK_INTERVAL, self(), tick),
+    ok.
 
 %% @private
 -spec solr_startup_wait() -> seconds().

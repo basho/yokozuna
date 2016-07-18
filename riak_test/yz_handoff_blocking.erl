@@ -19,8 +19,8 @@ confirm() ->
     [Node, Node2] = Cluster = rt:deploy_nodes(2, ?CFG),
 
     %% create an index on one node and populate it with some data
-    yz_rt:create_index(Node, ?INDEX),
-    ok = yz_rt:set_bucket_type_index(Node, ?INDEX),
+    yz_rt:create_index([Node], ?INDEX),
+    ok = yz_rt:set_bucket_type_index([Node], ?INDEX),
     ConnInfo = yz_rt:connection_info([Node]),
     {Host, Port} = yz_rt:riak_http(proplists:get_value(Node, ConnInfo)),
     URL = ?FMT("http://~s:~s/types/~s/buckets/~s/keys/~s",
@@ -36,5 +36,5 @@ confirm() ->
     %% join a node
     rt:join_cluster(Cluster),
     ok = rt:wait_until_no_pending_changes(Cluster),
-
+    yz_rt:wait_for_index(Cluster, ?INDEX),
     pass.

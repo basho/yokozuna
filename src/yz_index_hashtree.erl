@@ -109,7 +109,7 @@ clear(Tree) ->
 
 %% @doc Expire the tree.
 expire(Tree) ->
-    gen_server:call(Tree, expire, infinity).
+    gen_server:cast(Tree, expire).
 
 %% @doc Terminate the `Tree'.
 stop(Tree) ->
@@ -151,7 +151,7 @@ init([Index, RPs]) ->
                        built=false,
                        expired=false,
                        path=Path},
-            S2 = init_trees(RPs, S),
+            S2 = init_trees(RPs, false, S),
 
             %% If no indexes exist then mark tree as built
             %% immediately. This allows exchange to start immediately
@@ -188,11 +188,15 @@ handle_call({update_tree, Id}, From, S) ->
     apply_tree(Id,
                fun(Tree) ->
                        {SnapTree, Tree2} = hashtree:update_snapshot(Tree),
-                       spawn_link(fun() ->
-                                          hashtree:update_perform(SnapTree),
-                                          gen_server:reply(From, ok)
-                                  end),
-                       {noreply, Tree2}
+                       Tree3 = hashtree:set_next_rebuild(Tree2, full),
+                       Self = self(),
+                       spawn_link(
+                         fun() ->
+                                 hashtree:update_perform(SnapTree),
+                                 gen_server:cast(Self, {updated, Id}),
+                                 gen_server:reply(From, ok)
+                         end),
+                       {noreply, Tree3}
                end,
                S);
 
@@ -204,10 +208,6 @@ handle_call(destroy, _From, S) ->
     S2 = destroy_trees(S),
     {stop, normal, ok, S2};
 
-handle_call(expire, _From, S) ->
-    S2 = S#state{expired=true},
-    {reply, ok, S2};
-
 handle_call(_Request, _From, S) ->
     Reply = ok,
     {reply, Reply, S}.
@@ -217,6 +217,7 @@ handle_cast(poke, S) ->
     {noreply, S2};
 
 handle_cast(build_failed, S) ->
+    lager:debug("Requeuing tree ~p", [S#state.index]),
     yz_entropy_mgr:requeue_poke(S#state.index),
     S2 = S#state{built=false},
     {noreply, S2};
@@ -240,6 +241,16 @@ handle_cast(clear, S) ->
 handle_cast(stop, S) ->
     S2 = close_trees(S),
     {stop, normal, S2};
+
+handle_cast({updated, Id}, State) ->
+    Fun = fun(Tree) ->
+              {noreply, hashtree:set_next_rebuild(Tree, incremental)}
+          end,
+    apply_tree(Id, Fun, State);
+
+handle_cast(expire, S) ->
+    S2 = S#state{expired=true},
+    {noreply, S2};
 
 handle_cast(_Msg, S) ->
     {noreply, S}.
@@ -280,11 +291,19 @@ determine_data_root() ->
             end
     end.
 
--spec init_trees([{p(),n()}], state()) -> state().
-init_trees(RPs, S) ->
-    S2 = lists:foldl(fun(Id, SAcc) ->
-                                 do_new_tree(Id, SAcc)
-                         end, S, RPs),
+%% @doc Init the trees.
+%%
+%% MarkEmpty is a boolean dictating whether we're marking the tree empty for the
+%% the first creation or just marking it open instead.
+-spec init_trees([{p(),n()}], boolean(), state()) -> state().
+init_trees(RPs, MarkEmpty, S) ->
+    S2 = lists:foldl(
+           fun(Id, SAcc) ->
+               case MarkEmpty of
+                   true  -> do_new_tree(Id, SAcc, mark_empty);
+                   false -> do_new_tree(Id, SAcc, mark_open)
+               end
+           end, S, RPs),
     S2#state{built=false, closed=false, expired=false}.
 
 -spec load_built(state()) -> boolean().
@@ -295,11 +314,10 @@ load_built(#state{trees=Trees}) ->
         _ -> false
     end.
 
--spec fold_keys(p(), tree()) -> ok.
-fold_keys(Partition, Tree) ->
+-spec fold_keys(p(), tree(), [index_name()]) -> [ok|timeout|not_available].
+fold_keys(Partition, Tree, Indexes) ->
     LI = yz_cover:logical_index(yz_misc:get_ring(transformed)),
     LogicalPartition = yz_cover:logical_partition(LI, Partition),
-    Indexes = yz_index:get_indexes_from_meta(),
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
@@ -307,20 +325,24 @@ fold_keys(Partition, Tree) ->
                 insert(async, IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
-    ok.
+    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
 
--spec do_new_tree({p(),n()}, state()) -> state().
-do_new_tree(Id, S=#state{trees=Trees, path=Path}) ->
+%% @see riak_kv_index_hashtree:do_new_tree/3
+-spec do_new_tree({p(),n()}, state(), mark_open|mark_empty) -> state().
+do_new_tree(Id, S=#state{trees=Trees, path=Path}, MarkType) ->
     Index = S#state.index,
     IdBin = tree_id(Id),
-    NewTree = case Trees of
+    NewTree0 = case Trees of
                   [] ->
                       hashtree:new({Index,IdBin}, [{segment_path, Path}]);
                   [{_,Other}|_] ->
                       hashtree:new({Index,IdBin}, Other)
-              end,
-    Trees2 = orddict:store(Id, NewTree, Trees),
+               end,
+    NewTree1 = case MarkType of
+                   mark_empty -> hashtree:mark_open_empty(Id, NewTree0);
+                   mark_open  -> hashtree:mark_open_and_check(Id, NewTree0)
+               end,
+    Trees2 = orddict:store(Id, NewTree1, Trees),
     S#state{trees=Trees2}.
 
 -spec do_get_lock(term(), pid(), state()) ->
@@ -371,14 +393,17 @@ apply_tree(Id, Fun, S=#state{trees=Trees}) ->
     end.
 
 -spec do_build_finished(state()) -> state().
-do_build_finished(S=#state{index=Index, built=_Pid}) ->
+do_build_finished(S=#state{index=Index, built=_Pid, trees=Trees0}) ->
     lager:debug("Finished YZ build: ~p", [Index]),
-    {_,Tree0} = hd(S#state.trees),
+    Trees = orddict:map(fun(_Id, Tree) ->
+                            hashtree:flush_buffer(Tree)
+                        end, Trees0),
+    {_, Tree0} = hd(Trees),
     BuildTime = yz_kv:get_tree_build_time(Tree0),
     hashtree:write_meta(<<"built">>, <<1>>, Tree0),
     hashtree:write_meta(<<"build_time">>, term_to_binary(BuildTime), Tree0),
     yz_kv:update_aae_tree_stats(Index, BuildTime),
-    S#state{built=true, build_time=BuildTime, expired=false}.
+    S#state{built=true, build_time=BuildTime, expired=false, trees=Trees}.
 
 -spec do_insert({p(),n()}, binary(), binary(), proplist(), state()) -> state().
 do_insert(Id, Key, Hash, Opts, S=#state{trees=Trees}) ->
@@ -443,7 +468,7 @@ handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
                     %% be resolved whenever trees are eventually rebuilt, either
                     %% after normal expiration or after a future unexpected value
                     %% triggers the alternate case clause above.
-                    do_new_tree(Id, S)
+                    do_new_tree(Id, S, mark_open)
             end
     end.
 
@@ -499,13 +524,13 @@ clear_tree(S=#state{index=Index}) ->
     lager:debug("Clearing YZ AAE tree: ~p", [S#state.index]),
     S2 = destroy_trees(S),
     IndexN = riak_kv_util:responsible_preflists(Index),
-    S3 = init_trees(IndexN, S2#state{trees=orddict:new()}),
+    S3 = init_trees(IndexN, true, S2#state{trees=orddict:new()}),
     ok = yz_kv:update_aae_tree_stats(Index, undefined),
     S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->
     S2 = close_trees(S),
-    {_,Tree0} = hd(S2#state.trees),
+    {_,Tree0} = hd(S#state.trees), % deliberately using state with live db ref
     hashtree:destroy(Tree0),
     S2.
 
@@ -525,10 +550,20 @@ maybe_build(S) ->
 close_trees(S=#state{trees=Trees, closed=false}) ->
     Trees2 = [begin
                   NewTree =
-                      try
-                          hashtree:flush_buffer(Tree)
-                      catch _:_ ->
-                              lager:warning("Failed to flush trees during close"),
+                      try hashtree:next_rebuild(Tree) of
+                          %% Not marking close cleanly to avoid the
+                          %% cost of a full rebuild on shutdown.
+                          full ->
+                              lager:info("Deliberately marking YZ hashtree ~p"
+                                         ++ " for full rebuild on next restart",
+                                         [IdxN]),
+                              hashtree:flush_buffer(Tree);
+                          incremental ->
+                              HT = hashtree:update_tree(Tree),
+                              hashtree:mark_clean_close(IdxN, HT)
+                      catch _:Err ->
+                              lager:warning("Failed to flush/update trees"
+                                            ++ " during close | Error: ~p", [Err]),
                               Tree
                       end,
                   {IdxN, NewTree}
@@ -552,15 +587,24 @@ build_or_rehash(Tree, Locked, Type, #state{index=Index, trees=Trees}) ->
     case {Locked, Type} of
         {true, build} ->
             lager:debug("Starting YZ AAE tree build: ~p", [Index]),
-            fold_keys(Index, Tree),
-            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
-            gen_server:cast(Tree, build_finished);
+            Indexes = yz_index:get_indexes_from_meta(),
+            FusesNotBlown = yz_fuse:check_all_fuses_not_blown(Indexes),
+            case FusesNotBlown of
+                true ->
+                    IterKeys = fold_keys(Index, Tree, Indexes),
+                    handle_iter_keys(Tree, Index, IterKeys);
+                false ->
+                    ?ERROR("YZ AAE did not run due to blown fuses/solr_cores or out-of-sync indexes."),
+                    lager:debug("YZ AAE tree build failed: ~p", [Index]),
+                    gen_server:cast(Tree, build_failed)
+            end;
         {true, rehash} ->
             lager:debug("Starting YZ AAE tree rehash: ~p", [Index]),
             _ = [hashtree:rehash_tree(T) || {_,T} <- Trees],
             lager:debug("Finished YZ AAE tree rehash: ~p", [Index]),
             gen_server:cast(Tree, build_finished);
-        {_, _} ->
+        {Locked, Type} ->
+            lager:debug("Could not build. {~p, ~p}", [Locked, Type]),
             gen_server:cast(Tree, build_failed)
     end.
 
@@ -596,7 +640,15 @@ get_all_locks(Type, Pid) ->
     %% file page cache but the bg manager stuff is kind of convoluted
     %% and there isn't time to figure this all out for 2.0. Thus,
     %% Yokozuna will not bother with the Solr lock for now.
-    ok == yz_entropy_mgr:get_lock(Type, Pid).
+    try yz_entropy_mgr:get_lock(Type, Pid) of
+        ok -> true;
+        Other ->
+            lager:debug("Could not get lock: ~p", [Other]),
+            false
+    catch exit:{timeout,_} ->
+        yz_entropy_mgr:release_lock(Pid),
+        false
+    end.
 
 %% @doc Maybe expire trees for rebuild depending on riak_core_capability
 %%      checks/changes. Used for possible upgrade path.
@@ -608,4 +660,19 @@ maybe_expire_caps_check(S) ->
         true ->
             S#state{expired=true};
         false -> S
+    end.
+
+-spec handle_iter_keys(pid(), p(), [ok|timeout|not_available|error]) -> ok.
+handle_iter_keys(Tree, Index, []) ->
+    lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+    gen_server:cast(Tree, build_finished),
+    ok;
+handle_iter_keys(Tree, Index, IterKeys) ->
+    case lists:all(fun(V) -> V == ok end, IterKeys)  of
+        true ->
+            lager:debug("Finished YZ AAE tree build: ~p", [Index]),
+            gen_server:cast(Tree, build_finished);
+        _ ->
+            lager:debug("YZ AAE tree build failed: ~p", [Index]),
+            gen_server:cast(Tree, build_failed)
     end.
