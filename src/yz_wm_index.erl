@@ -146,9 +146,9 @@ is_authorized(ReqData, Ctx) ->
 %% Uses the riak_kv,secure_referer_check setting rather
 %% as opposed to a special yokozuna-specific config
 forbidden(RD, Ctx=#ctx{security=undefined}) ->
-    {riak_kv_wm_utils:is_forbidden(RD), RD, Ctx};
+    {riak_kv_wm_utils:is_forbidden(RD, riak_search), RD, Ctx};
 forbidden(RD, Ctx=#ctx{security=Security}) ->
-    case riak_kv_wm_utils:is_forbidden(RD) of
+    case riak_kv_wm_utils:is_forbidden(RD, riak_search) of
         true ->
             {true, RD, Ctx};
         false ->
