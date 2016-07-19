@@ -145,6 +145,7 @@ expire_trees() ->
 %%%===================================================================
 
 init([]) ->
+    ok = init_throttle(0),
     Trees = get_trees_from_sup(),
     schedule_tick(),
     {_, Opts} = settings(),
@@ -502,6 +503,7 @@ tick(S) ->
     S3 = lists:foldl(fun(_,SAcc) ->
                              maybe_poke_tree(SAcc)
                      end, S2, lists:seq(1,10)),
+    update_throttle(S3),
     maybe_exchange(Ring, S3).
 
 -spec maybe_poke_tree(state()) -> state().
@@ -513,6 +515,30 @@ maybe_poke_tree(S) ->
             yz_index_hashtree:poke(Tree),
             S2
     end.
+
+%%%===================================================================
+%%% Throttling
+%%%===================================================================
+
+throttle() ->
+    riak_core_throttle:throttle(?YZ_ENTROPY_THROTTLE_KEY).
+
+init_throttle(InitialThrottle) ->
+    Limits = ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,
+    ok = riak_core_throttle:set_limits(?YZ_ENTROPY_THROTTLE_KEY, Limits),
+    ok = riak_core_throttle:set_throttle(?YZ_ENTROPY_THROTTLE_KEY,
+                                         InitialThrottle).
+
+update_throttle(State) ->
+    Load = calculate_current_load(State),
+    Throttle = riak_core_throttle:set_throttle_by_load(?YZ_ENTROPY_THROTTLE_KEY,
+                                                       Load),
+    lager:info("***** Setting throttle to ~p based on load factor ~p",
+               [Throttle, Load]),
+    Throttle.
+
+calculate_current_load(_State) ->
+    yz_solrq:queue_total_length().
 
 %%%===================================================================
 %%% Exchanging
