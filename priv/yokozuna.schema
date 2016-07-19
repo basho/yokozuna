@@ -298,6 +298,13 @@
   hidden,
   {validators, ["positive_integer"]}]}.
 
+%% @doc Whether to allow Yokozuna queries on this node
+{mapping, "async.enable.riak_search", "riak_core.job_accept_class", [
+    merge,
+    {datatype, flag},
+    {default, on}
+]}.
+
 %%===========================================================
 %% Validators
 %%===========================================================
