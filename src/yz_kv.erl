@@ -89,8 +89,7 @@ get(C, Bucket, Key) ->
 %% @doc calculates the hash of a riak object, returns binary
 -spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
-    Hash = riak_object:hash(Obj),
-    term_to_binary(Hash).
+    riak_object:hash(Obj).
 
 %% @doc Get the content-type of the object.
 -spec get_obj_ct(obj_metadata()) -> binary().
