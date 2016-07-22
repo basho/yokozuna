@@ -524,18 +524,23 @@ throttle() ->
     riak_core_throttle:throttle(?YZ_ENTROPY_THROTTLE_KEY).
 
 init_throttle(InitialThrottle) ->
-    Limits = ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,
-    ok = riak_core_throttle:set_limits(?YZ_ENTROPY_THROTTLE_KEY, Limits),
+    riak_core_throttle:init(?YZ_ENTROPY_THROTTLE_KEY,
+                            ?YZ_APP_NAME,
+                            {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
+                             ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
+                            {?YZ_ENTROPY_THROTTLE_KILL_KEY, false}),
     ok = riak_core_throttle:set_throttle(?YZ_ENTROPY_THROTTLE_KEY,
                                          InitialThrottle).
 
 update_throttle(State) ->
-    Load = calculate_current_load(State),
-    Throttle = riak_core_throttle:set_throttle_by_load(?YZ_ENTROPY_THROTTLE_KEY,
-                                                       Load),
-    lager:info("***** Setting throttle to ~p based on load factor ~p",
-               [Throttle, Load]),
-    Throttle.
+    case riak_core_throttle:is_throttle_enabled(?YZ_ENTROPY_THROTTLE_KEY) of
+        true ->
+            Load = calculate_current_load(State),
+            riak_core_throttle:set_throttle_by_load(?YZ_ENTROPY_THROTTLE_KEY,
+                                                    Load);
+        false ->
+            ok
+    end.
 
 calculate_current_load(_State) ->
     yz_solrq:queue_total_length().
