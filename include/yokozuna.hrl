@@ -285,6 +285,20 @@
 
 -define(NO_OPTIONS, []).
 
+%% NOTE: The map is treated as an orddict so these entries must be
+%%       ordered correctly or `get_def' may report no extractor is
+%%       registered when there is one.
+-define(DEFAULT_MAP, [{default, yz_noop_extractor},
+                      {"application/json",yz_json_extractor},
+                      {"application/riak_counter", yz_dt_extractor},
+                      {"application/riak_map", yz_dt_extractor},
+                      {"application/riak_set", yz_dt_extractor},
+                      {"application/xml",yz_xml_extractor},
+                      {"text/plain",yz_text_extractor},
+                      {"text/xml",yz_xml_extractor}
+                     ]).
+-define(META_EXTRACTOR_MAP, yokozuna_extractor_map).
+
 %%%===================================================================
 %%% Logging
 %%%===================================================================

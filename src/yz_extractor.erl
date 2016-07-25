@@ -25,21 +25,6 @@
 -type register_opts() :: [overwrite].
 -type get_def_opts() :: [check_default].
 
-%% NOTE: The map is treated as an orddict so these entries must be
-%%       ordered correctly or `get_def' may report no extractor is
-%%       registered when there is one.
--define(DEFAULT_MAP, [{default, yz_noop_extractor},
-                      {"application/json",yz_json_extractor},
-                      {"application/riak_counter", yz_dt_extractor},
-                      {"application/riak_map", yz_dt_extractor},
-                      {"application/riak_set", yz_dt_extractor},
-                      {"application/xml",yz_xml_extractor},
-                      {"text/plain",yz_text_extractor},
-                      {"text/xml",yz_xml_extractor}
-                     ]).
--define(META_EXTRACTOR_MAP, yokozuna_extractor_map).
-
-
 %% @doc Get the extractor definition registered for the given
 %%      `MimeType'.  Return `none' if there is nothing registered.
 -spec get_def(mime_type()) -> extractor_def() | none.
