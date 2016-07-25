@@ -22,12 +22,21 @@ set_test() ->
 
     valid_extraction(Result, Expect).
 
+
 %% Test hll extract
 hll_test() ->
     HllBin = binary_crdt(hll),
     Result = yz_dt_extractor:extract(HllBin),
     Expect = [{<<"hll">>, <<"9">>}],
+    valid_extraction(Result, Expect).
 
+%% Test gset extract
+gset_test() ->
+    SetBin = binary_crdt(gset),
+    Result = yz_dt_extractor:extract(SetBin),
+    Expect = [{<<"gset">>, <<"Dublin">>},
+              {<<"gset">>, <<"Tel Aviv">>},
+              {<<"gset">>, <<"Stoke-on-Trent">>}],
     valid_extraction(Result, Expect).
 
 %% Test map extract
@@ -87,6 +96,11 @@ raw_type(set) ->
     ?SET_TYPE(
        element(2,?SET_TYPE:update({add_all, [<<"Riak">>, <<"Cassandra">>, <<"Voldemort">>]},
                                   <<0>>, ?SET_TYPE:new()))
+      );
+raw_type(gset) ->
+    ?GSET_TYPE(
+       element(2,?GSET_TYPE:update({add_all, [<<"Dublin">>, <<"Tel Aviv">>, <<"Stoke-on-Trent">>]},
+                                  nil, ?GSET_TYPE:new()))
       );
 raw_type(counter) ->
     ?COUNTER_TYPE(
