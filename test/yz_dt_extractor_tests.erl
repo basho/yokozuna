@@ -22,6 +22,21 @@ set_test() ->
 
     valid_extraction(Result, Expect).
 
+%% Test gset extract
+gset_test() ->
+    SetBin = binary_crdt(gset),
+    Result = yz_dt_extractor:extract(SetBin),
+    Expect = [{<<"gset">>, <<"Dublin">>},
+              {<<"gset">>, <<"Tel Aviv">>},
+              {<<"gset">>, <<"Stoke-on-Trent">>}],
+
+  file:write_file(
+    "/tmp/plop",
+    io_lib:format("~p ~p " , [ Result,Expect])
+  ),
+
+    valid_extraction(Result, Expect).
+
 %% Test map extract
 map_test() ->
     MapBin = binary_crdt(map),
@@ -79,6 +94,11 @@ raw_type(set) ->
     ?SET_TYPE(
        element(2,?SET_TYPE:update({add_all, [<<"Riak">>, <<"Cassandra">>, <<"Voldemort">>]},
                                   <<0>>, ?SET_TYPE:new()))
+      );
+raw_type(gset) ->
+    ?GSET_TYPE(
+       element(2,?GSET_TYPE:update({add_all, [<<"Dublin">>, <<"Tel Aviv">>, <<"Stoke-on-Trent">>]},
+                                  nil, ?GSET_TYPE:new()))
       );
 raw_type(counter) ->
     ?COUNTER_TYPE(
