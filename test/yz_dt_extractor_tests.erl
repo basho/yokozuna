@@ -29,12 +29,6 @@ gset_test() ->
     Expect = [{<<"gset">>, <<"Dublin">>},
               {<<"gset">>, <<"Tel Aviv">>},
               {<<"gset">>, <<"Stoke-on-Trent">>}],
-
-  file:write_file(
-    "/tmp/plop",
-    io_lib:format("~p ~p " , [ Result,Expect])
-  ),
-
     valid_extraction(Result, Expect).
 
 %% Test map extract
