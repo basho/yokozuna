@@ -521,22 +521,26 @@ maybe_poke_tree(S) ->
 %%%===================================================================
 
 throttle() ->
-    riak_core_throttle:throttle(?YZ_ENTROPY_THROTTLE_KEY).
+    riak_core_throttle:throttle(?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY).
 
 init_throttle(InitialThrottle) ->
-    riak_core_throttle:init(?YZ_ENTROPY_THROTTLE_KEY,
-                            ?YZ_APP_NAME,
+    riak_core_throttle:init(?YZ_APP_NAME,
+                            ?YZ_ENTROPY_THROTTLE_KEY,
                             {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
                              ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
                             {?YZ_ENTROPY_THROTTLE_KILL_KEY, false}),
-    ok = riak_core_throttle:set_throttle(?YZ_ENTROPY_THROTTLE_KEY,
+    ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
+                                         ?YZ_ENTROPY_THROTTLE_KEY,
                                          InitialThrottle).
 
 update_throttle(State) ->
-    case riak_core_throttle:is_throttle_enabled(?YZ_ENTROPY_THROTTLE_KEY) of
+    Enabled = riak_core_throttle:is_throttle_enabled(?YZ_APP_NAME,
+                                                     ?YZ_ENTROPY_THROTTLE_KEY),
+    case Enabled of
         true ->
             Load = calculate_current_load(State),
-            riak_core_throttle:set_throttle_by_load(?YZ_ENTROPY_THROTTLE_KEY,
+            riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
+                                                    ?YZ_ENTROPY_THROTTLE_KEY,
                                                     Load);
         false ->
             ok
