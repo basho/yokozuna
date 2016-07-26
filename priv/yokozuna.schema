@@ -104,7 +104,7 @@
 }.
 
 %% @doc Whether the throttle for Yokozuna active anti-entropy is enabled.
-{mapping, "anti_entropy.throttle", "yokozuna.aae_throttle_kill_switch", [
+{mapping, "search.anti_entropy.throttle", "yokozuna.aae_throttle_kill_switch", [
   {default, on},
   {datatype, {flag, off, on}},
   hidden
@@ -114,25 +114,25 @@
 %% is a minimum solrq queue size and a time-delay that the throttle
 %% should observe at that size and above. For example:
 %%
-%%     anti_entropy.throttle.tier1.solrq_queue_length = 0
-%%     anti_entropy.throttle.tier1.delay = 0ms
-%%     anti_entropy.throttle.tier2.solrq_queue_length = 40
-%%     anti_entropy.throttle.tier2.delay = 5ms
+%%     search.anti_entropy.throttle.tier1.solrq_queue_length = 0
+%%     search.anti_entropy.throttle.tier1.delay = 0ms
+%%     search.anti_entropy.throttle.tier2.solrq_queue_length = 40
+%%     search.anti_entropy.throttle.tier2.delay = 5ms
 %%
 %% If configured, there must be a tier which includes a mailbox size
 %% of 0. Both .solrq_queue_length and .delay must be set for each tier.
-%% @see anti_entropy.throttle
+%% @see search.anti_entropy.throttle
 {mapping,
- "anti_entropy.throttle.$tier.solrq_queue_length",
+ "search.anti_entropy.throttle.$tier.solrq_queue_length",
  "yokozuna.aae_throttle_limits", [
   {datatype, integer},
   hidden,
   {validators, ["non_negative_integer"]}
 ]}.
 
-%% @see anti_entropy.throttle.$tier.solrq_queue_length
+%% @see search.anti_entropy.throttle.$tier.solrq_queue_length
 {mapping,
- "anti_entropy.throttle.$tier.delay",
+ "search.anti_entropy.throttle.$tier.delay",
  "yokozuna.aae_throttle_limits", [
   {datatype, {duration, ms}},
   hidden
@@ -140,7 +140,7 @@
 
 {translation,
  "yokozuna.aae_throttle_limits",
- riak_core_throttle:create_limits_translator_fun("anti_entropy", "solrq_queue_length")
+ riak_core_throttle:create_limits_translator_fun("search.anti_entropy", "solrq_queue_length")
 }.
 
 %%===========================================================

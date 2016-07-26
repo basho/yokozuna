@@ -87,11 +87,11 @@ override_schema_test() ->
             {["search", "queue", "drain", "cancel", "timeout"], "10ms"},
             {["search", "ibrowse_max_sessions"], 101},
             {["search", "ibrowse_max_pipeline_size"], 11},
-            {["anti_entropy", "throttle"], off},
-            {["anti_entropy", "throttle", "tier1", "solrq_queue_length"], 0},
-            {["anti_entropy", "throttle", "tier1", "delay"], "1d"},
-            {["anti_entropy", "throttle", "tier2", "solrq_queue_length"], 11},
-            {["anti_entropy", "throttle", "tier2", "delay"], "10d"}
+            {["search", "anti_entropy", "throttle"], off},
+            {["search", "anti_entropy", "throttle", "tier1", "solrq_queue_length"], 0},
+            {["search", "anti_entropy", "throttle", "tier1", "delay"], "1d"},
+            {["search", "anti_entropy", "throttle", "tier2", "solrq_queue_length"], 11},
+            {["search", "anti_entropy", "throttle", "tier2", "delay"], "10d"}
            ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
