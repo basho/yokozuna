@@ -524,11 +524,11 @@ throttle() ->
     riak_core_throttle:throttle(?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY).
 
 init_throttle(InitialThrottle) ->
-    riak_core_throttle:init(?YZ_APP_NAME,
-                            ?YZ_ENTROPY_THROTTLE_KEY,
-                            {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
-                             ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
-                            {?YZ_ENTROPY_THROTTLE_KILL_KEY, false}),
+    ok = riak_core_throttle:init(?YZ_APP_NAME,
+                                 ?YZ_ENTROPY_THROTTLE_KEY,
+                                 {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
+                                  ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
+                                 {?YZ_ENTROPY_THROTTLE_ENABLED_KEY, true}),
     ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
                                          ?YZ_ENTROPY_THROTTLE_KEY,
                                          InitialThrottle).

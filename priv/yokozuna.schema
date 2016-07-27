@@ -104,9 +104,9 @@
 }.
 
 %% @doc Whether the throttle for Yokozuna active anti-entropy is enabled.
-{mapping, "search.anti_entropy.throttle", "yokozuna.aae_throttle_kill_switch", [
+{mapping, "search.anti_entropy.throttle", "yokozuna.aae_throttle_enabled", [
   {default, on},
-  {datatype, {flag, off, on}},
+  {datatype, flag},
   hidden
 ]}.
 

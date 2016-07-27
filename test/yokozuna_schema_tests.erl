@@ -50,7 +50,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 100),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
-    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_kill_switch", false),
+    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled", true),
     cuttlefish_unit:assert_not_configured(Config, "yokozuna.aae_throttle_limits"),
     ok.
 
@@ -134,8 +134,8 @@ override_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 101),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 11),
-    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_kill_switch",
-                                  true),
+    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled",
+                                  false),
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_limits",
                                   [{-1, 86400000}, {10, 864000000}]),
     ok.
