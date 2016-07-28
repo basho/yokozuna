@@ -303,8 +303,16 @@ fold_keys(Partition, Tree) ->
     F = fun({BKey, Hash}) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
-                IndexN = get_index_n(BKey),
-                insert(async, IndexN, BKey, Hash, Tree, [if_missing])
+                try
+                    IndexN = get_index_n(BKey),
+                    insert(async, IndexN, BKey, Hash, Tree, [if_missing])
+                catch
+                    _:E ->
+                        lager:error(
+                            "An error occurred rebuilding BKey ~p during a "
+                            "build or rehash.  This BKey will be skipped.  "
+                            "Error: ~p", [BKey, E])
+                end
         end,
     Filter = [{partition, LogicalPartition}],
     [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes],
