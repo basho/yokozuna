@@ -23,6 +23,8 @@
 -behaviour(gen_server).
 -include("yokozuna.hrl").
 
+-define(UNKNOWN_QUEUE_LENGTH, -1).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -547,7 +549,14 @@ update_throttle(State) ->
     end.
 
 calculate_current_load(_State) ->
-    yz_solrq:queue_total_length().
+    case yz_stat:get_stat([queue, total_length]) of
+        Num when is_integer(Num) ->
+            Num;
+        Unexpected ->
+            lager:error("Unexpected value for statistic [queue, total_length]: ~p",
+                        [Unexpected]),
+            ?UNKNOWN_QUEUE_LENGTH
+    end.
 
 %%%===================================================================
 %%% Exchanging
