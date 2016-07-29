@@ -553,7 +553,7 @@ calculate_current_load(_State) ->
         Num when is_integer(Num) ->
             Num;
         Unexpected ->
-            lager:error("Unexpected value for statistic [queue, total_length]: ~p",
+            lager:debug("Unexpected value for statistic [queue, total_length]: ~p",
                         [Unexpected]),
             ?UNKNOWN_QUEUE_LENGTH
     end.
