@@ -87,7 +87,7 @@ get_stats() ->
 %% not found.
 -spec get_stat([atom(), ...]) -> undefined | term().
 get_stat(Name) when is_list(Name) ->
-    Path = [riak_core_stat:prefix(), ?APP] ++ Name,
+    Path = [?PFX, ?APP] ++ Name,
     case exometer:get_value(Path, value) of
         {ok, [{value, Value}]} ->
             Value;
