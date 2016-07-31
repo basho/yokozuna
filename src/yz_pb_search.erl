@@ -57,11 +57,17 @@ encode(Message) ->
 
 %% @doc process/2 callback. Handles an incoming request message.
 process(Msg, State) ->
-    case riak_core_util:job_class_enabled(riak_search) of
+    Class = 'riak_search',
+    Accept = riak_core_util:job_class_enabled(Class),
+    _ = riak_core_util:report_job_request_disposition(
+            Accept, Class, ?MODULE, process, ?LINE, protobuf),
+    case Accept of
         true ->
             maybe_process(yokozuna:is_enabled(search), Msg, State);
         _ ->
-            {error, "Operation 'riak_search' is not enabled", State}
+            {error,
+                riak_core_util:job_class_disabled_message(binary, Class),
+                State}
     end.
 
 maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
