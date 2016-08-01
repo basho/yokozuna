@@ -23,7 +23,7 @@
 -compile(export_all).
 
 -define(DEFAULT_ENABLED_JOB_CLASSES, [
-    riak_search
+    {yokozuna, query}
 ]).
 
 %% basic schema test will check to make sure that all defaults from

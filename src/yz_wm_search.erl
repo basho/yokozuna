@@ -96,9 +96,11 @@ resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
 %% @doc Uses the riak_kv,secure_referer_check setting rather
 %%      as opposed to a special yokozuna-specific config
 forbidden(RD, Ctx=#ctx{security=undefined}) ->
-    {riak_kv_wm_utils:is_forbidden(RD, riak_search), RD, Ctx};
+    Class = {yokozuna, query},
+    {riak_kv_wm_utils:is_forbidden(RD, Class), RD, Ctx};
 forbidden(RD, Ctx) ->
-    case riak_kv_wm_utils:is_forbidden(RD, riak_search) of
+    Class = {yokozuna, query},
+    case riak_kv_wm_utils:is_forbidden(RD, Class) of
         true ->
             {true, RD, Ctx};
         false ->

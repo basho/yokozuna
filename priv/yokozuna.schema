@@ -273,7 +273,7 @@
 %%      exchange, in order to minimize AAE activity, and during shutdown.
 %%      If AAE is disabled, this setting only has an effect on shutdown
 %%      behavior. Enabling draining may introduce blocking of put requests
-%%      while the drain is happening, but can reduce AAE repairs when the 
+%%      while the drain is happening, but can reduce AAE repairs when the
 %%      High Water Mark is set higher than the default.
 {mapping, "search.queue.drain.enable", "yokozuna.solrq_drain_enable", [
   {default, off},
@@ -299,10 +299,10 @@
   {validators, ["positive_integer"]}]}.
 
 %% @doc Whether to allow Yokozuna queries on this node
-{mapping, "async.enable.riak_search", "riak_core.job_accept_class", [
+{mapping, "cluster.job.yokozuna.query", "riak_core.job_accept_class", [
     merge,
-    {datatype, flag},
-    {default, on}
+    {datatype, {flag, enabled, disabled}},
+    {default, enabled}
 ]}.
 
 %%===========================================================

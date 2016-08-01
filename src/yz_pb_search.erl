@@ -57,7 +57,7 @@ encode(Message) ->
 
 %% @doc process/2 callback. Handles an incoming request message.
 process(Msg, State) ->
-    Class = 'riak_search',
+    Class = {yokozuna, query},
     Accept = riak_core_util:job_class_enabled(Class),
     _ = riak_core_util:report_job_request_disposition(
             Accept, Class, ?MODULE, process, ?LINE, protobuf),
