@@ -263,6 +263,9 @@
 -define(YZ_ENTROPY_LOCK_TIMEOUT,
     app_helper:get_env(?YZ_APP_NAME, anti_entropy_lock_timeout, 10000)).
 
+-define(YZ_ENABLE_DIST_QUERY,
+    app_helper:get_env(?YZ_APP_NAME, enable_dist_query, true)).
+
 -define(YZ_ENTROPY_THROTTLE_KEY, aae_throttle).
 -define(YZ_ENTROPY_THROTTLE_LIMITS_KEY, aae_throttle_limits).
 -define(YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,

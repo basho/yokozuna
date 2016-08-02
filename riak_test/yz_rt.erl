@@ -73,11 +73,13 @@ create_bucket_type(Cluster, BucketType, Props) ->
 
 -spec create_indexed_bucket_type(cluster(), binary(), index_name()) -> ok.
 create_indexed_bucket_type(Cluster, BucketType, IndexName) ->
-    ok = create_index(Cluster, IndexName),
-    ok = create_bucket_type(Cluster, BucketType, [{?YZ_INDEX, IndexName}]).
+    create_indexed_bucket_type(Cluster, BucketType, IndexName, []).
 
--spec create_indexed_bucket_type(cluster(), binary(), index_name(),
-                                 schema_name()) -> ok.
+-spec create_indexed_bucket_type(cluster(), binary(), index_name(), proplist()|schema_name()) -> ok.
+create_indexed_bucket_type(Cluster, BucketType, IndexName, Properties) when is_list(Properties) ->
+    NVal = proplists:get_value(n_val, Properties, 3),
+    ok = create_index(Cluster, IndexName, ?YZ_DEFAULT_SCHEMA_NAME, NVal),
+    ok = create_bucket_type(Cluster, BucketType, [{?YZ_INDEX, IndexName} | Properties]);
 create_indexed_bucket_type(Cluster, BucketType, IndexName, SchemaName) ->
     ok = create_index(Cluster, IndexName, SchemaName),
     ok = create_bucket_type(Cluster, BucketType, [{?YZ_INDEX, IndexName}]).
@@ -290,6 +292,37 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys, Operations) ->
                        {Status :: integer(), Output :: binary()}.
 load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
     load_data(Cluster, Bucket, YZBenchDir, NumKeys, [{load_fruit, 1}]).
+
+
+-spec write_data(cluster(), bucket(), non_neg_integer(), non_neg_integer()) ->
+    [ok | {error, term()}].
+write_data(Cluster, Bucket, Start, Count) ->
+    ValueGenerator = fun(Key) -> {Key, "text/plain"} end,
+    write_data(Cluster, Bucket, Start, Count, ValueGenerator).
+
+-spec write_data(cluster(), bucket(), non_neg_integer(), non_neg_integer(), fun((non_neg_integer()) -> ok | term()))  ->
+    [ok | {error, term()}].
+write_data(Cluster, Bucket, Start, Count, ValueGenerator) ->
+    Node = select_random(Cluster),
+    rt:wait_for_service(Node, riak_kv),
+    Pid = rt:pbc(Node),
+    F = fun(N, Acc) ->
+        Key = list_to_binary(integer_to_list(N)),
+        {Value, ContentType} = ValueGenerator(Key),
+        Obj = riakc_obj:new(Bucket, Key, Value, ContentType),
+        %lager:info("Writing {~p, ~p} ...", [Key, Value]),
+        try riakc_pb_socket:put(Pid, Obj) of
+            ok ->
+                [ok | Acc];
+            Other ->
+                [{error, Other} | Acc]
+        catch
+            What:Why ->
+                [{error, {What, Why}} | Acc]
+        end
+    end,
+    lager:info("Writing ~p objects to Riak...", [Count]),
+    lists:foldl(F, [], lists:seq(Start, (Start + Count) - 1)).
 
 %% @doc Load the BEAM for `Module' across the `Nodes'.  This allows
 %% use of higher order functions, defined in a riak test module, on
@@ -663,15 +696,25 @@ verify_num_match(Type, Cluster, Index, Num) ->
             search_expect(Cluster, Type, Index, "*", "*", Num)
     end.
 
--spec wait_for_index(list(), index_name()) -> ok.
+-spec wait_for_index(cluster(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
     IsIndexUp =
         fun(Node) ->
-                lager:info("Waiting for index ~s to be avaiable on node ~p",
+                lager:info("Waiting for index ~s to be available on node ~p",
                            [Index, Node]),
                 rpc:call(Node, yz_index, exists, [Index])
         end,
     wait_until(Cluster, IsIndexUp),
+    ok.
+
+-spec wait_for_solr(cluster()) -> ok.
+wait_for_solr(Cluster) ->
+    IsSolrUp =
+        fun(Node) ->
+            lager:info("Waiting for Solr to come up on node ~p", [Node]),
+            rpc:call(Node, yz_solr, is_up, [])
+        end,
+    wait_until(Cluster, IsSolrUp),
     ok.
 
 join_all(Nodes) ->
@@ -795,18 +838,21 @@ load_intercept_code(Node) ->
                               "*.erl"]),
     rt_intercept:load_code(Node, [CodePath]).
 
--spec rolling_upgrade(cluster() | node(),
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices) ->
+    rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, fun rt:no_op/1).
+
+        -spec rolling_upgrade(cluster() | node(),
                       current | previous | legacy,
                       UpgradeConfig :: props(),
                       WaitForServices :: [atom()]) -> ok.
-rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices)
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
   when is_list(Cluster) ->
     lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
-    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices)
+    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
      || Node <- Cluster],
     ok;
-rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
-    rt:upgrade(Node, Version, UpgradeConfig),
+rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck) ->
+    rt:upgrade(Node, Version, UpgradeConfig, UpgradeCallabck),
     [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
     ok.
 
