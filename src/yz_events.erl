@@ -260,8 +260,8 @@ sync_indexes() ->
                     lager:info("Delta: Removed: ~p Added: ~p Same: ~p",
                         [Removed, Added, Same])
             end,
-            ok = sync_indexes(Removed, Added, Same),
-            ok = yz_solrq_sup:sync_active_workers();
+            ok = yz_solrq_sup:sync_active_workers(),
+            ok = sync_indexes(Removed, Added, Same);
         {error, _Reason} ->
             ok
     end.

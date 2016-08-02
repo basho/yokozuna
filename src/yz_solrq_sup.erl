@@ -55,7 +55,7 @@ start_worker(WorkerName) ->
 active_workers() ->
     AllChildren = supervisor:which_children(yz_solrq_sup),
     Workers = [Id || {Id, _Child, _Type, Modules} <- AllChildren, Modules == [yz_solrq_worker]],
-    lager:info("WORKERS: ~p", [Workers]),
+    lager:debug("WORKERS: ~p", [Workers]),
     Workers.
 
 %%%===================================================================

@@ -25,7 +25,7 @@
 %% api
 -export([start_link/1, status/1, index/6, set_hwm/2, get_hwm/1, set_index/5,
          reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1,
-         all_queue_len/1, set_purge_strategy/2]).
+         all_queue_len/1, set_purge_strategy/2, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -152,6 +152,10 @@ set_purge_strategy(QPid, PurgeStrategy)
 set_purge_strategy(_QPid, _PurgeStrategy) ->
     {error, bad_purge_strategy}.
 
+-spec stop(atom()) -> any().
+stop(WorkerName) ->
+    gen_server:cast(WorkerName, stop).
+
 -spec reload_appenv(solrq_id()) -> ok.
 reload_appenv(QPid) ->
     gen_server:call(QPid, reload_appenv).
@@ -251,9 +255,14 @@ handle_call(all_queue_len, _From, #state{all_queue_len=Len} = State) ->
     {reply, Len, State};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.
+
+
 handle_cast({request_batch, Index, HPid}, State) ->
     State2 = send_entries(HPid, Index, State),
     {noreply, State2};
+
+handle_cast(stop, State) ->
+    {stop, normal, State};
 
 %%
 %% @doc Handle the drain message.
