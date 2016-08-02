@@ -174,14 +174,14 @@ confirm_admin_index(Cluster) ->
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
-                %% Remove index from bucket props and delete it
-                yz_rt:remove_index(Node, Index),
-                DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
-                case DelResp of
-                    ok -> true;
-                    {error,<<"notfound">>} -> true
-                end
-    end,
+        %% Remove index from bucket props and delete it
+        yz_rt:remove_index(Node, Index),
+        DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
+        case DelResp of
+            ok -> true;
+            {error,<<"notfound">>} -> true
+        end
+        end,
     yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid),
     ok.

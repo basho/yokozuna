@@ -126,8 +126,6 @@ maybe_setup(true) ->
     yz_rs_migration:strip_rs_hooks(RSEnabled, Ring),
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
         yz_wm_index:routes() ++ yz_wm_schema:routes(),
-    yz_misc:add_routes(Routes),
-    maybe_register_pb(RSEnabled),
     ok = yz_events:add_guarded_handler(yz_events, []),
     yz_fuse:setup(),
     setup_stats(),
@@ -141,6 +139,8 @@ maybe_setup(true) ->
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
     ok = set_ibrowse_config(),
+    yz_misc:add_routes(Routes),
+    maybe_register_pb(RSEnabled),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not

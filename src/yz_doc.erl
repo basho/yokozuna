@@ -152,18 +152,15 @@ extract_fields({MD, V}) ->
         ExtractorDef = yz_extractor:get_def(CT, [check_default]),
         case yz_extractor:run(V, ExtractorDef) of
             {error, Reason} ->
-                %% TODO is this an index failure, or should we track this with a different stat?
-                yz_stat:index_fail(),
+                yz_stat:index_extract_fail(),
                 ?ERROR("Failed to extract fields from value with reason ~p.  Value: ~p", [Reason, V]),
                 [{?YZ_ERR_FIELD_S, 1}];
             Fields ->
                 Fields
         end
     catch _:Err ->
-            %% TODO is this an index failure, or should we track this with a different stat?
-            yz_stat:index_fail(),
-            Trace = erlang:get_stacktrace(),
-            ?ERROR("An exception occurred extracting fields from value with reason ~p. Trace: ~p.  Value: ~p", [Err, Trace, V]),
+            yz_stat:index_extract_fail(),
+            ?ERROR("An exception occurred extracting fields from value with reason ~p. Value: ~p", [Err, V]),
             [{?YZ_ERR_FIELD_S, 1}]
     end.
 

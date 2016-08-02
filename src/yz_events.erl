@@ -59,6 +59,8 @@
 
 -define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
 -define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
+-define(UNKNOWN_QUEUE_LENGTH, -1).
+
 
 %%%===================================================================
 %%% API
@@ -112,6 +114,7 @@ handle_info(tick, S) ->
                 "An error occurred syncronizing metadata with Solr: ~p"
                 "  An attempt will be retried after the next tick.", [E])
     end,
+    update_throttle(),
     ok = set_tick(),
     NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
     S2 = S#state{
@@ -260,6 +263,7 @@ sync_indexes() ->
                     lager:info("Delta: Removed: ~p Added: ~p Same: ~p",
                         [Removed, Added, Same])
             end,
+            ok = yz_solrq_sup:sync_active_queue_pairs(),
             ok = sync_indexes(Removed, Added, Same);
         {error, _Reason} ->
             ok
@@ -304,4 +308,27 @@ cache_index_state(Index, up) ->
             ets:insert(?ETS, {Index, {state, up}});
         _ ->
             ets:insert(?ETS, {Index, {state, up}})
+    end.
+
+update_throttle() ->
+    Enabled = riak_core_throttle:is_throttle_enabled(?YZ_APP_NAME,
+        ?YZ_ENTROPY_THROTTLE_KEY),
+    case Enabled of
+        true ->
+            QueueDepth = calculate_current_load(),
+            riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
+                ?YZ_ENTROPY_THROTTLE_KEY,
+                QueueDepth);
+        false ->
+            ok
+    end.
+
+calculate_current_load() ->
+    case yz_stat:get_stat([queue, total_length]) of
+        Num when is_integer(Num) ->
+            Num;
+        Unexpected ->
+            lager:debug("Unexpected value for statistic [queue, total_length]: ~p",
+                [Unexpected]),
+            ?UNKNOWN_QUEUE_LENGTH
     end.

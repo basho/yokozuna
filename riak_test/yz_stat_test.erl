@@ -101,7 +101,7 @@ confirm_stats(Cluster) ->
 
     yz_rt:reset_stats(Cluster),
     write_bad_json(Cluster, PBConn, Bucket, 1),
-    yz_rt:wait_until(Cluster, fun check_index_fail_stats/1),
+    yz_rt:wait_until(Cluster, fun check_index_extract_fail_stats/1),
 
     yz_rt:reset_stats(Cluster),
     blow_fuses(Cluster, PBConn, Index, Bucket),
@@ -121,10 +121,14 @@ populate_data(_, _, 0, Acc) ->
     Acc;
 populate_data(Pid, Bucket, Count, Acc)->
     KV = gen_random_name(16),
-    PO = riakc_obj:new(Bucket, KV, KV, "text/plain"),
-    ok = riakc_pb_socket:put(Pid, PO, []),
-    lager:info("Wrote Bucket ~p key ~p", [Bucket, KV]),
+    write_key(Pid, Bucket, KV, KV),
     populate_data(Pid, Bucket, Count - 1, [KV|Acc]).
+
+write_key(Pid, Bucket, Key, Value) ->
+    PO = riakc_obj:new(Bucket, Key, Value, "text/plain"),
+    ok = riakc_pb_socket:put(Pid, PO, []),
+    lager:info("Wrote Bucket ~p key ~p", [Bucket, Key]).
+
 
 populate_data_and_wait(Pid, Cluster, Bucket, Index, Count) ->
     Values = populate_data(Pid, Bucket, Count, []),
@@ -169,9 +173,10 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
     yz_rt:set_index(Cluster, Index, 1, 99999, 99999),
     yz_rt:set_hwm(Cluster, 1),
     yz_rt:set_purge_strategy(Cluster, ?PURGE_ONE),
+    Key = <<"blow_a_fuse">>,
     try
         [yz_rt:load_intercept_code(Node) || Node <- Cluster],
-        yz_rt:intercept_index_batch(Cluster, index_batch_throw_exception),
+        yz_rt:intercept_index_batch(Cluster, index_batch_returns_other_error),
         %%
         %% Send a message through each the indexq on the solrq, which
         %% will trip the fuse; however
@@ -179,8 +184,8 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         %% we need to wait until the solrqs are blown.
         %%
         lager:info("Writing one entry to blow fuse..."),
-        populate_data(PBConn, Bucket, 1),
-        yz_rt:wait_until_fuses_blown(Cluster, yz_solrq_worker_0001, [Index]),
+        write_key(PBConn, Bucket, Key, Key),
+        yz_rt:wait_until_fuses_blown(Cluster, 0, [Index]),
         %%
         %% At this point, the indexq in yz_solrq_worker_0001 corresponding
         %% to the Index should be blown.
@@ -188,16 +193,16 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         %% will trigger a purge.
         %%
         lager:info("Writing next entry to purge previous entry..."),
-        populate_data(PBConn, Bucket, 1)
+        write_key(PBConn, Bucket, Key, Key)
     after
         %%
         %% Revert the intercept, and drain, giving time for the
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
         yz_rt:intercept_index_batch(Cluster, index_batch_call_orig),
-        yz_rt:wait_until_fuses_reset(Cluster, yz_solrq_worker_0001, [Index]),
+        yz_rt:wait_until_fuses_reset(Cluster, 0, [Index]),
         lager:info("Writing one last entry to set the threshold ok stat ..."),
-        populate_data(PBConn, Bucket, 1),
+        write_key(PBConn, Bucket, Key, Key),
         yz_rt:drain_solrqs(Cluster),
         yz_rt:commit(Cluster, Index)
     end.
@@ -267,16 +272,16 @@ check_index_stats(Node) ->
     ],
     yz_rt:check_stat_values(Stats, Pairs).
 
-check_index_fail_stats(Node) ->
+check_index_extract_fail_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
 
-    IFail = proplists:get_value(?STAT_NAME([index, fail]), Stats),
+    IFail = proplists:get_value(?STAT_NAME([index, extract, fail]), Stats),
     IFailCount = proplists:get_value(count, IFail),
     IFailOne = proplists:get_value(one, IFail),
 
     Pairs = [
-        {index_fail_count, IFailCount, '>', 0},
-        {index_fail_one, IFailOne, '>', 0}
+        {index_extract_fail_count, IFailCount, '>', 0},
+        {index_extract_fail_one, IFailOne, '>', 0}
     ],
     yz_rt:check_stat_values(Stats, Pairs).
 
