@@ -35,8 +35,8 @@
 -include("yokozuna.hrl").
 
 % exported for yz_solrq_sup
--export([set_solrq_worker_tuple/1, set_solrq_helper_tuple/1,
-         get_solrq_worker_tuple/0, get_solrq_helper_tuple/0]).
+-export([set_solrq_helper_tuple/1,
+         get_solrq_helper_tuple/0]).
 
 % for debugging only
 -export([status/0]).
@@ -110,7 +110,7 @@ num_helper_specs() ->
                                 solrq_hwm() | bad_hwm_value}}].
 set_hwm(HWM) ->
     [{Name, yz_solrq_worker:set_hwm(Name, HWM)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+        Name <- yz_solrq_sup:active_workers()].
 
 %% @doc Set the index parameters for all queues (note, index goes back to appenv
 %%      queue is empty).
@@ -120,7 +120,7 @@ set_hwm(HWM) ->
                                   bad_index_params}}].
 set_index(Index, Min, Max, DelayMsMax) ->
     [{Name, yz_solrq_worker:set_index(Name, Index, Min, Max, DelayMsMax)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+        Name <- yz_solrq_sup:active_workers()].
 
 %% @doc Set the purge strategy on all queues
 -spec set_purge_strategy(purge_strategy()) ->
@@ -129,13 +129,13 @@ set_index(Index, Min, Max, DelayMsMax) ->
                                            | bad_purge_strategy}}].
 set_purge_strategy(PurgeStrategy) ->
     [{Name, yz_solrq_worker:set_purge_strategy(Name, PurgeStrategy)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+        Name <- yz_solrq_sup:active_workers()].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
 -spec reload_appenv() -> [{atom(), ok}].
 reload_appenv() ->
     [{Name, yz_solrq_worker:reload_appenv(Name)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+        Name <- yz_solrq_sup:active_workers()].
 
 %% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
 -spec blown_fuse(index_name()) -> ok.
@@ -181,26 +181,14 @@ queue_total_length() ->
 %%% Internal functions
 %%%===================================================================
 
-get_solrq_worker_tuple() ->
-    mochiglobal:get(?SOLRQS_TUPLE_KEY).
-
-set_solrq_worker_tuple(Size) ->
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrq_workers_tuple(Size)).
-
 get_solrq_helper_tuple() ->
     mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY).
 
 set_solrq_helper_tuple(Size) ->
     mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
 
-solrq_workers_tuple(Queues) ->
-    list_to_tuple([int_to_worker_regname(I) || I <- lists:seq(1, Queues)]).
-
 solrq_helpers_tuple(Helpers) ->
     list_to_tuple([int_to_helper_regname(I) || I <- lists:seq(1, Helpers)]).
-
-int_to_worker_regname(I) ->
-    list_to_atom(lists:flatten(io_lib:format("yz_solrq_worker_~4..0b", [I]))).
 
 int_to_helper_regname(I) ->
     list_to_atom(lists:flatten(io_lib:format("yz_solrq_helper_~4..0b", [I]))).

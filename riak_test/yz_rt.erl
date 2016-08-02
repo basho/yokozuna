@@ -517,6 +517,20 @@ remove_index(Node, BucketType) ->
     Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
     ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, Props]).
 
+really_remove_index(Cluster, {_BucketType, Bucket}, Index, PBConn) ->
+    Node = hd(Cluster),
+    F = fun(_) ->
+        Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
+        %% Remove index from bucket props and delete it
+        rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]),
+        DelResp = riakc_pb_socket:delete_search_index(PBConn, Index),
+        case DelResp of
+            ok -> true;
+            {error,<<"notfound">>} -> true
+        end
+        end,
+    yz_rt:wait_until(Cluster, F).
+
 -spec set_bucket_type_index(cluster(), binary()) -> ok.
 set_bucket_type_index(Cluster, BucketType) ->
     set_bucket_type_index(Cluster, BucketType, BucketType).
@@ -854,14 +868,14 @@ set_purge_strategy(Cluster, PurgeStrategy) ->
 
 -spec wait_until_fuses_blown(node() | cluster(), solrq_id(), [index_name()]) ->
     ok | [ok].
-wait_until_fuses_blown(Cluster, SolrqId, Indices) when is_list(Cluster) ->
-    [wait_until_fuses_blown(Node, SolrqId, Indices) || Node <- Cluster];
-wait_until_fuses_blown(Node, SolrqId, Indices) ->
+wait_until_fuses_blown(Cluster, Partition, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_blown(Node, Partition, Indices) || Node <- Cluster];
+wait_until_fuses_blown(Node, Partition, Indices) ->
     F = fun({Index, IndexQ}) ->
         lager:info("Waiting for fuse to blow for index ~p", [{Index, IndexQ}]),
         proplists:get_value(fuse_blown, IndexQ)
         end,
-    check_fuse_status(Node, SolrqId, Indices, F).
+    check_fuse_status(Node, Partition, Indices, F).
 
 -spec wait_until_fuses_reset(node() | cluster(), module(), [index_name()]) ->
     ok | [ok].
@@ -875,11 +889,18 @@ wait_until_fuses_reset(Node, SolrqId, Indices) ->
     check_fuse_status(Node, SolrqId, Indices, F).
 
 %% @private
-check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
+check_fuse_status(Node, Partition, Indices, FuseCheckFunction) ->
+    SolrQNames =
+        [yz_solrq:worker_regname(Index, Partition) ||
+            Index <- Indices],
     F = fun(N) ->
         Solrqs = rpc:call(N, yz_solrq, status, []),
-        Solrq = proplists:get_value(SolrqId, Solrqs),
-        IndexQs = proplists:get_value(indexqs, Solrq),
+        IndexQs = lists:flatten(
+            [begin
+                 Solrq = proplists:get_value(SolrqName, Solrqs),
+                 proplists:get_value(indexqs, Solrq)
+             end ||
+                SolrqName <- SolrQNames]),
         MatchingIndexQs = lists:filter(
             FuseCheckFunction,
             IndexQs
