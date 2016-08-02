@@ -126,8 +126,6 @@ maybe_setup(true) ->
     yz_rs_migration:strip_rs_hooks(RSEnabled, Ring),
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
         yz_wm_index:routes() ++ yz_wm_schema:routes(),
-    yz_misc:add_routes(Routes),
-    maybe_register_pb(RSEnabled),
     ok = yz_events:add_guarded_handler(yz_events, []),
     yz_fuse:setup(),
     setup_stats(),
@@ -141,6 +139,10 @@ maybe_setup(true) ->
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
     ok = set_ibrowse_config(),
+    ok = setup_put_throttle(),
+    yz_kv_hooks:install_hooks(),
+    yz_misc:add_routes(Routes),
+    maybe_register_pb(RSEnabled),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -177,3 +179,14 @@ set_ibrowse_config() ->
                                   ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT)}
              ],
     yz_solr:set_ibrowse_config(Config).
+
+
+setup_put_throttle() ->
+    ok = riak_core_throttle:init(?YZ_APP_NAME,
+        ?YZ_PUT_THROTTLE_KEY,
+        {?YZ_PUT_THROTTLE_LIMITS_KEY,
+            ?YZ_PUT_THROTTLE_DEFAULT_LIMITS},
+        {?YZ_PUT_THROTTLE_ENABLED_KEY, true}),
+    ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
+        ?YZ_PUT_THROTTLE_KEY,
+        0).

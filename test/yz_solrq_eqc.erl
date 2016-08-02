@@ -141,15 +141,16 @@ prop_ok() ->
                 ),
 
                 ?PULSE(
-                    {SolrQ, Helper, IBrowseKeys, MeltsByIndex},
+                    {Helper, IBrowseKeys, MeltsByIndex},
                     begin
                         reset(), % restart the processes
                         unlink_kill(yz_solrq_worker_0001),
                         unlink_kill(yz_solrq_helper_0001),
                         unlink_kill(yz_solrq_eqc_fuse),
                         unlink_kill(yz_solrq_eqc_ibrowse),
-                        {ok, SolrQ} = yz_solrq_worker:start_link(yz_solrq_worker_0001),
-                        {ok, Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
+                        %%{ok, SolrQ} = yz_solrq_worker:start_link(yz_solrq_worker_0001),
+                        %% {ok, Helper} = yz_solrq_helper:start_link(yz_solrq_helper_0001),
+                        Helper = whereis(yz_solrq_helper_0001),
                         {ok, _} = yz_solrq_eqc_fuse:start_link(),
                         {ok, _} = yz_solrq_eqc_ibrowse:start_link(KeyRes),
 
@@ -159,11 +160,11 @@ prop_ok() ->
                         wait_for_vnodes(Pids, timer:seconds(20)),
                         timer:sleep(500),
                         catch yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
-                        {SolrQ, Helper,  yz_solrq_eqc_ibrowse:keys(), melts_by_index(Entries)}
+                        {Helper,  yz_solrq_eqc_ibrowse:keys(), melts_by_index(Entries)}
                     end,
                     ?WHENFAIL(
                         begin
-                            eqc:format("SolrQ: ~p\n", [SolrQ]),
+                            %% eqc:format("SolrQ: ~p\n", [SolrQ]),
                             eqc:format("Helper: ~p\n", [Helper]),
                             eqc:format("KeyRes: ~p\n", [KeyRes]),
                             eqc:format("keys(): ~p\n", [IBrowseKeys]),
@@ -281,7 +282,7 @@ setup() ->
 %    yz_pulseh:compile(yz_solrq_helper, Opts),
 
     %% And start up supervisors to own the solrq/solrq helper
-    %% {ok, SolrqSup} = yz_solrq_sup:start_link(1),
+    {ok, _SolrqSup} = yz_solrq_sup:start_link(1,1),
     %% {ok, HelperSup} = yz_solrq_helper_sup:start_link(1),
     %% io:format(user, "SolrqSup = ~p HelperSup = ~p\n", [SolrqSup, HelperSup]),
     ok.
@@ -290,7 +291,7 @@ setup() ->
 cleanup() ->
     meck:unload(),
     %% unlink_kill(yz_solrq_helper_sup),
-    %% unlink_kill(yz_solrq_sup),
+    unlink_kill(yz_solrq_sup),
 
     catch application:stop(fuse),
 
@@ -524,7 +525,7 @@ make_keyres(Entries) ->
 expected_keys(Entries) ->
     [Key || {_P, Index, _Bucket, Key, _Reason, Result} <- Entries, Index /= ?YZ_INDEX_TOMBSTONE, Result /= {ok, "400", bad, request}].
 
-    entries_by_vnode(Entries) ->
+entries_by_vnode(Entries) ->
     lists:foldl(fun({P, Index, Bucket, Key, Reason, Result}, Acc) ->
                         orddict:append_list(P, [{Index, Bucket, Key, Reason, Result}], Acc)
                 end, orddict:new(), Entries).
