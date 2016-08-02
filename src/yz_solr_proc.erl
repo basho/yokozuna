@@ -131,7 +131,7 @@ handle_call({enabled, NewValue}, _, #state{enable_dist_query=OldValue} = S) ->
         {true, false, true} ->
             riak_core_node_watcher:service_up(yokozuna, self());
         {_, true, false} ->
-            riak_core_node_watcher:service_down(yokozuna, self());
+            riak_core_node_watcher:service_down(yokozuna);
         _ ->
             ok
     end,

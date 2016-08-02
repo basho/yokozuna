@@ -20,7 +20,8 @@
 -module(yz_console).
 -include("yokozuna.hrl").
 -export([aae_status/1,
-         switch_to_new_search/1]).
+         switch_to_new_search/1,
+         dist_query/1]).
 
 %% @doc Print the Active Anti-Entropy status to stdout.
 -spec aae_status([]) -> ok.
@@ -51,3 +52,32 @@ switch_to_new_search([]) ->
             io:format(standard_error, "The following nodes could not be reached: ~s", [DownStr]),
             {error, {nodes_down, Down}}
     end.
+
+
+%% @doc Get or set the dist_query enabled flag.  When this flag is set to "on",
+%% then this node participates in distributed queries and will be included in
+%% cover plans when queries are made through yokozuna.  When disabled, the node
+%% will be excluded in cover plans, meaning that it will not be consulted as part
+%% of a distributed query.  Note that you can still query though this node;
+%% the node, however, will not be consulted in a Solr distrubuted query.
+dist_query([]) ->
+    io:format("~p~n", [get_dist_query_value(yz_solr_proc:get_dist_query())]);
+dist_query(["on"|_]) ->
+    set_dist_query(true);
+dist_query(["off"|_]) ->
+    set_dist_query(false);
+dist_query([AnythingElse|_]) ->
+    io:format("Bad value: ~s~n", [AnythingElse]).
+
+
+
+%%
+%% Internal operations
+%%
+
+set_dist_query(Val) ->
+    {ok, OldVal} = yz_solr_proc:set_dist_query(Val),
+    io:format("Previous value: ~p~n", [get_dist_query_value(OldVal)]).
+
+get_dist_query_value(true) -> on;
+get_dist_query_value(false) -> off.
