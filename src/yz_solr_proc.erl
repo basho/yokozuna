@@ -33,14 +33,17 @@
          handle_cast/2,
          handle_info/2,
          terminate/2,
-         getpid/0]).
+         getpid/0,
+         get_dist_query/0,
+         set_dist_query/1]).
 
 -record(state, {
           dir=exit(dir_undefined),
           port=exit(port_undefined),
           solr_port=exit(solr_port_undefined),
           solr_jmx_port=exit(solr_jmx_port_undefined),
-          is_up=false
+          is_up=false,
+          enable_dist_query=exit(enable_dist_query_undefined)
          }).
 
 -define(SHUTDOWN_MSG, "INT\n").
@@ -65,9 +68,15 @@ start_link(Dir, TempDir, SolrPort, SolrJMXPort) ->
 getpid() ->
     gen_server:call(?MODULE, getpid).
 
--spec is_up() -> boolean().
-is_up() ->
-    gen_server:call(?MODULE, is_up).
+-spec get_dist_query() -> boolean().
+get_dist_query() ->
+    gen_server:call(?MODULE, enabled).
+
+-spec set_dist_query(boolean()) -> {ok, PreviousValue :: boolean()} | {error, Reason :: term()}.
+set_dist_query(Enabled) when is_boolean(Enabled) ->
+    {ok, gen_server:call(?MODULE, {enabled, Enabled})};
+set_dist_query(Value) ->
+    {error, {bad_type, Value}}.
 
 %%%===================================================================
 %%% Callbacks
@@ -107,13 +116,26 @@ init([Dir, TempDir, SolrPort, SolrJMXPort]) ->
                    dir=Dir,
                    port=Port,
                    solr_port=SolrPort,
-                   solr_jmx_port=SolrJMXPort
+                   solr_jmx_port=SolrJMXPort,
+                   enable_dist_query=?YZ_ENABLE_DIST_QUERY
                   },
             {ok, S}
     end.
 
 handle_call(getpid, _, S) ->
     {reply, get_pid(?S_PORT(S)), S};
+handle_call(enabled, _, #state{enable_dist_query=EnableDistQuery} = S) ->
+    {reply, EnableDistQuery, S};
+handle_call({enabled, NewValue}, _, #state{enable_dist_query=OldValue} = S) ->
+    case {yz_solr:is_up(), OldValue, NewValue} of
+        {true, false, true} ->
+            riak_core_node_watcher:service_up(yokozuna, self());
+        {_, true, false} ->
+            riak_core_node_watcher:service_down(yokozuna, self());
+        _ ->
+            ok
+    end,
+    {reply, OldValue, S#state{enable_dist_query=NewValue}};
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
     {noreply, S}.
@@ -123,29 +145,28 @@ handle_cast(Req, S) ->
     {noreply, S}.
 
 handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
-    case yz_solr:is_up() of
-        true ->
-            %% solr finished its startup, be merry
-            ?INFO("solr is up", []),
+    case {yz_solr:is_up(), ?YZ_ENABLE_DIST_QUERY} of
+        {true, true} ->
             riak_core_node_watcher:service_up(yokozuna, self()),
-            schedule_tick(),
-            {noreply, S#state{is_up=true}};
-        false when WaitTimeSecs > 0 ->
+            solr_is_up(S);
+        {true, false} ->
+            solr_is_up(S);
+        {false, _} when WaitTimeSecs > 0 ->
             %% solr hasn't finished yet, keep waiting
             schedule_solr_check(WaitTimeSecs),
             {noreply, S};
-        false ->
+        {false, _} ->
             %% solr did not finish startup quickly enough, or has just
             %% crashed and the exit message is on its way, shutdown
             {stop, "solr didn't start in alloted time", S}
     end;
-handle_info(tick, #state{is_up=IsUp} = S) ->
+handle_info(tick, #state{is_up=IsUp, enable_dist_query=EnableDistQuery} = S) ->
     NewIsUp = yz_solr:is_up(),
-    case {IsUp, NewIsUp} of
-        {false, true} ->
+    case {IsUp, NewIsUp, EnableDistQuery} of
+        {false, true, true} ->
             ?INFO("Solr was down but is now up.  Notifying cluster.", []),
             riak_core_node_watcher:service_up(yokozuna, self());
-        {true, false} ->
+        {true, false, _} ->
             ?INFO("Solr was up but is now down.  Notifying cluster.", []),
             riak_core_node_watcher:service_down(yokozuna);
         _ -> ok
@@ -309,3 +330,10 @@ solr_jvm_opts() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_jvm_opts,
                        ?YZ_DEFAULT_SOLR_JVM_OPTS).
+
+-spec solr_is_up(#state{}) -> #state{}.
+solr_is_up(S) ->
+    %% solr finished its startup, be merry
+    ?INFO("solr is up", []),
+    schedule_tick(),
+    {noreply, S#state{is_up=true}}.
