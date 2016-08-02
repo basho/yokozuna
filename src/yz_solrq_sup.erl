@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_link/2, start_drain_fsm/1, child_count/1]).
+-export([start_link/0, start_link/2, start_drain_fsm/1, child_count/1, start_worker/1, active_workers/0, sync_active_workers/0]).
 
 -include("yokozuna.hrl").
 
@@ -47,18 +47,26 @@ start_drain_fsm(CallbackList) ->
         ?MODULE,
         {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
     ).
+-spec start_worker(WorkerName::atom()) -> ok.
+start_worker(WorkerName) ->
+    validate_child_started(
+        supervisor:start_child(?MODULE, child_spec(worker, WorkerName))).
 
+active_workers() ->
+    AllChildren = supervisor:which_children(yz_solrq_sup),
+    Workers = [Id || {Id, _Child, _Type, Modules} <- AllChildren, Modules == [yz_solrq_worker]],
+    lager:info("WORKERS: ~p", [Workers]),
+    Workers.
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
-init([NumQueues, NumHelpers]) ->
-    yz_solrq:set_solrq_worker_tuple(NumQueues),
+init([_NumQueues, NumHelpers]) ->
     yz_solrq:set_solrq_helper_tuple(NumHelpers),
     DrainMgrSpec = {yz_solrq_drain_mgr, {yz_solrq_drain_mgr, start_link, []}, permanent, 5000, worker, [yz_drain_mgr]},
     QueueChildren = [child_spec(worker, Name) ||
-                        Name <- tuple_to_list(yz_solrq:get_solrq_worker_tuple())],
+                        Name <- required_solrq_workers()],
     HelperChildren = [child_spec(helper, Name) ||
                         Name <- tuple_to_list(yz_solrq:get_solrq_helper_tuple())],
     %% Using a one_for_all restart strategy as we write data to a hashed worker,
@@ -87,3 +95,29 @@ child_spec(worker, Name) ->
 child_count(ChildType) ->
     length([true || {_,_,_,[Type]} <- supervisor:which_children(?MODULE),
         Type == ChildType]).
+
+validate_child_started({ok, _Child}) ->
+    ok;
+validate_child_started({ok, _Child, _Info}) ->
+    ok;
+validate_child_started({error, already_present}) ->
+    ok;
+validate_child_started({error, {already_started, _Child}}) ->
+    ok;
+validate_child_started(Error) ->
+    throw(Error).
+
+required_solrq_workers() ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    Partitions = riak_core_ring:my_indices(Ring),
+    Indexes = yz_index:get_indexes_from_meta(),
+    [yz_solrq:worker_regname(Index, Partition) || Partition <- Partitions, Index <- Indexes].
+
+sync_active_workers() ->
+    ActiveWorkers = active_workers(),
+    RequiredWorkers = required_solrq_workers(),
+    WorkersToStop = ActiveWorkers -- RequiredWorkers,
+    lists:foreach(fun(Worker) -> yz_solrq_worker:stop(Worker) end, WorkersToStop),
+    MissingWorkers = RequiredWorkers -- ActiveWorkers,
+    lists:foreach(fun(Worker) -> start_worker(Worker) end, MissingWorkers),
+    ok.

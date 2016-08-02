@@ -18,19 +18,19 @@
 %% -------------------------------------------------------------------
 -module(yz_solrq).
 
--export([index/5, worker_regname/1, helper_regname/1,
-         random_helper/0,
-         num_worker_specs/0,
-         num_helper_specs/0,
-         set_hwm/1,
-         set_index/4,
-         set_purge_strategy/1,
-         reload_appenv/0,
-         blown_fuse/1,
-         healed_fuse/1,
-         solrq_worker_names/0,
-         solrq_helper_names/0,
-         queue_total_length/0]).
+-export([index/5, worker_regname/2, helper_regname/1,
+    random_helper/0,
+    num_worker_specs/0,
+    num_helper_specs/0,
+    set_hwm/1,
+    set_index/4,
+    set_purge_strategy/1,
+    reload_appenv/0,
+    blown_fuse/1,
+    healed_fuse/1,
+    solrq_worker_names/0,
+    solrq_helper_names/0,
+    queue_total_length/0]).
 
 -include("yokozuna.hrl").
 
@@ -57,20 +57,19 @@
 
 -spec index(index_name(), bkey(), obj(), write_reason(), p()) -> ok.
 index(Index, BKey, Obj, Reason, P) ->
-    Hash = erlang:phash2({Index, BKey}),
-    Worker = yz_solrq:worker_regname(Hash),
-    yz_solrq_worker:index(Worker, Index, BKey, Obj, Reason, P).
+    WorkerName = yz_solrq:worker_regname(Index, P),
+    ok = ensure_worker(WorkerName),
+    yz_solrq_worker:index(WorkerName, Index, BKey, Obj, Reason, P).
 
 %% @doc From the hash, return the registered name of a queue
--spec worker_regname(phash()) -> regname().
-worker_regname(Hash) ->
-    case get_solrq_worker_tuple() of
-        undefined ->
-            error(solrq_sup_not_started);
-        Names ->
-            Index = 1 + (Hash rem size(Names)),
-            element(Index, Names)
-    end.
+-spec worker_regname(index_name(), p()) -> regname().
+worker_regname(Index, Partition) ->
+    make_regname("yz_solrq_worker_", Partition, Index).
+
+make_regname(Prefix, Partition, Index) ->
+    list_to_atom(Prefix ++
+        integer_to_list(Partition) ++ "_" ++
+        binary_to_list(Index)).
 
 %% @doc From the hash, return the registered name of a helper
 -spec helper_regname(phash()) -> regname().
@@ -166,7 +165,7 @@ status() ->
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_worker_names() -> [atom()].
 solrq_worker_names() ->
-    tuple_to_list(get_solrq_worker_tuple()).
+    yz_solrq_sup:active_workers().
 
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_helper_names() -> [atom()].
@@ -176,7 +175,7 @@ solrq_helper_names() ->
 %% @doc return the total length of all solrq workers on the node.
 -spec queue_total_length() -> non_neg_integer().
 queue_total_length() ->
-    lists:sum([yz_solrq_worker:all_queue_len(Name) || Name <- tuple_to_list(get_solrq_worker_tuple())]).
+    lists:sum([yz_solrq_worker:all_queue_len(Name) || Name <- yz_solrq_sup:active_workers()]).
 
 %%%===================================================================
 %%% Internal functions
@@ -205,3 +204,14 @@ int_to_worker_regname(I) ->
 
 int_to_helper_regname(I) ->
     list_to_atom(lists:flatten(io_lib:format("yz_solrq_helper_~4..0b", [I]))).
+
+ensure_worker(WorkerName) ->
+    case whereis(WorkerName) of
+        undefined ->
+            %% Two processes may both get here at once. It's ok to ignore the
+            %% return value here, as we would just ignore the already_started
+            %% error anyway.
+            ok = yz_solrq_sup:start_worker(WorkerName);
+        _Pid ->
+            ok
+    end.
