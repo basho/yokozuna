@@ -532,7 +532,7 @@ find_representatives(Index, Bucket) ->
       dict:new(),
       [{get_solrq(Index, BKey), BKey} || BKey <- BKeys]).
 
--spec get_solrq(index_name(), {bucket(), key()}) -> module().
+-spec get_solrq(index_name(), {bucket(), key()}) -> atom().
 get_solrq(Index, BucketKey) ->
     lager:info("Getting solrq for ~p", [BucketKey]),
     Hash = chash:key_of(BucketKey),
