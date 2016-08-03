@@ -31,6 +31,7 @@
 %% Public API
 -export([start_link/0,
     get_stats/0,
+    get_stat/1,
     index_fail/0,
     index_end/3,
     drain_end/1,
@@ -81,6 +82,18 @@ register_stats() ->
 -spec get_stats() -> proplists:proplist() | {error, Reason :: term()}.
 get_stats() ->
     riak_core_stat:get_stats(?APP).
+
+%% @doc Return the value for the stat with the given `Name', or `undefined' if
+%% not found.
+-spec get_stat([atom(), ...]) -> undefined | term().
+get_stat(Name) when is_list(Name) ->
+    Path = [?PFX, ?APP] ++ Name,
+    case exometer:get_value(Path, value) of
+        {ok, [{value, Value}]} ->
+            Value;
+        _ ->
+            undefined
+    end.
 
 %% @doc Initialize the Fuse stats subsystem for a given fuse.
 -spec initialize_fuse_stats(Name :: atom()) -> ok.

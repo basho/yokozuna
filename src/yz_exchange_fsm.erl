@@ -228,6 +228,7 @@ repair(Partition, {remote_missing, KeyBin}) ->
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
     FakeObj = fake_kv_object(BKey),
+    yz_entropy_mgr:throttle(),
     case yz_kv:should_index(Index) of
         true ->
             Repair = full_repair,
@@ -247,6 +248,7 @@ repair(Partition, {_Reason, KeyBin}) ->
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
+            yz_entropy_mgr:throttle(),
             case yz_kv:should_index(Index) of
                 true ->
                     Repair = full_repair,

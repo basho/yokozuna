@@ -50,6 +50,8 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 100),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
+    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled", true),
+    cuttlefish_unit:assert_not_configured(Config, "yokozuna.aae_throttle_limits"),
     ok.
 
 override_schema_test() ->
@@ -84,8 +86,13 @@ override_schema_test() ->
             {["search", "queue", "drain", "timeout"], "2m"},
             {["search", "queue", "drain", "cancel", "timeout"], "10ms"},
             {["search", "ibrowse_max_sessions"], 101},
-            {["search", "ibrowse_max_pipeline_size"], 11}
-    ],
+            {["search", "ibrowse_max_pipeline_size"], 11},
+            {["search", "anti_entropy", "throttle"], off},
+            {["search", "anti_entropy", "throttle", "tier1", "solrq_queue_length"], 0},
+            {["search", "anti_entropy", "throttle", "tier1", "delay"], "1d"},
+            {["search", "anti_entropy", "throttle", "tier2", "solrq_queue_length"], 11},
+            {["search", "anti_entropy", "throttle", "tier2", "delay"], "10d"}
+           ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
 
@@ -127,6 +134,10 @@ override_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 101),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 11),
+    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled",
+                                  false),
+    cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_limits",
+                                  [{-1, 86400000}, {10, 864000000}]),
     ok.
 
 validations_test() ->
