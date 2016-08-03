@@ -1,13 +1,13 @@
 
 # Introduction
 
-In Yokozuna versions prior to 2.0.4, update operations on Solr (notably, `add` and `delete` operations) are synchronous blocking operations and are performed once-at-a-time in Solr.  In particular, calls to the `yz_kv:index/3` Erlang function block until the associated data is written to Solr, and each such call results in an HTTP POST with a single Solr operation.
+In Yokozuna versions prior to 2.0.7, update operations on Solr (notably, `add` and `delete` operations) are synchronous blocking operations and are performed once-at-a-time in Solr.  In particular, calls to the `yz_kv:index/3` Erlang function block until the associated data is written to Solr, and each such call results in an HTTP POST with a single Solr operation.
 
-Yokozuna version 2.0.4 introduces batching and asynchronous delivery of Solr operations.  The primary objective of this work is to decouple update operations in Solr from the Riak vnodes that are responsible for managment of replicas of Riak objects across the cluster.  Without batching and asynchronous delivery, Riak vnodes have to wait for Solr operations to complete, sometimes an inordinate amount of time, which can have an impact on read and write operations in a Riak cluster, even for Riak objects that aren't being indexed through Yokozuna!  This feature is intended to free up Riak vnodes to do other work, thus allowing Riak vnodes to service requests from more clients concurrently, and increasing operational throughput throughout the cluster.
+Yokozuna version 2.0.7 introduces batching and asynchronous delivery of Solr operations.  The primary objective of this work is to decouple update operations in Solr from the Riak vnodes that are responsible for managment of replicas of Riak objects across the cluster.  Without batching and asynchronous delivery, Riak vnodes have to wait for Solr operations to complete, sometimes an inordinate amount of time, which can have an impact on read and write operations in a Riak cluster, even for Riak objects that aren't being indexed through Yokozuna!  This feature is intended to free up Riak vnodes to do other work, thus allowing Riak vnodes to service requests from more clients concurrently, and increasing operational throughput throughout the cluster.
 
 De-coupling indexing operations from Riak vnode activity, however introduces some complexity into the system, as there is now the possibility for indeterminate latency between the time that an object is available in Riak versus its availability in Yokozuna and Solr.  This latency can introduce  divergence between the Riak AAE trees stored in Riak/KV and the AAE trees stored in Yokozuna, with which the Riak/KV trees are compared.
 
-This document describes the batching and asynchronous delivery subsystem introduced in Yokozuna 2.0.4, from both the end-users' and implementors' point of view, as well as the methods by which divergence between Riak and Solr is mitigated.
+This document describes the batching and asynchronous delivery subsystem introduced in Yokozuna 2.0.7, from both the end-users' and implementors' point of view, as well as the methods by which divergence between Riak and Solr is mitigated.
 
 
 # Overview
