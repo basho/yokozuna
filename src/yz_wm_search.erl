@@ -92,20 +92,22 @@ resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
             {false, RD, Ctx}
     end.
 
-
+-spec forbidden(#wm_reqdata{}, #ctx{}) -> {boolean(), #wm_reqdata{}, #ctx{}}.
 %% @doc Uses the riak_kv,secure_referer_check setting rather
 %%      as opposed to a special yokozuna-specific config
-forbidden(RD, Ctx=#ctx{security=undefined}) ->
+forbidden(ReqDataIn, #ctx{security = undefined} = Context) ->
     Class = {yokozuna, query},
-    {riak_kv_wm_utils:is_forbidden(RD, Class), RD, Ctx};
-forbidden(RD, Ctx) ->
+    riak_kv_wm_utils:is_forbidden(ReqDataIn, Class, Context);
+forbidden(ReqDataIn, Context) ->
     Class = {yokozuna, query},
-    case riak_kv_wm_utils:is_forbidden(RD, Class) of
-        true ->
-            {true, RD, Ctx};
+    {Answer, ReqData, _} = Result =
+        riak_kv_wm_utils:is_forbidden(ReqDataIn, Class, Context),
+    case Answer of
         false ->
-            resource_forbidden(RD, Ctx, ?YZ_SECURITY_SEARCH_PERM,
-                               {?YZ_SECURITY_INDEX, wrq:path_info(index, RD)})
+            resource_forbidden(ReqData, Context, ?YZ_SECURITY_SEARCH_PERM,
+                {?YZ_SECURITY_INDEX, wrq:path_info(index, ReqData)});
+        _ ->
+            Result
     end.
 
 %% @doc Handle POST to work with existing Solr clients and long queries
