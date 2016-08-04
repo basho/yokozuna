@@ -129,6 +129,9 @@ maybe_setup(true) ->
     yz_misc:add_routes(Routes),
     maybe_register_pb(RSEnabled),
     ok = yz_events:add_guarded_handler(yz_events, []),
+    %% TODO: Make this a different event handler than yz_events, which should
+    %% really be 3 things now. fuse handler, ring handler, and tick thing.
+    riak_core_ring_events:add_guarded_handler(yz_events, []),
     yz_fuse:setup(),
     setup_stats(),
     ok = riak_core_capability:register(?YZ_CAPS_CMD_EXTRACTORS, [true, false],

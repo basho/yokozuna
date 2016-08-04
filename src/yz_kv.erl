@@ -141,7 +141,14 @@ get_md_entry(MD, Key) ->
 -spec get_index(bkey()) -> index_name().
 get_index({Bucket, _}) ->
     BProps = riak_core_bucket:get_bucket(Bucket),
+    get_index_from_bucket_props(BProps).
+
+get_index_from_bucket_props(BProps) ->
     proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
+
+is_search_enabled_for_bucket(BucketProps) ->
+    yz_kv:get_index_from_bucket_props(BucketProps) =/=
+        ?YZ_INDEX_TOMBSTONE.
 
 %% @doc Called by KV vnode to determine if handoff should start or
 %% not.  Yokozuna needs to make sure that the bucket types have been

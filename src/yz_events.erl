@@ -81,6 +81,10 @@ init([]) ->
     ok = set_tick(),
     {ok, #state{}}.
 
+handle_event({ring_update, NewRing}, State) ->
+    add_search_hook(NewRing),
+    {ok, State};
+
 handle_event({FuseName, blown}, S) ->
     Index = yz_fuse:index_for_fuse_name(FuseName),
     cache_index_state(Index, down),
@@ -306,3 +310,7 @@ cache_index_state(Index, up) ->
         _ ->
             ets:insert(?ETS, {Index, {state, up}})
     end.
+
+
+add_search_hook(_NewRing) ->
+    yz_kv_hooks:install_hooks().
