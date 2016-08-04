@@ -51,6 +51,6 @@ maybe_return_hook(false, _BucketProps) ->
 precommit(Obj) ->
     %% Since this is a conditional precommit, it won't run unless we know search
     %% is enabled for the bucket in question.
-    lager:info("DBG: HIT THE PRECOMMIT!"),
+    riak_core_throttle:throttle(yokozuna, ?YZ_PUT_THROTTLE_KEY),
     Obj.
 

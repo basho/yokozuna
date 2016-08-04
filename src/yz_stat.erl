@@ -32,6 +32,7 @@
 -export([start_link/0,
     get_stats/0,
     get_stat/1,
+    get_stat/2,
     index_fail/0,
     index_end/3,
     drain_end/1,
@@ -87,9 +88,11 @@ get_stats() ->
 %% not found.
 -spec get_stat([atom(), ...]) -> undefined | term().
 get_stat(Name) when is_list(Name) ->
+    get_stat(Name, value).
+get_stat(Name, SummaryName) ->
     Path = [?PFX, ?APP] ++ Name,
-    case exometer:get_value(Path, value) of
-        {ok, [{value, Value}]} ->
+    case exometer:get_value(Path, SummaryName) of
+        {ok, [{SummaryName, Value}]} ->
             Value;
         _ ->
             undefined

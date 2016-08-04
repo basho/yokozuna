@@ -269,6 +269,12 @@
         [{-1,0}, {500,10}, {1000,50}, {5000,250}, {10000,1000}, {50000,3000}]).
 -define(YZ_ENTROPY_THROTTLE_ENABLED_KEY, aae_throttle_enabled).
 
+-define(YZ_PUT_THROTTLE_KEY, put_throttle).
+-define(YZ_PUT_THROTTLE_LIMITS_KEY, put_throttle_limits).
+-define(YZ_PUT_THROTTLE_DEFAULT_LIMITS,
+    [{-1,0}, {50,5}, {100,20}, {250,100}, {500,200}, {1000,400}]).
+-define(YZ_PUT_THROTTLE_ENABLED_KEY, put_throttle_enabled).
+
 -type hashtree() :: hashtree:hashtree().
 -type exchange() :: {p(), {p(), n()}}.
 -type exchange_mode() :: automatic | manual.

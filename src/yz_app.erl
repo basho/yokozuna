@@ -144,6 +144,7 @@ maybe_setup(true) ->
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
     ok = set_ibrowse_config(),
+    ok = setup_put_throttle(),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -180,3 +181,14 @@ set_ibrowse_config() ->
                                   ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT)}
              ],
     yz_solr:set_ibrowse_config(Config).
+
+
+setup_put_throttle() ->
+    ok = riak_core_throttle:init(?YZ_APP_NAME,
+        ?YZ_PUT_THROTTLE_KEY,
+        {?YZ_PUT_THROTTLE_LIMITS_KEY,
+            ?YZ_PUT_THROTTLE_DEFAULT_LIMITS},
+        {?YZ_PUT_THROTTLE_ENABLED_KEY, true}),
+    ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
+        ?YZ_PUT_THROTTLE_KEY,
+        0).

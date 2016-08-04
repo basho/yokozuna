@@ -540,10 +540,15 @@ update_throttle(State) ->
                                                      ?YZ_ENTROPY_THROTTLE_KEY),
     case Enabled of
         true ->
-            Load = calculate_current_load(State),
+            QueueDepth = calculate_current_load(State),
             riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
                                                     ?YZ_ENTROPY_THROTTLE_KEY,
-                                                    Load);
+                QueueDepth),
+            %% TODO: Move this out of entropy manager
+            BatchLatency = calculate_current_batch_latency(State),
+            riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
+                ?YZ_PUT_THROTTLE_KEY,
+                BatchLatency);
         false ->
             ok
     end.
@@ -558,6 +563,16 @@ calculate_current_load(_State) ->
             ?UNKNOWN_QUEUE_LENGTH
     end.
 
+calculate_current_batch_latency(_State) ->
+    case yz_stat:get_stat([queue, batch, latency], 99) of
+        Num when is_integer(Num) ->
+            lager:info("Current batch latency 99: ~p", [Num]),
+            Num div 1000; %% stat is returned in microseconds, want milliseconds
+        Unexpected ->
+            lager:info("Unexpected value for statistic [queue, batch_latency_99]: ~p",
+                [Unexpected]),
+            ?UNKNOWN_QUEUE_LENGTH
+    end.
 %%%===================================================================
 %%% Exchanging
 %%%===================================================================
