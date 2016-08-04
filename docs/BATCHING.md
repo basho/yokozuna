@@ -52,7 +52,7 @@ If when enqueing an update operation the number of batched messages is smaller t
 
 ## Backpressure
 
-Each worker process is configured with a high water mark (10000, by default), which represents the total number of messages that may be enqueued across all indexq structures in a given worker process before calls into the batching subsystem (update/index) will block calling vnodes.  If the total number of enqueued messages exceeds this threshold, calling vnodes (and parts of the AAE subsystem) will block until data is successfully written to Solr, or it is purged, in a manner described below.
+Each worker process is configured with a high water mark (10, by default), which represents the total number of messages that may be enqueued across all indexq structures in a given worker process before calls into the batching subsystem (update/index) will block calling vnodes.  If the total number of enqueued messages exceeds this threshold, calling vnodes (and parts of the AAE subsystem) will block until data is successfully written to Solr, or it is purged, in a manner described below.
 
 This way, the batching subsystem exerts back-pressure on the vnode and AAE systems, in the case where Solr is being driven beyond its operational capacity.
 
@@ -111,7 +111,7 @@ The behavior of the batching subsystem may be controlled via the following Cuttl
 
 * `search.queue.batch.flush_interval` (default: 1 second)  The maximum delay between notification to flush batches to Solr.  This setting is used to increase or decrease the frequency of batch delivery into Solr, specifically for relatively low-volume input into Riak.  This setting ensures that data will be delivered into Solr in accordance with the `search.queue.batch.maximum` and `search.queue.batch.maximum` settings within the specified interval.  Batches that are smaller than `search.queue.batch.maximum` will be delivered to Solr within this interval.  This setting will generally have no effect on heavily loaded systems.
 
-* `search.queue.high_watermark` (default: 10000)  The queue high water mark.  If the total number of queued messages in a Solrq worker instance exceeds this limit, then the calling vnode will be blocked until the total number falls below this limit.  This parameter exercises flow control between Riak and the Yokozuna batching subsystem, if writes into Solr start to fall behind.
+* `search.queue.high_watermark` (default: 10)  The queue high water mark.  If the total number of queued messages in a Solrq worker instance exceeds this limit, then the calling vnode will be blocked until the total number falls below this limit.  This parameter exercises flow control between Riak and the Yokozuna batching subsystem, if writes into Solr start to fall behind.
 
 * `search.queue.worker_count` (default: 10)  The number of solr queue workers to instantiate in the Yokozuna application.  Solr queue workers are responsible for enqueing objects for insertion or update into Solr. Increasing the number of solr queue workers distributes the queuing of objects, and can lead to greater throughput under high load, potentially at the expense of smaller batch sizes.
 
