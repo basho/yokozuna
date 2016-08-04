@@ -22,7 +22,7 @@ Once a batch is dequeued from a worker, the Riak objects are transformed into So
 
 The following diagram illustrates the relationship between Riak vnodes, Yokozuna workers and helpers, and Apache Solr:
 
-![YZ Batching Overview](https://raw.githubusercontent.com/basho/yokozuna/feature-solr-batching-rebased/docs/yz-batching-overview.png)
+![YZ Batching Overview](https://raw.githubusercontent.com/basho/yokozuna/2.0/docs/yz-batching-overview.png)
 
 Each helper process is stateless; a helper's only role is to dequeue batches from the workers, to transform those batches into something that Solr can understand, and to dispatch the transformed batches to Solr (and report the results back to the worker process, on whose behalf it is doing the work).
 
@@ -34,7 +34,7 @@ Indexq structures are created on-demand in each worker process, as data is added
 
 The relationship between Riak search indices and indexq structures within each worker process is illustrated in the following diagram:
 
-![YZ Batching Worker](https://raw.githubusercontent.com/basho/yokozuna/feature-solr-batching-rebased/docs/yz-batching-worker.png)
+![YZ Batching Worker](https://raw.githubusercontent.com/basho/yokozuna/2.0/docs/yz-batching-worker.png)
 
 ## Batching Parameters
 
