@@ -58,7 +58,7 @@
 -spec index(index_name(), bkey(), obj(), write_reason(), p()) -> ok.
 index(Index, BKey, Obj, Reason, P) ->
     WorkerName = yz_solrq:worker_regname(Index, P),
-    ok = ensure_worker(WorkerName),
+    ok = ensure_worker(Index, P),
     yz_solrq_worker:index(WorkerName, Index, BKey, Obj, Reason, P).
 
 %% @doc From the hash, return the registered name of a queue
@@ -195,13 +195,14 @@ solrq_helpers_tuple(Helpers) ->
 int_to_helper_regname(I) ->
     list_to_atom(lists:flatten(io_lib:format("yz_solrq_helper_~4..0b", [I]))).
 
-ensure_worker(WorkerName) ->
+ensure_worker(Index, Partition) ->
+    WorkerName = yz_solrq:worker_regname(Index, Partition),
     case whereis(WorkerName) of
         undefined ->
             %% Two processes may both get here at once. It's ok to ignore the
             %% return value here, as we would just ignore the already_started
             %% error anyway.
-            ok = yz_solrq_sup:start_worker(WorkerName);
+            ok = yz_solrq_sup:start_worker(Index, Partition);
         _Pid ->
             ok
     end.

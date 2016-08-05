@@ -43,6 +43,7 @@
 -else.
 -define(PULSE_DEBUG(S,F), ok).
 -endif.
+-define(COUNT_PER_REPORT, 20).
 
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 -type pending_vnodes() :: [{pid(), atom()}].
@@ -96,7 +97,8 @@
       queue_hwm = 1000                 :: non_neg_integer(),
       pending_vnodes = []              :: pending_vnodes(),
       drain_info = undefined           :: drain_info(),
-      purge_strategy                   :: purge_strategy()
+      purge_strategy                   :: purge_strategy(),
+      report_count = 0                 :: non_neg_integer()
     }
 ).
 
@@ -225,10 +227,11 @@ init([Index, Partition]) ->
 handle_call({index, Index, E}, From, State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
     State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
-    IndexQ = enqueue(E, get_indexq(Index, State2)),
+    State3 = update_throttle_and_report_count(State2),
+    IndexQ = enqueue(E, get_indexq(Index, State3)),
     IndexQ2 = maybe_request_worker(Index, IndexQ),
     IndexQ3 = maybe_start_timer(Index, IndexQ2),
-    NewState = update_indexq(Index, IndexQ3, State2),
+    NewState = update_indexq(Index, IndexQ3, State3),
     ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
 handle_call(status, _From, #state{} = State) ->
@@ -867,3 +870,14 @@ debug_state(State) ->
         {drain_info, State#state.drain_info}
     ].
 -endif.
+
+
+update_throttle_and_report_count(#state{report_count = ReportCount}=State) ->
+    ShouldReport = ReportCount >= ?COUNT_PER_REPORT,
+    maybe_update_throttle_and_report_count(ShouldReport, State).
+
+maybe_update_throttle_and_report_count(false, #state{report_count = ReportCount} = State) ->
+    State#state{report_count = ReportCount + 1};
+maybe_update_throttle_and_report_count(true, #state{index = Index, partition = Partition, all_queue_len =  AllQueueLength} = State) ->
+    yz_solrq_throttle_manager:update_counter({Index, Partition}, AllQueueLength),
+    State#state{report_count = 0}.
