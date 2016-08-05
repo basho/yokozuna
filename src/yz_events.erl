@@ -59,6 +59,8 @@
 
 -define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
 -define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
+-define(UNKNOWN_QUEUE_LENGTH, -1).
+
 
 %%%===================================================================
 %%% API
@@ -116,6 +118,7 @@ handle_info(tick, S) ->
                 "An error occurred syncronizing metadata with Solr: ~p"
                 "  An attempt will be retried after the next tick.", [E])
     end,
+    update_throttle(),
     ok = set_tick(),
     NumTicks2 = incr_or_wrap(NumTicks, get_full_check_after()),
     S2 = S#state{
@@ -314,3 +317,29 @@ cache_index_state(Index, up) ->
 
 add_search_hook(_NewRing) ->
     yz_kv_hooks:install_hooks().
+
+update_throttle() ->
+    Enabled = riak_core_throttle:is_throttle_enabled(?YZ_APP_NAME,
+        ?YZ_ENTROPY_THROTTLE_KEY),
+    case Enabled of
+        true ->
+            QueueDepth = calculate_current_load(),
+            riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
+                ?YZ_ENTROPY_THROTTLE_KEY,
+                QueueDepth),
+            riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
+                ?YZ_PUT_THROTTLE_KEY,
+                QueueDepth);
+        false ->
+            ok
+    end.
+
+calculate_current_load() ->
+    case yz_stat:get_stat([queue, total_length]) of
+        Num when is_integer(Num) ->
+            Num;
+        Unexpected ->
+            lager:debug("Unexpected value for statistic [queue, total_length]: ~p",
+                [Unexpected]),
+            ?UNKNOWN_QUEUE_LENGTH
+    end.
