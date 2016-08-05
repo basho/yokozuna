@@ -543,12 +543,10 @@ update_throttle(State) ->
             QueueDepth = calculate_current_load(State),
             riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
                                                     ?YZ_ENTROPY_THROTTLE_KEY,
-                QueueDepth),
-            %% TODO: Move this out of entropy manager
-            BatchLatency = calculate_current_batch_latency(State),
+                                                    QueueDepth),
             riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
-                ?YZ_PUT_THROTTLE_KEY,
-                BatchLatency);
+                                                    ?YZ_PUT_THROTTLE_KEY,
+                                                    QueueDepth);
         false ->
             ok
     end.

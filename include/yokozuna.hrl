@@ -272,7 +272,7 @@
 -define(YZ_PUT_THROTTLE_KEY, put_throttle).
 -define(YZ_PUT_THROTTLE_LIMITS_KEY, put_throttle_limits).
 -define(YZ_PUT_THROTTLE_DEFAULT_LIMITS,
-    [{-1,0}, {50,5}, {100,20}, {250,100}, {500,200}, {1000,400}]).
+    [{-1,0}, {1000,1}, {1500,4}, {2000, 6}, {3000,8}, {4000,32}, {8000,256}, {16000, 2000}]).
 -define(YZ_PUT_THROTTLE_ENABLED_KEY, put_throttle_enabled).
 
 -type hashtree() :: hashtree:hashtree().
