@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_link/2, start_drain_fsm/1, child_count/1, start_worker/1, active_workers/0, sync_active_workers/0]).
+-export([start_link/0, start_link/2, start_drain_fsm/1, child_count/1, start_worker/2, active_workers/0, sync_active_workers/0]).
 
 -include("yokozuna.hrl").
 
@@ -47,15 +47,14 @@ start_drain_fsm(CallbackList) ->
         ?MODULE,
         {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
     ).
--spec start_worker(WorkerName::atom()) -> ok.
-start_worker(WorkerName) ->
+-spec start_worker(Index::index_name(), Partition::p()) -> ok.
+start_worker(Index, Partition) ->
     validate_child_started(
-        supervisor:start_child(?MODULE, child_spec(worker, WorkerName))).
+        supervisor:start_child(?MODULE, child_spec(worker, {Index, Partition}))).
 
 active_workers() ->
     AllChildren = supervisor:which_children(yz_solrq_sup),
-    Workers = [Id || {Id, _Child, _Type, Modules} <- AllChildren, Modules == [yz_solrq_worker]],
-    lager:debug("WORKERS: ~p", [Workers]),
+    Workers = [IndexPartition || {IndexPartition, _Child, _Type, Modules} <- AllChildren, Modules == [yz_solrq_worker]],
     Workers.
 
 %%%===================================================================
@@ -73,6 +72,7 @@ init([_NumQueues, NumHelpers]) ->
     %% which then uses a random helper to send data to Solr itself - if we want to
     %% make this one_for_one we will need to do more work monitoring the processes
     %% and responding to crashes more carefully.
+    yz_solrq_throttle_manager:create_table(),
     {ok, {{one_for_all, 10, 10}, [DrainMgrSpec | HelperChildren ++ QueueChildren]}}.
 
 %%%===================================================================
@@ -88,8 +88,8 @@ helper_procs() ->
 child_spec(helper, Name) ->
     {Name, {yz_solrq_helper, start_link, [Name]}, permanent, 5000, worker, [yz_solrq_helper]};
 
-child_spec(worker, Name) ->
-    {Name, {yz_solrq_worker, start_link, [Name]}, permanent, 5000, worker, [yz_solrq_worker]}.
+child_spec(worker, {Index, Partition}= Id) ->
+    {Id, {yz_solrq_worker, start_link, [Index, Partition]}, permanent, 5000, worker, [yz_solrq_worker]}.
 
 -spec child_count(atom()) -> non_neg_integer().
 child_count(ChildType) ->
@@ -111,13 +111,13 @@ required_solrq_workers() ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Partitions = riak_core_ring:my_indices(Ring),
     Indexes = yz_index:get_indexes_from_meta(),
-    [yz_solrq:worker_regname(Index, Partition) || Partition <- Partitions, Index <- Indexes].
+    [{Index, Partition} || Partition <- Partitions, Index <- Indexes].
 
 sync_active_workers() ->
     ActiveWorkers = active_workers(),
     RequiredWorkers = required_solrq_workers(),
     WorkersToStop = ActiveWorkers -- RequiredWorkers,
-    lists:foreach(fun(Worker) -> yz_solrq_worker:stop(Worker) end, WorkersToStop),
+    lists:foreach(fun({Index, Partition}) -> yz_solrq_worker:stop(Index, Partition) end, WorkersToStop),
     MissingWorkers = RequiredWorkers -- ActiveWorkers,
-    lists:foreach(fun(Worker) -> start_worker(Worker) end, MissingWorkers),
+    lists:foreach(fun({Index, Partition}) -> start_worker(Index, Partition) end, MissingWorkers),
     ok.

@@ -23,9 +23,9 @@
 -behavior(gen_server).
 
 %% api
--export([start_link/1, status/1, index/6, set_hwm/2, get_hwm/1, set_index/5,
-         reload_appenv/1, blown_fuse/2, healed_fuse/2, cancel_drain/1,
-         all_queue_len/1, set_purge_strategy/2, stop/1]).
+-export([start_link/2, status/1, index/6, set_hwm/3, get_hwm/1, set_index/5,
+         reload_appenv/2, blown_fuse/2, healed_fuse/2, cancel_drain/1,
+         all_queue_len/2, set_purge_strategy/3, stop/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -89,6 +89,8 @@
 
 -record(
     state, {
+      index                            :: index_name(),
+      partition                        :: p(),
       indexqs = dict:new()             :: yz_dict(),
       all_queue_len = 0                :: non_neg_integer(),
       queue_hwm = 1000                 :: non_neg_integer(),
@@ -108,8 +110,9 @@
 %%% API
 %%%===================================================================
 
-start_link(Name) ->
-    gen_server:start_link({local, Name}, ?MODULE, [], []).
+start_link(Index, Partition) ->
+    Name = yz_solrq:worker_regname(Index, Partition),
+    gen_server:start_link({local, Name}, ?MODULE, [Index, Partition], []).
 
 -spec status(solrq_id()) -> status().
 status(QPid) ->
@@ -123,42 +126,42 @@ status(QPid, Timeout) ->
 index(QPid, Index, BKey, Obj, Reason, P) ->
     gen_server:call(QPid, {index, Index, {BKey, Obj, Reason, P}}, infinity).
 
--spec set_hwm(solrq_id(), HWM :: solrq_hwm()) ->
+-spec set_hwm(Index :: index_name(), Partition :: p(), HWM :: solrq_hwm()) ->
     {ok, OldHWM :: solrq_hwm()} | {error, bad_hwm_value}.
-set_hwm(QPid, HWM) when HWM >= 0 ->
-    gen_server:call(QPid, {set_hwm, HWM});
-set_hwm(_, _)  ->
+set_hwm(Index, Partition, HWM) when HWM >= 0 ->
+    gen_server:call(yz_solrq:worker_regname(Index, Partition), {set_hwm, HWM});
+set_hwm(_, _, _)  ->
     {error, bad_hwm_value}.
 
--spec set_index(solrq_id(), index_name(), solrq_batch_min(), solrq_batch_max(),
+-spec set_index(index_name(), p(), solrq_batch_min(), solrq_batch_max(),
                 solrq_batch_flush_interval()) ->
                     {ok, {solrq_batch_min(),
                          solrq_batch_max(),
                          solrq_batch_flush_interval()}}.
-set_index(QPid, Index, Min, Max, DelayMax)
+set_index(Index, Partition, Min, Max, DelayMax)
     when Min > 0, Min =< Max, DelayMax >= 0 orelse DelayMax == infinity ->
-    gen_server:call(QPid, {set_index, Index, Min, Max, DelayMax});
+    gen_server:call(yz_solrq:worker_regname(Index, Partition), {set_index, Index, Min, Max, DelayMax});
 set_index(_, _, _, _, _) ->
     {error, bad_index_params}.
 
--spec set_purge_strategy(solrq_id(), purge_strategy()) ->
+-spec set_purge_strategy(index_name(), p(), purge_strategy()) ->
     {ok, OldPurgeStrategy :: purge_strategy()} | {error, bad_purge_strategy}.
-set_purge_strategy(QPid, PurgeStrategy)
+set_purge_strategy(Index, Partition, PurgeStrategy)
     when    PurgeStrategy == ?PURGE_NONE
     orelse  PurgeStrategy == ?PURGE_ONE
     orelse  PurgeStrategy == ?PURGE_IDX
     orelse  PurgeStrategy == ?PURGE_ALL ->
-    gen_server:call(QPid, {set_purge_strategy, PurgeStrategy});
-set_purge_strategy(_QPid, _PurgeStrategy) ->
+    gen_server:call(yz_solrq:worker_regname(Index, Partition), {set_purge_strategy, PurgeStrategy});
+set_purge_strategy(_Index, _Partition, _PurgeStrategy) ->
     {error, bad_purge_strategy}.
 
--spec stop(atom()) -> any().
-stop(WorkerName) ->
-    gen_server:cast(WorkerName, stop).
+-spec stop(Index::index_name(), Partition::p()) -> any().
+stop(Index, Partition) ->
+    gen_server:cast(yz_solrq:worker_regname(Index, Partition), stop).
 
--spec reload_appenv(solrq_id()) -> ok.
-reload_appenv(QPid) ->
-    gen_server:call(QPid, reload_appenv).
+-spec reload_appenv(index_name(), p()) -> ok.
+reload_appenv(Index, Partition) ->
+    gen_server:call(yz_solrq:worker_regname(Index, Partition), reload_appenv).
 
 -spec drain(solrq_id(), p() | undefined) -> reference().
 drain(QPid, Partition) ->
@@ -190,9 +193,9 @@ get_hwm(QPid) ->
     gen_server:call(QPid, get_hwm).
 
 %% @doc return the sum of the length of all queues in each indexq
--spec all_queue_len(solrq_id()) -> non_neg_integer().
-all_queue_len(QPid) ->
-    gen_server:call(QPid, all_queue_len).
+-spec all_queue_len(Index:: index_name(), Partition::p()) -> non_neg_integer().
+all_queue_len(Index, Partition) ->
+    gen_server:call(yz_solrq:worker_regname(Index, Partition), all_queue_len).
 
 %%%===================================================================
 %%% solrq/helper interface
@@ -216,8 +219,8 @@ batch_complete(QPid, Index, Message) ->
 %%%===================================================================
 
 %% @private
-init([]) ->
-    {ok, read_appenv(#state{})} .
+init([Index, Partition]) ->
+    {ok, read_appenv(#state{index=Index, partition=Partition})} .
 
 handle_call({index, Index, E}, From, State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
@@ -339,11 +342,14 @@ handle_cast({healed_fuse, Index}, State) ->
 %%          if the number of queued messages are above the high water mark.
 %% @end
 %%
-handle_cast({batch_complete, Index, {NumDelivered, Result}}, #state{all_queue_len = AQL} = State) ->
+handle_cast({batch_complete, Index, {NumDelivered, Result}},
+        #state{all_queue_len = AQL, partition = Partition} = State) ->
     ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     IndexQ = get_indexq(Index, State),
     State1 = handle_batch(Index, IndexQ#indexq{pending_helper = false, in_flight_len = 0}, Result, State),
-    NewState = maybe_unblock_vnodes(State1#state{all_queue_len = AQL - NumDelivered}),
+    NewQueueLength = AQL - NumDelivered,
+    yz_solrq_throttle_manager:update_counter({Index, Partition}, NewQueueLength),
+    NewState = maybe_unblock_vnodes(State1#state{all_queue_len = NewQueueLength}),
     ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
 

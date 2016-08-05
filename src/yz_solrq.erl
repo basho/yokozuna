@@ -109,8 +109,8 @@ num_helper_specs() ->
                                {ok | error,
                                 solrq_hwm() | bad_hwm_value}}].
 set_hwm(HWM) ->
-    [{Name, yz_solrq_worker:set_hwm(Name, HWM)} ||
-        Name <- yz_solrq_sup:active_workers()].
+    [{IndexPartition, yz_solrq_worker:set_hwm(Index, Partition, HWM)} ||
+        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_workers()].
 
 %% @doc Set the index parameters for all queues (note, index goes back to appenv
 %%      queue is empty).
@@ -119,8 +119,9 @@ set_hwm(HWM) ->
                        [{atom(), {ok | error, {Params :: number()} |
                                   bad_index_params}}].
 set_index(Index, Min, Max, DelayMsMax) ->
-    [{Name, yz_solrq_worker:set_index(Name, Index, Min, Max, DelayMsMax)} ||
-        Name <- yz_solrq_sup:active_workers()].
+    [{IndexPartition, yz_solrq_worker:set_index(Index, Partition, Min, Max, DelayMsMax)} ||
+        {Index2, Partition} = IndexPartition <- yz_solrq_sup:active_workers(),
+        Index2 == Index].
 
 %% @doc Set the purge strategy on all queues
 -spec set_purge_strategy(purge_strategy()) ->
@@ -128,14 +129,14 @@ set_index(Index, Min, Max, DelayMsMax) ->
                                            purge_strategy()
                                            | bad_purge_strategy}}].
 set_purge_strategy(PurgeStrategy) ->
-    [{Name, yz_solrq_worker:set_purge_strategy(Name, PurgeStrategy)} ||
-        Name <- yz_solrq_sup:active_workers()].
+    [{IndexPartition, yz_solrq_worker:set_purge_strategy(Index, Partition, PurgeStrategy)} ||
+        {Index, Partition} =IndexPartition <- yz_solrq_sup:active_workers()].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
 -spec reload_appenv() -> [{atom(), ok}].
 reload_appenv() ->
-    [{Name, yz_solrq_worker:reload_appenv(Name)} ||
-        Name <- yz_solrq_sup:active_workers()].
+    [{IndexPartition, yz_solrq_worker:reload_appenv(Index, Partition)} ||
+        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_workers()].
 
 %% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
 -spec blown_fuse(index_name()) -> ok.
@@ -165,7 +166,8 @@ status() ->
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_worker_names() -> [atom()].
 solrq_worker_names() ->
-    yz_solrq_sup:active_workers().
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {Index, Partition} <- yz_solrq_sup:active_workers()].
 
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_helper_names() -> [atom()].
@@ -175,7 +177,7 @@ solrq_helper_names() ->
 %% @doc return the total length of all solrq workers on the node.
 -spec queue_total_length() -> non_neg_integer().
 queue_total_length() ->
-    lists:sum([yz_solrq_worker:all_queue_len(Name) || Name <- yz_solrq_sup:active_workers()]).
+    lists:sum([yz_solrq_worker:all_queue_len(Index, Partition) || {Index, Partition} <- yz_solrq_sup:active_workers()]).
 
 %%%===================================================================
 %%% Internal functions

@@ -51,6 +51,10 @@ maybe_return_hook(false, _BucketProps) ->
 precommit(Obj) ->
     %% Since this is a conditional precommit, it won't run unless we know search
     %% is enabled for the bucket in question.
-    riak_core_throttle:throttle(yokozuna, ?YZ_PUT_THROTTLE_KEY),
+    Bucket = riak_object:bucket(Obj),
+    BucketProps = riak_core_bucket:get_bucket(Bucket),
+    Index = yz_kv:get_index_from_bucket_props(BucketProps),
+    IndexLength = yz_solrq_throttle_manager:get_index_length(Index),
+    riak_core_throttle:throttle_by_load(yokozuna, ?YZ_PUT_THROTTLE_KEY, IndexLength),
     Obj.
 
