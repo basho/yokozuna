@@ -227,7 +227,6 @@ init([Index, Partition]) ->
 handle_call({index, Index, E}, From, State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
     State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
-    %% State3 = update_throttle_and_report_count(State2),
     IndexQ = enqueue(E, get_indexq(Index, State2)),
     IndexQ2 = maybe_request_worker(Index, IndexQ),
     IndexQ3 = maybe_start_timer(Index, IndexQ2),

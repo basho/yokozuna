@@ -272,6 +272,7 @@
 -define(YZ_PUT_THROTTLE_KEY, put_throttle).
 -define(YZ_PUT_THROTTLE_LIMITS_KEY, put_throttle_limits).
 -define(YZ_PUT_THROTTLE_DEFAULT_LIMITS,
+    %% These are percentages of Max Batch Size.
     [{-1,0}, {30,1}, {40,4}, {50, 8}, {75,16}, {85,32}, {95,64}, {99, 128}, {100, 1000}]).
 -define(YZ_PUT_THROTTLE_ENABLED_KEY, put_throttle_enabled).
 
