@@ -54,7 +54,8 @@ precommit(Obj) ->
     Bucket = riak_object:bucket(Obj),
     BucketProps = riak_core_bucket:get_bucket(Bucket),
     Index = yz_kv:get_index_from_bucket_props(BucketProps),
-    IndexLength = yz_solrq_throttle_manager:get_index_length(Index),
-    riak_core_throttle:throttle_by_load(yokozuna, ?YZ_PUT_THROTTLE_KEY, IndexLength),
+    AvgBatchSize = yz_solrq_throttle_manager:get_index_length(Index),
+    MaxBatchSize = yz_solrq:get_max_batch_size(),
+    riak_core_throttle:throttle_by_load(yokozuna, ?YZ_PUT_THROTTLE_KEY, (AvgBatchSize * 100) div MaxBatchSize),
     Obj.
 

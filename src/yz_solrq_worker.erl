@@ -227,11 +227,11 @@ init([Index, Partition]) ->
 handle_call({index, Index, E}, From, State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
     State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
-    State3 = update_throttle_and_report_count(State2),
-    IndexQ = enqueue(E, get_indexq(Index, State3)),
+    %% State3 = update_throttle_and_report_count(State2),
+    IndexQ = enqueue(E, get_indexq(Index, State2)),
     IndexQ2 = maybe_request_worker(Index, IndexQ),
     IndexQ3 = maybe_start_timer(Index, IndexQ2),
-    NewState = update_indexq(Index, IndexQ3, State3),
+    NewState = update_indexq(Index, IndexQ3, State2),
     ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
 handle_call(status, _From, #state{} = State) ->
@@ -731,10 +731,11 @@ request_worker(_Index, IndexQ) ->
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
 %%      return updated state
-send_entries(HPid, Index, State) ->
+send_entries(HPid, Index, #state{partition = Partition} = State) ->
     IndexQ = get_indexq(Index, State),
     #indexq{batch_max = BatchMax} = IndexQ,
-    {Batch, _BatchLen, IndexQ2} = get_batch(IndexQ),
+    {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
+    update_throttle_value(Index, Partition, BatchLen),
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
     case IndexQ2#indexq.queue_len of
         0 ->
@@ -829,7 +830,7 @@ set_new_index(_, _, _) ->
 
 new_indexq() ->
     BatchMin = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, 1),
-    BatchMax = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, 100),
+    BatchMax = yz_solrq:get_max_batch_size(),
     DelayMS = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_FLUSH_INTERVAL,
                                  1000),
     set_new_index(BatchMin, BatchMax, DelayMS).
@@ -871,13 +872,5 @@ debug_state(State) ->
     ].
 -endif.
 
-
-update_throttle_and_report_count(#state{report_count = ReportCount}=State) ->
-    ShouldReport = ReportCount >= ?COUNT_PER_REPORT,
-    maybe_update_throttle_and_report_count(ShouldReport, State).
-
-maybe_update_throttle_and_report_count(false, #state{report_count = ReportCount} = State) ->
-    State#state{report_count = ReportCount + 1};
-maybe_update_throttle_and_report_count(true, #state{index = Index, partition = Partition, all_queue_len =  AllQueueLength} = State) ->
-    yz_solrq_throttle_manager:update_counter({Index, Partition}, AllQueueLength),
-    State#state{report_count = 0}.
+update_throttle_value(Index, Partition, BatchLength) ->
+    yz_solrq_throttle_manager:update_counter({Index, Partition}, BatchLength).

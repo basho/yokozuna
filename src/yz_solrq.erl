@@ -30,7 +30,8 @@
     healed_fuse/1,
     solrq_worker_names/0,
     solrq_helper_names/0,
-    queue_total_length/0]).
+    queue_total_length/0,
+    get_max_batch_size/0]).
 
 -include("yokozuna.hrl").
 
@@ -179,6 +180,8 @@ solrq_helper_names() ->
 queue_total_length() ->
     lists:sum([yz_solrq_worker:all_queue_len(Index, Partition) || {Index, Partition} <- yz_solrq_sup:active_workers()]).
 
+get_max_batch_size() ->
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, 100).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

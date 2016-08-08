@@ -34,7 +34,13 @@ update_counter({_Index, _Partition} = IdxPart, CurrentLength) ->
     ets:insert(yz_solrq_lengths, {IdxPart, CurrentLength}).
 
 get_index_length(Index) ->
-    Values =ets:select(yz_solrq_lengths, [{{{'$1','$2'},'$3'},[{'==','$1',{const,Index}}],['$3']}]),
-    lists:sum(Values).
+    Values = ets:select(yz_solrq_lengths, [{{{'$1','$2'},'$3'},[{'==','$1',{const,Index}}],['$3']}]),
+    NumQueues = length(Values),
+    case NumQueues of
+        0 ->
+            0;
+        _ ->
+            lists:sum(Values) div NumQueues
+    end.
 
 
