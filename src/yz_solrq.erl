@@ -31,7 +31,7 @@
     solrq_worker_names/0,
     solrq_helper_names/0,
     queue_total_length/0,
-    get_max_batch_size/0]).
+    get_max_batch_size/0, solrq_workers_for_partition/1]).
 
 -include("yokozuna.hrl").
 
@@ -169,6 +169,12 @@ status() ->
 solrq_worker_names() ->
     [yz_solrq:worker_regname(Index, Partition) ||
         {Index, Partition} <- yz_solrq_sup:active_workers()].
+
+-spec solrq_workers_for_partition(Partition :: p()) -> [atom()].
+solrq_workers_for_partition(Partition) ->
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {Index, WorkerPartition} <- yz_solrq_sup:active_workers(),
+        Partition == WorkerPartition].
 
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_helper_names() -> [atom()].

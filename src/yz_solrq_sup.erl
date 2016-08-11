@@ -42,10 +42,13 @@ start_link(NumQueues, NumHelpers) ->
 
 %% @doc Start the drain FSM, under this supervisor
 -spec start_drain_fsm(proplist()) -> {ok, pid()} | {error, Reason :: term()}.
-start_drain_fsm(CallbackList) ->
+start_drain_fsm(Parameters) ->
+    PartitionToDrain = proplists:get_value(
+        ?DRAIN_PARTITION, Parameters, undefined
+    ),
     supervisor:start_child(
         ?MODULE,
-        {yz_solrq_drain_fsm, {yz_solrq_drain_fsm, start_link, [CallbackList]}, temporary, 5000, worker, []}
+        {PartitionToDrain, {yz_solrq_drain_fsm, start_link, [Parameters]}, temporary, 5000, worker, []}
     ).
 -spec start_worker(Index::index_name(), Partition::p()) -> ok.
 start_worker(Index, Partition) ->

@@ -21,7 +21,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, start_link/1, cancel/1]).
+-export([start_link/0, start_link/1, cancel/2]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -31,7 +31,7 @@
     terminate/3,
     code_change/4]).
 
--export([start_prepare/0, prepare/2, wait/2, drain_complete/2]).
+-export([start_prepare/1, prepare/2, wait/2, drain_complete/2]).
 
 -ifdef(PULSE).
 -compile(export_all).
@@ -71,7 +71,7 @@ start_link() ->
 %%
 -spec(start_link(drain_params()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
 start_link(Params) ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, Params, []).
+    gen_fsm:start_link(?MODULE, Params, []).
 
 %% @doc Notify the drain FSM identified by DPid that the solrq associated
 %% with the specified Token has completed draining.  Note that the solrq
@@ -92,18 +92,18 @@ drain_complete(DPid, Token) ->
 %% NB. This function is typically called from the drain manager.
 %% @end
 %%
--spec start_prepare() -> no_proc | timeout | term().
-start_prepare() ->
-    gen_fsm:send_event(?SERVER, start).
+-spec start_prepare(pid()) -> no_proc | timeout | term().
+start_prepare(DPid) ->
+    gen_fsm:send_event(DPid, start).
 
 %% @doc Cancel a drain.  This operation will result in sending a cancel
 %% message to each of the solrqs, putting them back into a batching state.
 %% @end
 %%
--spec cancel(non_neg_integer()) -> ok | no_proc | timeout.
-cancel(Timeout) ->
+-spec cancel(pid(), non_neg_integer()) -> ok | no_proc | timeout.
+cancel(DPid, Timeout) ->
     try
-        gen_fsm:sync_send_all_state_event(?SERVER, cancel, Timeout)
+        gen_fsm:sync_send_all_state_event(DPid, cancel, Timeout)
     catch
         _:{normal, _}  ->
             %% It's possible that the drain FSM terminates "naturally"
@@ -135,7 +135,7 @@ init(Params) ->
 %%
 prepare(start, #state{partition = P} = State) ->
     lager:debug("Starting a drain for partition ~p", [P]),
-    SolrqIds = yz_solrq:solrq_worker_names(),
+    SolrqIds = yz_solrq:solrq_workers_for_partition(P),
     TS = os:timestamp(),
     Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
     {next_state, wait, State#state{tokens = Tokens, time_start=TS}}.
