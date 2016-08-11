@@ -20,7 +20,7 @@
 
 %% API
 -export([create_table/0, update_counter/2, get_index_length/1]).
-
+-define(WEIGHT, 0.66).
 
 create_table() ->
     Options = [named_table,
@@ -31,7 +31,14 @@ create_table() ->
     ets:new(yz_solrq_lengths, Options).
 
 update_counter({_Index, _Partition} = IdxPart, CurrentLength) ->
-    ets:insert(yz_solrq_lengths, {IdxPart, CurrentLength}).
+    Old = try
+              ets:lookup_element(yz_solrq_lengths, IdxPart, 2)
+          catch
+              error:badarg ->
+                  0
+          end,
+    New = round((1-?WEIGHT) * Old + ?WEIGHT * CurrentLength),
+    ets:insert(yz_solrq_lengths, {IdxPart, New}).
 
 get_index_length(Index) ->
     Values = ets:select(yz_solrq_lengths, [{{{'$1','$2'},'$3'},[{'==','$1',{const,Index}}],['$3']}]),
