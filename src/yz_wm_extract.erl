@@ -87,9 +87,6 @@ content_types_accepted(RD, S) ->
             check_if_registered_set_ct(RD, S, E, CT)
     end.
 
-forbidden(RD, S) ->
-    {riak_kv_wm_utils:is_forbidden(RD, riak_search), RD, S}.
-
 extract(RD, S) ->
     case yz_extractor:run(S#state.content, S#state.extractor_name) of
         {error, Reason} ->

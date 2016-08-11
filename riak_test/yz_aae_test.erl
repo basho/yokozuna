@@ -15,6 +15,7 @@
 -define(BUCKET, ?INDEX1).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(SPACER, "testfor spaces ").
+-define(AAE_THROTTLE_LIMITS, [{-1, 0}, {10000, 10}]).
 -define(CFG,
         [{riak_core,
           [
@@ -30,12 +31,14 @@
            {anti_entropy_tick, 1000},
            %% allow AAE to build trees and exchange rapidly
            {anti_entropy_build_limit, {100, 1000}},
-           {anti_entropy_concurrency, 8}
+           {anti_entropy_concurrency, 8},
+           {aae_throttle_limits, ?AAE_THROTTLE_LIMITS}
           ]}
         ]).
 
 confirm() ->
     Cluster = rt:build_cluster(5, ?CFG),
+    verify_throttle_config(Cluster),
     yz_rt:setup_drain_intercepts(Cluster),
 
     %% Run test for `default'/legacy bucket type
@@ -45,6 +48,21 @@ confirm() ->
     %% Run test for custom bucket type
     lager:info("Run test for custom bucket type"),
     aae_run(Cluster, ?BUCKETWITHTYPE, ?INDEX2).
+
+verify_throttle_config(Cluster) ->
+    lists:foreach(
+      fun(Node) ->
+              ?assert(rpc:call(Node,
+                               riak_core_throttle,
+                               is_throttle_enabled,
+                               [?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY])),
+              ?assertMatch(?AAE_THROTTLE_LIMITS,
+                           rpc:call(Node,
+                                    riak_core_throttle,
+                                    get_limits,
+                                    [?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY]))
+      end,
+      Cluster).
 
 -spec aae_run([node()], bucket(), index_name()) -> pass | fail.
 aae_run(Cluster, Bucket, Index) ->

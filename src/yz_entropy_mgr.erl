@@ -23,6 +23,8 @@
 -behaviour(gen_server).
 -include("yokozuna.hrl").
 
+-define(UNKNOWN_QUEUE_LENGTH, -1).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -145,6 +147,7 @@ expire_trees() ->
 %%%===================================================================
 
 init([]) ->
+    ok = init_throttle(0),
     Trees = get_trees_from_sup(),
     schedule_tick(),
     {_, Opts} = settings(),
@@ -502,6 +505,7 @@ tick(S) ->
     S3 = lists:foldl(fun(_,SAcc) ->
                              maybe_poke_tree(SAcc)
                      end, S2, lists:seq(1,10)),
+    update_throttle(S3),
     maybe_exchange(Ring, S3).
 
 -spec maybe_poke_tree(state()) -> state().
@@ -512,6 +516,46 @@ maybe_poke_tree(S) ->
         {Tree, S2} ->
             yz_index_hashtree:poke(Tree),
             S2
+    end.
+
+%%%===================================================================
+%%% Throttling
+%%%===================================================================
+
+throttle() ->
+    riak_core_throttle:throttle(?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY).
+
+init_throttle(InitialThrottle) ->
+    ok = riak_core_throttle:init(?YZ_APP_NAME,
+                                 ?YZ_ENTROPY_THROTTLE_KEY,
+                                 {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
+                                  ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
+                                 {?YZ_ENTROPY_THROTTLE_ENABLED_KEY, true}),
+    ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
+                                         ?YZ_ENTROPY_THROTTLE_KEY,
+                                         InitialThrottle).
+
+update_throttle(State) ->
+    Enabled = riak_core_throttle:is_throttle_enabled(?YZ_APP_NAME,
+                                                     ?YZ_ENTROPY_THROTTLE_KEY),
+    case Enabled of
+        true ->
+            Load = calculate_current_load(State),
+            riak_core_throttle:set_throttle_by_load(?YZ_APP_NAME,
+                                                    ?YZ_ENTROPY_THROTTLE_KEY,
+                                                    Load);
+        false ->
+            ok
+    end.
+
+calculate_current_load(_State) ->
+    case yz_stat:get_stat([queue, total_length]) of
+        Num when is_integer(Num) ->
+            Num;
+        Unexpected ->
+            lager:debug("Unexpected value for statistic [queue, total_length]: ~p",
+                        [Unexpected]),
+            ?UNKNOWN_QUEUE_LENGTH
     end.
 
 %%%===================================================================
