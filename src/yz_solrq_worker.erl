@@ -610,9 +610,7 @@ purge(IndexQ, PurgeStrategy, State) ->
                             {#state{}, TotalNumPurged :: non_neg_integer()}.
 purge_internal(BlownIndex, ?PURGE_ALL, State) ->
     purge_idx(BlownIndex, State);
-purge_internal(BlownIndices, PurgeStrategy, State) ->
-    I = random:uniform(length(BlownIndices)),
-    BlownIndex = lists:nth(I, BlownIndices),
+purge_internal(BlownIndex, PurgeStrategy, State) ->
     purge_idx(BlownIndex, PurgeStrategy, State).
 
 -spec purge_idx(BlownIndex :: {index_name(), #indexq{}},
@@ -625,7 +623,7 @@ purge_idx(BlownIndex, State) ->
                 purge_strategy(),
                 #state{}) -> {#state{}, NumPurged :: non_neg_integer()}.
 purge_idx(_, ?PURGE_NONE, State) ->
-    State;
+    {State, 0};
 purge_idx(
    #indexq{queue=OldQueue, aux_queue=OldAuxQueue}=IndexQ,
   ?PURGE_ONE,
@@ -643,7 +641,7 @@ purge_idx(
     ?DEBUG("Removing item from queue because we have hit the high"
            " watermark and the fuse is blown for index ~p, using"
            " purge_strategy ~p", [Index, ?PURGE_ONE]),
-    State#state{all_queue_len=AllQueueLen - 1, indexq = NewIndexQ};
+    {State#state{all_queue_len= AllQueueLen - 1, indexq = NewIndexQ}, 1};
 purge_idx(#indexq{queue_len=QueueLen, aux_queue=AuxQueue}=IndexQ,
           ?PURGE_IDX,
           #state{all_queue_len=AllQueueLen, index=Index} = State) ->
@@ -654,7 +652,7 @@ purge_idx(#indexq{queue_len=QueueLen, aux_queue=AuxQueue}=IndexQ,
     ?DEBUG("Removing index-queue because we have hit the high"
            " watermark and the fuse is blown for index ~p, using"
            " purge_strategy ~p", [Index, ?PURGE_IDX]),
-    State#state{all_queue_len = AllQueueLen - NumPurged, indexq = NewIndexQ}.
+    {State#state{all_queue_len = AllQueueLen - NumPurged, indexq = NewIndexQ}, NumPurged}.
 
 maybe_pop_queue(Queue) ->
     case queue:out(Queue) of

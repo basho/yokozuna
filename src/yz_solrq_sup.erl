@@ -114,7 +114,12 @@ required_solrq_workers() ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Partitions = riak_core_ring:my_indices(Ring),
     Indexes = yz_index:get_indexes_from_meta(),
-    [{Index, Partition} || Partition <- Partitions, Index <- Indexes].
+    [{Index, Partition} ||
+        Partition <- Partitions,
+        Index <- Indexes].
+%% TODO: we shouldn't need ?YZ_INDEX_TOMBSTONE if we just update the YZ AAE tree
+%% when we call index rather than pushing the value all the way to the solrq
+        %%Index =/= ?YZ_INDEX_TOMBSTONE].
 
 sync_active_workers() ->
     ActiveWorkers = active_workers(),

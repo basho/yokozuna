@@ -891,16 +891,16 @@ wait_until_fuses_reset(Node, SolrqId, Indices) ->
 %% @private
 check_fuse_status(Node, Partition, Indices, FuseCheckFunction) ->
     SolrQNames =
-        [yz_solrq:worker_regname(Index, Partition) ||
+        [{Index, yz_solrq:worker_regname(Index, Partition)} ||
             Index <- Indices],
     F = fun(N) ->
         Solrqs = rpc:call(N, yz_solrq, status, []),
-        IndexQs = lists:flatten(
-            [begin
+        IndexQs = [
+            begin
                  Solrq = proplists:get_value(SolrqName, Solrqs),
-                 proplists:get_value(indexqs, Solrq)
+                 {Index, proplists:get_value(indexq, Solrq)}
              end ||
-                SolrqName <- SolrQNames]),
+            {Index, SolrqName} <- SolrQNames],
         MatchingIndexQs = lists:filter(
             FuseCheckFunction,
             IndexQs
