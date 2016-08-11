@@ -62,9 +62,9 @@ drain_error(Pid, Reason) ->
 %% Use at your own risk (or ignore).
 %% @end
 %%
--spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist()) -> ok.
-update_yz_index_hashtree(Pid, YZTree, Index, IndexN) ->
-    do_update(Pid, yz_index_hashtree, YZTree, Index, IndexN).
+-spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist(), fun()) -> ok.
+update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback) ->
+    do_update(Pid, yz_index_hashtree, YZTree, Index, IndexN, Callback).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -277,10 +277,6 @@ fake_kv_object({Bucket, Key}) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
 
 %% @private
-do_update(ToWhom, Module, Tree, Index, IndexN) ->
-    do_update(ToWhom, Module, Tree, Index, IndexN, undefined).
-
-%% @private
 do_update(ToWhom, Module, Tree, Index, IndexN, Callback) ->
     UpdateResult = module_update(Module, IndexN, Tree, Callback),
     Result = case UpdateResult of
@@ -293,8 +289,8 @@ do_update(ToWhom, Module, Tree, Index, IndexN, Callback) ->
 %% @private
 module_update(riak_kv_index_hashtree, Index, Tree, Callback) ->
     riak_kv_index_hashtree:update(Index, Tree, Callback);
-module_update(yz_index_hashtree, Index, Tree, undefined) ->
-    yz_index_hashtree:update(Index, Tree).
+module_update(yz_index_hashtree, Index, Tree, Callback) ->
+    yz_index_hashtree:update(Index, Tree, Callback).
 
 %% @private
 update_request(Module, Tree, Index, IndexN, Callback) ->

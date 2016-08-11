@@ -71,9 +71,9 @@ delete(async, Id, BKey, Tree) ->
 delete(sync, Id, BKey, Tree) ->
     catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
 
--spec update({p(),n()}, tree()) -> ok.
-update(Id, Tree) ->
-    gen_server:call(Tree, {update_tree, Id}, infinity).
+-spec update({p(),n()}, tree(), fun()) -> ok.
+update(Id, Tree, Callback) ->
+    gen_server:call(Tree, {update_tree, Id, Callback}, infinity).
 
 -spec compare({p(),n()}, hashtree:remote_fun(),
               undefined | hashtree:acc_fun(T), term(), tree()) -> T.
@@ -182,7 +182,7 @@ handle_call({get_lock, Type, Pid}, _From, S) ->
     {Reply, S2} = do_get_lock(Type, Pid, S),
     {reply, Reply, S2};
 
-handle_call({update_tree, Id}, From, S) ->
+handle_call({update_tree, Id, Callback}, From, S) ->
     lager:debug("Updating tree for partition ~p preflist ~p",
                [S#state.index, Id]),
     apply_tree(Id,
@@ -192,6 +192,7 @@ handle_call({update_tree, Id}, From, S) ->
                        Self = self(),
                        spawn_link(
                          fun() ->
+                                 catch maybe_callback(Callback),
                                  hashtree:update_perform(SnapTree),
                                  gen_server:cast(Self, {updated, Id}),
                                  gen_server:reply(From, ok)
@@ -676,3 +677,8 @@ handle_iter_keys(Tree, Index, IterKeys) ->
             lager:debug("YZ AAE tree build failed: ~p", [Index]),
             gen_server:cast(Tree, build_failed)
     end.
+
+maybe_callback(undefined) ->
+    ok;
+maybe_callback(Callback) ->
+    Callback().

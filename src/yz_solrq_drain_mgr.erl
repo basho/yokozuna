@@ -79,6 +79,7 @@ handle_call({drain, Params}, From, #state{draining=Draining} = State) ->
             maybe_exchange_fsm_drain_error(ExchangeFSMPid, {error, in_progress}),
             {reply, {error, in_progress}, State};
         _ ->
+            lager:debug("Solrq drain starting for partition ~p", [PartitionToDrain]),
             ExchangeFSMPid = proplists:get_value(
                 ?EXCHANGE_FSM_PID, Params, undefined
             ),
@@ -92,6 +93,7 @@ handle_call({drain, Params}, From, #state{draining=Draining} = State) ->
                                      maybe_exchange_fsm_drain_error(ExchangeFSMPid, E),
                                      {error, E}
                              end,
+                    lager:debug("Solrq drain about to send compelte message for partition ~p.", [PartitionToDrain]),
                     gen_server:cast(?SERVER, {drain_complete, PartitionToDrain}),
                     gen_server:reply(From, Result)
                 end
@@ -100,6 +102,7 @@ handle_call({drain, Params}, From, #state{draining=Draining} = State) ->
     end.
 
 handle_cast({drain_complete, Partition}, #state{draining = Draining} = State) ->
+    lager:debug("Solrq drain completed for partition ~p.", [Partition]),
     NewDraining = lists:delete(Partition, Draining),
     {noreply, State#state{draining = NewDraining}}.
 
@@ -200,4 +203,4 @@ maybe_exchange_fsm_drain_error(Pid, Reason) ->
 maybe_update_yz_index_hashtree(undefined, undefined) ->
     ok;
 maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}) ->
-    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN).
+    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN, undefined).

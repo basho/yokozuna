@@ -360,7 +360,8 @@ handle_cast({batch_complete, Index, {NumDelivered, Result}},
 %%          flag to false (finally), and kick-starting the indexq.
 %% @end
 %%
-handle_cast(drain_complete, #state{indexq = IndexQ0, index = Index} = State) ->
+handle_cast(drain_complete, #state{indexq = IndexQ0, index = Index, partition = Partition} = State) ->
+    lager:debug("Solrq drain worker received drain_complete messages for index/partition ~p/~p", [Index, Partition]),
     #indexq{queue = Queue, queue_len = QueueLen, aux_queue = AuxQueue} = IndexQ0,
     IndexQ1 = IndexQ0#indexq{
         queue = queue:join(Queue, AuxQueue),
@@ -374,7 +375,8 @@ handle_cast(drain_complete, #state{indexq = IndexQ0, index = Index} = State) ->
 
 
 %% @doc Timer has fired - request a worker.
-handle_info({timeout, _TimerRef, {flush, Index}}, State) ->
+handle_info({timeout, TimerRef, {flush, Index}}, #state{indexq = IndexQ} = State)
+    when TimerRef == IndexQ#indexq.timer_ref ->
     case find_indexq(Index, State) of
         undefined ->
             {noreply, State};
@@ -389,7 +391,8 @@ handle_info({timeout, _TimerRef, {flush, Index}}, State) ->
                     {noreply, State}
             end
     end;
-handle_info(_Msg, State) ->
+handle_info({timeout, _TimerRef, {flush, _Index}}, State) ->
+    lager:debug("Received timeout from stale Timer Reference"),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -512,6 +515,10 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
             State3 = maybe_purge_blown_indices(State2),
             case over_hwm(State3) of
                 true ->
+                    lager:debug("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
+                        From,
+                        self(),
+                        State#state.queue_hwm]),
                     yz_stat:blocked_vnode(From),
                     State3#state{pending_vnodes = [From | PendingVnodes]};
                 false ->
@@ -734,7 +741,12 @@ maybe_unblock_vnodes(#state{pending_vnodes = PendingVnodes} = State) ->
         true ->
             State;
         _ ->
-            _ = [gen_server:reply(From, ok) || From <- PendingVnodes],
+            lists:map(fun(From) ->
+                lager:debug("Unblocking vnode ~p due to SolrQ ~p going below HWM of ~p", [
+                    From,
+                    self(),
+                    State#state.queue_hwm]),
+                gen_server:reply(From, ok) end, PendingVnodes),
             State#state{pending_vnodes = []}
     end.
 

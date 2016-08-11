@@ -134,7 +134,7 @@ init(Params) ->
 %% @end
 %%
 prepare(start, #state{partition = P} = State) ->
-    lager:debug("Starting a drain for partition ~p", [P]),
+    lager:debug("Solrq drain starting for partition ~p", [P]),
     SolrqIds = yz_solrq:solrq_workers_for_partition(P),
     TS = os:timestamp(),
     Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
@@ -150,18 +150,23 @@ wait({drain_complete, Token},
         tokens = Tokens,
         exchange_fsm_pid = ExchangeFSMPid,
         yz_index_hashtree_update_params = YZIndexHashtreeUpdateParams,
-        time_start = StartTS
+        time_start = StartTS,
+        partition = Partition
     } = State) ->
     Tokens2 = lists:delete(Token, Tokens),
     NewState = State#state{tokens = Tokens2},
     case Tokens2 of
         [] ->
-            lager:debug("Drain completed for all workers.  Resuming batching."),
+            lager:debug("Solrq drain completed for all workers for partition ~p.  Resuming batching.", [Partition]),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(StartTS)),
+            CompleteCallback = fun() ->
+                lager:debug("Solrq drain sending drain_complete messages to workers for partition ~p", [Partition]),
+                [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()],
+                lager:debug("Solrq drain completed drain_complete messages to workers for partition ~p", [Partition])
+            end,
             maybe_update_yz_index_hashtree(
-                ExchangeFSMPid, YZIndexHashtreeUpdateParams
+                ExchangeFSMPid, YZIndexHashtreeUpdateParams, CompleteCallback
             ),
-            [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()],
             {stop, normal, NewState};
         _ ->
             {next_state, wait, NewState}
@@ -190,7 +195,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-maybe_update_yz_index_hashtree(undefined, undefined) ->
+maybe_update_yz_index_hashtree(undefined, undefined, _) ->
     ok;
-maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}) ->
-    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN).
+maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}, Callback) ->
+    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback).
