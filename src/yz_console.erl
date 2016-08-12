@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2014 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2014-2016 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -18,10 +18,26 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_console).
+
+-behavior(clique_handler).
+
 -include("yokozuna.hrl").
+
+%% New clique CLI code:
+-export([register_cli/0,
+         format_dist_query_value/1,
+         dist_query_cfg_change/2]).
+
+%% Old pre-clique CLI callbacks:
 -export([aae_status/1,
-         switch_to_new_search/1,
-         dist_query/1]).
+         switch_to_new_search/1]).
+
+-spec register_cli() -> ok.
+register_cli() ->
+    clique:register_config_whitelist(["search.dist_query.enable"]),
+    clique:register_formatter(["search.dist_query.enable"], fun format_dist_query_value/1),
+    clique:register_config(["search", "dist_query", "enable"], fun dist_query_cfg_change/2),
+    ok.
 
 %% @doc Print the Active Anti-Entropy status to stdout.
 -spec aae_status([]) -> ok.
@@ -54,30 +70,20 @@ switch_to_new_search([]) ->
     end.
 
 
-%% @doc Get or set the dist_query enabled flag.  When this flag is set to "on",
+%% @doc Callback for changes to dist_query enabled flag. When this flag is set to "on",
 %% then this node participates in distributed queries and will be included in
-%% cover plans when queries are made through yokozuna.  When disabled, the node
+%% cover plans when queries are made through yokozuna. When disabled, the node
 %% will be excluded in cover plans, meaning that it will not be consulted as part
-%% of a distributed query.  Note that you can still query though this node;
+%% of a distributed query. Note that you can still query though this node;
 %% the node, however, will not be consulted in a Solr distrubuted query.
-dist_query([]) ->
-    io:format("~p~n", [get_dist_query_value(yz_solr_proc:get_dist_query())]);
-dist_query(["on"|_]) ->
+dist_query_cfg_change(["search", "dist_query", "enable"], "on") ->
     set_dist_query(true);
-dist_query(["off"|_]) ->
-    set_dist_query(false);
-dist_query([AnythingElse|_]) ->
-    io:format("Bad value: ~s~n", [AnythingElse]).
-
-
-
-%%
-%% Internal operations
-%%
+dist_query_cfg_change(["search", "dist_query", "enable"], "off") ->
+    set_dist_query(false).
 
 set_dist_query(Val) ->
     {ok, OldVal} = yz_solr_proc:set_dist_query(Val),
-    io:format("Previous value: ~p~n", [get_dist_query_value(OldVal)]).
+    io_lib:format("Previous value: ~p", [format_dist_query_value(OldVal)]).
 
-get_dist_query_value(true) -> on;
-get_dist_query_value(false) -> off.
+format_dist_query_value(true) -> "on";
+format_dist_query_value(false) -> "off".

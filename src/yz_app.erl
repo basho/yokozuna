@@ -60,6 +60,7 @@ start(_StartType, _StartArgs) ->
 
             %% Now everything is started, permit usage by KV/query
             enable_components(),
+            clique:register([yz_console]),
             {ok, Pid};
         Error ->
             Error
