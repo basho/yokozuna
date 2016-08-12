@@ -331,7 +331,7 @@ solr_jvm_opts() ->
                        solr_jvm_opts,
                        ?YZ_DEFAULT_SOLR_JVM_OPTS).
 
--spec solr_is_up(#state{}) -> #state{}.
+-spec solr_is_up(#state{}) -> {noreply, #state{}}.
 solr_is_up(S) ->
     %% solr finished its startup, be merry
     ?INFO("solr is up", []),
