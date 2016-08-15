@@ -31,7 +31,11 @@
     solrq_worker_names/0,
     solrq_helper_names/0,
     queue_total_length/0,
-    get_max_batch_size/0, solrq_workers_for_partition/1]).
+    get_max_batch_size/0,
+    get_min_batch_size/0,
+    get_flush_interval/0,
+    solrq_workers_for_partition/1,
+    solrq_worker_pairs_for_index/1]).
 
 -include("yokozuna.hrl").
 
@@ -60,7 +64,7 @@
 index(Index, BKey, Obj, Reason, P) ->
     WorkerName = yz_solrq:worker_regname(Index, P),
     ok = ensure_worker(Index, P),
-    yz_solrq_worker:index(WorkerName, Index, BKey, Obj, Reason, P).
+    yz_solrq_worker:index(WorkerName, BKey, Obj, Reason, P).
 
 %% @doc From the hash, return the registered name of a queue
 -spec worker_regname(index_name(), p()) -> regname().
@@ -106,7 +110,7 @@ num_helper_specs() ->
 
 
 %% @doc Set the high water mark on all queues
--spec set_hwm(solrq_hwm()) -> [{atom(),
+-spec set_hwm(solrq_hwm()) -> [{{index_name(), p()},
                                {ok | error,
                                 solrq_hwm() | bad_hwm_value}}].
 set_hwm(HWM) ->
@@ -117,16 +121,15 @@ set_hwm(HWM) ->
 %%      queue is empty).
 -spec set_index(index_name(), solrq_batch_min(), solrq_batch_max(),
                 solrq_batch_flush_interval()) ->
-                       [{atom(), {ok | error, {Params :: number()} |
+                       [{{index_name(), p()}, {ok | error, {Params :: number()} |
                                   bad_index_params}}].
 set_index(Index, Min, Max, DelayMsMax) ->
     [{IndexPartition, yz_solrq_worker:set_index(Index, Partition, Min, Max, DelayMsMax)} ||
-        {Index2, Partition} = IndexPartition <- yz_solrq_sup:active_workers(),
-        Index2 == Index].
+        {_Index, Partition} = IndexPartition <- solrq_worker_pairs_for_index(Index)].
 
 %% @doc Set the purge strategy on all queues
 -spec set_purge_strategy(purge_strategy()) ->
-                                [{atom(), {ok | error,
+                                [{{index_name(), p()}, {ok | error,
                                            purge_strategy()
                                            | bad_purge_strategy}}].
 set_purge_strategy(PurgeStrategy) ->
@@ -134,7 +137,7 @@ set_purge_strategy(PurgeStrategy) ->
         {Index, Partition} =IndexPartition <- yz_solrq_sup:active_workers()].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
--spec reload_appenv() -> [{atom(), ok}].
+-spec reload_appenv() -> [{{index_name(), p()}, ok}].
 reload_appenv() ->
     [{IndexPartition, yz_solrq_worker:reload_appenv(Index, Partition)} ||
         {Index, Partition} = IndexPartition <- yz_solrq_sup:active_workers()].
@@ -144,9 +147,9 @@ reload_appenv() ->
 blown_fuse(Index) ->
     lists:foreach(
         fun(Name) ->
-            yz_solrq_worker:blown_fuse(Name, Index)
+            yz_solrq_worker:blown_fuse(Name)
         end,
-        solrq_worker_names()
+        solrq_workers_for_index(Index)
     ).
 
 %% @doc Signal to all Solrqs that a fuse has healed for the the specified index.
@@ -154,9 +157,9 @@ blown_fuse(Index) ->
 healed_fuse(Index) ->
     lists:foreach(
         fun(Name) ->
-            yz_solrq_worker:healed_fuse(Name, Index)
+            yz_solrq_worker:healed_fuse(Name)
         end,
-        solrq_worker_names()
+        solrq_workers_for_index(Index)
     ).
 
 %% @doc Return the status of all solrq workers.
@@ -176,6 +179,18 @@ solrq_workers_for_partition(Partition) ->
         {Index, WorkerPartition} <- yz_solrq_sup:active_workers(),
         Partition == WorkerPartition].
 
+-spec solrq_worker_pairs_for_index(Index :: index_name()) -> [{index_name(), p()}].
+solrq_worker_pairs_for_index(Index) ->
+    [{Index, Partition} ||
+        {WorkerIndex, Partition} <- yz_solrq_sup:active_workers(),
+        Index == WorkerIndex].
+
+-spec solrq_workers_for_index(Index :: index_name()) -> [atom()].
+solrq_workers_for_index(Index) ->
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {WorkerIndex, Partition} <- yz_solrq_sup:active_workers(),
+        Index == WorkerIndex].
+
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_helper_names() -> [atom()].
 solrq_helper_names() ->
@@ -188,6 +203,13 @@ queue_total_length() ->
 
 get_max_batch_size() ->
     app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, 100).
+
+get_min_batch_size() ->
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, 1).
+
+get_flush_interval() ->
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_FLUSH_INTERVAL,
+        1000).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

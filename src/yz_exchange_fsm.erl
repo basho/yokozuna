@@ -62,7 +62,7 @@ drain_error(Pid, Reason) ->
 %% Use at your own risk (or ignore).
 %% @end
 %%
--spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist(), fun()) -> ok.
+-spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist(), fun() | undefined) -> ok.
 update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback) ->
     do_update(Pid, yz_index_hashtree, YZTree, Index, IndexN, Callback).
 

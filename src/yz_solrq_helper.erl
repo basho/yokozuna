@@ -30,7 +30,7 @@
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([index_ready/3, index_ready/2, index_batch/5]).
+-export([index_ready/1, index_ready/2, index_batch/5]).
 
 %% TODO: Dynamically pulse_instrument.
 -ifdef(PULSE).
@@ -72,20 +72,20 @@ status(Pid) ->
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
 
--spec index_ready(index_name(), solrq_id()) -> ok.
-index_ready(Index, QPid) ->
+-spec index_ready(solrq_id()) -> ok.
+index_ready(QPid) ->
     HPid = yz_solrq:random_helper(),
-    index_ready(HPid, Index, QPid).
+    index_ready(HPid, QPid).
 
 %% @doc Mark the index as ready.  Separating into a two phase
 %%      rather than just blindly sending from the solrq adds the
 %%      backpressure on the KV vnode.
--spec index_ready(solrq_helper_id(), index_name(), solrq_id()) -> ok.
-index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
-    gen_server:cast(HPid, {ready, Index, QPid});
-index_ready(Hash, Index, QPid) ->
+-spec index_ready(solrq_helper_id(), solrq_id()) -> ok.
+index_ready(HPid, QPid) when is_atom(HPid); is_pid(HPid) ->
+    gen_server:cast(HPid, {ready, QPid});
+index_ready(Hash, QPid) ->
     HPid = yz_solrq:helper_regname(Hash),
-    index_ready(HPid, Index, QPid).
+    index_ready(HPid, QPid).
 
 %% @doc Index a batch
 -spec index_batch(solrq_helper_id(),
@@ -108,8 +108,8 @@ handle_call(status, _From, State) ->
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
-handle_cast({ready, Index, QPid}, State) ->
-    yz_solrq_worker:request_batch(QPid, Index, self()),
+handle_cast({ready, QPid}, State) ->
+    yz_solrq_worker:request_batch(QPid, self()),
     {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
     ?PULSE_DEBUG("Handling batch for index ~p.  Entries: ~p~n", [Index, debug_entries(Entries)]),
@@ -122,7 +122,7 @@ handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
             ?PULSE_DEBUG("Error handling batch for index ~p.  Undelivered: ~p~n", [Index, debug_entries(Undelivered)]),
             {length(Entries) - length(Undelivered), {retry, Undelivered}}
     end,
-    yz_solrq_worker:batch_complete(QPid, Index, Message),
+    yz_solrq_worker:batch_complete(QPid, Message),
     {noreply, State}.
 
 %%%===================================================================
