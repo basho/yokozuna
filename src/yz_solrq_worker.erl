@@ -230,7 +230,7 @@ handle_call({index, E}, From, #state{indexq = IndexQ0} = State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
     State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
     IndexQ = enqueue(E, IndexQ0),
-    IndexQ2 = maybe_request_worker(IndexQ),
+    IndexQ2 = maybe_request_helper(IndexQ),
     IndexQ3 = maybe_start_timer(IndexQ2),
     NewState = State2#state{indexq = IndexQ3},
     ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(NewState)]),
@@ -242,7 +242,7 @@ handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
 handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
 handle_call({set_index, Min, Max, DelayMS}, _From, #state{indexq = IndexQ} = State) ->
-    IndexQ2 = maybe_request_worker(IndexQ#indexq{batch_min = Min,
+    IndexQ2 = maybe_request_helper(IndexQ#indexq{batch_min = Min,
                                                  batch_max = Max,
                                                  delayms_max = DelayMS}),
     OldParams = {IndexQ#indexq.batch_min,
@@ -321,7 +321,7 @@ handle_cast(blown_fuse, State) ->
 %% @end
 %%
 handle_cast(healed_fuse, #state{indexq = IndexQ} = State) ->
-    NewIndexQ = maybe_request_worker(maybe_start_timer(IndexQ#indexq{fuse_blown = false})),
+    NewIndexQ = maybe_request_helper(maybe_start_timer(IndexQ#indexq{fuse_blown = false})),
     {noreply, State#state{indexq=NewIndexQ}};
 
 %%
@@ -369,12 +369,12 @@ handle_cast(drain_complete, #state{indexq = IndexQ0, index = Index, partition = 
         aux_queue = queue:new(),
         draining = false
     },
-    IndexQ2 = maybe_start_timer(maybe_request_worker(IndexQ1)),
+    IndexQ2 = maybe_start_timer(maybe_request_helper(IndexQ1)),
 
     {noreply, State#state{indexq = IndexQ2, drain_info = undefined}}.
 
 
-%% @doc Timer has fired - request a worker.
+%% @doc Timer has fired - request a helper.
 handle_info({timeout, TimerRef, flush}, #state{indexq = IndexQ} = State)
     when TimerRef == IndexQ#indexq.timer_ref ->
     case timer_running(IndexQ) of
@@ -410,7 +410,7 @@ timer_running(_) -> true.
 %% A drain is not in progress.  There are two cases to consider:
 %%   1. The result is ok; This means all batched messages were delivered.
 %%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
-%%      for this index, and request a new worker, if we are over the requested minimum.
+%%      for this index, and request a new helper, if we are over the requested minimum.
 %% @end
 %%
 handle_batch(
@@ -426,7 +426,7 @@ handle_batch(
             {retry, Undelivered} ->
                 requeue_undelivered(Undelivered, IndexQ0)
         end,
-    IndexQ2 = maybe_request_worker(IndexQ1),
+    IndexQ2 = maybe_request_helper(IndexQ1),
     IndexQ3 = maybe_start_timer(IndexQ2),
     State#state{indexq = IndexQ3};
 
@@ -440,7 +440,7 @@ handle_batch(
 %%       drain FSM.
 %%    2. The batch did not succeed.  In this case, we got back a list
 %%       of undelivered messages.  Put the undelivered messages back onto
-%%       the queue and request another worker.
+%%       the queue and request another helper.
 %%
 %% If there are no remaining indexqs to drain, then send the drain FSM
 %% a drain_complete message for this solrq.
@@ -461,10 +461,10 @@ handle_batch(
                                 draining = wait_for_drain_complete,
                                 batch_start = undefined };
                     _ ->
-                        request_worker(IndexQ)
+                        request_helper(IndexQ)
                 end;
             {retry, Undelivered} ->
-                requeue_undelivered(Undelivered, request_worker(IndexQ))
+                requeue_undelivered(Undelivered, request_helper(IndexQ))
         end,
     %%
     %% If there are no remaining indexqs to be flushed, send the drain FSM
@@ -489,7 +489,7 @@ drain_queue(IndexQ) ->
     %% will remain in the draining state, the result being that the
     %% indexq will eventually get drained, once the current in-flight
     %% batch completes.
-    IndexQ2 = request_worker(IndexQ),
+    IndexQ2 = request_helper(IndexQ),
     IndexQ2#indexq{draining = true}.
 
 -spec internal_status(state()) -> status().
@@ -542,7 +542,7 @@ requeue_undelivered(Undelivered, #indexq{queue = Queue, queue_len = QueueLen} = 
 
 %% @doc Trigger a flush and return state
 flush(IndexQ, State) ->
-    IndexQ2 = request_worker(IndexQ),
+    IndexQ2 = request_helper(IndexQ),
     State#state{indexq = IndexQ2}.
 
 %% @doc handle a blown fuse by setting the fuse_blown flag,
@@ -661,26 +661,26 @@ maybe_pop_queue(Queue) ->
         {empty, _Queue} -> Queue
     end.
 
-%% @doc Request a worker to pull the queue
-maybe_request_worker(#indexq{batch_min = Min} = IndexQ) ->
-    maybe_request_worker(Min, IndexQ).
+%% @doc Request a helper to pull the queue
+maybe_request_helper(#indexq{batch_min = Min} = IndexQ) ->
+    maybe_request_helper(Min, IndexQ).
 
-%% @doc Request a worker to pull the queue with a provided minimum,
+%% @doc Request a helper to pull the queue with a provided minimum,
 %%      as long as one has not already been requested.
-maybe_request_worker(Min, #indexq{pending_helper = false,
+maybe_request_helper(Min, #indexq{pending_helper = false,
                                          fuse_blown = false,
                                          queue_len = L} = IndexQ) when L >= Min ->
-    request_worker(IndexQ);
-%% Already have a pending helper the fuse is blown, or we're not above the min,
+    request_helper(IndexQ);
+%% Already have a pending helper, the fuse is blown, or we're not above the min,
 %% so this is a no-op
-maybe_request_worker(_Min, IndexQ) ->
+maybe_request_helper(_Min, IndexQ) ->
     IndexQ.
 
-%% @doc Notify the solrq workers the index is ready to be pulled.
-request_worker(#indexq{pending_helper = false, fuse_blown = false} = IndexQ) ->
+%% @doc Notify a solrq helper the index is ready to be pulled.
+request_helper(#indexq{pending_helper = false, fuse_blown = false} = IndexQ) ->
     yz_solrq_helper:index_ready(self()),
     IndexQ#indexq{pending_helper = true};
-request_worker(IndexQ) ->
+request_helper(IndexQ) ->
     IndexQ.
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
@@ -696,7 +696,7 @@ send_entries(HPid, #state{partition = Partition, indexq = IndexQ, index = Index}
             State#state{indexq = IndexQ2};
         _ ->
             % may be another full batch
-            IndexQ3 = maybe_request_worker(IndexQ2),
+            IndexQ3 = maybe_request_helper(IndexQ2),
             % if entries left, restart timer if batch not full
             IndexQ4 = maybe_start_timer(IndexQ3),
             State#state{indexq = IndexQ4}
