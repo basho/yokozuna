@@ -154,8 +154,7 @@ set_index(_, _, _, _, _) ->
 set_purge_strategy(Index, Partition, PurgeStrategy)
     when    PurgeStrategy == ?PURGE_NONE
     orelse  PurgeStrategy == ?PURGE_ONE
-    orelse  PurgeStrategy == ?PURGE_IDX
-    orelse  PurgeStrategy == ?PURGE_ALL ->
+    orelse  PurgeStrategy == ?PURGE_IDX ->
     gen_server:call(yz_solrq:worker_regname(Index, Partition), {set_purge_strategy, PurgeStrategy});
 set_purge_strategy(_Index, _Partition, _PurgeStrategy) ->
     {error, bad_purge_strategy}.
@@ -226,9 +225,9 @@ batch_complete(QPid, Message) ->
 init([Index, Partition]) ->
     {ok, read_appenv(#state{index=Index, partition=Partition})} .
 
-handle_call({index, E}, From, #state{indexq = IndexQ0} = State) ->
+handle_call({index, E}, From, State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
-    State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
+    #state{indexq = IndexQ0} = State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
     IndexQ = enqueue(E, IndexQ0),
     IndexQ2 = maybe_request_helper(IndexQ),
     IndexQ3 = maybe_start_timer(IndexQ2),
@@ -508,10 +507,7 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
             State3 = maybe_purge_blown_indices(State2),
             case over_hwm(State3) of
                 true ->
-                    lager:debug("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
-                        From,
-                        self(),
-                        State#state.queue_hwm]),
+                    log_blocked_vnode(From, State),
                     yz_stat:blocked_vnode(From),
                     State3#state{pending_vnodes = [From | PendingVnodes]};
                 false ->
@@ -522,6 +518,13 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
             gen_server:reply(From, ok),
             State2
     end.
+
+log_blocked_vnode(From, State) ->
+    lager:debug("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
+        From,
+        self(),
+        State#state.queue_hwm]),
+    From.
 
 %% @doc Enqueue the entry and return updated state.
 enqueue(E, #indexq{queue = Q, queue_len = L, aux_queue = A, draining = Draining} = IndexQ) ->
@@ -558,10 +561,10 @@ handle_blown_fuse(State) ->
     State.
 
 %% @doc purge entries depending on purge strategy if we are over the HWM
-maybe_purge(Indices, PBIStrategy, State) ->
+maybe_purge(Index, PBIStrategy, State) ->
     case over_hwm(State) of
         true ->
-            purge(Indices, PBIStrategy, State);
+            purge(Index, PBIStrategy, State);
         _ ->
             State
     end.
@@ -578,7 +581,7 @@ maybe_purge_blown_indices(#state{indexq=IndexQ,
     #indexq{fuse_blown=IsBlown,
             queue_len=QueueLen,
             aux_queue=AuxQueue} = IndexQ,
-    HasItems = QueueLen > 0 orelse queue:len(AuxQueue) > 0,
+    HasItems = (QueueLen > 0) orelse (queue:len(AuxQueue) > 0),
     case IsBlown andalso HasItems of
         false ->
             State;
@@ -599,7 +602,7 @@ maybe_purge_blown_indices(#state{indexq=IndexQ,
 -spec purge(indexq(), purge_strategy(), state()) ->
     state().
 purge(IndexQ, PurgeStrategy, State) ->
-    {NewState, NumPurged} = purge_internal(IndexQ, PurgeStrategy, State),
+    {NewState, NumPurged} = purge_idx(IndexQ, PurgeStrategy, State),
     case NumPurged of
         0 ->
             ok;
@@ -607,18 +610,6 @@ purge(IndexQ, PurgeStrategy, State) ->
             yz_stat:hwm_purged(NumPurged)
     end,
     NewState.
-
--spec purge_internal(indexq(), purge_strategy(), state()) ->
-                            {state(), TotalNumPurged :: non_neg_integer()}.
-purge_internal(BlownIndex, ?PURGE_ALL, State) ->
-    purge_idx(BlownIndex, State);
-purge_internal(BlownIndex, PurgeStrategy, State) ->
-    purge_idx(BlownIndex, PurgeStrategy, State).
-
--spec purge_idx(BlownIndex :: indexq(), State :: state()) ->
-                       {state(), TotalNumPurged :: non_neg_integer()}.
-purge_idx(BlownIndex, State) ->
-    purge_idx(BlownIndex, ?PURGE_IDX, State).
 
 -spec purge_idx(BlownIndex :: indexq(),
                 purge_strategy(),

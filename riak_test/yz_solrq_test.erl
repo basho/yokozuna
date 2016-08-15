@@ -316,8 +316,6 @@ confirm_purge_strategy(Cluster, PBConn) ->
                                {?BUCKET5, ?INDEX5}),
     confirm_purge_idx_strategy(Cluster, PBConn,
                                {?BUCKET7, ?INDEX7}),
-    confirm_purge_all_strategy(Cluster, PBConn,
-                               {?BUCKET9, ?INDEX9}),
     confirm_purge_none_strategy(Cluster, PBConn,
                                 {?BUCKET11, ?INDEX11}),
     ok.
@@ -358,30 +356,6 @@ check_idx_purged({[_K1, _K2, _K3, _K4, K5] = _Index1Written, Index1SearchResults
     case Condition of
         false ->
             lager:error("check_idx_purged error: ~p", [TestResults]);
-        _ -> ok
-    end,
-    ?assertEqual(Condition, true),
-    ok.
-
-confirm_purge_all_strategy(Cluster, PBConn, Bucket1Index1) ->
-    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1,
-                            ?PURGE_ALL),
-    check_all_purged(PurgeResults),
-    lager:info("confirm_purge_all_strategy ok"),
-    ok.
-
-check_all_purged({[_K1, _K2, _K3, _K4, K5] = _Index1Written, Index1SearchResults} = TestResults) ->
-    %%
-    %% Note the first condition, because we wrote to Index1
-    %% but that was the purge trigger, so the last entry will
-    %% NOT have been purged, of that indexq was the one chosen.
-    %% Otherwise, it was the second indexq, and nothing should
-    %% have been pending for that indexq, so they all get deleted.
-    %%
-    Condition = equal(Index1SearchResults, [K5]),
-    case Condition of
-        false ->
-            lager:error("check_all_purged error: ~p", [TestResults]);
         _ -> ok
     end,
     ?assertEqual(Condition, true),
@@ -534,9 +508,7 @@ find_representatives(Index, Bucket) ->
 
 -spec get_solrq(index_name(), {bucket(), key()}) -> atom().
 get_solrq(Index, BucketKey) ->
-    lager:info("Getting solrq for ~p", [BucketKey]),
     Hash = chash:key_of(BucketKey),
-    lager:info("Hash for ~p is ~p", [BucketKey, Hash]),
     Partition = riak_core_ring_util:partition_id_to_hash(
         riak_core_ring_util:hash_to_partition_id(Hash, ?RING_SIZE), ?RING_SIZE),
     yz_solrq:worker_regname(Index, Partition).

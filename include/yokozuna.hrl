@@ -513,7 +513,7 @@
 -type solrq_batch_max()            :: pos_integer().
 -type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
 -type solrq_hwm()                  :: non_neg_integer().
--type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX|?PURGE_ALL.
+-type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX.
 
 %%%===================================================================
 %%% draining
