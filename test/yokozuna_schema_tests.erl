@@ -43,8 +43,6 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_flush_interval",
                                   1000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 10),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_worker_count", 10),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_helper_count", 10),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout", 60000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_cancel_timeout", 5000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
@@ -78,8 +76,6 @@ override_schema_test() ->
             {["search", "queue", "batch", "maximum"], 10000},
             {["search", "queue", "batch", "flush_interval"], infinity},
             {["search", "queue", "high_watermark"], 100000},
-            {["search", "queue", "worker_count"], 5},
-            {["search", "queue", "helper_count"], 20},
             {["search", "queue", "high_watermark", "purge_strategy"],
              "purge_all"},
             {["search", "queue", "drain", "enable"], "off"},
@@ -125,8 +121,6 @@ override_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_flush_interval",
                                   infinity),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 100000),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_worker_count", 5),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_helper_count", 20),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout",
                                   120000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_cancel_timeout",
@@ -149,9 +143,7 @@ validations_test() ->
             {["search", "index", "error_threshold", "failure_count"], 0},
             {["search", "queue", "batch", "minimum"], -1},
             {["search", "queue", "high_watermark"], -1},
-            {["search", "queue", "batch", "maximum"], -10},
-            {["search", "queue", "worker_count"], 0},
-            {["search", "queue", "helper_count"], 20}
+            {["search", "queue", "batch", "maximum"], -10}
     ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
@@ -164,9 +156,7 @@ validations_test() ->
                   {"search.queue.batch.minimum",
                    "must be a positive integer > 0"},
                   {"search.queue.high_watermark",
-                   "must be an integer >= 0"},
-                  {"search.queue.worker_count",
-                   "must be a positive integer > 0"}],
+                   "must be an integer >= 0"}],
                  ListOfErrors2),
     ok.
 

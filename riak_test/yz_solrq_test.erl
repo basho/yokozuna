@@ -58,8 +58,6 @@
                   ?INDEX6, ?INDEX7, ?INDEX8, ?INDEX9, ?INDEX10,
                   ?INDEX11, ?INDEX12]).
 
--define(NUM_SOLRQ, 3).
--define(NUM_SOLRQ_HELPERS, 3).
 -define(SOLRQ_DELAYMS_MAX, 3000).
 -define(SOLRQ_BATCH_MIN_SETTING, 4).
 -define(SOLRQ_BATCH_MAX_SETTING, 8).
@@ -69,7 +67,6 @@
 -define(CONFIG,
         [{yokozuna,
           [{enabled, true},
-           {?SOLRQ_HELPER_COUNT, ?NUM_SOLRQ_HELPERS},
            {?SOLRQ_BATCH_FLUSH_INTERVAL, ?SOLRQ_DELAYMS_MAX},
            {?SOLRQ_BATCH_MIN, ?SOLRQ_BATCH_MIN_SETTING},
            {?SOLRQ_BATCH_MAX, ?SOLRQ_BATCH_MAX_SETTING},
@@ -486,7 +483,6 @@ search_bkeys(PBConn, Index) ->
 find_representative_bkeys(Partition, Index, Bucket) ->
     Solrq = yz_solrq:worker_regname(Index, Partition),
     Representatives = find_representatives(Index, Bucket),
-    lager:info("REPS: ~p", [Representatives]),
     {ok, BKeys} = dict:find(Solrq, Representatives),
     BKeys.
 

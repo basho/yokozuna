@@ -264,30 +264,6 @@
   {datatype, {enum, [purge_one, purge_index, purge_all, off]}}
 ]}.
 
-%% @doc The number of solr queue workers to instantiate in the Riak
-%%      Search application. Solr queue workers are responsible for enqueuing
-%%      objects for insertion or update into Solr. Increasing the number of
-%%      solrq distributes the queuing of objects, and can lead to greater
-%%      throughput under high load, potentially at the expense of smaller batch
-%%      sizes.
-{mapping, "search.queue.worker_count", "yokozuna.solrq_worker_count", [
-  {default, 10},
-  {commented, 10},
-  {datatype, integer},
-  {validators, ["positive_integer"]}
-]}.
-
-%% @doc The number of solr queue helpers to instantiate in the Riak
-%%      Search application. Solr queue helpers are responsible for delivering
-%%      batches of data into Solr. Increasing the number of solrq helpers will
-%%      increase concurrent writes into Solr.
-{mapping, "search.queue.helper_count", "yokozuna.solrq_helper_count", [
-  {default, 10},
-  {commented, 10},
-  {datatype, integer},
-  {validators, ["positive_integer"]}
-]}.
-
 %% @doc The amount of time to wait before a drain operation times out.
 %%      If a drain times out during an AAE exchange, the exchange is cancelled
 %%      and retried at a later time.

@@ -71,6 +71,10 @@ delete(async, Id, BKey, Tree) ->
 delete(sync, Id, BKey, Tree) ->
     catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
 
+-spec update({p(), n()}, tree()) -> ok.
+update(Id, Tree) ->
+    gen_server:call(Tree, {update_tree, Id, undefined}, infinity).
+
 -spec update({p(),n()}, tree(), fun()) -> ok.
 update(Id, Tree, Callback) ->
     gen_server:call(Tree, {update_tree, Id, Callback}, infinity).

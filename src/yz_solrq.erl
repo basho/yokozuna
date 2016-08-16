@@ -18,10 +18,9 @@
 %% -------------------------------------------------------------------
 -module(yz_solrq).
 
--export([index/5, worker_regname/2, helper_regname/1,
-    random_helper/0,
-    num_worker_specs/0,
-    num_helper_specs/0,
+-export([index/5,
+    worker_regname/2,
+    helper_regname/2,
     set_hwm/1,
     set_index/4,
     set_purge_strategy/1,
@@ -29,7 +28,6 @@
     blown_fuse/1,
     healed_fuse/1,
     solrq_worker_names/0,
-    solrq_helper_names/0,
     queue_total_length/0,
     get_max_batch_size/0,
     get_min_batch_size/0,
@@ -39,14 +37,9 @@
 
 -include("yokozuna.hrl").
 
-% exported for yz_solrq_sup
--export([set_solrq_helper_tuple/1,
-         get_solrq_helper_tuple/0]).
-
 % for debugging only
 -export([status/0]).
 
--type phash() :: integer().
 -type regname() :: atom().
 -type size_resps() :: same_size | {shrank, non_neg_integer()} |
                       {grew, non_neg_integer()}.
@@ -77,37 +70,9 @@ make_regname(Prefix, Partition, Index) ->
         binary_to_list(Index)).
 
 %% @doc From the hash, return the registered name of a helper
--spec helper_regname(phash()) -> regname().
-helper_regname(Hash) ->
-    case get_solrq_helper_tuple() of
-        undefined ->
-            error(solrq_sup_not_started);
-        Names ->
-            Index = 1 + (Hash rem size(Names)),
-            element(Index, Names)
-    end.
-
-%% @doc return a random helper
--spec random_helper() -> regname().
-random_helper() ->
-    case get_solrq_helper_tuple() of
-        undefined ->
-            error(solrq_sup_not_started);
-        Names ->
-            Index = random:uniform(size(Names)),
-            element(Index, Names)
-    end.
-
-%% @doc Active queue count
--spec num_worker_specs() -> non_neg_integer().
-num_worker_specs() ->
-    yz_solrq_sup:child_count(yz_solrq_worker).
-
-%% @doc Active helper count
--spec num_helper_specs() -> non_neg_integer().
-num_helper_specs() ->
-    yz_solrq_sup:child_count(yz_solrq_helper).
-
+-spec helper_regname(index_name(), p()) -> regname().
+helper_regname(Index, Partition) ->
+    make_regname("yz_solrq_helper_", Partition, Index).
 
 %% @doc Set the high water mark on all queues
 -spec set_hwm(solrq_hwm()) -> [{{index_name(), p()},
@@ -191,11 +156,6 @@ solrq_workers_for_index(Index) ->
         {WorkerIndex, Partition} <- yz_solrq_sup:active_workers(),
         Index == WorkerIndex].
 
-%% @doc Return the list of solrq names registered with this supervisor
--spec solrq_helper_names() -> [atom()].
-solrq_helper_names() ->
-    tuple_to_list(get_solrq_helper_tuple()).
-
 %% @doc return the total length of all solrq workers on the node.
 -spec queue_total_length() -> non_neg_integer().
 queue_total_length() ->
@@ -213,18 +173,6 @@ get_flush_interval() ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-get_solrq_helper_tuple() ->
-    mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY).
-
-set_solrq_helper_tuple(Size) ->
-    mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
-
-solrq_helpers_tuple(Helpers) ->
-    list_to_tuple([int_to_helper_regname(I) || I <- lists:seq(1, Helpers)]).
-
-int_to_helper_regname(I) ->
-    list_to_atom(lists:flatten(io_lib:format("yz_solrq_helper_~4..0b", [I]))).
 
 ensure_worker(Index, Partition) ->
     WorkerName = yz_solrq:worker_regname(Index, Partition),

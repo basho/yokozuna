@@ -92,16 +92,16 @@
 
 -record(
     state, {
-      index                            :: index_name(),
-      partition                        :: p(),
-      indexq = new_indexq()            :: indexq(),
-      all_queue_len = 0                :: non_neg_integer(),
-      queue_hwm = 1000                 :: non_neg_integer(),
-      pending_vnodes = []              :: pending_vnodes(),
-      drain_info = undefined           :: drain_info(),
-      purge_strategy                   :: purge_strategy(),
-      report_count = 0                 :: non_neg_integer()
-    }
+    index :: index_name(),
+    partition :: p(),
+    indexq = new_indexq() :: indexq(),
+    all_queue_len = 0 :: non_neg_integer(),
+    queue_hwm = 1000 :: non_neg_integer(),
+    pending_vnodes = [] :: pending_vnodes(),
+    drain_info = undefined :: drain_info(),
+    purge_strategy :: purge_strategy(),
+    report_count = 0 :: non_neg_integer(),
+    helper_pid = undefined :: pid() | undefined}
 ).
 -type state() :: #state{}.
 
@@ -223,31 +223,35 @@ batch_complete(QPid, Message) ->
 
 %% @private
 init([Index, Partition]) ->
-    {ok, read_appenv(#state{index=Index, partition=Partition})} .
+    State0 = read_appenv(#state{index = Index, partition = Partition}),
+    State1 = get_helper(Index, Partition, State0),
+    {ok, State1} .
 
 handle_call({index, E}, From, State) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State)]),
     #state{indexq = IndexQ0} = State2 = inc_qlen_and_maybe_unblock_vnode(From, State),
-    IndexQ = enqueue(E, IndexQ0),
-    IndexQ2 = maybe_request_helper(IndexQ),
+    IndexQ1 = enqueue(E, IndexQ0),
+    State3 = State2#state{indexq = IndexQ1},
+    #state{indexq = IndexQ2} = State4 = maybe_request_helper(State3),
     IndexQ3 = maybe_start_timer(IndexQ2),
-    NewState = State2#state{indexq = IndexQ3},
-    ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(NewState)]),
-    {noreply, NewState};
+    FinalState = State4#state{indexq = IndexQ3},
+    ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(FinalState)]),
+    {noreply, FinalState};
 handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
     {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
 handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
-handle_call({set_index, Min, Max, DelayMS}, _From, #state{indexq = IndexQ} = State) ->
-    IndexQ2 = maybe_request_helper(IndexQ#indexq{batch_min = Min,
-                                                 batch_max = Max,
-                                                 delayms_max = DelayMS}),
-    OldParams = {IndexQ#indexq.batch_min,
-                 IndexQ#indexq.batch_max,
-                 IndexQ#indexq.delayms_max},
-    {reply, {ok, OldParams}, State#state{indexq = IndexQ2}};
+handle_call({set_index, Min, Max, DelayMS}, _From, #state{indexq = IndexQ0} = State0) ->
+    IndexQ1 = IndexQ0#indexq{batch_min = Min,
+        batch_max = Max,
+        delayms_max = DelayMS},
+    State1 = maybe_request_helper(State0#state{indexq = IndexQ1}),
+    OldParams = {IndexQ0#indexq.batch_min,
+                 IndexQ0#indexq.batch_max,
+                 IndexQ0#indexq.delayms_max},
+    {reply, {ok, OldParams}, State1};
 handle_call({set_purge_strategy, NewPurgeStrategy},
     _From,
     #state{purge_strategy=OldPurgeStrategy} = State) ->
@@ -259,11 +263,6 @@ handle_call(all_queue_len, _From, #state{all_queue_len=Len} = State) ->
     {reply, Len, State};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.
-
-
-handle_cast({request_batch, HPid}, State) ->
-    State2 = send_entries(HPid, State),
-    {noreply, State2};
 
 handle_cast(stop, State) ->
     {stop, normal, State};
@@ -284,21 +283,21 @@ handle_cast(stop, State) ->
 %% TODO:
 handle_cast({drain, DPid, Token, Partition}, #state{indexq = IndexQ0, partition = Partition} = State) ->
     ?PULSE_DEBUG("drain{~p=DPid, ~p=Token, ~p=Partition}.  State: ~p~n", [debug_state(State), DPid, Token, Partition]),
-    IndexQ = case {IndexQ0#indexq.queue_len, IndexQ0#indexq.in_flight_len} of
+    NewState0 = case {IndexQ0#indexq.queue_len, IndexQ0#indexq.in_flight_len} of
         {0, 0} ->
-            IndexQ0#indexq{draining = wait_for_drain_complete};
+            State#state{indexq = IndexQ0#indexq{draining = wait_for_drain_complete}};
         {0, _InFlightLen} ->
-            IndexQ0#indexq{draining = true};
+            State#state{indexq = IndexQ0#indexq{draining = true}};
         _ ->
-            drain_queue(IndexQ0)
+            drain_queue(IndexQ0, State)
         end,
     NewState =
-        case IndexQ#indexq.draining of
+        case NewState0#state.indexq#indexq.draining of
             wait_for_drain_complete ->
                 yz_solrq_drain_fsm:drain_complete(DPid, Token),
-                State;
+                NewState0;
             _ ->
-                State#state{indexq = IndexQ, drain_info = {DPid, Token}}
+                NewState0#state{drain_info = {DPid, Token}}
 
         end,
     ?PULSE_DEBUG("drain.  NewState: ~p~n", [debug_state(NewState)]),
@@ -320,8 +319,9 @@ handle_cast(blown_fuse, State) ->
 %% @end
 %%
 handle_cast(healed_fuse, #state{indexq = IndexQ} = State) ->
-    NewIndexQ = maybe_request_helper(maybe_start_timer(IndexQ#indexq{fuse_blown = false})),
-    {noreply, State#state{indexq=NewIndexQ}};
+    IndexQ2 = maybe_start_timer(IndexQ#indexq{fuse_blown = false}),
+    State2 = maybe_request_helper(State#state{indexq = IndexQ2}),
+    {noreply, State2};
 
 %%
 %% @doc     Handle the batch_complete message.
@@ -346,7 +346,8 @@ handle_cast({batch_complete, {NumDelivered, Result}},
     ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     State1 = handle_batch(IndexQ#indexq{pending_helper = false, in_flight_len = 0}, Result, State),
     NewQueueLength = AQL - NumDelivered,
-    NewState = maybe_unblock_vnodes(State1#state{all_queue_len = NewQueueLength}),
+    NewState0 = maybe_unblock_vnodes(State1#state{all_queue_len = NewQueueLength}),
+    NewState = maybe_request_helper(NewState0),
     ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
     {noreply, NewState};
 
@@ -368,9 +369,10 @@ handle_cast(drain_complete, #state{indexq = IndexQ0, index = Index, partition = 
         aux_queue = queue:new(),
         draining = false
     },
-    IndexQ2 = maybe_start_timer(maybe_request_helper(IndexQ1)),
+    State1 = maybe_request_helper(State#state{indexq = IndexQ1}),
+    IndexQ2 = maybe_start_timer(State1#state.indexq),
 
-    {noreply, State#state{indexq = IndexQ2, drain_info = undefined}}.
+    {noreply, State1#state{drain_info = undefined, indexq = IndexQ2}}.
 
 
 %% @doc Timer has fired - request a helper.
@@ -425,9 +427,9 @@ handle_batch(
             {retry, Undelivered} ->
                 requeue_undelivered(Undelivered, IndexQ0)
         end,
-    IndexQ2 = maybe_request_helper(IndexQ1),
+    #state{indexq = IndexQ2} = State1 = maybe_request_helper(State#state{indexq = IndexQ1}),
     IndexQ3 = maybe_start_timer(IndexQ2),
-    State#state{indexq = IndexQ3};
+    State1#state{indexq = IndexQ3};
 
 %%
 %% @doc
@@ -450,35 +452,39 @@ handle_batch(
   Result,
   #state{drain_info = DrainInfo} = State) ->
     {DPid, Token} = DrainInfo,
-    NewIndexQ =
+    NewState =
         case Result of
             ok ->
                 case QueueLen of
                     0 ->
                         yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
-                        IndexQ#indexq{
+                        IndexQ2 = IndexQ#indexq{
                                 draining = wait_for_drain_complete,
-                                batch_start = undefined };
+                                batch_start = undefined },
+                        State#state{indexq = IndexQ2};
                     _ ->
-                        request_helper(IndexQ)
+                        send_batch_to_helper(IndexQ, State)
                 end;
             {retry, Undelivered} ->
-                requeue_undelivered(Undelivered, request_helper(IndexQ))
+                State2 = send_batch_to_helper(IndexQ, State),
+                IndexQ2 = requeue_undelivered(Undelivered, State2#state.indexq),
+                State2#state{indexq = IndexQ2}
         end,
     %%
     %% If there are no remaining indexqs to be flushed, send the drain FSM
     %% a drain complete for this solrq instance.
     %%
+    NewIndexQ = NewState#state.indexq,
     case NewIndexQ#indexq.draining of
         wait_for_drain_complete ->
             yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            State#state{indexq = NewIndexQ};
+            NewState;
         _ ->
             NewIndexQ2 = maybe_start_timer(NewIndexQ),
             State#state{drain_info = {DPid, Token}, indexq=NewIndexQ2}
     end.
 
-drain_queue(IndexQ) ->
+drain_queue(IndexQ, State) ->
     %% NB. A drain request may occur while a helper is pending
     %% (and hence while a batch may be "in flight" to Solr).  If
     %% so, then no worker will be requested.  However, the draining
@@ -488,8 +494,8 @@ drain_queue(IndexQ) ->
     %% will remain in the draining state, the result being that the
     %% indexq will eventually get drained, once the current in-flight
     %% batch completes.
-    IndexQ2 = request_helper(IndexQ),
-    IndexQ2#indexq{draining = true}.
+    State2 = send_batch_to_helper(IndexQ, State),
+    State2#state.indexq#indexq{draining = true}.
 
 -spec internal_status(state()) -> status().
 internal_status(#state{indexq = IndexQ} = State) ->
@@ -545,8 +551,7 @@ requeue_undelivered(Undelivered, #indexq{queue = Queue, queue_len = QueueLen} = 
 
 %% @doc Trigger a flush and return state
 flush(IndexQ, State) ->
-    IndexQ2 = request_helper(IndexQ),
-    State#state{indexq = IndexQ2}.
+    send_batch_to_helper(IndexQ, State).
 
 %% @doc handle a blown fuse by setting the fuse_blown flag,
 %%      purging any data if required, and unblocking any vnodes
@@ -652,27 +657,22 @@ maybe_pop_queue(Queue) ->
         {empty, _Queue} -> Queue
     end.
 
-%% @doc Request a helper to pull the queue
-maybe_request_helper(#indexq{batch_min = Min} = IndexQ) ->
-    maybe_request_helper(Min, IndexQ).
-
 %% @doc Request a helper to pull the queue with a provided minimum,
 %%      as long as one has not already been requested.
-maybe_request_helper(Min, #indexq{pending_helper = false,
-                                         fuse_blown = false,
-                                         queue_len = L} = IndexQ) when L >= Min ->
-    request_helper(IndexQ);
+maybe_request_helper(#state{indexq = IndexQ = #indexq{pending_helper = false, fuse_blown = false, batch_min = Min, queue_len = L}} = State)
+    when L >= Min ->
+    send_batch_to_helper(IndexQ, State);
 %% Already have a pending helper, the fuse is blown, or we're not above the min,
 %% so this is a no-op
-maybe_request_helper(_Min, IndexQ) ->
-    IndexQ.
+maybe_request_helper(State) ->
+    State.
 
 %% @doc Notify a solrq helper the index is ready to be pulled.
-request_helper(#indexq{pending_helper = false, fuse_blown = false} = IndexQ) ->
-    yz_solrq_helper:index_ready(self()),
-    IndexQ#indexq{pending_helper = true};
-request_helper(IndexQ) ->
-    IndexQ.
+send_batch_to_helper(#indexq{in_flight_len = InFlightLen},
+                     #state{helper_pid = HPid} = State) when InFlightLen == 0 ->
+    send_entries(HPid, State);
+send_batch_to_helper(IndexQ, State) ->
+    State#state{indexq = IndexQ}.
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
 %%      return updated state
@@ -687,10 +687,8 @@ send_entries(HPid, #state{partition = Partition, indexq = IndexQ, index = Index}
             State#state{indexq = IndexQ2};
         _ ->
             % may be another full batch
-            IndexQ3 = maybe_request_helper(IndexQ2),
-            % if entries left, restart timer if batch not full
-            IndexQ4 = maybe_start_timer(IndexQ3),
-            State#state{indexq = IndexQ4}
+            IndexQ3 = maybe_start_timer(IndexQ2),
+            State#state{indexq = IndexQ3}
     end.
 
 %% @doc Get up to batch_max entries and reset the pending worker/timer ref.
@@ -806,3 +804,8 @@ debug_state(State) ->
 
 update_throttle_value(Index, Partition, BatchLength) ->
     yz_solrq_throttle_manager:update_counter({Index, Partition}, BatchLength).
+
+get_helper(Index, Partition, State0) ->
+    HelperName = yz_solrq:helper_regname(Index, Partition),
+    HPid = whereis(HelperName),
+    State0#state{helper_pid = HPid}.

@@ -23,14 +23,14 @@
 -behavior(gen_server).
 
 %% api
--export([start_link/1, status/1, status/2]).
+-export([start_link/2, status/1, status/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([index_ready/1, index_ready/2, index_batch/5]).
+-export([index_batch/5]).
 
 %% TODO: Dynamically pulse_instrument.
 -ifdef(PULSE).
@@ -63,29 +63,14 @@ debug_entries(Entries) ->
 %%% API
 %%%===================================================================
 
-start_link(Name) ->
-    gen_server:start_link({local, Name}, ?MODULE, [], []).
+start_link(Index, Partition) ->
+    gen_server:start_link({local, yz_solrq:helper_regname(Index, Partition)}, ?MODULE, [], []).
 
 status(Pid) ->
     status(Pid, 60000). % solr can block, long timeout by default
 
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
-
--spec index_ready(solrq_id()) -> ok.
-index_ready(QPid) ->
-    HPid = yz_solrq:random_helper(),
-    index_ready(HPid, QPid).
-
-%% @doc Mark the index as ready.  Separating into a two phase
-%%      rather than just blindly sending from the solrq adds the
-%%      backpressure on the KV vnode.
--spec index_ready(solrq_helper_id(), solrq_id()) -> ok.
-index_ready(HPid, QPid) when is_atom(HPid); is_pid(HPid) ->
-    gen_server:cast(HPid, {ready, QPid});
-index_ready(Hash, QPid) ->
-    HPid = yz_solrq:helper_regname(Hash),
-    index_ready(HPid, QPid).
 
 %% @doc Index a batch
 -spec index_batch(solrq_helper_id(),

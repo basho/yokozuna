@@ -20,24 +20,19 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_link/2, start_drain_fsm/1, child_count/1, start_worker/2, active_workers/0, sync_active_workers/0]).
+-export([start_link/0, start_drain_fsm/1, child_count/1, start_worker/2, active_workers/0, sync_active_queue_pairs/0]).
 
 -include("yokozuna.hrl").
 
 -export([init/1]).
 
-%% used only by yz_perf on resize (manual operation)
--export([child_spec/2]).
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
 
 start_link() ->
-    start_link(worker_procs(), helper_procs()).
-
-start_link(NumQueues, NumHelpers) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [NumQueues, NumHelpers]).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
 %% @doc Start the drain FSM, under this supervisor
@@ -53,46 +48,35 @@ start_drain_fsm(Parameters) ->
 -spec start_worker(Index::index_name(), Partition::p()) -> ok.
 start_worker(Index, Partition) ->
     validate_child_started(
-        supervisor:start_child(?MODULE, child_spec(worker, {Index, Partition}))).
+        supervisor:start_child(?MODULE, queue_pair_spec({Index, Partition}))).
 
 active_workers() ->
     AllChildren = supervisor:which_children(yz_solrq_sup),
-    Workers = [IndexPartition || {IndexPartition, _Child, _Type, Modules} <- AllChildren, Modules == [yz_solrq_worker]],
+    PairSups = [SupPid || {_IndexPartition, SupPid, _Type, Modules} <- AllChildren, Modules == [yz_solrq_queue_pair_sup]],
+    PairChildren = lists:flatten([supervisor:which_children(Sup) || Sup <- PairSups]),
+    Workers = [{Index, Partition} || {{worker, Index, Partition}, _Child, _Type, Modules} <- PairChildren, Modules == [yz_solrq_worker]],
     Workers.
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
-init([_NumQueues, NumHelpers]) ->
-    yz_solrq:set_solrq_helper_tuple(NumHelpers),
+init([]) ->
+
     DrainMgrSpec = {yz_solrq_drain_mgr, {yz_solrq_drain_mgr, start_link, []}, permanent, 5000, worker, [yz_drain_mgr]},
-    QueueChildren = [child_spec(worker, Name) ||
-                        Name <- required_solrq_workers()],
-    HelperChildren = [child_spec(helper, Name) ||
-                        Name <- tuple_to_list(yz_solrq:get_solrq_helper_tuple())],
+
+    QueueChildren = [queue_pair_spec(IndexPartition) ||
+                        IndexPartition <- required_solrq_workers()],
     %% Using a one_for_all restart strategy as we write data to a hashed worker,
     %% which then uses a random helper to send data to Solr itself - if we want to
     %% make this one_for_one we will need to do more work monitoring the processes
     %% and responding to crashes more carefully.
     yz_solrq_throttle_manager:create_table(),
-    {ok, {{one_for_all, 10, 10}, [DrainMgrSpec | HelperChildren ++ QueueChildren]}}.
+    {ok, {{one_for_all, 10, 10}, [DrainMgrSpec | QueueChildren]}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-worker_procs() ->
-    application:get_env(?YZ_APP_NAME, ?SOLRQ_WORKER_COUNT, 10).
-
-helper_procs() ->
-    application:get_env(?YZ_APP_NAME, ?SOLRQ_HELPER_COUNT, 10).
-
-child_spec(helper, Name) ->
-    {Name, {yz_solrq_helper, start_link, [Name]}, permanent, 5000, worker, [yz_solrq_helper]};
-
-child_spec(worker, {Index, Partition}= Id) ->
-    {Id, {yz_solrq_worker, start_link, [Index, Partition]}, permanent, 5000, worker, [yz_solrq_worker]}.
 
 -spec child_count(atom()) -> non_neg_integer().
 child_count(ChildType) ->
@@ -121,7 +105,7 @@ required_solrq_workers() ->
 %% when we call index rather than pushing the value all the way to the solrq
         %%Index =/= ?YZ_INDEX_TOMBSTONE].
 
-sync_active_workers() ->
+sync_active_queue_pairs() ->
     ActiveWorkers = active_workers(),
     RequiredWorkers = required_solrq_workers(),
     WorkersToStop = ActiveWorkers -- RequiredWorkers,
@@ -129,3 +113,7 @@ sync_active_workers() ->
     MissingWorkers = RequiredWorkers -- ActiveWorkers,
     lists:foreach(fun({Index, Partition}) -> start_worker(Index, Partition) end, MissingWorkers),
     ok.
+
+queue_pair_spec({Index, Partition} = Id) ->
+    Id = {Index, Partition},
+    {Id, {yz_solrq_queue_pair_sup, start_link, [Index, Partition]}, permanent, 5000, worker, [yz_solrq_queue_pair_sup]}.
