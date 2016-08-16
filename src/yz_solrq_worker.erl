@@ -676,10 +676,9 @@ send_batch_to_helper(IndexQ, State) ->
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
 %%      return updated state
-send_entries(HPid, #state{partition = Partition, indexq = IndexQ, index = Index} = State) ->
+send_entries(HPid, #state{indexq = IndexQ, index = Index} = State) ->
     #indexq{batch_max = BatchMax} = IndexQ,
-    {Batch, BatchLen, IndexQ2} = get_batch(IndexQ),
-    update_throttle_value(Index, Partition, BatchLen),
+    {Batch, _BatchLen, IndexQ2} = get_batch(IndexQ),
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
     case IndexQ2#indexq.queue_len of
         0 ->
@@ -801,9 +800,6 @@ debug_state(State) ->
         {drain_info, State#state.drain_info}
     ].
 -endif.
-
-update_throttle_value(Index, Partition, BatchLength) ->
-    yz_solrq_throttle_manager:update_counter({Index, Partition}, BatchLength).
 
 get_helper(Index, Partition, State0) ->
     HelperName = yz_solrq:helper_regname(Index, Partition),

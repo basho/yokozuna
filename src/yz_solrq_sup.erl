@@ -71,7 +71,6 @@ init([]) ->
     %% which then uses a random helper to send data to Solr itself - if we want to
     %% make this one_for_one we will need to do more work monitoring the processes
     %% and responding to crashes more carefully.
-    yz_solrq_throttle_manager:create_table(),
     {ok, {{one_for_all, 10, 10}, [DrainMgrSpec | QueueChildren]}}.
 
 %%%===================================================================
