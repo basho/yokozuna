@@ -46,13 +46,12 @@
 -define(COUNT_PER_REPORT, 20).
 
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
--type pending_vnodes() :: [{pid(), atom()}].
+-type pending_vnode() :: {pid(), atom()}.
 -type drain_info() :: {pid(), reference()} | undefined.
 -type indexq_status() ::
       {queue, yz_queue()}
     | {queue_len, non_neg_integer()}
     | {timer_ref, reference() | undefined}
-    | {pending_helper, boolean()}
     | {batch_min, solrq_batch_min()}
     | {batch_max, solrq_batch_max()}
     | {delayms_max, solrq_batch_flush_interval()}
@@ -64,7 +63,7 @@
 -type worker_state_status() ::
       {all_queue_len, non_neg_integer()}
     | {queue_hwm, non_neg_integer()}
-    | {pending_vnodes, pending_vnodes()}
+    | {pending_vnode, pending_vnode()}
     | {drain_info, drain_info()}
     | {purge_strategy, purge_strategy()}
     | {indexqs, [indexq_status()]}.
@@ -76,7 +75,6 @@
         queue = queue:new()     :: yz_queue(),   % solrq_message()
         queue_len = 0           :: non_neg_integer(),
         timer_ref = undefined   :: reference()|undefined,
-        pending_helper = false  :: boolean(),
         batch_min = 1           :: solrq_batch_min(),
         batch_max = 100         :: solrq_batch_max(),
         delayms_max = 1000      :: solrq_batch_flush_interval(),
@@ -97,10 +95,9 @@
     indexq = new_indexq() :: indexq(),
     all_queue_len = 0 :: non_neg_integer(),
     queue_hwm = 1000 :: non_neg_integer(),
-    pending_vnodes = [] :: pending_vnodes(),
+    pending_vnode = none :: pending_vnode() | none,
     drain_info = undefined :: drain_info(),
     purge_strategy :: purge_strategy(),
-    report_count = 0 :: non_neg_integer(),
     helper_pid = undefined :: pid() | undefined}
 ).
 -type state() :: #state{}.
@@ -344,7 +341,7 @@ handle_cast(healed_fuse, #state{indexq = IndexQ} = State) ->
 handle_cast({batch_complete, {NumDelivered, Result}},
         #state{all_queue_len = AQL, indexq = IndexQ} = State) ->
     ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
-    State1 = handle_batch(IndexQ#indexq{pending_helper = false, in_flight_len = 0}, Result, State),
+    State1 = handle_batch(IndexQ#indexq{in_flight_len = 0}, Result, State),
     NewQueueLength = AQL - NumDelivered,
     NewState0 = maybe_unblock_vnodes(State1#state{all_queue_len = NewQueueLength}),
     NewState = maybe_request_helper(NewState0),
@@ -504,8 +501,7 @@ internal_status(#state{indexq = IndexQ} = State) ->
 
 %% @doc Increment the aggregated queue length and see if the vnode needs to be
 %%      stalled.
-inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
-                                              pending_vnodes = PendingVnodes}
+inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL}
                                  = State) ->
     State2 = State#state{all_queue_len = AQL + 1},
     case over_hwm(State2) of
@@ -515,7 +511,7 @@ inc_qlen_and_maybe_unblock_vnode(From, #state{all_queue_len = AQL,
                 true ->
                     log_blocked_vnode(From, State),
                     yz_stat:blocked_vnode(From),
-                    State3#state{pending_vnodes = [From | PendingVnodes]};
+                    State3#state{pending_vnode = From};
                 false ->
                     gen_server:reply(From, ok),
                     State3
@@ -659,7 +655,7 @@ maybe_pop_queue(Queue) ->
 
 %% @doc Request a helper to pull the queue with a provided minimum,
 %%      as long as one has not already been requested.
-maybe_request_helper(#state{indexq = IndexQ = #indexq{pending_helper = false, fuse_blown = false, batch_min = Min, queue_len = L}} = State)
+maybe_request_helper(#state{indexq = IndexQ = #indexq{fuse_blown = false, batch_min = Min, queue_len = L}} = State)
     when L >= Min ->
     send_batch_to_helper(IndexQ, State);
 %% Already have a pending helper, the fuse is blown, or we're not above the min,
@@ -719,24 +715,22 @@ maybe_cancel_timer(#indexq{timer_ref=TimerRef} = IndexQ) ->
 %% @doc Send replies to blocked vnodes if under the high water mark
 %%      and return updated state
 -spec maybe_unblock_vnodes(state()) -> state().
-maybe_unblock_vnodes(#state{pending_vnodes = []} = State) ->
+maybe_unblock_vnodes(#state{pending_vnode = none} = State) ->
     State;
-maybe_unblock_vnodes(#state{pending_vnodes = PendingVnodes} = State) ->
+maybe_unblock_vnodes(#state{pending_vnode = PendingVnode} = State) ->
     case over_hwm(State) of
         true ->
             State;
         _ ->
-            lists:map(fun(From) ->
-                lager:debug("Unblocking vnode ~p due to SolrQ ~p going below HWM of ~p", [
-                    From,
-                    self(),
-                    State#state.queue_hwm]),
-                gen_server:reply(From, ok) end, PendingVnodes),
-            State#state{pending_vnodes = []}
+            lager:debug("Unblocking vnode ~p due to SolrQ ~p going below HWM of ~p", [
+                PendingVnode,
+                self(),
+                State#state.queue_hwm]),
+            gen_server:reply(PendingVnode, ok),
+            State#state{pending_vnode = none}
     end.
 
 maybe_start_timer(#indexq{timer_ref = undefined, queue_len = L,
-                                 pending_helper = false,
                                  fuse_blown = false,
                                  delayms_max = DelayMS} = IndexQ) when L > 0 ->
     TimerRef =
