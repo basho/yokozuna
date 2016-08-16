@@ -20,7 +20,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_drain_fsm/1, child_count/1, start_worker/2, active_workers/0, sync_active_queue_pairs/0]).
+-export([start_link/0, start_drain_fsm/1, child_count/1, start_queue_pair/2, active_queues/0, sync_active_queue_pairs/0]).
 
 -include("yokozuna.hrl").
 
@@ -45,17 +45,21 @@ start_drain_fsm(Parameters) ->
         ?MODULE,
         {PartitionToDrain, {yz_solrq_drain_fsm, start_link, [Parameters]}, temporary, 5000, worker, []}
     ).
--spec start_worker(Index::index_name(), Partition::p()) -> ok.
-start_worker(Index, Partition) ->
+-spec start_queue_pair(Index::index_name(), Partition::p()) -> ok.
+start_queue_pair(Index, Partition) ->
     validate_child_started(
         supervisor:start_child(?MODULE, queue_pair_spec({Index, Partition}))).
 
-active_workers() ->
-    AllChildren = supervisor:which_children(yz_solrq_sup),
-    PairSups = [SupPid || {_IndexPartition, SupPid, _Type, Modules} <- AllChildren, Modules == [yz_solrq_queue_pair_sup]],
+active_queues() ->
+    PairSups = find_pair_supervisors(),
     PairChildren = lists:flatten([supervisor:which_children(Sup) || Sup <- PairSups]),
     Workers = [{Index, Partition} || {{worker, Index, Partition}, _Child, _Type, Modules} <- PairChildren, Modules == [yz_solrq_worker]],
     Workers.
+
+find_pair_supervisors() ->
+    AllChildren = supervisor:which_children(yz_solrq_sup),
+    PairSups = [SupPid || {_IndexPartition, SupPid, _Type, Modules} <- AllChildren, Modules == [yz_solrq_queue_pair_sup]],
+    PairSups.
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -66,7 +70,7 @@ init([]) ->
     DrainMgrSpec = {yz_solrq_drain_mgr, {yz_solrq_drain_mgr, start_link, []}, permanent, 5000, worker, [yz_drain_mgr]},
 
     QueueChildren = [queue_pair_spec(IndexPartition) ||
-                        IndexPartition <- required_solrq_workers()],
+                        IndexPartition <- required_queues()],
     %% Using a one_for_all restart strategy as we write data to a hashed worker,
     %% which then uses a random helper to send data to Solr itself - if we want to
     %% make this one_for_one we will need to do more work monitoring the processes
@@ -93,7 +97,7 @@ validate_child_started({error, {already_started, _Child}}) ->
 validate_child_started(Error) ->
     throw(Error).
 
-required_solrq_workers() ->
+required_queues() ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Partitions = riak_core_ring:my_indices(Ring),
     Indexes = yz_index:get_indexes_from_meta(),
@@ -105,14 +109,23 @@ required_solrq_workers() ->
         %%Index =/= ?YZ_INDEX_TOMBSTONE].
 
 sync_active_queue_pairs() ->
-    ActiveWorkers = active_workers(),
-    RequiredWorkers = required_solrq_workers(),
-    WorkersToStop = ActiveWorkers -- RequiredWorkers,
-    lists:foreach(fun({Index, Partition}) -> yz_solrq_worker:stop(Index, Partition) end, WorkersToStop),
-    MissingWorkers = RequiredWorkers -- ActiveWorkers,
-    lists:foreach(fun({Index, Partition}) -> start_worker(Index, Partition) end, MissingWorkers),
+    ActiveQueues = active_queues(),
+    RequiredQueues = required_queues(),
+    QueuePairsToStop = ActiveQueues -- RequiredQueues,
+    lists:foreach(fun({Index, Partition}) -> stop_queue_pair(Index, Partition) end, QueuePairsToStop),
+    MissingWorkers = RequiredQueues -- ActiveQueues,
+    lists:foreach(fun({Index, Partition}) -> start_queue_pair(Index, Partition) end, MissingWorkers),
     ok.
+
+stop_queue_pair(Index, Partition) ->
+    SupId = {Index, Partition},
+    case supervisor:terminate_child(?MODULE, SupId) of
+        ok ->
+            _ = supervisor:delete_child(?MODULE, SupId);
+        _ ->
+            ok
+    end.
 
 queue_pair_spec({Index, Partition} = Id) ->
     Id = {Index, Partition},
-    {Id, {yz_solrq_queue_pair_sup, start_link, [Index, Partition]}, permanent, 5000, worker, [yz_solrq_queue_pair_sup]}.
+    {Id, {yz_solrq_queue_pair_sup, start_link, [Index, Partition]}, permanent, 5000, supervisor, [yz_solrq_queue_pair_sup]}.

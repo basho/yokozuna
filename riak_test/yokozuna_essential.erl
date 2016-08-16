@@ -416,7 +416,7 @@ verify_delete_index(Cluster, PBConns) ->
 validate_solrq_workers_stopped(Cluster) ->
     Node = hd(Cluster),
     F = fun() ->
-            Workers = rpc:call(Node, yz_solrq_sup, active_workers, []),
+            Workers = rpc:call(Node, yz_solrq_sup, active_queues, []),
             index_not_in_workers(Workers, ?INDEX)
         end,
     rt:wait_until(Node, F).

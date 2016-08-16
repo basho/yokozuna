@@ -80,7 +80,7 @@ helper_regname(Index, Partition) ->
                                 solrq_hwm() | bad_hwm_value}}].
 set_hwm(HWM) ->
     [{IndexPartition, yz_solrq_worker:set_hwm(Index, Partition, HWM)} ||
-        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_workers()].
+        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_queues()].
 
 %% @doc Set the index parameters for all queues (note, index goes back to appenv
 %%      queue is empty).
@@ -99,13 +99,13 @@ set_index(Index, Min, Max, DelayMsMax) ->
                                            | bad_purge_strategy}}].
 set_purge_strategy(PurgeStrategy) ->
     [{IndexPartition, yz_solrq_worker:set_purge_strategy(Index, Partition, PurgeStrategy)} ||
-        {Index, Partition} =IndexPartition <- yz_solrq_sup:active_workers()].
+        {Index, Partition} =IndexPartition <- yz_solrq_sup:active_queues()].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
 -spec reload_appenv() -> [{{index_name(), p()}, ok}].
 reload_appenv() ->
     [{IndexPartition, yz_solrq_worker:reload_appenv(Index, Partition)} ||
-        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_workers()].
+        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_queues()].
 
 %% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
 -spec blown_fuse(index_name()) -> ok.
@@ -136,30 +136,30 @@ status() ->
 -spec solrq_worker_names() -> [atom()].
 solrq_worker_names() ->
     [yz_solrq:worker_regname(Index, Partition) ||
-        {Index, Partition} <- yz_solrq_sup:active_workers()].
+        {Index, Partition} <- yz_solrq_sup:active_queues()].
 
 -spec solrq_workers_for_partition(Partition :: p()) -> [atom()].
 solrq_workers_for_partition(Partition) ->
     [yz_solrq:worker_regname(Index, Partition) ||
-        {Index, WorkerPartition} <- yz_solrq_sup:active_workers(),
+        {Index, WorkerPartition} <- yz_solrq_sup:active_queues(),
         Partition == WorkerPartition].
 
 -spec solrq_worker_pairs_for_index(Index :: index_name()) -> [{index_name(), p()}].
 solrq_worker_pairs_for_index(Index) ->
     [{Index, Partition} ||
-        {WorkerIndex, Partition} <- yz_solrq_sup:active_workers(),
+        {WorkerIndex, Partition} <- yz_solrq_sup:active_queues(),
         Index == WorkerIndex].
 
 -spec solrq_workers_for_index(Index :: index_name()) -> [atom()].
 solrq_workers_for_index(Index) ->
     [yz_solrq:worker_regname(Index, Partition) ||
-        {WorkerIndex, Partition} <- yz_solrq_sup:active_workers(),
+        {WorkerIndex, Partition} <- yz_solrq_sup:active_queues(),
         Index == WorkerIndex].
 
 %% @doc return the total length of all solrq workers on the node.
 -spec queue_total_length() -> non_neg_integer().
 queue_total_length() ->
-    lists:sum([yz_solrq_worker:all_queue_len(Index, Partition) || {Index, Partition} <- yz_solrq_sup:active_workers()]).
+    lists:sum([yz_solrq_worker:all_queue_len(Index, Partition) || {Index, Partition} <- yz_solrq_sup:active_queues()]).
 
 get_max_batch_size() ->
     app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, 100).
@@ -181,7 +181,7 @@ ensure_worker(Index, Partition) ->
             %% Two processes may both get here at once. It's ok to ignore the
             %% return value here, as we would just ignore the already_started
             %% error anyway.
-            ok = yz_solrq_sup:start_worker(Index, Partition);
+            ok = yz_solrq_sup:start_queue_pair(Index, Partition);
         _Pid ->
             ok
     end.
