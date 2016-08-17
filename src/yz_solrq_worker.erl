@@ -48,8 +48,13 @@
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 -type pending_vnode() :: {pid(), atom()}.
 -type drain_info() :: {pid(), reference()} | undefined.
--type indexq_status() ::
-      {queue, yz_queue()}
+-type worker_state_status() ::
+      {all_queue_len, non_neg_integer()}
+    | {queue_hwm, non_neg_integer()}
+    | {pending_vnode, pending_vnode()}
+    | {drain_info, drain_info()}
+    | {purge_strategy, purge_strategy()
+    | {queue, yz_queue()}
     | {queue_len, non_neg_integer()}
     | {timer_ref, reference() | undefined}
     | {batch_min, solrq_batch_min()}
@@ -59,14 +64,7 @@
     | {draining, boolean() | wait_for_drain_complete}
     | {fuse_blown, boolean()}
     | {in_flight_len, non_neg_integer()}
-    | {batch_start, timestamp() | undefined}.
--type worker_state_status() ::
-      {all_queue_len, non_neg_integer()}
-    | {queue_hwm, non_neg_integer()}
-    | {pending_vnode, pending_vnode()}
-    | {drain_info, drain_info()}
-    | {purge_strategy, purge_strategy()}
-    | {indexqs, [indexq_status()]}.
+    | {batch_start, timestamp() | undefined}}.
 -type status() :: [worker_state_status()].
 -export_type([status/0]).
 
@@ -230,7 +228,7 @@ handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
 handle_call({set_index, Min, Max, DelayMS}, _From,
             State0) ->
-    State1= State0=#state{batch_min = Min,
+    State1= State0#state{batch_min = Min,
                           batch_max = Max,
                           delayms_max = DelayMS},
     State2 = maybe_send_batch_to_helper(State1),
@@ -438,11 +436,11 @@ handle_batch(Result,
                         State#state{draining = wait_for_drain_complete,
                                     batch_start = undefined };
                     false ->
-                        send_batch_to_helper(State)
+                        maybe_send_batch_to_helper(State)
                 end;
             {retry, Undelivered} ->
-                State2 = send_batch_to_helper(State),
-                State3 = requeue_undelivered(Undelivered, State2),
+                State2 = requeue_undelivered(Undelivered, State),
+                State3 = maybe_send_batch_to_helper(State2),
                 State3
         end,
     %%
@@ -474,7 +472,7 @@ drain_queue(State) ->
 %% @todo: after collapsing the records we might want to reconsider how we do this formatting...
 -spec internal_status(state()) -> status().
 internal_status(#state{} = State) ->
-    [{F, V} || {F, V} <- ?REC_PAIRS(state, State), F /= queue].
+    [{F, V} || {F, V} <- ?REC_PAIRS(state, State), F /= queue, F /= aux_queue].
 
 %% @doc Increment the aggregated queue length and see if the vnode needs to be
 %%      stalled.
@@ -497,7 +495,7 @@ maybe_unblock_vnode(From, #state{} = State) ->
     end.
 
 log_blocked_vnode(From, State) ->
-    lager:debug("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
+    lager:info("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
         From,
         self(),
         State#state.queue_hwm]),
@@ -543,8 +541,9 @@ maybe_purge(State) ->
     end.
 
 %% @doc Return true if queue is over the high water mark
-over_hwm(#state{queue = Queue, queue_hwm = HWM}) ->
-    queue:len(Queue) > HWM.
+%% Note that there is one "in-flight" message so we use >=, not >
+over_hwm(#state{queue = Queue, aux_queue = AuxQueue, queue_hwm = HWM, in_flight_len = InFlightLen}) ->
+    queue:len(Queue) + queue:len(AuxQueue) + InFlightLen >= HWM.
 
 maybe_purge_blown_indices(#state{purge_strategy=?PURGE_NONE} = State) ->
     State;
@@ -627,7 +626,7 @@ maybe_pop_queue(Queue) ->
 
 %% @doc Send a batch to the helper to pull the queue with a provided minimum,
 %%      as long as one has not already been requested.
-maybe_send_batch_to_helper(#state{fuse_blown = false, batch_min = Min, queue = Queue} = State) ->
+maybe_send_batch_to_helper(#state{fuse_blown = false, batch_min = Min, queue = Queue, in_flight_len = 0} = State) ->
     case queue:len(Queue) >= Min of
         true ->
             send_batch_to_helper(State);
@@ -635,14 +634,14 @@ maybe_send_batch_to_helper(#state{fuse_blown = false, batch_min = Min, queue = Q
         %% so this is a no-op
         false ->
             State
-    end.
+    end;
+%% The fuse is blown - just return for now
+maybe_send_batch_to_helper(State) ->
+    State.
 
 %% @doc Notify a solrq helper the index is ready to be pulled.
-send_batch_to_helper(#state{in_flight_len = 0,
-                            helper_pid = HPid} = State) ->
-    send_entries(HPid, State);
-send_batch_to_helper(State) ->
-    State.
+send_batch_to_helper(#state{helper_pid = HPid} = State) ->
+    send_entries(HPid, State).
 
 %% @doc Send a batch of entries, reply to any blocked vnodes and
 %%      return updated state

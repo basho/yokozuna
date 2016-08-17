@@ -898,7 +898,7 @@ check_fuse_status(Node, Partition, Indices, FuseCheckFunction) ->
         IndexQs = [
             begin
                  Solrq = proplists:get_value(SolrqName, Solrqs),
-                 {Index, proplists:get_value(indexq, Solrq)}
+                 {Index, Solrq}
              end ||
             {Index, SolrqName} <- SolrQNames],
         MatchingIndexQs = lists:filter(
