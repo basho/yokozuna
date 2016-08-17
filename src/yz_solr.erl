@@ -212,21 +212,31 @@ index(Core, Docs, DelOps) ->
     end.
 
 index_batch(Core, Ops) ->
-    JSON = try
-               mochijson2:encode({struct, Ops})
-           catch _:E ->
-               throw({"Failed to encode ops", bad_data, E})
-           end,
+    JSON = encode_json(Ops),
+    maybe_make_http_request(Core, JSON).
+
+maybe_make_http_request(_Core, {error, _} = Error) ->
+    Error;
+maybe_make_http_request(Core, JSON) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
     case ibrowse:send_req(URL, Headers, post, JSON, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
-        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
-                                         ErrBody});
-        Err -> throw({"Failed to index docs", other, Err})
+        {ok, "400", _, ErrBody} ->
+            {error, {badrequest, ErrBody}};
+        Err ->
+            {error, {other, Err}}
     end.
+
+encode_json(Ops) ->
+    JSON = try
+               mochijson2:encode({struct, Ops})
+           catch _:E ->
+        {error, {bad_data, E}}
+           end,
+    JSON.
 
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().

@@ -270,23 +270,21 @@ get_ops_for_entry_action(Action, _ObjValues, LI, P, Obj, BKey,
                                        {ok, SuccessEntries :: solr_entries()} |
                                        {error, tuple()}.
 send_solr_ops_for_entries(Index, Ops, Entries) ->
-    try
-        T1 = os:timestamp(),
-        ok = yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)),
-        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
-        ok
-    catch _:Err ->
-            yz_stat:index_fail(),
-            Trace = erlang:get_stacktrace(),
+    T1 = os:timestamp(),
+    case yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)) of
+        ok ->
+            yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+            ok;
+        {error, {Reason, _Detail}} = Err when Reason =:= badrequest; Reason =:= bad_data ->
             ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
-            case Err of
-                {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
+            yz_stat:index_fail(),
                     handle_bad_entries(Index, Ops, Entries);
-                _ ->
-                    ?ERROR("Updating a batch of Solr operations failed for index ~p with error ~p", [Index, Err]),
-                    yz_fuse:melt(Index),
-                    {error, {Err, Trace}}
-            end
+        Err ->
+            ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
+            ?ERROR("Updating a batch of Solr operations failed for index ~p with error ~p", [Index, Err]),
+            yz_fuse:melt(Index),
+            Trace = erlang:get_stacktrace(),
+            {error, {Err, Trace}}
     end.
 
 handle_bad_entries(Index, Ops, Entries) ->
@@ -323,7 +321,7 @@ single_op_batch(Index, Op) ->
     %% we get a bad request back from Solr.
     %% We should probably refine our stats so that
     %% they differentiate between bad data and Solr going wonky
-    {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
+    {error, {Reason, _Details}} when Reason =:= badrequest; Reason =:= bad_data ->
       yz_stat:index_fail(),
       ?ERROR("Updating a single Solr operation failed for index ~p with bad request.", [Index]),
       true;

@@ -135,10 +135,15 @@ init(Params) ->
 %%
 prepare(start, #state{partition = P} = State) ->
     lager:debug("Solrq drain starting for partition ~p", [P]),
-    SolrqIds = yz_solrq:solrq_workers_for_partition(P),
+    SolrqIds = get_solrq_ids(P),
     TS = os:timestamp(),
     Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
     {next_state, wait, State#state{tokens = Tokens, time_start=TS}}.
+
+get_solrq_ids(undefined) ->
+    yz_solrq:all_solrq_workers();
+get_solrq_ids(P) ->
+    yz_solrq:solrq_workers_for_partition(P).
 
 %% @doc While in the wait state, we wait for drain_complete messages with accompanying
 %% tokens.  When we have received all of the tokens, we are done, and the FSM terminates
@@ -160,9 +165,7 @@ wait({drain_complete, Token},
             lager:debug("Solrq drain completed for all workers for partition ~p.  Resuming batching.", [Partition]),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(StartTS)),
             CompleteCallback = fun() ->
-                lager:debug("Solrq drain sending drain_complete messages to workers for partition ~p", [Partition]),
-                [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()],
-                lager:debug("Solrq drain completed drain_complete messages to workers for partition ~p", [Partition])
+                [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()]
             end,
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams, CompleteCallback
@@ -195,7 +198,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-maybe_update_yz_index_hashtree(undefined, undefined, _) ->
+maybe_update_yz_index_hashtree(undefined, undefined, Callback) ->
+    Callback(),
     ok;
 maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}, Callback) ->
     yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback).

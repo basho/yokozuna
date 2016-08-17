@@ -19,21 +19,22 @@
 -module(yz_solrq).
 
 -export([index/5,
-    worker_regname/2,
-    helper_regname/2,
-    set_hwm/1,
-    set_index/4,
-    set_purge_strategy/1,
-    reload_appenv/0,
-    blown_fuse/1,
-    healed_fuse/1,
-    solrq_worker_names/0,
-    queue_total_length/0,
-    get_max_batch_size/0,
-    get_min_batch_size/0,
-    get_flush_interval/0,
-    solrq_workers_for_partition/1,
-    solrq_worker_pairs_for_index/1]).
+         worker_regname/2,
+         helper_regname/2,
+         set_hwm/1,
+         set_index/4,
+         set_purge_strategy/1,
+         reload_appenv/0,
+         blown_fuse/1,
+         healed_fuse/1,
+         solrq_worker_names/0,
+         queue_total_length/0,
+         get_max_batch_size/0,
+         get_min_batch_size/0,
+         get_flush_interval/0,
+         all_solrq_workers/0,
+         solrq_workers_for_partition/1,
+         solrq_worker_pairs_for_index/1]).
 
 -include("yokozuna.hrl").
 
@@ -135,6 +136,11 @@ status() ->
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_worker_names() -> [atom()].
 solrq_worker_names() ->
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {Index, Partition} <- yz_solrq_sup:active_queues()].
+
+-spec all_solrq_workers() -> [atom()].
+all_solrq_workers() ->
     [yz_solrq:worker_regname(Index, Partition) ||
         {Index, Partition} <- yz_solrq_sup:active_queues()].
 

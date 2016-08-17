@@ -27,5 +27,5 @@ entropy_data_cant_complete(Core, Filter) ->
 index_batch_call_orig(Core, Ops) ->
     ?M:index_batch_orig(Core, Ops).
 
-index_batch_throw_exception(_Core, _Ops) ->
-    throw({"Failed to index docs", other, error}).
+index_batch_returns_other_error(_Core, _Ops) ->
+    {errlr, other, "Failed to index docs"}.

@@ -48,8 +48,13 @@
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 -type pending_vnode() :: {pid(), atom()}.
 -type drain_info() :: {pid(), reference()} | undefined.
--type indexq_status() ::
-      {queue, yz_queue()}
+-type worker_state_status() ::
+      {all_queue_len, non_neg_integer()}
+    | {queue_hwm, non_neg_integer()}
+    | {pending_vnode, pending_vnode()}
+    | {drain_info, drain_info()}
+    | {purge_strategy, purge_strategy()
+    | {queue, yz_queue()}
     | {queue_len, non_neg_integer()}
     | {timer_ref, reference() | undefined}
     | {batch_min, solrq_batch_min()}
@@ -59,14 +64,7 @@
     | {draining, boolean() | wait_for_drain_complete}
     | {fuse_blown, boolean()}
     | {in_flight_len, non_neg_integer()}
-    | {batch_start, timestamp() | undefined}.
--type worker_state_status() ::
-      {all_queue_len, non_neg_integer()}
-    | {queue_hwm, non_neg_integer()}
-    | {pending_vnode, pending_vnode()}
-    | {drain_info, drain_info()}
-    | {purge_strategy, purge_strategy()}
-    | {indexqs, [indexq_status()]}.
+    | {batch_start, timestamp() | undefined}}.
 -type status() :: [worker_state_status()].
 -export_type([status/0]).
 
@@ -212,7 +210,7 @@ batch_complete(QPid, Message) ->
 init([Index, Partition]) ->
     State0 = read_appenv(#state{index = Index, partition = Partition}),
     State1 = get_helper(Index, Partition, State0),
-    {ok, State1} .
+    {ok, State1}.
 
 handle_call({index, E}, From, State0) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State0)]),
@@ -230,7 +228,7 @@ handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
 handle_call({set_index, Min, Max, DelayMS}, _From,
             State0) ->
-    State1= State0=#state{batch_min = Min,
+    State1= State0#state{batch_min = Min,
                           batch_max = Max,
                           delayms_max = DelayMS},
     State2 = maybe_send_batch_to_helper(State1),
@@ -268,12 +266,13 @@ handle_cast(stop, State) ->
 %% @end
 %%
 %% TODO:
-handle_cast({drain, DPid, Token, Partition},
+handle_cast({drain, DPid, Token, TargetPartition},
             #state{queue = Queue,
                    in_flight_len = InFlightLen,
-                   partition = Partition} = State) ->
+                   partition = QueueParitition} = State)
+            when TargetPartition == undefined; TargetPartition == QueueParitition ->
     ?PULSE_DEBUG("drain{~p=DPid, ~p=Token, ~p=Partition}.  State: ~p~n",
-                 [debug_state(State), DPid, Token, Partition]),
+                 [debug_state(State), DPid, Token, TargetPartition]),
     NewState0 = case {queue:is_empty(Queue), InFlightLen} of
         {true, 0} ->
             State#state{draining = wait_for_drain_complete};
@@ -354,11 +353,8 @@ handle_cast(drain_complete, State) ->
     State1 = handle_drain_complete(State),
     {noreply, State1}.
 
-handle_drain_complete(#state{index = Index,
-                             partition = Partition,
-                             queue = Queue,
+handle_drain_complete(#state{queue = Queue,
                              aux_queue = AuxQueue} = State) ->
-    lager:debug("Solrq drain worker received drain_complete messages for index/partition ~p/~p", [Index, Partition]),
     State1 = State#state{
         queue     = queue:join(Queue, AuxQueue),
         aux_queue = queue:new(),
@@ -374,7 +370,7 @@ handle_info({timeout, TimerRef, flush},
     {noreply, flush(State#state{timer_ref = undefined})};
 
 handle_info({timeout, _TimerRef, flush}, State) ->
-    lager:debug("Received timeout from stale Timer Reference"),
+    lager:info("Received timeout from stale Timer Reference"),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -389,73 +385,47 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%
 %% @doc
-%% A drain is not in progress.  There are two cases to consider:
-%%   1. The result is ok; This means all batched messages were delivered.
-%%   2. The solrq_helper returned some undelivered messages; pre-pend these to the queue
-%%      for this index, and request a new helper, if we are over the requested minimum.
-%% @end
+%% When we have to retry it does not matter what draining state we are in,
+%% we simply have to requeue and continue.
+%% end
 %%
-handle_batch(Result,
-             #state{draining = false, batch_start = T1} = State) ->
-    State1 =
-        case Result of
-            ok ->
-                yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
-                State#state{batch_start = undefined};
-            {retry, Undelivered} ->
-                requeue_undelivered(Undelivered, State)
-        end,
+handle_batch({retry, Undelivered},
+             State) ->
+    State1 = requeue_undelivered(Undelivered, State),
     State2 = maybe_send_batch_to_helper(State1),
     State3 = maybe_start_timer(State2),
     State3;
 
 %%
 %% @doc
-%% This queue is being drained.  There are two cases to consider:
-%%    1. The batch succeeded.  If there is nothing left in the queue,
-%%       then remove ourselves from the list
-%%       of remaining indices that need to be flushed, and
-%%       wait for t a drain_complete message to come back from the
-%%       drain FSM.
-%%    2. The batch did not succeed.  In this case, we got back a list
-%%       of undelivered messages.  Put the undelivered messages back onto
-%%       the queue and request another helper.
-%%
-%% If there are no remaining indexqs to drain, then send the drain FSM
-%% a drain_complete message for this solrq.
+%% A drain is not in progress and the result is ok; This means all batched messages were delivered.
 %% @end
 %%
-handle_batch(Result,
-             #state{queue = Queue,
-                    batch_start = T1,
-                    drain_info = {DPid, Token}} = State) ->
-    NewState =
-        case Result of
-            ok ->
-                case queue:is_empty(Queue) of
-                    true ->
-                        yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
-                        State#state{draining = wait_for_drain_complete,
-                                    batch_start = undefined };
-                    false ->
-                        send_batch_to_helper(State)
-                end;
-            {retry, Undelivered} ->
-                State2 = send_batch_to_helper(State),
-                State3 = requeue_undelivered(Undelivered, State2),
-                State3
-        end,
-    %%
-    %% If there are no remaining indexqs to be flushed, send the drain FSM
-    %% a drain complete for this solrq instance.
-    %%
-    case NewState#state.draining of
-        wait_for_drain_complete ->
+handle_batch(ok, #state{draining = false, batch_start = T1} = State) ->
+    yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
+    State1 = State#state{batch_start = undefined},
+    State2 = maybe_send_batch_to_helper(State1),
+    State3 = maybe_start_timer(State2),
+    State3;
+
+%%
+%% @doc
+%% This queue is being drained and the batch succeeded.
+%% If there is nothing left in the queue,
+%% wait for the drain_complete message to come back from the
+%% drain FSM.
+%% @end
+%%
+handle_batch(ok, #state{queue = Queue}=State) ->
+    case queue:is_empty(Queue) of
+        true ->
+            #state{drain_info={DPid, Token}, batch_start = T1} = State,
+            yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
             yz_solrq_drain_fsm:drain_complete(DPid, Token),
-            NewState;
-        _ ->
-            NewState2 = maybe_start_timer(NewState),
-            NewState2#state{drain_info = {DPid, Token}} %% @todo: why are we tucking that back in?
+            State#state{draining = wait_for_drain_complete,
+                        batch_start = undefined };
+        false ->
+            maybe_send_batch_to_helper(State)
     end.
 
 drain_queue(State) ->
@@ -474,7 +444,7 @@ drain_queue(State) ->
 %% @todo: after collapsing the records we might want to reconsider how we do this formatting...
 -spec internal_status(state()) -> status().
 internal_status(#state{} = State) ->
-    [{F, V} || {F, V} <- ?REC_PAIRS(state, State), F /= queue].
+    [{F, V} || {F, V} <- ?REC_PAIRS(state, State), F /= queue, F /= aux_queue].
 
 %% @doc Increment the aggregated queue length and see if the vnode needs to be
 %%      stalled.
@@ -497,7 +467,7 @@ maybe_unblock_vnode(From, #state{} = State) ->
     end.
 
 log_blocked_vnode(From, State) ->
-    lager:debug("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
+    lager:info("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
         From,
         self(),
         State#state.queue_hwm]),
@@ -507,10 +477,9 @@ log_blocked_vnode(From, State) ->
 enqueue(E, #state{draining = false,
                   queue = Q} = State) ->
             State#state{queue = queue:in(E, Q)};
-enqueue(E, #state{draining = true,
+enqueue(E, #state{draining = _Draining,
                   aux_queue = A} = State) ->
             State#state{aux_queue = queue:in(E, A)}.
-
 
 %% @doc Re-enqueue undelivered items as part of updated indexq.
 requeue_undelivered(Undelivered,
@@ -520,7 +489,8 @@ requeue_undelivered(Undelivered,
 
 %% @doc Trigger a flush and return state
 flush(State) ->
-    send_batch_to_helper(State).
+    State2 = send_batch_to_helper(State),
+    State2.
 
 %% @doc handle a blown fuse by setting the fuse_blown flag,
 %%      purging any data if required, and unblocking any vnodes
@@ -529,9 +499,8 @@ flush(State) ->
 handle_blown_fuse(#state{} = State) ->
     State1 = State#state{fuse_blown = true},
     State2 = maybe_purge(State1),
-    maybe_unblock_vnodes(State2);
-handle_blown_fuse(State) ->
-    State.
+    State3 = maybe_unblock_vnodes(State2),
+    State3.
 
 %% @doc purge entries depending on purge strategy if we are over the HWM
 maybe_purge(State) ->
@@ -543,8 +512,9 @@ maybe_purge(State) ->
     end.
 
 %% @doc Return true if queue is over the high water mark
-over_hwm(#state{queue = Queue, queue_hwm = HWM}) ->
-    queue:len(Queue) > HWM.
+%% Note that there is one "in-flight" message so we use >=, not >
+over_hwm(#state{queue = Queue, aux_queue = AuxQueue, queue_hwm = HWM, in_flight_len = InFlightLen}) ->
+    queue:len(Queue) + queue:len(AuxQueue) + InFlightLen >= HWM.
 
 maybe_purge_blown_indices(#state{purge_strategy=?PURGE_NONE} = State) ->
     State;
@@ -627,7 +597,10 @@ maybe_pop_queue(Queue) ->
 
 %% @doc Send a batch to the helper to pull the queue with a provided minimum,
 %%      as long as one has not already been requested.
-maybe_send_batch_to_helper(#state{fuse_blown = false, batch_min = Min, queue = Queue} = State) ->
+maybe_send_batch_to_helper(#state{fuse_blown = false,
+                                  in_flight_len = 0,
+                                  batch_min = Min,
+                                  queue = Queue } = State) ->
     case queue:len(Queue) >= Min of
         true ->
             send_batch_to_helper(State);
@@ -635,34 +608,40 @@ maybe_send_batch_to_helper(#state{fuse_blown = false, batch_min = Min, queue = Q
         %% so this is a no-op
         false ->
             State
-    end.
-
-%% @doc Notify a solrq helper the index is ready to be pulled.
-send_batch_to_helper(#state{in_flight_len = 0,
-                            helper_pid = HPid} = State) ->
-    send_entries(HPid, State);
-send_batch_to_helper(State) ->
+    end;
+%% The fuse is blown - just return for now
+maybe_send_batch_to_helper(State) ->
     State.
 
-%% @doc Send a batch of entries, reply to any blocked vnodes and
-%%      return updated state
-send_entries(HPid, #state{index = Index, batch_max = BatchMax} = State) ->
-    {Batch, _BatchLen, State1} = get_batch(State),
+%% @doc Notify a solrq helper the index is ready to be pulled.
+%% NOTE: Need to check in_flight_len here since flush() needs to call here as well
+%% and skip the queue length check.
+send_batch_to_helper(#state{in_flight_len = 0,
+                            index = Index,
+                            batch_max = BatchMax,
+                            helper_pid = HPid} = State) ->
+    State1 = maybe_cancel_timer(State),
+    {Batch, _BatchLen, State2} = get_batch(State1),
+    State3 = State2#state{batch_start = os:timestamp()},
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
-    case queue:is_empty(State1#state.queue) of
+    case queue:is_empty(State3#state.queue) of
         true ->
             % all the messages have been sent
-            State1;
+            State3;
         false ->
             % may be another full batch
-            maybe_start_timer(State1)
-    end.
+            maybe_start_timer(State3)
+    end;
+
+%% There's already a batch at the helper (in_flight_len =/= 0)
+%% Just return state - when the helper completes, we'll send again.
+send_batch_to_helper(State) ->
+    State.
 
 %% @doc Get up to batch_max entries and reset the pending worker/timer ref.
 get_batch(#state{queue = Q, batch_max = Max,
                  draining = Draining} = State0) ->
     L = queue:len(Q),
-    State1 = maybe_cancel_timer(State0),
     {BatchQ, RestQ} =
         case Draining of
             true ->
@@ -672,10 +651,9 @@ get_batch(#state{queue = Q, batch_max = Max,
         end,
     Batch = queue:to_list(BatchQ),
     BatchLen = length(Batch),
-    State2 = State1#state{queue         = RestQ,
-                          in_flight_len = BatchLen,
-                          batch_start   = os:timestamp()},
-    {Batch, BatchLen, State2}.
+    State1 = State0#state{queue         = RestQ,
+                          in_flight_len = BatchLen},
+    {Batch, BatchLen, State1}.
 
 %%      If previous `TimerRef' was set, but not yet triggered, cancel it
 %%      first as it's invalid for the next batch of this queue.
@@ -734,7 +712,11 @@ read_appenv(State) ->
 %% debugging
 %%
 
--ifdef(PULSE).
+-compile([{nowarn_unused_function, [
+    {debug_queue,1 },
+    {debug_indexq, 1},
+    {debug_state, 1}]}]).
+
 debug_queue(Queue) ->
     [erlang:element(1, Entry) || Entry <- queue:to_list(Queue)].
 
@@ -754,9 +736,10 @@ debug_state(State) ->
     [
         {index, State#state.index},
         {all_queue_len, Len},
-        {drain_info, State#state.drain_info}
-    ].
--endif.
+        {drain_info, State#state.drain_info},
+        {batch_start, State#state.batch_start},
+        {timer_ref, State#state.timer_ref}
+    ] ++ debug_indexq(State).
 
 get_helper(Index, Partition, State0) ->
     HelperName = yz_solrq:helper_regname(Index, Partition),

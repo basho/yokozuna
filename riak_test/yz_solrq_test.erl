@@ -266,9 +266,9 @@ confirm_hwm(Cluster, PBConn, Bucket, Index, HWM) ->
 -spec gteq(number(), number()) -> boolean().
 gteq(A, B) -> A >= B.
 
-confirm_draining(Cluster, PBConn, BKey, Index) ->
+confirm_draining(Cluster, PBConn, Bucket, Index) ->
     Count = ?SOLRQ_BATCH_MIN_SETTING - 1,
-    Count = put_objects(PBConn, BKey, Count),
+    Count = put_objects(PBConn, Bucket, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, 0),
     yz_rt:drain_solrqs(Cluster),
@@ -420,7 +420,7 @@ do_purge([Node|_] = Cluster, PBConn,
     Index1BKey5 = lists:nth(5, Index1BKeys),
     try
         yz_rt:load_intercept_code(Node),
-        yz_rt:intercept_index_batch(Node, index_batch_throw_exception),
+        yz_rt:intercept_index_batch(Node, index_batch_returns_other_error),
         %%
         %% Send two messages through each indexq on the solrq, which
         %% will trip the fuse on both; however
