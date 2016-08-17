@@ -716,7 +716,10 @@ maybe_start_timer(#state{timer_ref = undefined,
         false ->
             TimerRef = erlang:start_timer(DelayMS, self(), flush),
             State#state{timer_ref = TimerRef}
-    end.
+    end;
+%% timer already running or blown fuse, so don't start a new timer.
+maybe_start_timer(State) ->
+    State.
 
 %% @doc Read settings from the application environment
 %% TODO: Update HWM for each Index when Ring-Resize occurrs
