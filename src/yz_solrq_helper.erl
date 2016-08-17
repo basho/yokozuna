@@ -306,30 +306,33 @@ handle_bad_entries(Index, Ops, Entries) ->
 %%      successful ops and applying side-effects to Solr.
 -spec send_solr_single_ops(index_name(), solr_ops()) -> GoodOps :: solr_ops().
 send_solr_single_ops(Index, Ops) ->
-    lists:takewhile(
-      fun(Op) ->
-              try
-                  T1 = os:timestamp(),
-                  ok = yz_solr:index_batch(Index, prepare_ops_for_batch([Op])),
-                  yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
-                  true
-              catch _:Err ->
-                      %% TODO This results in double counting index failures when
-                      %% we get a bad request back from Solr.
-                      %% We should probably refine our stats so that
-                      %% they differentiate between bad data and Solr going wonky
-                      yz_stat:index_fail(),
-                      case Err of
-                          {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
-                              ?ERROR("Updating a single Solr operation failed for index ~p with bad request.", [Index]),
-                              true;
-                          _ ->
-                              ?ERROR("Updating a single Solr operation failed for index ~p with error ~p", [Index, Err]),
-                              yz_fuse:melt(Index),
-                              false
-                      end
-              end
-      end, Ops).
+  lists:takewhile(fun(Op) ->
+                      single_op_batch(Index, Op)
+                  end,
+                  Ops).
+
+
+single_op_batch(Index, Op) ->
+  Ops = prepare_ops_for_batch([Op]),
+  case yz_solr:index_batch(Index, Ops) of
+    ok ->
+      T1 = os:timestamp(),
+      yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+      true;
+    %% TODO This results in double counting index failures when
+    %% we get a bad request back from Solr.
+    %% We should probably refine our stats so that
+    %% they differentiate between bad data and Solr going wonky
+    {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
+      yz_stat:index_fail(),
+      ?ERROR("Updating a single Solr operation failed for index ~p with bad request.", [Index]),
+      true;
+    Err ->
+      yz_stat:index_fail(),
+      ?ERROR("Updating a single Solr operation failed for index ~p with error ~p", [Index, Err]),
+      yz_fuse:melt(Index),
+      false
+  end.
 
 -spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
