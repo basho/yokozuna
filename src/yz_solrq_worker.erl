@@ -424,7 +424,15 @@ handle_batch(ok, #state{draining = true,
                         batch_start = undefined };
         false ->
             State
-    end.
+    end;
+
+%%
+%% @doc
+%% We are waiting for a drain_complete message to come from the
+%% yz_solrq_drain_fsm. Do nothing as we had already emptied
+%% our queue.
+handle_batch(ok, #state{draining = wait_for_drain_complete} = State) ->
+    State.
 
 drain_queue(State) ->
     %% NB. A drain request may occur while a helper is pending
@@ -615,8 +623,12 @@ maybe_send_batch_to_helper(#state{in_flight_len = 0,
 %% @doc when we are draining we send a batch even if the batch size is less
 %% than the batch_min.
 maybe_send_batch_to_helper(#state{in_flight_len = 0} = State) ->
-    send_batch_to_helper(State).
+    send_batch_to_helper(State);
 
+%% @doc if we didn't take one of the other paths, our in_fight_len is > 0
+%% just return State for now
+maybe_send_batch_to_helper(State) ->
+    State.
 
 %% @doc Notify a solrq helper the index is ready to be pulled.
 %% NOTE: Need to check in_flight_len here since flush() needs to call here as well
