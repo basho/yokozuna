@@ -425,7 +425,7 @@ handle_batch(ok, #state{queue = Queue}=State) ->
             State#state{draining = wait_for_drain_complete,
                         batch_start = undefined };
         false ->
-            maybe_send_batch_to_helper(State)
+            send_batch_to_helper(State)
     end.
 
 drain_queue(State) ->
