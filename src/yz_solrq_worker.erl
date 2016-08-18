@@ -432,6 +432,7 @@ handle_batch(ok, #state{draining = true,
 %% yz_solrq_drain_fsm. Do nothing as we had already emptied
 %% our queue.
 handle_batch(ok, #state{draining = wait_for_drain_complete} = State) ->
+    lager:debug("DBG: Received a batch_complete message while waiting for drain complete"),
     State.
 
 drain_queue(State) ->
@@ -622,7 +623,7 @@ maybe_send_batch_to_helper(#state{in_flight_len = 0,
 
 %% @doc when we are draining we send a batch even if the batch size is less
 %% than the batch_min.
-maybe_send_batch_to_helper(#state{in_flight_len = 0} = State) ->
+maybe_send_batch_to_helper(#state{draining = true, in_flight_len = 0} = State) ->
     send_batch_to_helper(State);
 
 %% @doc if we didn't take one of the other paths, our in_fight_len is > 0
@@ -638,16 +639,27 @@ send_batch_to_helper(#state{in_flight_len = 0,
                             batch_max = BatchMax,
                             helper_pid = HPid} = State) ->
     State1 = maybe_cancel_timer(State),
-    {Batch, _BatchLen, State2} = get_batch(State1),
-    State3 = State2#state{batch_start = os:timestamp()},
+    {Batch, RestQ} = get_batch(State1),
+    BatchLen = length(Batch),
+    case BatchLen of
+        0 ->
+            lager:debug("DBG: 0-length batch");
+        _ ->
+            ok
+    end,
+    State2 = State1#state{
+        batch_start   = os:timestamp(),
+        queue         = RestQ,
+        in_flight_len = BatchLen
+        },
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
-    case queue:is_empty(State3#state.queue) of
+    case queue:is_empty(State2#state.queue) of
         true ->
             % all the messages have been sent
-            State3;
+            State2;
         false ->
             % may be another full batch
-            maybe_start_timer(State3)
+            maybe_start_timer(State2)
     end;
 
 %% There's already a batch at the helper (in_flight_len =/= 0)
@@ -655,9 +667,9 @@ send_batch_to_helper(#state{in_flight_len = 0,
 send_batch_to_helper(State) ->
     State.
 
-%% @doc Get up to batch_max entries and reset the pending worker/timer ref.
+%% @doc Get up to batch_max entries.
 get_batch(#state{queue = Q, batch_max = Max,
-                 draining = Draining} = State0) ->
+                 draining = Draining}) ->
     L = queue:len(Q),
     {BatchQ, RestQ} =
         case Draining of
@@ -667,10 +679,7 @@ get_batch(#state{queue = Q, batch_max = Max,
                 queue:split(min(L,Max), Q)
         end,
     Batch = queue:to_list(BatchQ),
-    BatchLen = length(Batch),
-    State1 = State0#state{queue         = RestQ,
-                          in_flight_len = BatchLen},
-    {Batch, BatchLen, State1}.
+    {Batch, RestQ}.
 
 %%      If previous `TimerRef' was set, but not yet triggered, cancel it
 %%      first as it's invalid for the next batch of this queue.
