@@ -335,10 +335,11 @@ handle_cast({batch_complete, {_NumDelivered, Result}},
         #state{} = State) ->
     ?PULSE_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     State1 = handle_batch(Result, State#state{in_flight_len = 0}),
-    NewState0 = maybe_unblock_vnodes(State1),
-    NewState = maybe_send_batch_to_helper(NewState0),
-    ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(NewState)]),
-    {noreply, NewState};
+    State2 = maybe_unblock_vnodes(State1),
+    State3 = maybe_send_batch_to_helper(State2),
+    State4 = maybe_start_timer(State3),
+    ?PULSE_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(State4)]),
+    {noreply, State4};
 
 %%
 %% @doc     Handle the drain_complete message.
@@ -392,9 +393,7 @@ code_change(_OldVsn, State, _Extra) ->
 handle_batch({retry, Undelivered},
              State) ->
     State1 = requeue_undelivered(Undelivered, State),
-    State2 = maybe_send_batch_to_helper(State1),
-    State3 = maybe_start_timer(State2),
-    State3;
+    State1;
 
 %%
 %% @doc
@@ -404,9 +403,7 @@ handle_batch({retry, Undelivered},
 handle_batch(ok, #state{draining = false, batch_start = T1} = State) ->
     yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
     State1 = State#state{batch_start = undefined},
-    State2 = maybe_send_batch_to_helper(State1),
-    State3 = maybe_start_timer(State2),
-    State3;
+    State1;
 
 %%
 %% @doc
@@ -416,7 +413,8 @@ handle_batch(ok, #state{draining = false, batch_start = T1} = State) ->
 %% drain FSM.
 %% @end
 %%
-handle_batch(ok, #state{queue = Queue}=State) ->
+handle_batch(ok, #state{draining = true,
+                        queue = Queue}=State) ->
     case queue:is_empty(Queue) of
         true ->
             #state{drain_info={DPid, Token}, batch_start = T1} = State,
@@ -425,7 +423,7 @@ handle_batch(ok, #state{queue = Queue}=State) ->
             State#state{draining = wait_for_drain_complete,
                         batch_start = undefined };
         false ->
-            send_batch_to_helper(State)
+            State
     end.
 
 drain_queue(State) ->
@@ -595,23 +593,30 @@ maybe_pop_queue(Queue) ->
         {empty, _Queue} -> Queue
     end.
 
+
+%% The fuse is blown - just return for now
+maybe_send_batch_to_helper(#state{fuse_blown = true} = State) ->
+    State;
+
 %% @doc Send a batch to the helper to pull the queue with a provided minimum,
 %%      as long as one has not already been requested.
-maybe_send_batch_to_helper(#state{fuse_blown = false,
-                                  in_flight_len = 0,
+maybe_send_batch_to_helper(#state{in_flight_len = 0,
+                                  draining = false,
                                   batch_min = Min,
                                   queue = Queue } = State) ->
     case queue:len(Queue) >= Min of
         true ->
             send_batch_to_helper(State);
-        %% Already have a pending helper, the fuse is blown, or we're not above the min,
-        %% so this is a no-op
+        %% We're not above the min, so this is a no-op
         false ->
             State
     end;
-%% The fuse is blown - just return for now
-maybe_send_batch_to_helper(State) ->
-    State.
+
+%% @doc when we are draining we send a batch even if the batch size is less
+%% than the batch_min.
+maybe_send_batch_to_helper(#state{in_flight_len = 0} = State) ->
+    send_batch_to_helper(State).
+
 
 %% @doc Notify a solrq helper the index is ready to be pulled.
 %% NOTE: Need to check in_flight_len here since flush() needs to call here as well
