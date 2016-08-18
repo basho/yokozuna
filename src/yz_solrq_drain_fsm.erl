@@ -136,14 +136,7 @@ init(Params) ->
 prepare(start, #state{partition = P} = State) ->
     lager:debug("Solrq drain starting for partition ~p", [P]),
     SolrqIds = get_solrq_ids(P),
-    TS = os:timestamp(),
-    Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
-    {next_state, wait, State#state{tokens = Tokens, time_start=TS}}.
-
-get_solrq_ids(undefined) ->
-    yz_solrq:all_solrq_workers();
-get_solrq_ids(P) ->
-    yz_solrq:solrq_workers_for_partition(P).
+    maybe_send_drain_messages(P, SolrqIds, State).
 
 %% @doc While in the wait state, we wait for drain_complete messages with accompanying
 %% tokens.  When we have received all of the tokens, we are done, and the FSM terminates
@@ -203,3 +196,35 @@ maybe_update_yz_index_hashtree(undefined, undefined, Callback) ->
     ok;
 maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}, Callback) ->
     yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback).
+
+
+%%
+%% @doc There were no queues to drain for this index/partition
+%% Just update the hashtree and stop rather than waiting
+%% for messages that will never arrive.
+maybe_send_drain_messages(_P, [],  #state{
+    exchange_fsm_pid = ExchangeFSMPid,
+    yz_index_hashtree_update_params = YZIndexHashtreeUpdateParams } = State) ->
+    maybe_update_yz_index_hashtree(
+        ExchangeFSMPid, YZIndexHashtreeUpdateParams, undefined
+    ),
+    {stop, normal, State};
+%%
+%% @doc one or more queues need to be drained - send
+%% drain messages and move to wait state
+maybe_send_drain_messages(P, SolrqIds, State) ->
+    TS = os:timestamp(),
+    Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
+    {next_state, wait, State#state{tokens = Tokens, time_start = TS}}.
+
+%%
+%% @doc if partition is `undefined` then drain all queues.
+%% This is used in the yz_solrq_drain_mgr:drain/0 case,
+%% usually during yokozuna's `yz_app:prep_stop`
+get_solrq_ids(undefined) ->
+    yz_solrq:all_solrq_workers();
+%%
+%% @doc drain all queues for a particular partition, `P`.
+get_solrq_ids(P) ->
+    yz_solrq:solrq_workers_for_partition(P).
+
