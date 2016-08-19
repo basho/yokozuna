@@ -214,10 +214,11 @@ init([Index, Partition]) ->
 
 handle_call({index, E}, From, State0) ->
     ?PULSE_DEBUG("index.  State: ~p~n", [debug_state(State0)]),
-    State1 = maybe_unblock_vnode(From, State0),
-    State2 = enqueue(E, State1),
-    State3 = maybe_send_batch_to_helper(State2),
-    FinalState = maybe_start_timer(State3),
+    State1 = maybe_purge(State0),
+    State2 = maybe_send_reply(From, State1),
+    State3 = enqueue(E, State2),
+    State4 = maybe_send_batch_to_helper(State3),
+    FinalState = maybe_start_timer(State4),
     ?PULSE_DEBUG("index.  NewState: ~p~n", [debug_state(FinalState)]),
     {noreply, FinalState};
 handle_call(status, _From, #state{} = State) ->
@@ -435,7 +436,7 @@ handle_batch(ok, #state{draining = wait_for_drain_complete} = State) ->
     lager:debug("DBG: Received a batch_complete message while waiting for drain complete"),
     State.
 
-drain_queue(State) ->
+drain_queue(#state{in_flight_len = 0} = State) ->
     %% NB. A drain request may occur while a helper is pending
     %% (and hence while a batch may be "in flight" to Solr).  If
     %% so, then no worker will be requested.  However, the draining
@@ -446,28 +447,22 @@ drain_queue(State) ->
     %% indexq will eventually get drained, once the current in-flight
     %% batch completes.
     State2 = send_batch_to_helper(State),
-    State2#state{draining = true}.
+    State2#state{draining = true};
+drain_queue(State) ->
+    State#state{draining = true}.
 
 %% @todo: after collapsing the records we might want to reconsider how we do this formatting...
 -spec internal_status(state()) -> status().
 internal_status(#state{} = State) ->
     [{F, V} || {F, V} <- ?REC_PAIRS(state, State), F /= queue, F /= aux_queue].
 
-%% @doc Increment the aggregated queue length and see if the vnode needs to be
-%%      stalled.
-maybe_unblock_vnode(From, #state{} = State) ->
+%% @doc Check HWM, if we are not over it send a reply.
+maybe_send_reply(From, #state{} = State) ->
     case over_hwm(State) of
         true ->
-            State3 = maybe_purge_blown_indices(State),
-            case over_hwm(State3) of
-                true ->
-                    log_blocked_vnode(From, State),
-                    yz_stat:blocked_vnode(From),
-                    State3#state{pending_vnode = From};
-                false ->
-                    gen_server:reply(From, ok),
-                    State3
-            end;
+            log_blocked_vnode(From, State),
+            yz_stat:blocked_vnode(From),
+            State#state{pending_vnode = From};
         false ->
             gen_server:reply(From, ok),
             State
@@ -483,10 +478,14 @@ log_blocked_vnode(From, State) ->
 %% @doc Enqueue the entry and return updated state.
 enqueue(E, #state{draining = false,
                   queue = Q} = State) ->
-            State#state{queue = queue:in(E, Q)};
+    lager:info("enqueue to queue, len=~p",
+               [queue:len(Q)+1]),
+    State#state{queue = queue:in(E, Q)};
 enqueue(E, #state{draining = _Draining,
                   aux_queue = A} = State) ->
-            State#state{aux_queue = queue:in(E, A)}.
+    lager:info("enqueue to aux_queue, len=~p",
+               [queue:len(A)+1]),
+    State#state{aux_queue = queue:in(E, A)}.
 
 %% @doc Re-enqueue undelivered items as part of updated indexq.
 requeue_undelivered(Undelivered,
@@ -495,9 +494,11 @@ requeue_undelivered(Undelivered,
     State#state{queue = NewQueue}.
 
 %% @doc Trigger a flush and return state
-flush(State) ->
+flush(#state{in_flight_len = 0} = State) ->
     State2 = send_batch_to_helper(State),
-    State2.
+    State2;
+flush(State) ->
+    State.
 
 %% @doc handle a blown fuse by setting the fuse_blown flag,
 %%      purging any data if required, and unblocking any vnodes
@@ -510,8 +511,10 @@ handle_blown_fuse(#state{} = State) ->
     State3.
 
 %% @doc purge entries depending on purge strategy if we are over the HWM
+maybe_purge(#state{fuse_blown = false}=State) ->
+    State;
 maybe_purge(State) ->
-    case over_hwm(State) of
+    case queue_has_items(State) andalso over_hwm(State) of
         true ->
             purge(State);
         _ ->
@@ -523,19 +526,9 @@ maybe_purge(State) ->
 over_hwm(#state{queue = Queue, aux_queue = AuxQueue, queue_hwm = HWM, in_flight_len = InFlightLen}) ->
     queue:len(Queue) + queue:len(AuxQueue) + InFlightLen >= HWM.
 
-maybe_purge_blown_indices(#state{purge_strategy=?PURGE_NONE} = State) ->
-    State;
-maybe_purge_blown_indices(#state{fuse_blown = false}=State) ->
-    State;
-maybe_purge_blown_indices(#state{queue = Queue,
-                                 aux_queue=AuxQueue}= State) ->
-    NoItems = queue:is_empty(Queue) andalso queue:is_empty(AuxQueue),
-    case NoItems of
-        true ->
-            State;
-        _ ->
-            purge(State)
-    end.
+queue_has_items(#state{queue     = Queue,
+                       aux_queue = AuxQueue}) ->
+    not (queue:is_empty(Queue) andalso queue:is_empty(AuxQueue)).
 
 %% @todo: should we move this comment? Or is it fine to have it here??
 %% @doc If we hit the high water mark, we will attempt to purge previously
@@ -632,26 +625,11 @@ maybe_send_batch_to_helper(State) ->
     State.
 
 %% @doc Notify a solrq helper the index is ready to be pulled.
-%% NOTE: Need to check in_flight_len here since flush() needs to call here as well
-%% and skip the queue length check.
-send_batch_to_helper(#state{in_flight_len = 0,
-                            index = Index,
+send_batch_to_helper(#state{index = Index,
                             batch_max = BatchMax,
                             helper_pid = HPid} = State) ->
     State1 = maybe_cancel_timer(State),
-    {Batch, RestQ} = get_batch(State1),
-    BatchLen = length(Batch),
-    case BatchLen of
-        0 ->
-            lager:debug("DBG: 0-length batch");
-        _ ->
-            ok
-    end,
-    State2 = State1#state{
-        batch_start   = os:timestamp(),
-        queue         = RestQ,
-        in_flight_len = BatchLen
-        },
+    {Batch, State2} = prepare_for_batching(State1),
     yz_solrq_helper:index_batch(HPid, Index, BatchMax, self(), Batch),
     case queue:is_empty(State2#state.queue) of
         true ->
@@ -660,26 +638,20 @@ send_batch_to_helper(#state{in_flight_len = 0,
         false ->
             % may be another full batch
             maybe_start_timer(State2)
-    end;
-
-%% There's already a batch at the helper (in_flight_len =/= 0)
-%% Just return state - when the helper completes, we'll send again.
-send_batch_to_helper(State) ->
-    State.
+    end.
 
 %% @doc Get up to batch_max entries.
-get_batch(#state{queue = Q, batch_max = Max,
-                 draining = Draining}) ->
+prepare_for_batching(#state{queue = Q, batch_max = Max} = State) ->
     L = queue:len(Q),
-    {BatchQ, RestQ} =
-        case Draining of
-            true ->
-                {Q, queue:new()};
-            _ ->
-                queue:split(min(L,Max), Q)
-        end,
+    {BatchQ, RestQ} = queue:split(min(L,Max), Q),
     Batch = queue:to_list(BatchQ),
-    {Batch, RestQ}.
+    BatchLen = length(Batch),
+    State1 = State#state{
+        batch_start   = os:timestamp(),
+        queue         = RestQ,
+        in_flight_len = BatchLen
+    },
+    {Batch, State1}.
 
 %%      If previous `TimerRef' was set, but not yet triggered, cancel it
 %%      first as it's invalid for the next batch of this queue.
