@@ -28,4 +28,4 @@ index_batch_call_orig(Core, Ops) ->
     ?M:index_batch_orig(Core, Ops).
 
 index_batch_returns_other_error(_Core, _Ops) ->
-    {errlr, other, "Failed to index docs"}.
+    {error, other, "Failed to index docs"}.
