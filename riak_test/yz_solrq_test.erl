@@ -408,9 +408,9 @@ do_purge([Node|_] = Cluster, PBConn,
     yz_rt:set_hwm(Cluster, 4),
     TargetPartition = 1096126227998177188652763624537212264741949407232,
     %%
-    %% Find a list of representative keys for each Index.
+    %% Find a list of representative keys.
     %% Each representative in the list is a unique key
-    %% that hashes to yz_solrq_001.
+    %% that hashes to the target partition.
     %%
     Index1BKeys = find_representative_bkeys(TargetPartition, Index1, Bucket1),
     Index1BKey1 = lists:nth(1, Index1BKeys),
@@ -422,10 +422,10 @@ do_purge([Node|_] = Cluster, PBConn,
         yz_rt:load_intercept_code(Node),
         yz_rt:intercept_index_batch(Node, index_batch_returns_other_error),
         %%
-        %% Send two messages through each indexq on the solrq, which
-        %% will trip the fuse on both; however
+        %% Send messages through the index on the solrq, which
+        %% will trip the fuse; however
         %% because fuse blown events are handled asynchronously,
-        %% we need to wait until the solrqs are blown.
+        %% we need to wait until the solrq is blown.
         %%
         [Index1BKey1] = put_bkey_objects(PBConn, [Index1BKey1]),
         [Index1BKey2] = put_bkey_objects(PBConn, [Index1BKey2]),
@@ -433,15 +433,20 @@ do_purge([Node|_] = Cluster, PBConn,
         [Index1BKey4] = put_bkey_objects(PBConn, [Index1BKey4]),
         yz_rt:wait_until_fuses_blown(Node, TargetPartition, [Index1]),
         %%
-        %% At this point, the two indexqs in target solrqs corresponding
-        %% to {TargetPartition, Index1} and {TargetPartition, Index2}, respectively, should be blown.
-        %% Send one more message through one of the Indexqs, which
+        %% At this point, the target solrq corresponding
+        %% to {TargetPartition, Index1}, should be blown.
+        %% Send one more message through the Indexq, which
         %% will trigger a purge.
         %%
+        yz_rt:set_index(Cluster, Index1, 1, 100, 99999),
         F = fun() ->
             [Index1BKey5] = put_bkey_objects(PBConn, [Index1BKey5])
         end,
         case PurgeStrategy of
+            %% If testing PURGE_NONE, all vnodes are blocked
+            %% spawn the call so we don't block the test.of
+            %% Note that this will result in an error showing up
+            %% in the test log, but that's ok as we expect it.
             ?PURGE_NONE ->
                 spawn(F);
             _ ->
@@ -458,8 +463,8 @@ do_purge([Node|_] = Cluster, PBConn,
         yz_rt:commit(Cluster, Index1)
     end,
     %%
-    %% Return the search results for Index1 and Index2.
-    %% The first list is the set of bkeys we wrote for each index.
+    %% Return the search results for Index1.
+    %% The first list is the set of bkeys we wrote.
     %% The second list is the set that are available for search.
     %%
     Index1SearchBKeys = search_bkeys(PBConn, Index1),
@@ -531,10 +536,12 @@ put_objects(PBConn, Bucket, Count, ContentType) ->
                end || Val <- RandVals],
     lager:info("Writing ~p objects to Riak...", [length(Objects)]),
     Results = [riakc_pb_socket:put(PBConn, Obj, [return_head, {timeout, 1000}]) || Obj <- Objects],
-    length(lists:filter(fun({Result, _}) ->
-                                ok =:= Result
-                        end,
-                        Results)).
+    NoWritten = length(lists:filter(fun({Result, _}) ->
+                                        ok =:= Result
+                                    end,
+                                    Results)),
+    lager:info("Wrote ~p objects to Riak...", [NoWritten]),
+    NoWritten.
 
 -spec put_bkey_objects(pid(), [bkey()]) -> [bkey()].
 put_bkey_objects(PBConn, BKeys) ->
