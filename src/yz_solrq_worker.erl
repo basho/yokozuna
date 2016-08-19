@@ -478,12 +478,12 @@ log_blocked_vnode(From, State) ->
 %% @doc Enqueue the entry and return updated state.
 enqueue(E, #state{draining = false,
                   queue = Q} = State) ->
-    lager:info("enqueue to queue, len=~p",
+    lager:debug("enqueue to queue, len=~p",
                [queue:len(Q)+1]),
     State#state{queue = queue:in(E, Q)};
 enqueue(E, #state{draining = _Draining,
                   aux_queue = A} = State) ->
-    lager:info("enqueue to aux_queue, len=~p",
+    lager:debug("enqueue to aux_queue, len=~p",
                [queue:len(A)+1]),
     State#state{aux_queue = queue:in(E, A)}.
 
