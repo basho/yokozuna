@@ -29,6 +29,7 @@
          cores/0,
          delete/2,
          dist_search/2,
+         dist_search/3,
          encode_delete/1,
          encode_doc/1,
          entropy_data/2,
@@ -43,7 +44,8 @@
          ping/1,
          port/0,
          prepare_json/1,
-         set_ibrowse_config/1]).
+         set_ibrowse_config/1,
+         search/3]).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
