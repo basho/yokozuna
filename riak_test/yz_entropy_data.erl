@@ -118,12 +118,13 @@ test_ed_timeout_error(Cluster, Index, Partition, _Config) ->
     %% load and install the intercept
     rt_intercept:load_code(Node, [filename:join([rt_config:get(yz_dir),
         "riak_test", "intercepts", "*.erl"])]),
-    rt_intercept:add(Node, {yz_solr, [{{entropy_data, 2},
+    rt_intercept:add(Node, {yz_solr, [{{entropy_data, 3},
                                       entropy_data_cant_complete}]}),
 
     Filter = [{partition, Partition}],
     Fun = fun({_BKey, _Hash}) ->
                   fake_fun
           end,
-    ?assertEqual(rpc:call(Node, yz_entropy, iterate_entropy_data,
-                          [Index, Filter, Fun]), error).
+    ?assertEqual(error,
+                 rpc:call(Node, yz_entropy, iterate_entropy_data,
+                          [Index, Filter, Fun])).

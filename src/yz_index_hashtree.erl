@@ -365,7 +365,10 @@ fold_keys(Partition, Tree, Indexes) ->
                 insert(IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
-    [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
+    yz_solr:with_worker(
+      fun(Worker) ->
+              [yz_entropy:iterate_entropy_data(Worker, I, Filter, F) || I <- Indexes]
+      end).
 
 %% @see riak_kv_index_hashtree:do_new_tree/3
 -spec do_new_tree({p(),n()}, state(), mark_open|mark_empty) -> state().

@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 %% @doc This module contains functionality related to entropy.
 -module(yz_entropy).
--compile(export_all).
+-export([iterate_entropy_data/3, iterate_entropy_data/4]).
 -include("yokozuna.hrl").
 
 %% @doc Iterate all the entropy data in `Index' calling `Fun' for
@@ -27,15 +27,21 @@
 -spec iterate_entropy_data(index_name(), list(), function()) ->
                                   ok|error|not_available.
 iterate_entropy_data(Index, Filter, Fun) ->
+    yz_solr:with_worker(
+      fun(Worker) ->
+              iterate_entropy_data(Worker, Index, Filter, Fun)
+      end).
+
+iterate_entropy_data(Worker, Index, Filter, Fun) ->
     case yz_solr:ping(Index) of
         true ->
             Filter2 = [{continuation, none},
                        {limit,
                         app_helper:get_env(?YZ_APP_NAME,
                                            entropy_data_limit, 100)}|Filter],
-            case get_entropy_data(Index, Filter2) of
+            case get_entropy_data(Worker, Index, Filter2) of
                 {ok, ED} ->
-                    iterate_entropy_data(Index, Filter2, Fun, ED);
+                    iterate_entropy_data(Worker, Index, Filter2, Fun, ED);
                 {Err, _ED} ->
                     Err
             end;
@@ -48,28 +54,26 @@ iterate_entropy_data(Index, Filter, Fun) ->
 %%% Private
 %%%===================================================================
 
--spec iterate_entropy_data(index_name(), list(), function(), ED::entropy_data())
-                          -> ok|error.
-iterate_entropy_data(Index, Filter, Fun, #entropy_data{more=true,
-                                                       continuation=Cont,
-                                                       pairs=Pairs}) ->
+-spec iterate_entropy_data(Worker::pid(), index_name(), list(), function(), ED::entropy_data()) ->
+    ok|error.
+iterate_entropy_data(Worker, Index, Filter, Fun, #entropy_data{more=true,
+                                                               continuation=Cont,
+                                                               pairs=Pairs}) ->
     %% apply function to pairs before iterating through the next set
     lists:foreach(Fun, Pairs),
     Filter2 = lists:keyreplace(continuation, 1, Filter, {continuation, Cont}),
-    case get_entropy_data(Index, Filter2) of
+    case get_entropy_data(Worker, Index, Filter2) of
         {ok, ED} ->
-            iterate_entropy_data(Index, Filter2, Fun, ED);
+            iterate_entropy_data(Worker, Index, Filter2, Fun, ED);
         {Err, _ED} ->
             Err
     end;
-iterate_entropy_data(_, _, Fun, #entropy_data{more=false,
-                                              pairs=Pairs}) ->
+iterate_entropy_data(_Worker, _, _, Fun, #entropy_data{more=false, pairs=Pairs}) ->
     lists:foreach(Fun, Pairs).
 
--spec get_entropy_data(index_name(), list()) ->
-                              {ok|error, entropy_data()}.
-get_entropy_data(Index, Filter) ->
-    case yz_solr:entropy_data(Index, Filter) of
+-spec get_entropy_data(Worker::pid(), index_name(), list()) -> {ok|error, entropy_data()}.
+get_entropy_data(Worker, Index, Filter) ->
+    case yz_solr:entropy_data(Worker, Index, Filter) of
         {error, {error, req_timedout}} ->
             ?ERROR("failed to iterate over entropy data due to request"
                    ++ " exceeding timeout ~b for filter params ~p",

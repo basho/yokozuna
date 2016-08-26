@@ -32,7 +32,7 @@
          dist_search/3,
          encode_delete/1,
          encode_doc/1,
-         entropy_data/2,
+         entropy_data/3,
          get_doc_pairs/1,
          get_ibrowse_config/0,
          get_response/1,
@@ -45,7 +45,8 @@
          port/0,
          prepare_json/1,
          set_ibrowse_config/1,
-         search/3]).
+         search/3,
+         with_worker/1]).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
@@ -198,15 +199,15 @@ delete(Index, Ops) ->
 %%
 %%  `ED' - An entropy data record containing list of entries and
 %%         continuation value.
--spec entropy_data(index_name(), ed_filter()) ->
+-spec entropy_data(pid(), index_name(), ed_filter()) ->
                           ED::entropy_data() | {error, term()}.
-entropy_data(Core, Filter) ->
+entropy_data(WorkerPid, Core, Filter) ->
     Params = [{wt, json}|Filter] -- [{continuation, none}],
     Params2 = proplists:substitute_aliases(?FIELD_ALIASES, Params),
     Opts = [{response_format, binary}],
     URL = ?FMT("~s/~s/entropy_data?~s",
                [base_url(), Core, mochiweb_util:urlencode(Params2)]),
-    case ibrowse:send_req(URL, [], get, [], Opts, ?YZ_SOLR_ED_REQUEST_TIMEOUT) of
+    case ibrowse_send_req(WorkerPid, URL, [], get, [], Opts, ?YZ_SOLR_ED_REQUEST_TIMEOUT) of
         {ok, "200", _Headers, Body} ->
             R = mochijson2:decode(Body),
             More = kvc:path([<<"more">>], R),
@@ -216,6 +217,18 @@ entropy_data(Core, Filter) ->
         X ->
             {error, X}
     end.
+
+-spec with_worker(fun((pid()) -> any())) -> any().
+with_worker(Fun) ->
+    {ok, Pid} = ibrowse:spawn_worker_process(?LOCALHOST, port()),
+    Result = try
+        Fun(Pid)
+    catch
+        Exception:Reason ->
+            lager:error("The fun passed to yz_solr:with_worker failed: ~p:~p", [Exception, Reason])
+    end,
+    ibrowse:stop_worker_process(pid),
+    Result.
 
 index_batch(Core, Ops) ->
     ?EQC_DEBUG("index_batch: About to send entries. ~p~n", [Ops]),
@@ -370,6 +383,9 @@ get_ibrowse_config(Key) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+ibrowse_send_req(WorkerPid, URL, Headers, Method, Body, Opts, Timeout) ->
+    ibrowse:send_req_direct(WorkerPid, URL, Headers, Method, Body, Opts, Timeout).
 
 %% @doc Get the base URL.
 base_url() ->

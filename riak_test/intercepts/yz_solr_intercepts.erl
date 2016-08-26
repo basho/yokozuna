@@ -11,8 +11,8 @@ slow_cores() ->
     timer:sleep(6000),
     {ok, []}.
 
--spec entropy_data_cant_complete(index_name(), list()) -> {error, term()}.
-entropy_data_cant_complete(Core, Filter) ->
+-spec entropy_data_cant_complete(term(), index_name(), list()) -> {error, term()}.
+entropy_data_cant_complete(_, Core, Filter) ->
     Params = [{wt, json}|Filter] -- [{continuation, none}],
     Params2 = proplists:substitute_aliases([{continuation, continue},
                                             {limit,n}], Params),
