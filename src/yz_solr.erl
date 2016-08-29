@@ -22,7 +22,30 @@
 %%      All interaction with Solr should go through this API.
 
 -module(yz_solr).
--compile(export_all).
+-export([build_mapping/1,
+         commit/1,
+         core/2,
+         core/3,
+         cores/0,
+         delete/2,
+         dist_search/2,
+         dist_search/3,
+         encode_delete/1,
+         encode_doc/1,
+         entropy_data/2,
+         get_doc_pairs/1,
+         get_ibrowse_config/0,
+         get_response/1,
+         index_batch/2,
+         is_up/0,
+         jmx_port/0,
+         mbeans_and_stats/1,
+         partition_list/1,
+         ping/1,
+         port/0,
+         prepare_json/1,
+         set_ibrowse_config/1,
+         search/3]).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
@@ -62,12 +85,6 @@ build_mapping(Nodes) ->
     [{Node, HP} || {Node, HP={_,P}} <- [{Node, host_port(Node)}
                                         || Node <- Nodes],
                    P /= unknown].
-
--spec build_partition_delete_query(ordset(lp())) -> term().
-build_partition_delete_query(LPartitions) ->
-    Deletes = [{delete, ?QUERY(<<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>)}
-               || LP <- LPartitions],
-    mochijson2:encode({struct, Deletes}).
 
 -spec commit(index_name()) -> ok.
 commit(Core) ->
@@ -188,27 +205,6 @@ entropy_data(Core, Filter) ->
             make_ed(More, Continuation, Pairs);
         X ->
             {error, X}
-    end.
-
-%% @doc Index the given `Docs'.
-index(Core, Docs) ->
-    index(Core, Docs, []).
-
--spec index(index_name(), list(), [delete_op()]) -> ok.
-index(Core, Docs, DelOps) ->
-    Ops = {struct,
-           [{delete, encode_delete(Op)} || Op <- DelOps] ++
-               [{add, encode_doc(D)} || D <- Docs]},
-    JSON = mochijson2:encode(Ops),
-    URL = ?FMT("~s/~s/update", [base_url(), Core]),
-    Headers = [{content_type, "application/json"}],
-    Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
-                          ?YZ_SOLR_REQUEST_TIMEOUT) of
-        {ok, "200", _, _} -> ok;
-        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
-                                         ErrBody});
-        Err -> throw({"Failed to index docs", other, Err})
     end.
 
 index_batch(Core, Ops) ->
