@@ -55,7 +55,6 @@ start(_StartType, _StartArgs) ->
     Enabled = ?YZ_ENABLED,
     case yz_sup:start_link(Enabled) of
         {ok, Pid} ->
-            _ = application:set_env(ibrowse, inactivity_timeout, 600000),
             maybe_setup(Enabled),
 
             %% Now everything is started, permit usage by KV/query
@@ -140,7 +139,6 @@ maybe_setup(true) ->
     ok = riak_core:register(yokozuna, [{bucket_validator, yz_bucket_validator}]),
     ok = riak_core:register(search, [{permissions, ['query',admin]}]),
     ok = yz_schema:setup_schema_bucket(),
-    ok = set_ibrowse_config(),
     ok.
 
 %% @doc Conditionally register PB service IFF Riak Search is not
@@ -165,15 +163,3 @@ setup_stats() ->
         false -> sidejob:new_resource(yz_stat_sj, yz_stat_worker, 10000)
     end,
     ok = riak_core:register(yokozuna, [{stat_mod, yz_stat}]).
-
-set_ibrowse_config() ->
-    Config = [{?YZ_SOLR_MAX_SESSIONS,
-               app_helper:get_env(?YZ_APP_NAME,
-                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS,
-                                  ?YZ_CONFIG_IBROWSE_MAX_SESSIONS_DEFAULT)},
-              {?YZ_SOLR_MAX_PIPELINE_SIZE,
-               app_helper:get_env(?YZ_APP_NAME,
-                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE,
-                                  ?YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE_DEFAULT)}
-             ],
-    yz_solr:set_ibrowse_config(Config).
