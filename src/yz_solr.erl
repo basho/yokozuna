@@ -182,6 +182,9 @@ delete(Index, Ops) ->
 %%      in an iterative fashion in order to page through the entropy
 %%      data.
 %%
+%%  `WorkerPid' - The ibrowse worker process to use to retrieve the entropy
+%%                data. This can be created with the `with_worker' function.
+%%
 %%  `Core' - The core to get entropy data for.
 %%
 %%  `Filter' - The list of constraints to filter out entropy
@@ -218,6 +221,8 @@ entropy_data(WorkerPid, Core, Filter) ->
             {error, X}
     end.
 
+%% Spawn a new worker process, pass it to the given `Fun', and then stop the
+%% worker process after `Fun' has completed.
 -spec with_worker(fun((pid()) -> any())) -> any().
 with_worker(Fun) ->
     {ok, Pid} = ibrowse:spawn_worker_process(?LOCALHOST, port()),
