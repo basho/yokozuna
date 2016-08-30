@@ -32,7 +32,10 @@
 -export([start_link/0,
     get_stats/0,
     get_stat/1,
+    get_stat/2,
     index_fail/0,
+    index_bad_entry/0,
+    index_extract_fail/0,
     index_end/3,
     drain_end/1,
     batch_end/1,
@@ -87,9 +90,11 @@ get_stats() ->
 %% not found.
 -spec get_stat([atom(), ...]) -> undefined | term().
 get_stat(Name) when is_list(Name) ->
+    get_stat(Name, value).
+get_stat(Name, SummaryName) ->
     Path = [?PFX, ?APP] ++ Name,
-    case exometer:get_value(Path, value) of
-        {ok, [{value, Value}]} ->
+    case exometer:get_value(Path, SummaryName) of
+        {ok, [{SummaryName, Value}]} ->
             Value;
         _ ->
             undefined
@@ -104,6 +109,16 @@ initialize_fuse_stats(Name) ->
 -spec index_fail() -> ok.
 index_fail() ->
     update(index_fail).
+
+%% @doc Send stat updates for an index failure.
+-spec index_bad_entry() -> ok.
+index_bad_entry() ->
+    update(index_bad_entry).
+
+%% @doc Send stat updates for an index failure.
+-spec index_extract_fail() -> ok.
+index_extract_fail() ->
+    update(index_extract_fail).
 
 %% @doc Send stat updates for an index completion.  `ElapsedTime'
 %% should be microseconds.
@@ -210,6 +225,10 @@ perform_update({index_end, BatchSize, Time}) ->
     exometer:update([?PFX, ?APP, queue, batchsize], BatchSize);
 perform_update(index_fail) ->
     exometer:update([?PFX, ?APP, index, fail], 1);
+perform_update(index_bad_entry) ->
+    exometer:update([?PFX, ?APP, index, bad_entry], 1);
+perform_update(index_extract_fail) ->
+    exometer:update([?PFX, ?APP, index, extract, fail], 1);
 perform_update({batch_end, Time}) ->
     exometer:update([?PFX, ?APP, queue, batch, latency], Time);
 perform_update(blockedvnode) ->
@@ -323,6 +342,14 @@ stats() -> [
     {[index, fail], spiral, [], [
         {count, search_index_fail_count},
         {one,   search_index_fail_one}
+    ]},
+    {[index, bad_entry], spiral, [], [
+        {count, search_index_bad_entry_count},
+        {one,   search_index_bad_entry_one}
+    ]},
+    {[index, extract, fail], spiral, [], [
+        {count, search_index_extract_fail_count},
+        {one,   search_index_extract_fail_one}
     ]},
     {[index, latency], histogram, [], [
         {min,    search_index_latency_min},

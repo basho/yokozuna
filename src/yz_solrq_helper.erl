@@ -23,26 +23,24 @@
 -behavior(gen_server).
 
 %% api
--export([start_link/1, status/1, status/2]).
+-export([start_link/2, status/1, status/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 % solrq/helper interface
--export([index_ready/3, index_ready/2, index_batch/5]).
+-export([index_batch/5]).
 
 %% TODO: Dynamically pulse_instrument.
--ifdef(PULSE).
--compile(export_all).
--compile({parse_transform, pulse_instrument}).
--compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
-
--define(PULSE_DEBUG(S,F), pulse:format(S,F)).
+-ifdef(EQC).
+%% -define(EQC_DEBUG(S, F), ok).
+-define(EQC_DEBUG(S, F), eqc:format(S, F)).
+%%-define(EQC_DEBUG(S, F), io:fwrite(user, S, F)).
 debug_entries(Entries) ->
     [erlang:element(1, Entry) || Entry <- Entries].
 -else.
--define(PULSE_DEBUG(S,F), ok).
+-define(EQC_DEBUG(S, F), ok).
 -endif.
 
 -record(state, {}).
@@ -63,29 +61,14 @@ debug_entries(Entries) ->
 %%% API
 %%%===================================================================
 
-start_link(Name) ->
-    gen_server:start_link({local, Name}, ?MODULE, [], []).
+start_link(Index, Partition) ->
+    gen_server:start_link({local, yz_solrq:helper_regname(Index, Partition)}, ?MODULE, [], []).
 
 status(Pid) ->
     status(Pid, 60000). % solr can block, long timeout by default
 
 status(Pid, Timeout) ->
     gen_server:call(Pid, status, Timeout).
-
--spec index_ready(index_name(), solrq_id()) -> ok.
-index_ready(Index, QPid) ->
-    HPid = yz_solrq:random_helper(),
-    index_ready(HPid, Index, QPid).
-
-%% @doc Mark the index as ready.  Separating into a two phase
-%%      rather than just blindly sending from the solrq adds the
-%%      backpressure on the KV vnode.
--spec index_ready(solrq_helper_id(), index_name(), solrq_id()) -> ok.
-index_ready(HPid, Index, QPid) when is_atom(HPid); is_pid(HPid) ->
-    gen_server:cast(HPid, {ready, Index, QPid});
-index_ready(Hash, Index, QPid) ->
-    HPid = yz_solrq:helper_regname(Hash),
-    index_ready(HPid, Index, QPid).
 
 %% @doc Index a batch
 -spec index_batch(solrq_helper_id(),
@@ -108,21 +91,18 @@ handle_call(status, _From, State) ->
 handle_call(BadMsg, _From, State) ->
     {reply, {error, {unknown, BadMsg}}, State}.
 
-handle_cast({ready, Index, QPid}, State) ->
-    yz_solrq_worker:request_batch(QPid, Index, self()),
-    {noreply, State};
 handle_cast({batch, Index, BatchMax, QPid, Entries}, State) ->
-    ?PULSE_DEBUG("Handling batch for index ~p.  Entries: ~p~n", [Index, debug_entries(Entries)]),
+    ?EQC_DEBUG("Handling batch for index ~p.  Entries: ~p~n", [Index, debug_entries(Entries)]),
     Message = case do_batches(Index, BatchMax, [], Entries) of
         ok ->
             {length(Entries), ok};
         {ok, Delivered} ->
             {length(Delivered), {retry, remove(Delivered, Entries)}};
         {error, Undelivered} ->
-            ?PULSE_DEBUG("Error handling batch for index ~p.  Undelivered: ~p~n", [Index, debug_entries(Undelivered)]),
+            %% ?EQC_DEBUG("Error handling batch for index ~p.  Undelivered: ~p~n", [Index, debug_entries(Undelivered)]),
             {length(Entries) - length(Undelivered), {retry, Undelivered}}
     end,
-    yz_solrq_worker:batch_complete(QPid, Index, Message),
+    yz_solrq_worker:batch_complete(QPid, Message),
     {noreply, State}.
 
 %%%===================================================================
@@ -152,6 +132,7 @@ do_batches(Index, BatchMax, Delivered, Entries) ->
         {ok, DeliveredInBatch} ->
             {ok, DeliveredInBatch ++ Delivered};
         {error, _Reason} ->
+            %% ?EQC_DEBUG("Error handling batch:~p", [_Reason]),
             {error, Entries}
     end.
 
@@ -160,36 +141,28 @@ do_batches(Index, BatchMax, Delivered, Entries) ->
     | {ok, Delivered :: solr_entries()}         % a strict subset of entries were delivered
     | {error, Reason :: term()}.                % an error occurred; retry all of them
 do_batch(Index, Entries0) ->
-    try
-        %% TODO: use ibrowse http worker
-        %% TODO: batch updates to YZ AAE
-        %% TODO: move the owned/next partition logic back up
-        %%       to yz_kv:index/3 once we efficiently cache
-        %%       owned and next rather than calculating per-object.
-        Ring = yz_misc:get_ring(transformed),
-        LI = yz_cover:logical_index(Ring),
-        OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
+    %% TODO: use ibrowse http worker
+    %% TODO: batch updates to YZ AAE
+    %% TODO: move the owned/next partition logic back up
+    %%       to yz_kv:index/3 once we efficiently cache
+    %%       owned and next rather than calculating per-object.
+    Ring = yz_misc:get_ring(transformed),
+    LI = yz_cover:logical_index(Ring),
+    OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
 
-        Entries1 = [{BKey, Obj, Reason, P,
-                    riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
-                      {BKey, Obj, Reason, P} <-
-                          yz_misc:filter_out_fallbacks(OwnedAndNext, Entries0)],
-        case update_solr(Index, LI, Entries1) of
-            ok ->
-                update_aae_and_repair_stats(Entries1),
-                ok;
-            {ok, Entries2} ->
-                update_aae_and_repair_stats(Entries2),
-                {ok, [{BKey, Obj, Reason, P} || {BKey, Obj, Reason, P, _, _} <- Entries2]};
-            {error, Reason} ->
-                {error, Reason}
-        end
-    catch
-        _:Err ->
-            yz_stat:index_fail(),
-            Trace = erlang:get_stacktrace(),
-            ?DEBUG("index ~p failed - ~p\nat: ~p", [Index, Err, Trace]),
-            {error, Err}
+    Entries1 = [{BKey, Obj, Reason, P,
+        riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
+        {BKey, Obj, Reason, P} <-
+            yz_misc:filter_out_fallbacks(OwnedAndNext, Entries0)],
+    case update_solr(Index, LI, Entries1) of
+        ok ->
+            update_aae_and_repair_stats(Entries1),
+            ok;
+        {ok, Entries2} ->
+            update_aae_and_repair_stats(Entries2),
+            {ok, [{BKey, Obj, Reason, P} || {BKey, Obj, Reason, P, _, _} <- Entries2]};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 
@@ -199,33 +172,30 @@ do_batch(Index, Entries0) ->
                          {error, fuse_blown} | {error, tuple()}.
 update_solr(_Index, _LI, []) -> % nothing left after filtering fallbacks
     ok;
-update_solr(Index, LI, Entries) ->
-    case yz_kv:should_index(Index) of
-        false ->
-            ok; % No need to send anything to SOLR, still need for AAE.
+update_solr(Index, LI, Entries) when ?YZ_SHOULD_INDEX(Index) ->
+    case yz_fuse:check(Index) of
+        ok ->
+            send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
+                                      Entries);
+        blown ->
+            %% ?EQC_DEBUG(                       "Fuse Blown: can't currently send solr "
+            %%       "operations for index ~s", [Index]),
+            {error, fuse_blown};
         _ ->
-            case yz_fuse:check(Index) of
-                ok ->
-                    send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
-                                              Entries);
-                blown ->
-                    ?DEBUG("Fuse Blown: can't currently send solr "
-                           "operations for index ~s", [Index]),
-                    {error, fuse_blown};
-                _ ->
-                    %% fuse table creation is idempotent and occurs on
-                    %% yz_index:add_index/1 on 1st creation or diff-check.
-                    %% We send entries until we can ask again for
-                    %% ok | error, as we wait for the tick.
-                    send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
-                                              Entries)
-            end
-    end.
+            %% fuse table creation is idempotent and occurs on
+            %% yz_index:add_index/1 on 1st creation or diff-check.
+            %% We send entries until we can ask again for
+            %% ok | error, as we wait for the tick.
+            send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
+                                      Entries)
+    end;
+update_solr(_Index, _LI, _Entries) ->
+    ok.
 
 %% @doc Build the SOLR query
 -spec solr_ops(logical_idx(), solr_entries()) -> solr_ops().
 solr_ops(LI, Entries) ->
-      [get_ops_for_entry(Entry, LI) || Entry <- Entries].
+    [get_ops_for_entry(Entry, LI) || Entry <- Entries].
 
 -spec get_ops_for_entry(solr_entry(), logical_idx()) -> solr_ops().
 get_ops_for_entry({BKey, Obj0, Reason, P, ShortPL, Hash}, LI) ->
@@ -285,23 +255,22 @@ get_ops_for_entry_action(Action, _ObjValues, LI, P, Obj, BKey,
                                        {ok, SuccessEntries :: solr_entries()} |
                                        {error, tuple()}.
 send_solr_ops_for_entries(Index, Ops, Entries) ->
-    try
-        T1 = os:timestamp(),
-        ok = yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)),
-        yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
-        ok
-    catch _:Err ->
-            yz_stat:index_fail(),
-            Trace = erlang:get_stacktrace(),
+    T1 = os:timestamp(),
+    %% ?EQC_DEBUG("send_solr_ops_for_entries: About to send entries. ~p", Entries),
+    case yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)) of
+        ok ->
+            yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+            ok;
+        {error, {Reason, _Detail}} = Err when Reason =:= badrequest; Reason =:= bad_data ->
             ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
-            case Err of
-                {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
-                    handle_bad_entries(Index, Ops, Entries);
-                _ ->
-                    ?ERROR("Updating a batch of Solr operations failed for index ~p with error ~p", [Index, Err]),
-                    yz_fuse:melt(Index),
-                    {error, {Err, Trace}}
-            end
+            %yz_stat:index_fail(),
+            handle_bad_entries(Index, Ops, Entries);
+        Err ->
+            ?DEBUG("batch for index ~s failed.  Error: ~p~n", [Index, Err]),
+            ?ERROR("Updating a batch of Solr operations failed for index ~p with error ~p", [Index, Err]),
+            yz_fuse:melt(Index),
+            Trace = erlang:get_stacktrace(),
+            {error, {Err, Trace}}
     end.
 
 handle_bad_entries(Index, Ops, Entries) ->
@@ -321,52 +290,74 @@ handle_bad_entries(Index, Ops, Entries) ->
 %%      successful ops and applying side-effects to Solr.
 -spec send_solr_single_ops(index_name(), solr_ops()) -> GoodOps :: solr_ops().
 send_solr_single_ops(Index, Ops) ->
-    lists:takewhile(
-      fun(Op) ->
-              try
-                  T1 = os:timestamp(),
-                  ok = yz_solr:index_batch(Index, prepare_ops_for_batch([Op])),
-                  yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
-                  true
-              catch _:Err ->
-                      %% TODO This results in double counting index failures when
-                      %% we get a bad request back from Solr.
-                      %% We should probably refine our stats so that
-                      %% they differentiate between bad data and Solr going wonky
-                      yz_stat:index_fail(),
-                      case Err of
-                          {_, Reason, _} when Reason =:= badrequest; Reason =:= bad_data ->
-                              ?ERROR("Updating a single Solr operation failed for index ~p with bad request.", [Index]),
-                              true;
-                          _ ->
-                              ?ERROR("Updating a single Solr operation failed for index ~p with error ~p", [Index, Err]),
-                              yz_fuse:melt(Index),
-                              false
-                      end
-              end
-      end, Ops).
+    lists:takewhile(fun(Op) ->
+                      single_op_batch(Index, Op)
+                  end,
+                  Ops).
+
+
+single_op_batch(Index, Op) ->
+    Ops = prepare_ops_for_batch([Op]),
+    case yz_solr:index_batch(Index, Ops) of
+        ok ->
+            T1 = os:timestamp(),
+            yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
+            true;
+        %% TODO This results in double counting index failures when
+        %% we get a bad request back from Solr.
+        %% We should probably refine our stats so that
+        %% they differentiate between bad data and Solr going wonky
+        {error, {Reason, _Details}} when Reason =:= badrequest; Reason =:= bad_data ->
+            yz_stat:index_bad_entry(),
+            ?ERROR("Updating a single Solr operation failed for index ~p with bad request.", [Index]),
+            true;
+        Err ->
+            yz_stat:index_fail(),
+            ?ERROR("Updating a single Solr operation failed for index ~p with error ~p", [Index, Err]),
+            yz_fuse:melt(Index),
+            false
+    end.
 
 -spec update_aae_and_repair_stats(solr_entries()) -> ok.
 update_aae_and_repair_stats(Entries) ->
-    Repairs = lists:foldl(
-                fun({BKey, _Obj, Reason, P, ShortPL, Hash}, StatsD) ->
-                        ReasonAction = get_reason_action(Reason),
-                        Action = hashtree_action(ReasonAction, Hash),
-                        yz_kv:update_hashtree(Action, P, ShortPL, BKey),
-                        gather_counts({P, ShortPL, Reason}, StatsD)
-                end, dict:new(), Entries),
-    dict:map(fun({Index, IndexN}, Count) ->
-                  case Count of
-                      0 ->
-                          ok;
-                      Count ->
-                          lager:debug("Repaired ~b keys during active anti-entropy "
-                                      "exchange of partition ~p for preflist ~p",
-                                     [Count, Index, IndexN]),
-                          yz_kv:update_aae_exchange_stats(Index, IndexN, Count)
-                  end
-             end, Repairs),
-    ok.
+    update_hashtree_for_entries(Entries),
+    update_repair_stats(Entries).
+
+-spec update_repair_stats(solr_entries()) -> ok.
+update_repair_stats(Entries) ->
+    Repairs = calculate_repair_counts(Entries),
+    update_stats(Repairs).
+
+-spec calculate_repair_counts(solr_entries()) -> yz_dict().
+calculate_repair_counts(Entries) ->
+    Repairs = lists:foldl(fun increment_repair_count/2, dict:new(), Entries),
+    Repairs.
+
+-spec update_hashtree_for_entries(solr_entries()) -> ok.
+update_hashtree_for_entries(Entries) ->
+    lists:foreach(fun update_hashtree_for_entry/1, Entries).
+
+-spec update_stats(yz_dict()) -> ok.
+update_stats(RepairsDict) ->
+    Repairs = dict:to_list(RepairsDict),
+    lists:foreach(fun update_stat/1, Repairs).
+
+-spec update_stat({{p(), short_preflist()}, non_neg_integer()}) -> ok.
+update_stat({_, 0}) ->
+    ok;
+update_stat({{Partition, ShortPL}, Count}) ->
+    lager:debug("Repaired ~b keys during active anti-entropy "
+                "exchange of partition ~p for preflist ~p",
+                [Count, Partition, ShortPL]),
+    yz_kv:update_aae_exchange_stats(Partition, ShortPL, Count).
+
+increment_repair_count({_BKey, _Obj, Reason, P, ShortPL, _Hash}, StatsD) ->
+    maybe_add_repair_to_counts({P, ShortPL, Reason}, StatsD).
+
+update_hashtree_for_entry({BKey, _Obj, Reason, P, ShortPL, Hash}) ->
+    ReasonAction = get_reason_action(Reason),
+    Action = hashtree_action(ReasonAction, Hash),
+    yz_kv:update_hashtree(Action, P, ShortPL, BKey).
 
 -spec hashtree_action(write_action(), hash()) ->
     delete | {insert, hash()}.
@@ -379,13 +370,11 @@ hashtree_action(Action, Hash) when Action == put;
                                    Action == anti_entropy ->
     {insert, Hash}.
 
--spec gather_counts({p(), {p(), n()}, write_reason()}, yz_dict()) -> yz_dict().
-gather_counts({Index, IndexN, Reason}, StatsD) ->
-    case Reason of
-        {_, full_repair} ->
-            dict:update_counter({Index, IndexN}, 1, StatsD);
-        _ -> dict:update_counter({Index, IndexN}, 0, StatsD)
-    end.
+-spec maybe_add_repair_to_counts({p(), short_preflist(), write_reason()}, yz_dict()) -> yz_dict().
+maybe_add_repair_to_counts({Index, ShortPL, {_, full_repair}}, StatsD) ->
+    dict:update_counter({Index, ShortPL}, 1, StatsD);
+maybe_add_repair_to_counts({_Index, _ShortPL, _Reason}, StatsD) ->
+    StatsD.
 
 -spec get_reason_action(write_reason()) -> write_action().
 get_reason_action(Reason) when is_tuple(Reason) ->

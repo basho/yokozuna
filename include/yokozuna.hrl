@@ -350,6 +350,7 @@
 
 -define(TOMBSTONE, <<>>).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
+-define(YZ_SHOULD_INDEX(Index), Index =/= ?YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX, search_index).
 
 %%%===================================================================
@@ -506,7 +507,7 @@
 -type solrq_batch_max()            :: pos_integer().
 -type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
 -type solrq_hwm()                  :: non_neg_integer().
--type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX|?PURGE_ALL.
+-type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX.
 
 %%%===================================================================
 %%% draining

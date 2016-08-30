@@ -72,6 +72,18 @@
 -export_type([delete_op/0]).
 -export_type([ibrowse_config_key/0, ibrowse_config_value/0, ibrowse_config/0]).
 
+%% TODO: Dynamically pulse_instrument.
+-ifdef(EQC).
+%% -define(EQC_DEBUG(S, F), eqc:format(S, F)).
+-define(EQC_DEBUG(S, F), ok).
+debug_entries(Entries) ->
+    [erlang:element(1, Entry) || Entry <- Entries].
+-else.
+-define(EQC_DEBUG(S, F), ok).
+-endif.
+
+
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -208,21 +220,38 @@ entropy_data(Core, Filter) ->
     end.
 
 index_batch(Core, Ops) ->
-    JSON = try
-               mochijson2:encode({struct, Ops})
-           catch _:E ->
-               throw({"Failed to encode ops", bad_data, E})
-           end,
+    ?EQC_DEBUG("index_batch: About to send entries. ~p~n", [Ops]),
+    JSON = encode_json(Ops),
+    ?EQC_DEBUG("index_batch: About to send JSON. ~p~n", [JSON]),
+    maybe_make_http_request(Core, JSON).
+
+maybe_make_http_request(_Core, {error, _} = Error) ->
+    ?EQC_DEBUG("Not making HTTP request due to error: ~p", [Error]),
+    Error;
+maybe_make_http_request(Core, JSON) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
+    ?EQC_DEBUG("About to send_req: ~p", [[URL, Headers, post, JSON, opts, ?YZ_SOLR_REQUEST_TIMEOUT]]),
+    Res = case ibrowse:send_req(URL, Headers, post, JSON, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
-        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
-                                         ErrBody});
-        Err -> throw({"Failed to index docs", other, Err})
-    end.
+        {ok, "400", _, ErrBody} ->
+            {error, {badrequest, ErrBody}};
+        Err ->
+            {error, {other, Err}}
+    end,
+    %% ?PULSE_DEBUG("send_req result: ~p", [Res]),
+    Res.
+
+encode_json(Ops) ->
+    JSON = try
+               mochijson2:encode({struct, Ops})
+           catch _:E ->
+        {error, {bad_data, E}}
+           end,
+    ?EQC_DEBUG("Encoded JSON: ~p", [JSON]),
+    JSON.
 
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().

@@ -58,18 +58,15 @@
                   ?INDEX6, ?INDEX7, ?INDEX8, ?INDEX9, ?INDEX10,
                   ?INDEX11, ?INDEX12]).
 
--define(NUM_SOLRQ, 3).
--define(NUM_SOLRQ_HELPERS, 3).
 -define(SOLRQ_DELAYMS_MAX, 3000).
 -define(SOLRQ_BATCH_MIN_SETTING, 4).
 -define(SOLRQ_BATCH_MAX_SETTING, 8).
 -define(MELT_RESET_REFRESH, 1000).
 -define(SOLRQ_HWM_SETTING, 20).
+-define(RING_SIZE, 8).
 -define(CONFIG,
         [{yokozuna,
           [{enabled, true},
-           {?SOLRQ_WORKER_COUNT, ?NUM_SOLRQ},
-           {?SOLRQ_WORKER_COUNT, ?NUM_SOLRQ_HELPERS},
            {?SOLRQ_BATCH_FLUSH_INTERVAL, ?SOLRQ_DELAYMS_MAX},
            {?SOLRQ_BATCH_MIN, ?SOLRQ_BATCH_MIN_SETTING},
            {?SOLRQ_BATCH_MAX, ?SOLRQ_BATCH_MAX_SETTING},
@@ -78,7 +75,8 @@
            {?ERR_THRESH_RESET_INTERVAL, ?MELT_RESET_REFRESH},
            {?SOLRQ_DRAIN_ENABLE, true},
            {anti_entropy, {off, []}}
-          ]}]).
+          ]},
+            {riak_core, [{ring_creation_size, ?RING_SIZE}]}]).
 
 -compile(export_all).
 
@@ -252,7 +250,7 @@ confirm_hwm(Cluster, PBConn, Bucket, Index, HWM) ->
     {OldMin, OldMax, OldDelay} = set_index(Cluster, Index, 1, 100, 100),
     try
         yz_rt:load_intercept_code(Cluster),
-        yz_rt:intercept_index_batch(Cluster, index_batch_throw_exception),
+        yz_rt:intercept_index_batch(Cluster, index_batch_returns_other_error),
         yz_rt:set_hwm(Cluster, HWM),
         yz_rt:set_purge_strategy(Cluster, ?PURGE_NONE),
         ?assertEqual(HWM, put_objects(PBConn, Bucket, HWM + 1))
@@ -268,9 +266,9 @@ confirm_hwm(Cluster, PBConn, Bucket, Index, HWM) ->
 -spec gteq(number(), number()) -> boolean().
 gteq(A, B) -> A >= B.
 
-confirm_draining(Cluster, PBConn, BKey, Index) ->
+confirm_draining(Cluster, PBConn, Bucket, Index) ->
     Count = ?SOLRQ_BATCH_MIN_SETTING - 1,
-    Count = put_objects(PBConn, BKey, Count),
+    Count = put_objects(PBConn, Bucket, Count),
     yz_rt:commit(Cluster, Index),
     verify_search_count(PBConn, Index, 0),
     yz_rt:drain_solrqs(Cluster),
@@ -281,13 +279,13 @@ confirm_draining(Cluster, PBConn, BKey, Index) ->
 
 confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
     yz_rt:load_intercept_code(Node),
-    yz_rt:intercept_index_batch(Node, index_batch_throw_exception),
+    yz_rt:intercept_index_batch(Node, index_batch_returns_other_error),
 
     Count = ?SOLRQ_BATCH_MIN_SETTING,
     Count = put_objects(PBConn, BKey, Count),
     yz_rt:commit(Cluster, Index),
 
-    %% Because the index_batch_throw_exception intercept simulates a Solr
+    %% Because the index_batch_returns_other_error intercept simulates a Solr
     %% failure, none of the objects should have been indexed at this point.
     verify_search_count(PBConn, Index, 0),
 
@@ -312,33 +310,21 @@ confirm_no_contenttype_data(Cluster, PBConn, BKey, Index) ->
 
 confirm_purge_strategy(Cluster, PBConn) ->
     confirm_purge_one_strategy(Cluster, PBConn,
-                               {?BUCKET5, ?INDEX5},
-                               {?BUCKET6, ?INDEX6}),
+                               {?BUCKET5, ?INDEX5}),
     confirm_purge_idx_strategy(Cluster, PBConn,
-                               {?BUCKET7, ?INDEX7},
-                               {?BUCKET8, ?INDEX8}),
-    confirm_purge_all_strategy(Cluster, PBConn,
-                               {?BUCKET9, ?INDEX9},
-                               {?BUCKET10, ?INDEX10}),
+                               {?BUCKET7, ?INDEX7}),
     confirm_purge_none_strategy(Cluster, PBConn,
-                                {?BUCKET11, ?INDEX11},
-                                {?BUCKET12, ?INDEX12}),
+                                {?BUCKET11, ?INDEX11}),
     ok.
 
-confirm_purge_one_strategy(Cluster, PBConn, Bucket1Index1, Bucket2Index2) ->
-    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1, Bucket2Index2,
-                            ?PURGE_ONE),
+confirm_purge_one_strategy(Cluster, PBConn, Bucket1Index1) ->
+    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1, ?PURGE_ONE),
     check_one_purged(PurgeResults),
     lager:info("confirm_purge_one_strategy ok"),
     ok.
 
-check_one_purged({{Index1Written, Index1SearchResults},
-                  {Index2Written, Index2SearchResults}} = TestResults) ->
-    Condition =
-        equal(Index1Written, Index1SearchResults)
-            andalso first_purged(Index2Written, Index2SearchResults)
-        orelse first_purged(Index1Written, Index1SearchResults)
-            andalso equal(Index2Written, Index2SearchResults),
+check_one_purged({Index1Written, Index1SearchResults} = TestResults) ->
+    Condition = first_purged(Index1Written, Index1SearchResults),
     case Condition of
         false ->
             lager:error("check_one_purged error: ~p", [TestResults]);
@@ -347,15 +333,13 @@ check_one_purged({{Index1Written, Index1SearchResults},
     ?assertEqual(Condition, true),
     ok.
 
-confirm_purge_idx_strategy(Cluster, PBConn, Bucket1Index1, Bucket2Index2) ->
-    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1, Bucket2Index2,
-                            ?PURGE_IDX),
+confirm_purge_idx_strategy(Cluster, PBConn, Bucket1Index1) ->
+    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1, ?PURGE_IDX),
     check_idx_purged(PurgeResults),
     lager:info("confirm_purge_idx_strategy ok"),
     ok.
 
-check_idx_purged({{[_K1, _K2, K3] = Index1Written, Index1SearchResults},
-                  {Index2Written, Index2SearchResults}} = TestResults) ->
+check_idx_purged({[_K1, _K2, _K3, _K4, K5] = _Index1Written, Index1SearchResults} = TestResults) ->
     %%
     %% Note the second condition, because we wrote to Index1
     %% but that was the purge trigger, so the last entry will
@@ -363,11 +347,7 @@ check_idx_purged({{[_K1, _K2, K3] = Index1Written, Index1SearchResults},
     %% Otherwise, it was the second indexq, and nothing should
     %% have been pending for that indexq, so they all get deleted.
     %%
-    Condition =
-        equal(Index1Written, Index1SearchResults)
-            andalso equal([], Index2SearchResults)
-        orelse equal(Index1SearchResults, [K3])
-            andalso equal(Index2Written, Index2SearchResults),
+    Condition = equal(Index1SearchResults, [K5]),
     case Condition of
         false ->
             lager:error("check_idx_purged error: ~p", [TestResults]);
@@ -376,44 +356,16 @@ check_idx_purged({{[_K1, _K2, K3] = Index1Written, Index1SearchResults},
     ?assertEqual(Condition, true),
     ok.
 
-confirm_purge_all_strategy(Cluster, PBConn, Bucket1Index1, Bucket2Index2) ->
-    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1, Bucket2Index2,
-                            ?PURGE_ALL),
-    check_all_purged(PurgeResults),
-    lager:info("confirm_purge_all_strategy ok"),
-    ok.
-
-check_all_purged({{[_K1, _K2, K3] = _Index1Written, Index1SearchResults},
-                  {_Index2Written, Index2SearchResults}} = TestResults) ->
-    %%
-    %% Note the first condition, because we wrote to Index1
-    %% but that was the purge trigger, so the last entry will
-    %% NOT have been purged, of that indexq was the one chosen.
-    %% Otherwise, it was the second indexq, and nothing should
-    %% have been pending for that indexq, so they all get deleted.
-    %%
-    Condition =
-        equal(Index1SearchResults, [K3]) andalso equal([], Index2SearchResults),
-    case Condition of
-        false ->
-            lager:error("check_all_purged error: ~p", [TestResults]);
-        _ -> ok
-    end,
-    ?assertEqual(Condition, true),
-    ok.
-
-confirm_purge_none_strategy(Cluster, PBConn, Bucket1Index1, Bucket2Index2) ->
-    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1, Bucket2Index2,
+confirm_purge_none_strategy(Cluster, PBConn, Bucket1Index1) ->
+    PurgeResults = do_purge(Cluster, PBConn, Bucket1Index1,
                             ?PURGE_NONE),
     check_none_purged(PurgeResults),
     lager:info("confirm_purge_none_strategy ok"),
     ok.
 
-check_none_purged({{Index1Written, Index1SearchResults},
-                   {Index2Written, Index2SearchResults}} = TestResults) ->
+check_none_purged({Index1Written, Index1SearchResults} = TestResults) ->
     Condition =
-        equal(Index1Written, Index1SearchResults)
-            andalso equal(Index2Written, Index2SearchResults),
+        equal(Index1Written, Index1SearchResults),
     case Condition of
         false ->
             lager:error("check_none_purged error: ~p", [TestResults]);
@@ -447,49 +399,52 @@ first_purged([_H|T] = _Written, Searched) ->
 %% of this function.
 %%
 do_purge([Node|_] = Cluster, PBConn,
-         {Bucket1, Index1},
-         {Bucket2, Index2},
+         {Bucket, Index},
          PurgeStrategy) ->
     yz_rt:set_purge_strategy(Cluster, PurgeStrategy),
-    yz_rt:set_index(Cluster, Index1, 1, 100, 99999),
-    yz_rt:set_index(Cluster, Index2, 1, 100, 99999),
+    yz_rt:set_index(Cluster, Index, 1, 100, 99999),
     yz_rt:set_hwm(Cluster, 4),
+    TargetPartition = 1096126227998177188652763624537212264741949407232,
     %%
-    %% Find a list of representative keys for each Index.
+    %% Find a list of representative keys.
     %% Each representative in the list is a unique key
-    %% that hashes to yz_solrq_001.
+    %% that hashes to the target partition.
     %%
-    Index1BKeys = find_representative_bkeys(Node, Index1, Bucket1),
-    Index2BKeys = find_representative_bkeys(Node, Index2, Bucket2),
-    Index1BKey1 = lists:nth(1, Index1BKeys),
-    Index1BKey2 = lists:nth(2, Index1BKeys),
-    Index1BKey3 = lists:nth(3, Index1BKeys),
-    Index2BKey1 = lists:nth(1, Index2BKeys),
-    Index2BKey2 = lists:nth(2, Index2BKeys),
+    RepresentativeKeys = find_representative_bkeys(TargetPartition, Index, Bucket),
+    Key1 = lists:nth(1, RepresentativeKeys),
+    Key2 = lists:nth(2, RepresentativeKeys),
+    Key3 = lists:nth(3, RepresentativeKeys),
+    Key4 = lists:nth(4, RepresentativeKeys),
+    Key5 = lists:nth(5, RepresentativeKeys),
     try
         yz_rt:load_intercept_code(Node),
-        yz_rt:intercept_index_batch(Node, index_batch_throw_exception),
+        yz_rt:intercept_index_batch(Node, index_batch_returns_other_error),
         %%
-        %% Send two messages through each indexq on the solrq, which
-        %% will trip the fuse on both; however
+        %% Send messages through the index on the solrq, which
+        %% will trip the fuse; however
         %% because fuse blown events are handled asynchronously,
-        %% we need to wait until the solrqs are blown.
+        %% we need to wait until the solrq is blown.
         %%
-        [Index1BKey1] = put_bkey_objects(PBConn, [Index1BKey1]),
-        [Index1BKey2] = put_bkey_objects(PBConn, [Index1BKey2]),
-        [Index2BKey1] = put_bkey_objects(PBConn, [Index2BKey1]),
-        [Index2BKey2] = put_bkey_objects(PBConn, [Index2BKey2]),
-        yz_rt:wait_until_fuses_blown(Node, yz_solrq_worker_0001, [Index1, Index2]),
+        [Key1] = put_bkey_objects(PBConn, [Key1]),
+        [Key2] = put_bkey_objects(PBConn, [Key2]),
+        [Key3] = put_bkey_objects(PBConn, [Key3]),
+        [Key4] = put_bkey_objects(PBConn, [Key4]),
+        yz_rt:wait_until_fuses_blown(Node, TargetPartition, [Index]),
         %%
-        %% At this point, the two indexqs in yz_solrq_worker_001 corresponding
-        %% to Index1 and Index2, respectively, should be blown.
-        %% Send one more message through one of the Indexqs, which
+        %% At this point, the target solrq corresponding
+        %% to {TargetPartition, Index1}, should be blown.
+        %% Send one more message through the Indexq, which
         %% will trigger a purge.
         %%
+        yz_rt:set_index(Cluster, Index, 1, 100, 99999),
         F = fun() ->
-            [Index1BKey3] = put_bkey_objects(PBConn, [Index1BKey3])
+            [Key5] = put_bkey_objects(PBConn, [Key5])
         end,
         case PurgeStrategy of
+            %% If testing PURGE_NONE, all vnodes are blocked
+            %% spawn the call so we don't block the test.of
+            %% Note that this will result in an error showing up
+            %% in the test log, but that's ok as we expect it.
             ?PURGE_NONE ->
                 spawn(F);
             _ ->
@@ -501,22 +456,17 @@ do_purge([Node|_] = Cluster, PBConn,
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
         yz_rt:intercept_index_batch(Node, index_batch_call_orig),
-        yz_rt:wait_until_fuses_reset(Node, yz_solrq_worker_0001, [Index1, Index2]),
+        yz_rt:wait_until_fuses_reset(Node, TargetPartition, [Index]),
         yz_rt:drain_solrqs(Node),
-        yz_rt:commit(Cluster, Index1),
-        yz_rt:commit(Cluster, Index2)
+        yz_rt:commit(Cluster, Index)
     end,
     %%
-    %% Return the search results for Index1 and Index2.
-    %% The first list is the set of bkeys we wrote for each index.
+    %% Return the search results for the index.
+    %% The first list is the set of bkeys we wrote.
     %% The second list is the set that are available for search.
     %%
-    Index1SearchBKeys = search_bkeys(PBConn, Index1),
-    Index2SearchBKeys = search_bkeys(PBConn, Index2),
-    {
-      {[Index1BKey1, Index1BKey2, Index1BKey3], Index1SearchBKeys},
-      {[Index2BKey1, Index2BKey2],              Index2SearchBKeys}
-    }.
+    KeysFound = search_bkeys(PBConn, Index),
+    {[Key1, Key2, Key3, Key4, Key5], KeysFound}.
 
 -spec search_bkeys(pid(), index_name()) -> [bkey()].
 search_bkeys(PBConn, Index) ->
@@ -530,36 +480,24 @@ search_bkeys(PBConn, Index) ->
         end,
         SearchResults).
 
--spec find_representative_bkeys(node(), index_name(), bucket()) -> [bkey()].
-find_representative_bkeys(Node, Index, Bucket) ->
-    find_representative_bkeys(Node, Index, Bucket, yz_solrq_worker_0001).
-
--spec find_representative_bkeys(node(),
+-spec find_representative_bkeys(p(),
                                 index_name(),
-                                bucket(), module()) -> [bkey()].
-find_representative_bkeys(Node, Index, Bucket, Solrq) ->
-    {ok, BKeys} = dict:find(Solrq, find_representatives(Node, Index, Bucket)),
+                                bucket()) -> [bkey()].
+find_representative_bkeys(Partition, Index, Bucket) ->
+    Solrq = yz_solrq:worker_regname(Index, Partition),
+    Representatives = find_representatives(Index, Bucket),
+    {ok, BKeys} = dict:find(Solrq, Representatives),
     BKeys.
 
--spec find_representatives(node(), index_name(), bucket()) -> dict().
-find_representatives(Node, Index, Bucket) ->
+-spec find_representatives(index_name(), bucket()) -> dict().
+find_representatives(Index, Bucket) ->
     BKeys =
         lists:map(
           fun(I) ->
                   {Bucket, erlang:list_to_binary(erlang:integer_to_list(I))}
           end,
-          lists:seq(1, 100)),
-
-    lists:foldl(
-      fun({Solrq, BKey}, Accum) ->
-              dict:append(Solrq, BKey, Accum)
-      end,
-      dict:new(),
-      [{get_solrq(Node, Index, BKey), BKey} || BKey <- BKeys]).
-
--spec get_solrq(node(), index_name(), bkey()) -> module().
-get_solrq(Node, Index, BKey) ->
-    rpc:call(Node, yz_solrq, worker_regname, [erlang:phash2({Index, BKey})]).
+          lists:seq(1, 1000)),
+    yz_rt:find_representatives(Index, BKeys, ?RING_SIZE).
 
 -spec put_no_contenttype_objects(pid(), bucket(), non_neg_integer()) -> non_neg_integer().
 put_no_contenttype_objects(PBConn, Bucket, Count) ->
@@ -583,10 +521,12 @@ put_objects(PBConn, Bucket, Count, ContentType) ->
                end || Val <- RandVals],
     lager:info("Writing ~p objects to Riak...", [length(Objects)]),
     Results = [riakc_pb_socket:put(PBConn, Obj, [return_head, {timeout, 1000}]) || Obj <- Objects],
-    length(lists:filter(fun({Result, _}) ->
-                                ok =:= Result
-                        end,
-                        Results)).
+    NoWritten = length(lists:filter(fun({Result, _}) ->
+                                        ok =:= Result
+                                    end,
+                                    Results)),
+    lager:info("Wrote ~p objects to Riak...", [NoWritten]),
+    NoWritten.
 
 -spec put_bkey_objects(pid(), [bkey()]) -> [bkey()].
 put_bkey_objects(PBConn, BKeys) ->
@@ -600,7 +540,16 @@ put_bkey_objects(PBConn, BKeys) ->
     %%lager:info("Results: ~p", [Results]),
     lists:map(
       fun({BKey, {_Result, _}}) -> BKey end,
-      lists:filter(fun({_BKey, {Result, _}}) -> ok =:= Result end, Results)).
+      lists:filter(
+          fun({BKey, {Result, _}}) ->
+              case Result of
+                  ok -> true;
+                  _ ->
+                      lager:info("The result of a put was not ok.  BKey: ~p Result: ~p", [BKey, Result]),
+                      false
+              end
+          end,
+          Results)).
 
 verify_search_count(PBConn, Index, Count) ->
     {ok, {search_results, _R, _Score, Found}} =

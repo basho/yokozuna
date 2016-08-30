@@ -141,7 +141,14 @@ get_md_entry(MD, Key) ->
 -spec get_index(bkey()) -> index_name().
 get_index({Bucket, _}) ->
     BProps = riak_core_bucket:get_bucket(Bucket),
+    get_index_from_bucket_props(BProps).
+
+get_index_from_bucket_props(BProps) ->
     proplists:get_value(?YZ_INDEX, BProps, ?YZ_INDEX_TOMBSTONE).
+
+is_search_enabled_for_bucket(BucketProps) ->
+    get_index_from_bucket_props(BucketProps) =/=
+        ?YZ_INDEX_TOMBSTONE.
 
 %% @doc Called by KV vnode to determine if handoff should start or
 %% not.  Yokozuna needs to make sure that the bucket types have been
@@ -213,30 +220,20 @@ index_binary(Bucket, Key, Bin, Reason, P) ->
 %% @doc Index the data supplied in the Riak Object.
 -spec index(riak_object:riak_object(), write_reason(), p()) -> ok.
 index(Obj, Reason, P) ->
-    try
-        case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
-            true ->
-                BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
-                Index = yz_kv:get_index(BKey),
+    case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
+        true ->
+            BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
+            Index = yz_kv:get_index(BKey),
 
-                yz_solrq:index(Index, BKey, Obj, Reason, P);
-            false ->
-                ok
-        end
-    catch
-        _:Err ->
-            yz_stat:index_fail(),
-            Trace = erlang:get_stacktrace(),
-            ?ERROR("Index failed - ~p\nat: ~p", [Err, Trace]),
-            {error, Err}
+            yz_solrq:index(Index, BKey, Obj, Reason, P);
+        false ->
+            ok
     end.
 
 %% @doc Should the content be indexed?
 -spec should_index(index_name()) -> boolean().
-should_index(?YZ_INDEX_TOMBSTONE) ->
-    false;
-should_index(_) ->
-    true.
+should_index(Index) ->
+    ?YZ_SHOULD_INDEX(Index).
 
 %% @doc Perform a local KV get for `BKey' stored under `Index'.  This
 %% avoids spawning a coordinator and performing quorum.
