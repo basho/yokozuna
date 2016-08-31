@@ -841,7 +841,7 @@ load_intercept_code(Node) ->
 rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices) ->
     rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, fun rt:no_op/1).
 
-        -spec rolling_upgrade(cluster() | node(),
+-spec rolling_upgrade(cluster() | node(),
                       current | previous | legacy,
                       UpgradeConfig :: props(),
                       WaitForServices :: [atom()]) -> ok.
