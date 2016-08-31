@@ -50,6 +50,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled", true),
     cuttlefish_unit:assert_not_configured(Config, "yokozuna.aae_throttle_limits"),
+    cuttlefish_unit:assert_config(Config, "yokozuna.enable_dist_query", true),
     ok.
 
 override_schema_test() ->
@@ -87,7 +88,8 @@ override_schema_test() ->
             {["search", "anti_entropy", "throttle", "tier1", "solrq_queue_length"], 0},
             {["search", "anti_entropy", "throttle", "tier1", "delay"], "1d"},
             {["search", "anti_entropy", "throttle", "tier2", "solrq_queue_length"], 11},
-            {["search", "anti_entropy", "throttle", "tier2", "delay"], "10d"}
+            {["search", "anti_entropy", "throttle", "tier2", "delay"], "10d"},
+            {["search", "dist_query"], "off"}
            ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
@@ -132,6 +134,7 @@ override_schema_test() ->
                                   false),
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_limits",
                                   [{-1, 86400000}, {10, 864000000}]),
+    cuttlefish_unit:assert_config(Config, "yokozuna.enable_dist_query", false),
     ok.
 
 validations_test() ->
