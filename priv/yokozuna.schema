@@ -197,8 +197,8 @@
 %%      but are guaranteed to be flushed within the
 %%      "search.queue.batch.flush_interval".
 {mapping, "search.queue.batch.minimum", "yokozuna.solrq_batch_min", [
-  {default, 1},
-  {commented, 1},
+  {default, 10},
+  {commented, 10},
   {datatype, integer},
   {validators, ["positive_integer"]}
 ]}.
@@ -211,8 +211,8 @@
 %%      "search.queue.batch.maximum object" will be delivered into Solr in any
 %%      given request.
 {mapping, "search.queue.batch.maximum", "yokozuna.solrq_batch_max", [
-  {default, 100},
-  {commented, 100},
+  {default, 500},
+  {commented, 500},
   {datatype, integer},
   {validators, ["positive_integer"]}
 ]}.
@@ -239,8 +239,8 @@
 %%      parameter exercises flow control between Riak and the Riak
 %%      Search batching subsystem if writes into Solr start to fall behind.
 {mapping, "search.queue.high_watermark", "yokozuna.solrq_hwm", [
-  {default, 10},
-  {commented, 10},
+  {default, 1000},
+  {commented, 1000},
   {datatype, integer},
   {validators, ["non_negative_integer"]}
 ]}.
@@ -262,30 +262,6 @@
   {default, purge_one},
   {commented, purge_one},
   {datatype, {enum, [purge_one, purge_index, purge_all, off]}}
-]}.
-
-%% @doc The number of solr queue workers to instantiate in the Riak
-%%      Search application. Solr queue workers are responsible for enqueuing
-%%      objects for insertion or update into Solr. Increasing the number of
-%%      solrq distributes the queuing of objects, and can lead to greater
-%%      throughput under high load, potentially at the expense of smaller batch
-%%      sizes.
-{mapping, "search.queue.worker_count", "yokozuna.solrq_worker_count", [
-  {default, 10},
-  {commented, 10},
-  {datatype, integer},
-  {validators, ["positive_integer"]}
-]}.
-
-%% @doc The number of solr queue helpers to instantiate in the Riak
-%%      Search application. Solr queue helpers are responsible for delivering
-%%      batches of data into Solr. Increasing the number of solrq helpers will
-%%      increase concurrent writes into Solr.
-{mapping, "search.queue.helper_count", "yokozuna.solrq_helper_count", [
-  {default, 10},
-  {commented, 10},
-  {datatype, integer},
-  {validators, ["positive_integer"]}
 ]}.
 
 %% @doc The amount of time to wait before a drain operation times out.
@@ -343,6 +319,19 @@
     merge,
     {datatype, {flag, enabled, disabled}},
     {default, enabled}
+]}.
+
+%% @doc Enable or disable this node in distributed query plans.  If enabled,
+%% this node will participate in distributed Solr queries.  If disabled, the
+%% node will be excluded from yokozuna cover plans, and will therefore never
+%% be consulted in a distributed query.  Note that this node may still be used
+%% to execute a query.  Use this flag if you have a long running administrative
+%% operation (e.g., reindexing) which requires that the node be removed from
+%% query plans, and which would otherwise result in inconsistent search results.
+{mapping, "search.dist_query", "yokozuna.enable_dist_query", [
+  {default, on},
+  {datatype, flag},
+  hidden
 ]}.
 
 %%===========================================================

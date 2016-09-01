@@ -63,12 +63,14 @@ confirm() ->
             verify_non_existent_index(Cluster, <<"froot">>),
             {0, _} = yz_rt:load_data(Cluster, ?BUCKET, YZBenchDir, ?NUM_KEYS),
             yz_rt:commit(Cluster, ?INDEX),
-            yz_rt:verify_num_match(Cluster, ?INDEX, ?NUM_KEYS),
+            verify_correct_solrqs(Cluster),
             %% Verify data exists before running join
+            yz_rt:verify_num_match(Cluster, ?INDEX, ?NUM_KEYS),
             Cluster2 = join_rest(Cluster, Nodes),
             rt:wait_for_cluster_service(Cluster2, riak_kv),
             rt:wait_for_cluster_service(Cluster2, yokozuna),
             verify_non_owned_data_deleted(Cluster, ?INDEX),
+            verify_correct_solrqs(Cluster2),
             wait_for_indexes(Cluster2),
             ok = test_tagging_http(Cluster2),
             ok = test_tagging_pb(Cluster2),
@@ -79,6 +81,7 @@ confirm() ->
             verify_deletes(Cluster2, ?INDEX, ?NUM_KEYS, KeysDeleted),
             ok = test_escaped_key(Cluster2),
             verify_unique_id(Cluster2, PBConns),
+            verify_deleted_index_stops_solrqs(Cluster2, PBConns),
             yz_rt:close_pb_conns(PBConns),
             pass;
         {error, bb_driver_build_failed} ->
@@ -404,3 +407,21 @@ verify_deletes(Cluster, Index, NumKeys, KeysDeleted) ->
     NumDeleted = length(KeysDeleted),
     lager:info("Verify ~p keys were deleted", [NumDeleted]),
     yz_rt:verify_num_match(Cluster, Index, NumKeys - NumDeleted).
+
+
+verify_deleted_index_stops_solrqs(Cluster, PBConns) ->
+    PBConn = hd(PBConns),
+    yz_rt:really_remove_index(Cluster, ?BUCKET, ?INDEX, PBConn),
+    verify_correct_solrqs(Cluster).
+
+verify_correct_solrqs(Cluster) ->
+    ?assertEqual(ok, rt:wait_until(Cluster, fun check_queues_match/1)).
+
+check_queues_match(Node) ->
+    CurrentIndexes = rpc:call(Node, yz_index, get_indexes_from_meta, []),
+    OwnedPartitions = rt:partitions_for_node(Node),
+    ActiveQueues = rpc:call(Node, yz_solrq_sup, active_queues, []),
+    ExpectedQueueus = [{Index, Partition} || Index <- CurrentIndexes, Partition <- OwnedPartitions],
+    lager:debug("Validating correct Solr Queues are running. Node: ~p, Expected: ~p, Active:  ~p", [Node, ExpectedQueueus, ActiveQueues]),
+    lists:sort(ExpectedQueueus) == lists:sort(ActiveQueues).
+

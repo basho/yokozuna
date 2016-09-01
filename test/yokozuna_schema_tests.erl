@@ -62,13 +62,11 @@ basic_schema_test() ->
                                   async_dirty),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm_purge_strategy",
                                   purge_one),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_min", 1),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_max", 100),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_min", 10),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_max", 500),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_flush_interval",
                                   1000),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 10),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_worker_count", 10),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_helper_count", 10),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 1000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout", 60000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_cancel_timeout", 5000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
@@ -76,6 +74,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled", true),
     cuttlefish_unit:assert_not_configured(Config, "yokozuna.aae_throttle_limits"),
+    cuttlefish_unit:assert_config(Config, "yokozuna.enable_dist_query", true),
     ok.
 
 override_schema_test() ->
@@ -98,12 +97,10 @@ override_schema_test() ->
             {["search", "index", "error_threshold", "failure_interval"], "10s"},
             {["search", "index", "error_threshold", "reset_interval"], "60s"},
             {["search", "fuse_context"], "sync"},
-            {["search", "queue", "batch", "minimum"], 10},
+            {["search", "queue", "batch", "minimum"], 100},
             {["search", "queue", "batch", "maximum"], 10000},
             {["search", "queue", "batch", "flush_interval"], infinity},
             {["search", "queue", "high_watermark"], 100000},
-            {["search", "queue", "worker_count"], 5},
-            {["search", "queue", "helper_count"], 20},
             {["search", "queue", "high_watermark", "purge_strategy"],
              "purge_all"},
             {["search", "queue", "drain", "enable"], "off"},
@@ -115,7 +112,8 @@ override_schema_test() ->
             {["search", "anti_entropy", "throttle", "tier1", "solrq_queue_length"], 0},
             {["search", "anti_entropy", "throttle", "tier1", "delay"], "1d"},
             {["search", "anti_entropy", "throttle", "tier2", "solrq_queue_length"], 11},
-            {["search", "anti_entropy", "throttle", "tier2", "delay"], "10d"}
+            {["search", "anti_entropy", "throttle", "tier2", "delay"], "10d"},
+            {["search", "dist_query"], "off"}
            ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
@@ -144,13 +142,11 @@ override_schema_test() ->
                                   sync),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm_purge_strategy",
         purge_all),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_min", 10),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_min", 100),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_max", 10000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_batch_flush_interval",
                                   infinity),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 100000),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_worker_count", 5),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_helper_count", 20),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout",
                                   120000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_cancel_timeout",
@@ -162,6 +158,7 @@ override_schema_test() ->
                                   false),
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_limits",
                                   [{-1, 86400000}, {10, 864000000}]),
+    cuttlefish_unit:assert_config(Config, "yokozuna.enable_dist_query", false),
     ok.
 
 validations_test() ->
@@ -173,9 +170,7 @@ validations_test() ->
             {["search", "index", "error_threshold", "failure_count"], 0},
             {["search", "queue", "batch", "minimum"], -1},
             {["search", "queue", "high_watermark"], -1},
-            {["search", "queue", "batch", "maximum"], -10},
-            {["search", "queue", "worker_count"], 0},
-            {["search", "queue", "helper_count"], 20}
+            {["search", "queue", "batch", "maximum"], -10}
     ],
     Config = cuttlefish_unit:generate_templated_config(
                "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
@@ -188,9 +183,7 @@ validations_test() ->
                   {"search.queue.batch.minimum",
                    "must be a positive integer > 0"},
                   {"search.queue.high_watermark",
-                   "must be an integer >= 0"},
-                  {"search.queue.worker_count",
-                   "must be a positive integer > 0"}],
+                   "must be an integer >= 0"}],
                  ListOfErrors2),
     ok.
 

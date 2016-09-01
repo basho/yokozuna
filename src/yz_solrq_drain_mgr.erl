@@ -36,7 +36,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {draining = false :: boolean()}).
+-record(state, {draining = [] :: [p()]}).
 
 %%%===================================================================
 %%% API
@@ -65,35 +65,46 @@ init([]) ->
     schedule_tick(),
     {ok, #state{}}.
 
-handle_call({drain, Params}, _From, #state{draining=true} = State) ->
+handle_call({drain, Params}, From, #state{draining=Draining} = State) ->
     ExchangeFSMPid = proplists:get_value(
         ?EXCHANGE_FSM_PID, Params, undefined
     ),
-    lager:debug("Drain in progress."),
-    maybe_exchange_fsm_drain_error(ExchangeFSMPid, {error, in_progress}),
-    {reply, {error, in_progress}, State};
-handle_call({drain, Params}, From, State) ->
-    ExchangeFSMPid = proplists:get_value(
-        ?EXCHANGE_FSM_PID, Params, undefined
+    PartitionToDrain = proplists:get_value(
+        ?DRAIN_PARTITION, Params, undefined
     ),
-    spawn_link(
-        fun() ->
-            Result = try
-                maybe_drain(enabled(), ExchangeFSMPid, Params)
-            catch
-                _:E ->
-                    lager:debug("An error occurred draining: ~p", [E]),
-                    maybe_exchange_fsm_drain_error(ExchangeFSMPid, E),
-                    {error, E}
-            end,
-            gen_server:cast(?SERVER, drain_complete),
-            gen_server:reply(From, Result)
-        end
-    ),
-    {noreply, State#state{draining = true}}.
+    AlreadyDraining = lists:member(PartitionToDrain, Draining),
+    case AlreadyDraining of
+        true ->
+            lager:debug("Drain in progress."),
+            maybe_exchange_fsm_drain_error(ExchangeFSMPid, {error, in_progress}),
+            {reply, {error, in_progress}, State};
+        _ ->
+            lager:debug("Solrq drain starting for partition ~p", [PartitionToDrain]),
+            ExchangeFSMPid = proplists:get_value(
+                ?EXCHANGE_FSM_PID, Params, undefined
+            ),
+            spawn_link(
+                fun() ->
+                    Result = try
+                                 maybe_drain(enabled(), ExchangeFSMPid, Params)
+                             catch
+                                 _:E ->
+                                     lager:info("An error occurred draining: ~p", [E]),
+                                     maybe_exchange_fsm_drain_error(ExchangeFSMPid, E),
+                                     {error, E}
+                             end,
+                    lager:debug("Solrq drain about to send compelte message for partition ~p.", [PartitionToDrain]),
+                    gen_server:cast(?SERVER, {drain_complete, PartitionToDrain}),
+                    gen_server:reply(From, Result)
+                end
+            ),
+            {noreply, State#state{draining = Draining ++ [PartitionToDrain]}}
+    end.
 
-handle_cast(drain_complete, State) ->
-    {noreply, State#state{draining = false}}.
+handle_cast({drain_complete, Partition}, #state{draining = Draining} = State) ->
+    lager:debug("Solrq drain completed for partition ~p.", [Partition]),
+    NewDraining = lists:delete(Partition, Draining),
+    {noreply, State#state{draining = NewDraining}}.
 
 %% Handle race conditions in monitor/receive timeout
 handle_info({'DOWN', _Ref, _, _Obj, _Status}, State) ->
@@ -132,7 +143,7 @@ actual_drain(Params, ExchangeFSMPid) ->
                                        ?SOLRQ_DRAIN_TIMEOUT, 60000),
     {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
     Reference = erlang:monitor(process, Pid),
-    yz_solrq_drain_fsm:start_prepare(),
+    yz_solrq_drain_fsm:start_prepare(Pid),
     try
         receive
             {'DOWN', Reference, process, Pid, normal} ->
@@ -160,7 +171,7 @@ enabled() ->
 cancel(Reference, Pid) ->
     CancelTimeout = application:get_env(
         ?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 5000),
-    case yz_solrq_drain_fsm:cancel(CancelTimeout) of
+    case yz_solrq_drain_fsm:cancel(Pid, CancelTimeout) of
         timeout ->
             lager:warning("Drain cancel timed out.  Killing FSM pid ~p...", [Pid]),
             yz_stat:drain_cancel_timeout(),
@@ -181,8 +192,7 @@ unlink_and_kill(Reference, Pid) ->
 
 -spec schedule_tick() -> reference().
 schedule_tick() ->
-    erlang:send_after(5000, ?MODULE, tick).
-
+    erlang:send_after(5000, ?SERVER, tick).
 
 maybe_exchange_fsm_drain_error(undefined, _Reason) ->
     ok;
@@ -192,4 +202,4 @@ maybe_exchange_fsm_drain_error(Pid, Reason) ->
 maybe_update_yz_index_hashtree(undefined, undefined) ->
     ok;
 maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}) ->
-    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN).
+    yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN, undefined).

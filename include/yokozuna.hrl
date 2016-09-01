@@ -263,6 +263,9 @@
 -define(YZ_ENTROPY_LOCK_TIMEOUT,
     app_helper:get_env(?YZ_APP_NAME, anti_entropy_lock_timeout, 10000)).
 
+-define(YZ_ENABLE_DIST_QUERY,
+    app_helper:get_env(?YZ_APP_NAME, enable_dist_query, true)).
+
 -define(YZ_ENTROPY_THROTTLE_KEY, aae_throttle).
 -define(YZ_ENTROPY_THROTTLE_LIMITS_KEY, aae_throttle_limits).
 -define(YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,
@@ -350,6 +353,7 @@
 
 -define(TOMBSTONE, <<>>).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
+-define(YZ_SHOULD_INDEX(Index), Index =/= ?YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX, search_index).
 
 %%%===================================================================
@@ -506,7 +510,7 @@
 -type solrq_batch_max()            :: pos_integer().
 -type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
 -type solrq_hwm()                  :: non_neg_integer().
--type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX|?PURGE_ALL.
+-type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX.
 
 %%%===================================================================
 %%% draining
