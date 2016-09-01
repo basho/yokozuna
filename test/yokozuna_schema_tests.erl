@@ -199,8 +199,12 @@ test_job_class_enabled({true, RCSchema}) when erlang:is_list(RCSchema) ->
         Config, "riak_core.job_accept_class",
         lists:sort(?DEFAULT_ENABLED_JOB_CLASSES)),
     ok;
-test_job_class_enabled(_) ->
-    skip.
+test_job_class_enabled({error, enoent}) ->
+    % If riak_core is not present, or eunit hasn't been run there, the
+    % necessary schema and/or beam file won't be found. If we fail the test
+    % buildbot won't pass because the riak_core .eunit files haven't been built.
+    ?debugMsg("Supporting riak_core components not present,"
+    " skipping job_class_enabled test").
 
 %% this context() represents the substitution variables that rebar
 %% will use during the build process.  yokozuna's schema file is
