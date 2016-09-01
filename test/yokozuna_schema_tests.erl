@@ -22,9 +22,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -compile(export_all).
 
+-define(DEFAULT_DISABLED_JOB_CLASSES, [
+]).
 -define(DEFAULT_ENABLED_JOB_CLASSES, [
     {yokozuna, query}
 ]).
+-define(JOB_CLASS_CONFIG_KEY,   [riak_core, job_accept_class]).
 
 %% basic schema test will check to make sure that all defaults from
 %% the schema make it into the generated app.config
@@ -187,24 +190,29 @@ validations_test() ->
                  ListOfErrors2),
     ok.
 
-job_class_enabled_test() ->
-    test_job_class_enabled(riak_core_schema()).
+job_class_defaults_test() ->
+    confirm_enabled_job_classes(riak_core_schema()).
 
-test_job_class_enabled({true, RCSchema}) when erlang:is_list(RCSchema) ->
+confirm_enabled_job_classes({true, RCSchema}) when erlang:is_list(RCSchema) ->
     Config = cuttlefish_unit:generate_templated_config(
         [RCSchema, "../priv/yokozuna.schema"], [],
         riak_core_schema_tests:context() ++ context()),
+    Enabled = config_value(?JOB_CLASS_CONFIG_KEY, Config),
 
-    cuttlefish_unit:assert_config(
-        Config, "riak_core.job_accept_class",
-        lists:sort(?DEFAULT_ENABLED_JOB_CLASSES)),
+    [?assertEqual(lists:member(Class, Enabled), true)
+        || Class <- ?DEFAULT_ENABLED_JOB_CLASSES],
+
+    [?assertEqual(lists:member(Class, Enabled), false)
+        || Class <- ?DEFAULT_DISABLED_JOB_CLASSES],
+
     ok;
-test_job_class_enabled({error, enoent}) ->
-    % If riak_core is not present, or eunit hasn't been run there, the
-    % necessary schema and/or beam file won't be found. If we fail the test
-    % buildbot won't pass because the riak_core .eunit files haven't been built.
+
+% If riak_core is not present, or eunit hasn't been run there, the necessary
+% schema and/or beam file won't be found. If we fail the test buildbot won't
+% pass because the riak_core .eunit files haven't been built.
+confirm_enabled_job_classes({error, enoent}) ->
     ?debugMsg("Supporting riak_core components not present,"
-    " skipping job_class_enabled test").
+        " skipping job_class_defaults_test").
 
 %% this context() represents the substitution variables that rebar
 %% will use during the build process.  yokozuna's schema file is
@@ -228,6 +236,16 @@ predefined_schema() ->
                                             {datatype, directory}
                                        ]}),
     {[], [Mapping], []}.
+
+config_value([Key], Config) ->
+    proplists:get_value(Key, Config);
+config_value([Key | Keys], Config) ->
+    case proplists:get_value(Key, Config) of
+        undefined = Val ->
+            Val;
+        Vals ->
+            config_value(Keys, Vals)
+    end.
 
 %% Ensure that the riak_core_schema_tests module is loaded and return the
 %% path of the riak_core.schema file.
