@@ -1,8 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% yz_pb_search: PB Service for Yokozuna queries
-%%
-%% Copyright (c) 2013 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2013-2016 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -59,7 +57,18 @@ encode(Message) ->
 
 %% @doc process/2 callback. Handles an incoming request message.
 process(Msg, State) ->
-    maybe_process(yokozuna:is_enabled(search), Msg, State).
+    Class = {yokozuna, query},
+    Accept = riak_core_util:job_class_enabled(Class),
+    _ = riak_core_util:report_job_request_disposition(
+            Accept, Class, ?MODULE, process, ?LINE, protobuf),
+    case Accept of
+        true ->
+            maybe_process(yokozuna:is_enabled(search), Msg, State);
+        _ ->
+            {error,
+                riak_core_util:job_class_disabled_message(binary, Class),
+                State}
+    end.
 
 maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
     case extract_params(Msg) of
