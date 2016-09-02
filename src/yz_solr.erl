@@ -72,12 +72,9 @@
 -export_type([delete_op/0]).
 -export_type([ibrowse_config_key/0, ibrowse_config_value/0, ibrowse_config/0]).
 
-%% TODO: Dynamically pulse_instrument.
 -ifdef(EQC).
 %% -define(EQC_DEBUG(S, F), eqc:format(S, F)).
 -define(EQC_DEBUG(S, F), ok).
-debug_entries(Entries) ->
-    [erlang:element(1, Entry) || Entry <- Entries].
 -else.
 -define(EQC_DEBUG(S, F), ok).
 -endif.
