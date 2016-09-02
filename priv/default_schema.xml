@@ -96,6 +96,7 @@
    <!-- Riak datatypes default fields-->
    <field name="counter" type="int"    indexed="true" stored="true" multiValued="false" />
    <field name="set"     type="string" indexed="true" stored="true" multiValued="true" />
+   <field name="hll"     type="int"    indexed="true" stored="true" multiValued="false" />
 
    <!-- Riak datatypes embedded fields -->
    <dynamicField name="*_flag"     type="boolean" indexed="true" stored="true" multiValued="false" />
