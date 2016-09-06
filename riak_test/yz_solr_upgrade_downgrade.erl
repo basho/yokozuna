@@ -127,7 +127,7 @@ setup_cluster() ->
     %%
     Cluster = rt:build_cluster(lists:duplicate(
         ?CLUSTER_SIZE,
-        {ltm, ?CONFIG}
+        {lts, ?CONFIG}
     )),
     %%
     %% Create all the indices, each of which is associated its own bucket type
@@ -251,7 +251,7 @@ verify_downgrade(Cluster) ->
     NewConfig = augment_config(yokozuna, solr_jmx_port, 44405, ?CONFIG),
     DowngradeData = ets:new(downgrade_data, []),
     yz_rt:rolling_upgrade(
-        Node1, ltm, NewConfig, [riak_kv],
+        Node1, lts, NewConfig, [riak_kv],
         fun(Params) ->
             ets:insert(DowngradeData, {params, Params}),
             downgrade_yz(Params)
