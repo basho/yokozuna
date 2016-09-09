@@ -318,7 +318,8 @@
 {mapping, "cluster.job.yokozuna.query", "riak_core.job_accept_class", [
     merge,
     {datatype, {flag, enabled, disabled}},
-    {default, enabled}
+    {default, enabled},
+    {commented, enabled}
 ]}.
 
 %% @doc Enable or disable this node in distributed query plans.  If enabled,
