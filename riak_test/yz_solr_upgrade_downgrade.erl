@@ -451,36 +451,11 @@ set_solrconfig_version(NewDataDir, Index, TimestampStr, Version) ->
         "~s-~s", [SolrConfigPath, TimestampStr]
     ),
     ok = file:rename(SolrConfigPath, SolrConfigBackupPath),
-    {Doc, _Rest} = xmerl_scan:file(SolrConfigBackupPath),
-    Doc2 = replace_version(Doc, Version),
-    ExportIoList = xmerl:export_simple([Doc2], xmerl_xml),
-    {ok, IOF} = file:open(SolrConfigPath,[write]),
-    io:format(IOF, "~s",[ ExportIoList]),
-    file:close(IOF),
+    [SolrConfigTemplatePath] = filelib:wildcard(
+        NewDataDir ++ "/../lib/yokozuna*/priv/conf/solrconfig.xml"
+    ),
+    file:copy(SolrConfigTemplatePath, SolrConfigPath),
     ok.
-
-%%
-%% @doc Replace the contents
-%%
-replace_version(#xmlElement{content = Contents} = Doc, Version) ->
-    Doc#xmlElement{
-        content = [replace_content(Content, Version) || Content <- Contents]
-    }.
-
-%%
-%% @doc If a content is an XML Element with the tag `luceneMatchVersion` and
-%% the content is a singleton with XML Text (which it should be), then
-%% replace the value of the text with the specified version.
-%% Otherwise, just leave it be.
-%%
-replace_content(
-    #xmlElement{name = luceneMatchVersion,
-        content = [#xmlText{} = Content]} = Element, Version) ->
-    Element#xmlElement{
-        content = [Content#xmlText{value = Version}]
-    };
-replace_content(Element, _Version) ->
-    Element.
 
 modify_solr_config(NewDataDir, Index) ->
     lager:info("Changing solrconfig.xml for index ~s ...", [Index]),
