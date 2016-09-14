@@ -5,4 +5,4 @@ build_steps:
  - make dialyzer
 merge: false
 org_mode: true
-timeout: 900
+timeout: 10
