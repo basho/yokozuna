@@ -1,6 +1,7 @@
 minimum_reviewers: 2
 build_steps:
  - echo $PATH
+ - uptime
  - make test
  - make xref
  - make dialyzer
