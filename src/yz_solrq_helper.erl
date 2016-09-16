@@ -151,7 +151,7 @@ do_batch(Index, Entries0) ->
     OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
 
     Entries1 = [{BKey, Obj, Reason, P,
-        riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj)} ||
+        riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj, P)} ||
         {BKey, Obj, Reason, P} <-
             yz_misc:filter_out_fallbacks(OwnedAndNext, Entries0)],
     case update_solr(Index, LI, Entries1) of

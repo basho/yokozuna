@@ -86,9 +86,14 @@ get(C, Bucket, Key) ->
     end.
 
 %% @doc calculates the hash of a riak object, returns binary
+%%      hash_object/1 is left for backwards compatability of EQC tests
 -spec hash_object(riak_object:riak_object()) -> binary().
 hash_object(Obj) ->
     riak_object:hash(Obj).
+-spec hash_object(riak_object:riak_object(), p()) -> binary().
+hash_object(Obj, P) ->
+    Version = riak_kv_entropy_manager:get_partition_version(P),
+    riak_object:hash(Obj, Version).
 
 %% @doc Get the content-type of the object.
 -spec get_obj_ct(obj_metadata()) -> binary().
