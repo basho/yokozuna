@@ -87,9 +87,10 @@ get(C, Bucket, Key) ->
     end.
 
 %% @doc calculates the hash of a riak object, returns binary
--spec hash_object(riak_object:riak_object()) -> binary().
-hash_object(Obj) ->
-    riak_object:hash(Obj).
+-spec hash_object(riak_object:riak_object(), p()) -> binary().
+hash_object(Obj, P) ->
+    Version = riak_kv_entropy_manager:get_partition_version(P),
+    riak_object:hash(Obj, Version).
 
 %% @doc Get the content-type of the object.
 -spec get_obj_ct(obj_metadata()) -> binary().
@@ -257,7 +258,7 @@ dont_index(_, delete, P, BKey, ShortPL) ->
     update_hashtree(delete, P, ShortPL, BKey),
     ok;
 dont_index(Obj, _, P, BKey, ShortPL) ->
-    Hash = hash_object(Obj),
+    Hash = hash_object(Obj, P),
     update_hashtree({insert, Hash}, P, ShortPL, BKey),
     ok.
 
@@ -285,7 +286,7 @@ index(Obj, Reason, Ring, P, BKey, ShortPL, Index) ->
             LI = yz_cover:logical_index(Ring),
             LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
             LP = yz_cover:logical_partition(LI, P),
-            Hash = hash_object(Obj),
+            Hash = hash_object(Obj, P),
             Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN), ?INT_TO_BIN(LP)),
             ok = yz_solr:index(Index, Docs, delete_operation(Obj, Reason, Docs,
                                                              BKey, LP)),
