@@ -276,10 +276,32 @@ ensure_data_dir(Dir) ->
 
 %% @private
 %%
+%% @doc Recursively delete target directory. Equivalent to
+%% `rm -rf $DIR` at the shell
+-spec del_dir_recursive(string()) -> ok | {error, enotdir}.
+del_dir_recursive(Path) ->
+    del_dir_recursive(Path, filelib:is_dir(Path)).
+
+-spec del_dir_recursive(string(), boolean()) -> ok | {error, enotdir}.
+del_dir_recursive(DirPath, true) ->
+    FullPaths = [filename:join(DirPath, FilePath) ||
+                    FilePath <- filelib:wildcard("**", DirPath)],
+    {Dirs, Files} = lists:partition(fun filelib:is_dir/1, FullPaths),
+    lists:foreach(fun file:delete/1, Files),
+    %% Delete directories sorted longest to shortest to ensure we delete leaf
+    %% directories first.
+    lists:foreach(fun file:del_dir/1, lists:sort(fun (A,B) -> A > B end, Dirs)),
+    file:del_dir(DirPath);
+del_dir_recursive(_DirPath, _Exists = false) ->
+    {error, enotdir}.
+
+%% @private
+%%
 %% @doc Make sure that the temp directory (passed in as `TempDir')
-%% exists
+%% exists and is new
 -spec ensure_temp_dir(string()) -> ok.
 ensure_temp_dir(TempDir) ->
+    del_dir_recursive(filename:join(TempDir, "solr-webapp")),
     ok = filelib:ensure_dir(filename:join(TempDir, empty)).
 
 %% @private

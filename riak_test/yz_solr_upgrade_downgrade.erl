@@ -348,11 +348,6 @@ update_yz(Params) ->
     NewDataDir = proplists:get_value(new_data_dir, Params),
     TimestampStr = timestamp_str(),
     %%
-    %% Move yz_temp out of the way, because it contains cached Solr JAR files
-    %% and other artifacts.
-    %%
-    ok = mv_yz_temp(NewDataDir, TimestampStr),
-    %%
     %% Update the luceneMatchVersion in the Solr config
     %%
     [ok = modify_solr_config(NewDataDir, binary_to_list(Index)) ||
