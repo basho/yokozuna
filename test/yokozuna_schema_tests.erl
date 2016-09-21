@@ -72,7 +72,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_hwm", 1000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_timeout", 60000),
     cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_cancel_timeout", 5000),
-    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", false),
+    cuttlefish_unit:assert_config(Config, "yokozuna.solrq_drain_enable", true),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_sessions", 100),
     cuttlefish_unit:assert_config(Config, "yokozuna.ibrowse_max_pipeline_size", 1),
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled", true),

@@ -168,14 +168,14 @@ queue_total_length() ->
     lists:sum([yz_solrq_worker:all_queue_len(Index, Partition) || {Index, Partition} <- yz_solrq_sup:active_queues()]).
 
 get_max_batch_size() ->
-    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, 100).
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, ?SOLRQ_BATCH_MAX_DEFAULT).
 
 get_min_batch_size() ->
-    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, 1).
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, ?SOLRQ_BATCH_MIN_DEFAULT).
 
 get_flush_interval() ->
     app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_FLUSH_INTERVAL,
-        1000).
+        ?SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

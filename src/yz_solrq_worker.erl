@@ -696,7 +696,7 @@ maybe_start_timer(State) ->
 %% @doc Read settings from the application environment
 %% TODO: Update HWM for each Index when Ring-Resize occurrs
 read_appenv(State) ->
-    HWM = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, 1),
+    HWM = app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_HWM, ?SOLRQ_HWM_DEFAULT),
     PBIStrategy = application:get_env(?YZ_APP_NAME, ?SOLRQ_HWM_PURGE_STRATEGY,
                                       ?PURGE_ONE),
     State#state{queue_hwm = HWM,

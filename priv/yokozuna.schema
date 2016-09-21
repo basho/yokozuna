@@ -292,8 +292,8 @@
 %%      while the drain is happening, but can reduce AAE repairs when the
 %%      High Water Mark is set higher than the default.
 {mapping, "search.queue.drain.enable", "yokozuna.solrq_drain_enable", [
-  {default, off},
-  {commented, off},
+  {default, on},
+  {commented, on},
   {datatype, flag},
   hidden
 ]}.

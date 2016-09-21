@@ -29,7 +29,6 @@
     ]},
     {yokozuna, [
         {enabled, true},
-        {?SOLRQ_WORKER_COUNT, 1},
         {?SOLRQ_BATCH_MIN, 6},
         {?SOLRQ_BATCH_FLUSH_INTERVAL, 100000},
         {?SOLRQ_HWM, 10},
