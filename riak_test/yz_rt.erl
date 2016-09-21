@@ -51,6 +51,7 @@ prepare_cluster(NumNodes, Config) ->
     Cluster = join_all(Nodes),
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
+    lager:info("Cluster ~p is prepared.", [Cluster]),
     Cluster.
 
 -spec connection_info(list()) -> orddict:orddict().
@@ -595,8 +596,10 @@ create_indexed_bucket(PBConn, Cluster, Bucket, Index) ->
                             {binary(), binary()},
                             index_name(),
                             pos_integer()) -> ok.
-create_indexed_bucket(PBConn, Cluster, {BType, _Bucket}, Index, NVal) ->
+create_indexed_bucket(PBConn, Cluster, {BType, Bucket}, Index, NVal) ->
+    lager:info("Creating index ~p", [Index]),
     ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, NVal}]),
+    lager:info("Binding index ~p to bucket ~p", [Index, {BType, Bucket}]),
     ok = set_bucket_type_index(Cluster, BType, Index, NVal).
 
 -spec solr_http({node(), orddict:orddict()}) -> {host(), portnum()}.
