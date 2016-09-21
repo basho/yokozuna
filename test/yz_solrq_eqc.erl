@@ -219,6 +219,7 @@ setup() ->
 
     meck:new(riak_kv_entropy_manager, [passthrough]),
     meck:expect(riak_kv_entropy_manager, get_version, fun() -> 0 end),
+    meck:expect(riak_kv_entropy_manager, get_partition_version, fun(_) -> 0 end),
 
     meck:new(riak_core_bucket),
     meck:expect(riak_core_bucket, get_bucket, fun get_bucket/1),
