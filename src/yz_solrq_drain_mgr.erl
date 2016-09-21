@@ -140,7 +140,7 @@ maybe_drain(false, ExchangeFSMPid, Params) ->
 
 actual_drain(Params, ExchangeFSMPid) ->
     DrainTimeout = application:get_env(?YZ_APP_NAME,
-                                       ?SOLRQ_DRAIN_TIMEOUT, 60000),
+                                       ?SOLRQ_DRAIN_TIMEOUT, ?SOLRQ_DRAIN_TIMEOUT_DEFAULT),
     {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
     Reference = erlang:monitor(process, Pid),
     yz_solrq_drain_fsm:start_prepare(Pid),
@@ -166,11 +166,11 @@ actual_drain(Params, ExchangeFSMPid) ->
     end.
 
 enabled() ->
-    application:get_env(?YZ_APP_NAME, ?SOLRQ_DRAIN_ENABLE, true).
+    application:get_env(?YZ_APP_NAME, ?SOLRQ_DRAIN_ENABLE, ?SOLRQ_DRAIN_ENABLE_DEFAULT).
 
 cancel(Reference, Pid) ->
     CancelTimeout = application:get_env(
-        ?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 5000),
+        ?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, ?SOLRQ_DRAIN_CANCEL_TIMEOUT_DEFAULT),
     case yz_solrq_drain_fsm:cancel(Pid, CancelTimeout) of
         timeout ->
             lager:warning("Drain cancel timed out.  Killing FSM pid ~p...", [Pid]),

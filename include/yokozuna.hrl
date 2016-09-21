@@ -494,12 +494,13 @@
 %%%===================================================================
 
 -define(SOLRQ_BATCH_MIN, solrq_batch_min).
+-define(SOLRQ_BATCH_MIN_DEFAULT, 10).
 -define(SOLRQ_BATCH_MAX, solrq_batch_max).
+-define(SOLRQ_BATCH_MAX_DEFAULT, 500).
 -define(SOLRQ_BATCH_FLUSH_INTERVAL, solrq_batch_flush_interval).
+-define(SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT, 1000).
 -define(SOLRQ_HWM, solrq_hwm).
--define(SOLRQ_HWM_PURGE, solrq_hwm_purge).
--define(SOLRQ_WORKER_COUNT, solrq_worker_count).
--define(SOLRQ_HELPER_COUNT, solrq_helper_count).
+-define(SOLRQ_HWM_DEFAULT, 1000).
 -define(SOLRQ_HWM_PURGE_STRATEGY, solrq_hwm_purge_strategy).
 -define(PURGE_NONE, off).
 -define(PURGE_ONE, purge_one).
@@ -520,8 +521,12 @@
 -define(YZ_INDEX_HASHTREE_PARAMS, yz_index_hashtree_update_params).
 -define(DRAIN_PARTITION, drain_partition).
 -define(SOLRQ_DRAIN_TIMEOUT, solrq_drain_timeout).
+-define(SOLRQ_DRAIN_TIMEOUT_DEFAULT, 60000).
 -define(SOLRQ_DRAIN_ENABLE, solrq_drain_enable).
+-define(SOLRQ_DRAIN_ENABLE_DEFAULT, true).
 -define(SOLRQ_DRAIN_CANCEL_TIMEOUT, solrq_drain_cancel_timeout).
+-define(SOLRQ_DRAIN_CANCEL_TIMEOUT_DEFAULT, 5000).
+
 
 -type drain_param() ::
     {?EXCHANGE_FSM_PID, pid()} |
