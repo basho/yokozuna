@@ -91,9 +91,12 @@ handle_event(_Event, StateName, S) ->
 handle_sync_event(_Event, _From, StateName, S) ->
     {reply, ok, StateName, S}.
 
-handle_info({'DOWN', _, _, _, _}, _StateName, S) ->
+handle_info({'DOWN', _, _, _, _} = Msg, _StateName, S) ->
     %% Either the entropy manager, local hashtree, or remote hashtree has
     %% exited. Stop exchange.
+    lager:notice(
+        "YZ Exchange FSM received a DOWN message from a process it was "
+        "monitoring.  The received message is: ~p", [Msg]),
     {stop, normal, S};
 
 handle_info(_Info, StateName, S) ->
@@ -196,6 +199,8 @@ key_exchange(timeout, S=#state{index=Index,
                                  end, Count, KeyDiff)
              end,
     case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
+        {error, Reason} ->
+            lager:error("An error occurred comparing hashtrees.  Error: ~p", [Reason]);
         0 ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
         Count ->
