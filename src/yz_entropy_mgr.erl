@@ -647,9 +647,9 @@ maybe_exchange(Ring, S) ->
             S2;
         {NextExchange, S2} ->
             {Index, IndexN} = NextExchange,
-            case already_exchanging(Index, S) of
+            case already_exchanging(Index, S2) of
                 true ->
-                    requeue_exchange(Index, IndexN, S2);
+                    S2;
                 false ->
                     case start_exchange(Index, IndexN, Ring, S2) of
                         {ok, S3} -> S3;

@@ -80,7 +80,7 @@ update(Id, Tree, Callback) ->
     gen_server:call(Tree, {update_tree, Id, Callback}, infinity).
 
 -spec compare({p(),n()}, hashtree:remote_fun(),
-              undefined | hashtree:acc_fun(T), term(), tree()) -> T.
+              undefined | hashtree:acc_fun(T), term(), tree()) -> T | {error, Reason::term()}.
 compare(Id, Remote, AccFun, Acc, Tree) ->
     gen_server:call(Tree, {compare, Id, Remote, AccFun, Acc}, infinity).
 
@@ -206,8 +206,8 @@ handle_call({update_tree, Id, Callback}, From, S) ->
                S);
 
 handle_call({compare, Id, Remote, AccFun, Acc}, From, S) ->
-    do_compare(Id, Remote, AccFun, Acc, From, S),
-    {noreply, S};
+    S2 = do_compare(Id, Remote, AccFun, Acc, From, S),
+    {noreply, S2};
 
 handle_call(destroy, _From, S) ->
     S2 = destroy_trees(S),
@@ -260,11 +260,14 @@ handle_cast(expire, S) ->
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
-handle_info({'DOWN', Ref, _, _, _}, S) ->
+handle_info({'EXIT', _SomeOtherProc, normal}, S) ->
+    {noreply, S};
+handle_info({'DOWN', Ref, _, _, _} = Message, S) ->
+    lager:notice("Received DOWN message: ~p", [Message]),
     S2 = maybe_release_lock(Ref, S),
     {noreply, S2};
-
-handle_info(_Info, S) ->
+handle_info(Message, S) ->
+    lager:error("Received unhandled message with message ~p", [Message]),
     {noreply, S}.
 
 terminate(_Reason, S) ->
@@ -489,17 +492,26 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
             %% This case shouldn't happen, but might as well safely handle it.
             lager:warning("Tried to compare nonexistent tree "
                           "(vnode)=~p (preflist)=~p", [S#state.index, Id]),
-            gen_server:reply(From, []);
+            gen_server:reply(From, []),
+            S;
         {ok, Tree} ->
             spawn_link(
-              fun() ->
-                      Remote(init, self()),
-                      Result = hashtree:compare(Tree, Remote, AccFun, Acc),
-                      Remote(final, self()),
-                      gen_server:reply(From, Result)
-              end)
+                fun() -> async_do_compare(Remote, Tree, AccFun, Acc, From) end
+            ),
+            S
+    end.
+
+async_do_compare(Remote, Tree, AccFun, Acc, From) ->
+    Result = try
+        Remote(init, self()),
+        CompareResult = hashtree:compare(Tree, Remote, AccFun, Acc),
+        Remote(final, self()),
+        CompareResult
+    catch
+        _:Reason ->
+            {error, Reason}
     end,
-    ok.
+    gen_server:reply(From, Result).
 
 %% TODO: OMG cache this with entry in proc dict, use `_yz_fp' as Index
 %%       and keep an orddict(Bucket,N) in proc dict
