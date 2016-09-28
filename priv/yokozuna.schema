@@ -228,8 +228,8 @@
 %%      systems.
 {mapping, "search.queue.batch.flush_interval",
  "yokozuna.solrq_batch_flush_interval", [
-  {default, "1s"},
-  {commented, "1s"},
+  {default, "500ms"},
+  {commented, "500ms"},
   {datatype, [{duration, ms}, {atom, infinity}]}
 ]}.
 
