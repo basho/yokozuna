@@ -498,7 +498,7 @@
 -define(SOLRQ_BATCH_MAX, solrq_batch_max).
 -define(SOLRQ_BATCH_MAX_DEFAULT, 500).
 -define(SOLRQ_BATCH_FLUSH_INTERVAL, solrq_batch_flush_interval).
--define(SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT, 1000).
+-define(SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT, 500).
 -define(SOLRQ_HWM, solrq_hwm).
 -define(SOLRQ_HWM_DEFAULT, 1000).
 -define(SOLRQ_HWM_PURGE_STRATEGY, solrq_hwm_purge_strategy).
