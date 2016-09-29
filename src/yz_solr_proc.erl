@@ -382,13 +382,42 @@ check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrCo
         DefaultSolrConfigHash ->
             ok;
         ?SOLRCONFIG_2_0_HASH ->
-            yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
+            upgrade_solr_config_file(
+                DefaultSolrConfigPath,
+                SolrConfigIndexPath,
+                app_helper:get_env(
+                    ?YZ_APP_NAME, ?YZ_UPGRADE_LUCENE_MATCH_VERSION,
+                    ?YZ_UPGRADE_LUCENE_MATCH_VERSION_DEFAULT
+                )
+            ),
             lager:info(
                 "Upgraded ~s to the latest version.", [SolrConfigIndexPath]
             );
         _ ->
             check_index_solrconfig_version(SolrConfigIndexPath)
     end.
+
+-spec upgrade_solr_config_file(path(), path(), UpgradeLuceneMatchVersion::boolean()) -> ok.
+upgrade_solr_config_file(DefaultSolrConfigPath, SolrConfigIndexPath, true) ->
+    yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath));
+upgrade_solr_config_file(DefaultSolrConfigPath, SolrConfigIndexPath, false) ->
+    DefaultSolrConfig = read_file(DefaultSolrConfigPath),
+    UpdatedDefaultSolrConfig = replace_version(DefaultSolrConfig, "4.10.4", "4.7"),
+    file:write_file(SolrConfigIndexPath, UpdatedDefaultSolrConfig).
+
+-spec read_file(path()) -> string().
+read_file(Path) ->
+    {ok, Binary} = file:read_file(Path),
+    erlang:binary_to_list(Binary).
+
+-spec replace_version(string(), string(), string()) -> iolist().
+replace_version(String, Substitutand, Substitution) ->
+    Index = string:str(String, Substitutand),
+    [
+        string:substr(String, 1, Index - 1),
+        Substitution,
+        string:substr(String, Index + length(Substitutand))
+    ].
 
 -spec check_index_solrconfig_version(path()) -> ok.
 check_index_solrconfig_version(SolrConfigIndexPath) ->
