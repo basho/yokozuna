@@ -262,8 +262,7 @@ handle_cast(_Msg, S) ->
 
 handle_info({'EXIT', _SomeOtherProc, normal}, S) ->
     {noreply, S};
-handle_info({'DOWN', Ref, _, _, _} = Message, S) ->
-    lager:notice("Received DOWN message: ~p", [Message]),
+handle_info({'DOWN', Ref, _, _, _}, S) ->
     S2 = maybe_release_lock(Ref, S),
     {noreply, S2};
 handle_info(Message, S) ->
