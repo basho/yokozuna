@@ -130,8 +130,6 @@ aae_run(Cluster, Bucket, Index) ->
 
             verify_no_indefinite_repair(Cluster),
 
-            verify_no_repair_for_non_indexed_data(Cluster, Bucket, PBConns),
-
             verify_count_and_repair_after_error_value(Cluster, Bucket, Index,
                                                          PBConns),
 
@@ -319,44 +317,6 @@ verify_no_repair_after_restart(Cluster) ->
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
     ?assertEqual(0, Count),
 
-    ok.
-
-%% @doc Verify that KV data written to a bucket with no associated
-%%      index is not repaired by AAE. When Yokozuna sees an incoming KV
-%%      write which has no associated index it, obviously, shouldn't index
-%%      the data but it should update it's AAE trees so that future
-%%      exchanges don't think a repair is in order. The only time when this
-%%      shouldn't hold is when the trees are manually cleared or
-%%      expired. In that case repair must happen but Yokozuna is smart
-%%      enough to only repair its AAE tree on not actually index the
-%%      data. However, in this test, the trees are not cleared and no
-%%      repair should hapen.
--spec verify_no_repair_for_non_indexed_data([node()], bucket(),  [pid()]) -> ok.
-verify_no_repair_for_non_indexed_data(Cluster, {BType, _Bucket}, PBConns) ->
-    lager:info("verify no repair occurred for non-indexed data"),
-    Bucket = {BType, <<"non_indexed">>},
-
-    %% 1. write KV data to non-indexed bucket
-    Conn = yz_rt:select_random(PBConns),
-    lager:info("write 100 non-indexed objects to bucket ~p", [Bucket]),
-    Objs = [begin
-                Key = ?INT_TO_BIN(K),
-                riakc_obj:new(Bucket, Key, <<"non-indexed data">>, "text/plain")
-            end
-            || K <- lists:seq(1, 100)],
-    [ok = riakc_pb_socket:put(Conn, O) || O <- Objs],
-
-    %% 2. setup tracing to count repair calls
-    ok = yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-
-    %% 3. wait for full exchange round
-    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
-    ok = yz_rt:stop_tracing(),
-
-    %% 4. verify repair count is 0
-    ?assertEqual(0, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
-    ok;
-verify_no_repair_for_non_indexed_data(_Cluster, _Bucket, _PBConns) ->
     ok.
 
 -spec verify_count_and_repair_after_error_value([node()], bucket(),
