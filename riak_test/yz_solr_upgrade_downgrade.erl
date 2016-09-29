@@ -187,7 +187,7 @@ verify_upgrade(Cluster) ->
     %% Verify that index-a* has not been upgraded but index-b* have been
     %%
     [{params, UpgradeParams}] = ets:lookup(UpgradeData, params),
-    verify_indices(UpgradeParams, [?INDEX_A1, ?INDEX_A2], [?INDEX_B1, ?INDEX_B2, ?INDEX_B3]),
+    verify_indices(UpgradeParams, [?INDEX_A1, ?INDEX_A2, ?INDEX_B1, ?INDEX_B2, ?INDEX_B3], []),
     %%
     %% Verify that the indices created so far (a*, b*) can be queried through
     %% the cluster, minus the node that is being upgraded, and that the data
