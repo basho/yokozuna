@@ -389,9 +389,6 @@ check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrCo
                     ?YZ_APP_NAME, ?YZ_UPGRADE_LUCENE_MATCH_VERSION,
                     ?YZ_UPGRADE_LUCENE_MATCH_VERSION_DEFAULT
                 )
-            ),
-            lager:info(
-                "Upgraded ~s to the latest version.", [SolrConfigIndexPath]
             );
         _ ->
             check_index_solrconfig_version(SolrConfigIndexPath)
@@ -399,11 +396,15 @@ check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrCo
 
 -spec upgrade_solr_config_file(path(), path(), UpgradeLuceneMatchVersion::boolean()) -> ok.
 upgrade_solr_config_file(DefaultSolrConfigPath, SolrConfigIndexPath, true) ->
-    yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath));
-upgrade_solr_config_file(DefaultSolrConfigPath, SolrConfigIndexPath, false) ->
-    DefaultSolrConfig = read_file(DefaultSolrConfigPath),
-    UpdatedDefaultSolrConfig = replace_version(DefaultSolrConfig, "4.10.4", "4.7"),
-    file:write_file(SolrConfigIndexPath, UpdatedDefaultSolrConfig).
+    yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
+    lager:info(
+        "Upgraded ~s to the latest version.", [SolrConfigIndexPath]
+    );
+upgrade_solr_config_file(_DefaultSolrConfigPath, _SolrConfigIndexPath, false) ->
+    ok.
+    %DefaultSolrConfig = read_file(DefaultSolrConfigPath),
+    %UpdatedDefaultSolrConfig = replace_version(DefaultSolrConfig, "4.10.4", "4.7"),
+    %ile:write_file(SolrConfigIndexPath, UpdatedDefaultSolrConfig).
 
 -spec read_file(path()) -> string().
 read_file(Path) ->
