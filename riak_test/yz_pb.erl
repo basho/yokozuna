@@ -42,6 +42,8 @@ confirm() ->
     confirm_admin_bad_index_name(Cluster),
     confirm_basic_search(Cluster),
     confirm_w1c_search(Cluster),
+    confirm_fl_search_without_score(Cluster),
+    confirm_fl_search_without_score_without_sort(Cluster),
     confirm_encoded_search(Cluster),
     confirm_search_to_test_max_score_defaults(Cluster),
     confirm_multivalued_field(Cluster),
@@ -94,14 +96,14 @@ create_index(Cluster, BucketType, Index, Props) when is_list(Props) ->
     end,
     NvalT = {n_val, Nval},
     %% set index in props with the same name as the bucket
-    ?assertEqual(ok,
-                 riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT])),
+    _ = riakc_pb_socket:create_search_index(Pid, Index, SchemaName, [NvalT]),
+    ?assertEqual(ok, yz_rt:wait_for_index(Cluster, Index)),
     %% Check that the index exists
     {ok, IndexData} = riakc_pb_socket:get_search_index(Pid, Index),
     ?assertEqual([{index, Index}, {schema, SchemaName}, NvalT], IndexData),
 
     %% Add the index to the bucket props
-    yz_rt:set_bucket_type_index(Node, BucketType, Index, [{n_val, Nval} | Props]),
+    yz_rt:set_bucket_type_index(Cluster, BucketType, Index, Nval),
     yz_rt:wait_for_bucket_type(Cluster, BucketType),
     riakc_pb_socket:stop(Pid),
     ok.
@@ -172,14 +174,14 @@ confirm_admin_index(Cluster) ->
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
-                %% Remove index from bucket props and delete it
-                yz_rt:remove_index(Node, Index),
-                DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
-                case DelResp of
-                    ok -> true;
-                    {error,<<"notfound">>} -> true
-                end
-    end,
+        %% Remove index from bucket props and delete it
+        yz_rt:remove_index(Node, Index),
+        DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
+        case DelResp of
+            ok -> true;
+            {error,<<"notfound">>} -> true
+        end
+        end,
     yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid),
     ok.
@@ -211,6 +213,26 @@ confirm_w1c_search(Cluster) ->
     Body = "herp derp",
     Params = [{sort, <<"score desc">>}, {fl, ["*","score"]}],
     store_and_search(Cluster, Bucket, "test", Body, <<"text:herp">>, Params).
+
+confirm_fl_search_without_score(Cluster) ->
+    Index = <<"fl_search_without_score">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_fl_search_without_score ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{sort, <<"age_i asc">>}, {fl, ["*"]}],
+    store_and_search(Cluster, Bucket, "test_fl_search_without_score", Body,
+                     "application/json", <<"age_i:5">>, Params).
+
+confirm_fl_search_without_score_without_sort(Cluster) ->
+    Index = <<"fl_search_without_score_without_sort">>,
+    Bucket = {Index, <<"b1">>},
+    create_index(Cluster, Index, Index),
+    lager:info("confirm_fl_search_without_score ~p", [Bucket]),
+    Body = <<"{\"age_i\":5}">>,
+    Params = [{fl, ["age_i", "_yz_rk"]}],
+    store_and_search(Cluster, Bucket, "test_fl_search_without_score_without_sort",
+                     Body, "application/json", <<"age_i:5">>, Params).
 
 confirm_encoded_search(Cluster) ->
     Index = <<"encoded">>,

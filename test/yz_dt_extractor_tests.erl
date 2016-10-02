@@ -22,6 +22,14 @@ set_test() ->
 
     valid_extraction(Result, Expect).
 
+%% Test hll extract
+hll_test() ->
+    HllBin = binary_crdt(hll),
+    Result = yz_dt_extractor:extract(HllBin),
+    Expect = [{<<"hll">>, <<"9">>}],
+
+    valid_extraction(Result, Expect).
+
 %% Test map extract
 map_test() ->
     MapBin = binary_crdt(map),
@@ -82,4 +90,10 @@ raw_type(set) ->
       );
 raw_type(counter) ->
     ?COUNTER_TYPE(
-       element(2,?COUNTER_TYPE:update({increment, 10}, <<0>>, ?COUNTER_TYPE:new()))).
+       element(2,?COUNTER_TYPE:update({increment, 10}, <<0>>, ?COUNTER_TYPE:new())));
+raw_type(hll) ->
+    ?HLL_TYPE(
+       element(2,?HLL_TYPE:update({add_all, [<<"T">>, <<"h">>, <<"r">>, <<"i">>,
+                                             <<"l">>, <<"l">>, <<"a">>, <<"s">>,
+                                             <<"f">>, <<"u">>, <<"h">>]},
+                                  <<0>>, ?HLL_TYPE:new()))).

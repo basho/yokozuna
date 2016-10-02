@@ -122,8 +122,8 @@ dialyzer-run:
 		| grep -F -f dialyzer.ignore-warnings.tmp -v \
 		| sed -E 's/^[[:space:]]*[0-9]+[[:space:]]*//' \
 		| sed -E 's/([]\^:+?|()*.$${}\[])/\\\1/g' \
-		| sed -E 's/(\\\.erl\\\:)/\1\\d+:/g' \
-		| sed -E 's/^(.*)$$/^\1$$/g' \
+		| sed -E 's/(\\\.erl\\\:)/\1[[:digit:]]+:/g' \
+		| sed -E 's/^(.*)$$/^[[:space:]]*\1$$/g' \
 		> dialyzer_unhandled_warnings ; \
 		rm dialyzer.ignore-warnings.tmp; \
 		if [ $$(cat dialyzer_unhandled_warnings | wc -l) -gt 0 ]; then \
