@@ -11,3 +11,9 @@ documentation][search-docs] for more information.
 
 [downloads]: http://docs.basho.com/riak/latest/downloads/
 [search-docs]: http://docs.basho.com/riak/latest/dev/using/search/
+
+Build Status
+============
+
+* Master: [![Build Status](https://travis-ci.org/basho/yokozuna.svg?branch=master)](https://travis-ci.org/basho/yokozuna)
+* Develop: [![Build Status](https://travis-ci.org/basho/yokozuna.svg?branch=develop)](https://travis-ci.org/basho/yokozuna)
