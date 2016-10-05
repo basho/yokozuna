@@ -10,9 +10,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
 
--type host() :: string().
--type portnum() :: integer().
-
 -define(CFG,
         [{riak_core,
           [
@@ -37,8 +34,8 @@ confirm() ->
     random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
-    yz_rt:create_index(yz_rt:select_random(Cluster), Index),
-    yz_rt:set_bucket_type_index(yz_rt:select_random(Cluster), Index),
+    yz_rt:create_index(Cluster, Index),
+    yz_rt:set_bucket_type_index(Cluster, Index),
     timer:sleep(500),
     yz_rt:write_objs(Cluster, Bucket),
     verify_objs_mr(Cluster, Index),
@@ -123,7 +120,7 @@ verify_objs_mr(Cluster, Index) ->
         end,
     yz_rt:wait_until(Cluster, F).
 
--spec http_mr({host(), portnum()}, term()) -> binary().
+-spec http_mr({yz_rt:host(), yz_rt:portnum()}, term()) -> binary().
 http_mr({Host,Port}, MR) ->
     URL = ?FMT("http://~s:~s/mapred", [Host, integer_to_list(Port)]),
     Opts = [],

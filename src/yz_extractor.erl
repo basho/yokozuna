@@ -25,12 +25,13 @@
 -type register_opts() :: [overwrite].
 -type get_def_opts() :: [check_default].
 
-%% NOTE: The map is treated as an orddict so these entries must be
+%% NOTE: The map is treated as an orddict so these entries *MUST BE*
 %%       ordered correctly or `get_def' may report no extractor is
 %%       registered when there is one.
 -define(DEFAULT_MAP, [{default, yz_noop_extractor},
                       {"application/json",yz_json_extractor},
                       {"application/riak_counter", yz_dt_extractor},
+                      {"application/riak_hll", yz_dt_extractor},
                       {"application/riak_map", yz_dt_extractor},
                       {"application/riak_set", yz_dt_extractor},
                       {"application/xml",yz_xml_extractor},

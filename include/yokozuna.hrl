@@ -89,6 +89,13 @@
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 
+%% index-write reasons
+-type repair() :: full_repair | tree_repair | failed_repair.
+-type write_reason() :: delete | handoff | put | anti_entropy |
+                        {delete, repair()} | {anti_entropy, repair()}
+                        | {anti_entropy_delete, repair()}
+                        | anti_entropy_delete.
+
 %% @doc The `component()' type represents components that may be
 %%      enabled or disabled at runtime.  Typically a component is
 %%      disabled in a live, production cluster in order to isolate
@@ -105,6 +112,13 @@
 %%    action to manually index the missing data or wait for AAE to
 %%    take care of it.
 -type component() :: search | index.
+
+-type solr_entry()   :: {bkey(), obj(), write_reason(), p(), short_preflist(),
+    hash()}.
+-type solr_entries() :: [solr_entry()].
+
+-type solrq_id() :: pid() | atom().
+-type solrq_helper_id() :: pid() | atom().
 
 %%%===================================================================
 %%% Macros
@@ -126,6 +140,7 @@
 -define(FLOAT_TO_BIN(F), list_to_binary(float_to_list(F))).
 -define(PARTITION_BINARY(S), S#state.partition_binary).
 -define(HEAD_CTYPE, "content-type").
+-define(DEFAULT_CTYPE, "text/plain").
 -define(YZ_HEAD_EXTRACTOR, "yz-extractor").
 
 -define(DATA_DIR, application:get_env(riak_core, platform_data_dir)).
@@ -152,6 +167,7 @@
 -define(YZ_SECURITY_ADMIN_PERM, "search.admin").
 
 -define(YZ_COVER_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, cover_tick, 2000)).
+-define(YZ_SOLR_TICK_INTERVAL, app_helper:get_env(?YZ_APP_NAME, solr_tick, 5000)).
 -define(YZ_DEFAULT_SOLR_PORT, 8983).
 -define(YZ_DEFAULT_SOLR_STARTUP_WAIT, 30).
 %% TODO: See if using mochiglobal for this makes difference in performance.
@@ -164,12 +180,25 @@
 -define(YZ_SOLR_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
                                                     solr_request_timeout,
                                                     60000)).
+%% The request timeout for Solr's entrop_data call. Defaults to 60 seconds.
+-define(YZ_SOLR_ED_REQUEST_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
+                                                    solr_ed_request_timeout,
+                                                    ?YZ_SOLR_REQUEST_TIMEOUT)).
+-define(YZ_SOLR_PORT_RPC_TIMEOUT, app_helper:get_env(?YZ_APP_NAME,
+                                                    solr_port_rpc_timeout,
+                                                    3000)).
+-define(YZ_SOLR_MAX_SESSIONS, max_sessions).
+-define(YZ_SOLR_MAX_PIPELINE_SIZE, max_pipeline_size).
+-define(YZ_CONFIG_IBROWSE_MAX_SESSIONS, ibrowse_max_sessions).
+-define(YZ_CONFIG_IBROWSE_MAX_PIPELINE_SIZE, ibrowse_max_pipeline_size).
+
 -define(YZ_PRIV, code:priv_dir(?YZ_APP_NAME)).
 -define(YZ_CORE_CFG_FILE, "solrconfig.xml").
 -define(YZ_INDEX_CMD, #yz_index_cmd).
 -define(YZ_SEARCH_CMD, #yz_search_cmd).
 -define(YZ_APP_NAME, yokozuna).
 -define(YZ_SVC_NAME, yokozuna).
+-define(YZ_APP_ATOM(Suffix), yokozuna_Suffix).
 -define(YZ_META_INDEXES, {yokozuna, indexes}).
 -define(YZ_META_SCHEMAS, {yokozuna, schemas}).
 -define(YZ_META_EXTRACTORS, {yokozuna, extractors}).
@@ -231,6 +260,18 @@
             app_helper:get_env(riak_kv, anti_entropy_build_limit, {1, 3600000})
         )).
 
+-define(YZ_ENTROPY_LOCK_TIMEOUT,
+    app_helper:get_env(?YZ_APP_NAME, anti_entropy_lock_timeout, 10000)).
+
+-define(YZ_ENABLE_DIST_QUERY,
+    app_helper:get_env(?YZ_APP_NAME, enable_dist_query, true)).
+
+-define(YZ_ENTROPY_THROTTLE_KEY, aae_throttle).
+-define(YZ_ENTROPY_THROTTLE_LIMITS_KEY, aae_throttle_limits).
+-define(YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,
+        [{-1,0}, {500,10}, {1000,50}, {5000,250}, {10000,1000}, {50000,3000}]).
+-define(YZ_ENTROPY_THROTTLE_ENABLED_KEY, aae_throttle_enabled).
+
 -type hashtree() :: hashtree:hashtree().
 -type exchange() :: {p(), {p(), n()}}.
 -type exchange_mode() :: automatic | manual.
@@ -256,9 +297,11 @@
 %%%===================================================================
 
 -ifdef(namespaced_types).
--type yz_dict() :: dict:dict().
+-type yz_dict()  :: dict:dict().
+-type yz_queue() :: queue:queue().
 -else.
--type yz_dict() :: dict().
+-type yz_dict()  :: dict().
+-type yz_queue() :: queue().
 -endif.
 
 -type obj() :: riak_object:riak_object().
@@ -308,7 +351,9 @@
 -type reload_opts() :: [reload_opt()].
 -type reload_errs() :: [{node(), {error, term()}}].
 
+-define(TOMBSTONE, <<>>).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
+-define(YZ_SHOULD_INDEX(Index), Index =/= ?YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX, search_index).
 
 %%%===================================================================
@@ -435,3 +480,56 @@
          []}).
 -define(YZ_IS_YZ_FT_S(Name), Name == ?YZ_STR_FT_S).
 -define(YZ_STR_FT_XPATH, "/schema/types/fieldType[@name=\"_yz_str\" and @class=\"solr.StrField\" and @sortMissingLast=\"true\"]").
+
+%%%===================================================================
+%%% fuse/error-thresholding
+%%%===================================================================
+-define(ERR_THRESH_FAIL_COUNT, err_thresh_fail_count).
+-define(ERR_THRESH_FAIL_INTERVAL, err_thresh_fail_interval).
+-define(ERR_THRESH_RESET_INTERVAL, err_thresh_reset_interval).
+-define(FUSE_CTX, solrq_fuse_ctx).
+
+%%%===================================================================
+%%% batching
+%%%===================================================================
+
+-define(SOLRQ_BATCH_MIN, solrq_batch_min).
+-define(SOLRQ_BATCH_MIN_DEFAULT, 10).
+-define(SOLRQ_BATCH_MAX, solrq_batch_max).
+-define(SOLRQ_BATCH_MAX_DEFAULT, 500).
+-define(SOLRQ_BATCH_FLUSH_INTERVAL, solrq_batch_flush_interval).
+-define(SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT, 500).
+-define(SOLRQ_HWM, solrq_hwm).
+-define(SOLRQ_HWM_DEFAULT, 1000).
+-define(SOLRQ_HWM_PURGE_STRATEGY, solrq_hwm_purge_strategy).
+-define(PURGE_NONE, off).
+-define(PURGE_ONE, purge_one).
+-define(PURGE_IDX, purge_index).
+-define(PURGE_ALL, purge_all).
+
+-type solrq_batch_min()            :: pos_integer().
+-type solrq_batch_max()            :: pos_integer().
+-type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
+-type solrq_hwm()                  :: non_neg_integer().
+-type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX.
+
+%%%===================================================================
+%%% draining
+%%%===================================================================
+
+-define(EXCHANGE_FSM_PID, exchange_fsm_pid).
+-define(YZ_INDEX_HASHTREE_PARAMS, yz_index_hashtree_update_params).
+-define(DRAIN_PARTITION, drain_partition).
+-define(SOLRQ_DRAIN_TIMEOUT, solrq_drain_timeout).
+-define(SOLRQ_DRAIN_TIMEOUT_DEFAULT, 60000).
+-define(SOLRQ_DRAIN_ENABLE, solrq_drain_enable).
+-define(SOLRQ_DRAIN_ENABLE_DEFAULT, true).
+-define(SOLRQ_DRAIN_CANCEL_TIMEOUT, solrq_drain_cancel_timeout).
+-define(SOLRQ_DRAIN_CANCEL_TIMEOUT_DEFAULT, 5000).
+
+
+-type drain_param() ::
+    {?EXCHANGE_FSM_PID, pid()} |
+    {?YZ_INDEX_HASHTREE_PARAMS, {tree(), p(), short_preflist()}} |
+    {?DRAIN_PARTITION, n()}.
+-type drain_params() :: [drain_param()].

@@ -1,8 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% yz_pb_search: PB Service for Yokozuna queries
-%%
-%% Copyright (c) 2013 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2013-2016 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -36,8 +34,6 @@
          process_stream/3]).
 -compile(export_all).
 
--import(riak_pb_search_codec, [encode_search_doc/1]).
-
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().
 init() ->
@@ -61,7 +57,18 @@ encode(Message) ->
 
 %% @doc process/2 callback. Handles an incoming request message.
 process(Msg, State) ->
-    maybe_process(yokozuna:is_enabled(search), Msg, State).
+    Class = {yokozuna, query},
+    Accept = riak_core_util:job_class_enabled(Class),
+    _ = riak_core_util:report_job_request_disposition(
+            Accept, Class, ?MODULE, process, ?LINE, protobuf),
+    case Accept of
+        true ->
+            maybe_process(yokozuna:is_enabled(search), Msg, State);
+        _ ->
+            {error,
+                riak_core_util:job_class_disabled_message(binary, Class),
+                State}
+    end.
 
 maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
     case extract_params(Msg) of
@@ -137,7 +144,7 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
     MaybeParams = [{'q.op', DefaultOp},
                    {sort, Sort},
                    {fq, Filter},
-                   {fl, default(FieldList, <<"*,score">>)},
+                   {fl, check_sort_on_fl(Sort, default(FieldList, <<"*,score">>))},
                    {df, DefaultField},
                    {start, Start},
                    {rows, Rows}],
@@ -148,15 +155,34 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
                |Params1],
     {ok, Params2}.
 
+%% @private
+%%
+%% @doc function for FieldList (FL) defaults and necessary conversions.
+%%      * and score are defaults if none are provided.
+%%
+-spec default(undefined|[string()]|binary(), binary()) -> binary().
 default(undefined, Default) ->
     Default;
 default([], Default) ->
     Default;
 default([H|T], _) ->
     unicode:characters_to_binary(
-      string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ","));
+     string:join([binary_to_list(H)]++[binary_to_list(Y)||Y <- T], ","));
 default(Value, _) ->
     Value.
+
+%% @private
+%%
+%% @doc Temp solution to handle sort without score bug.
+%% TODO: once we fix our erlang_protobufs impl. around handling of fields
+%%       (esp. optionals) and decoding to erlang records, we can remove the need
+%%       to return `score' when there's a sort, as its currently needed for
+%%       `maxScore'.
+-spec check_sort_on_fl(undefined|binary()|string(), binary()) -> binary().
+check_sort_on_fl(undefined, FL) ->
+    FL;
+check_sort_on_fl(_Sort, FL) ->
+    <<FL/binary,<<",score">>/binary>>.
 
 %% @private
 %%
