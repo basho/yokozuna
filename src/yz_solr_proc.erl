@@ -33,13 +33,17 @@
          handle_cast/2,
          handle_info/2,
          terminate/2,
-         getpid/0]).
+         getpid/0,
+         get_dist_query/0,
+         set_dist_query/1]).
 
 -record(state, {
           dir=exit(dir_undefined),
           port=exit(port_undefined),
           solr_port=exit(solr_port_undefined),
-          solr_jmx_port=exit(solr_jmx_port_undefined)
+          solr_jmx_port=exit(solr_jmx_port_undefined),
+          is_up=false,
+          enable_dist_query=exit(enable_dist_query_undefined)
          }).
 
 -define(SHUTDOWN_MSG, "INT\n").
@@ -49,6 +53,12 @@
                         solr_jmx_port=_SolrJMXPort}).
 -define(S_PORT(S), S#state.port).
 -define(YZ_DEFAULT_SOLR_JVM_OPTS, "").
+
+-define(SOLRCONFIG_2_0_HASH, 64816669).
+-define(LUCENE_MATCH_4_7_VERSION, "4.7").
+-define(LUCENE_MATCH_4_10_4_VERSION, "4.10.4").
+
+-type path() :: string().
 
 %%%===================================================================
 %%% API
@@ -63,6 +73,16 @@ start_link(Dir, TempDir, SolrPort, SolrJMXPort) ->
 -spec getpid() -> undefined | pos_integer().
 getpid() ->
     gen_server:call(?MODULE, getpid).
+
+-spec get_dist_query() -> boolean().
+get_dist_query() ->
+    gen_server:call(?MODULE, enabled).
+
+-spec set_dist_query(boolean()) -> {ok, PreviousValue :: boolean()} | {error, Reason :: term()}.
+set_dist_query(Enabled) when is_boolean(Enabled) ->
+    {ok, gen_server:call(?MODULE, {enabled, Enabled})};
+set_dist_query(Value) ->
+    {error, {bad_type, Value}}.
 
 %%%===================================================================
 %%% Callbacks
@@ -84,6 +104,7 @@ getpid() ->
 init([Dir, TempDir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
     ensure_temp_dir(TempDir),
+    check_solr_index_versions(Dir),
     case get_java_path() of
         undefined ->
             %% This logging call is needed because the stop reason
@@ -102,13 +123,26 @@ init([Dir, TempDir, SolrPort, SolrJMXPort]) ->
                    dir=Dir,
                    port=Port,
                    solr_port=SolrPort,
-                   solr_jmx_port=SolrJMXPort
+                   solr_jmx_port=SolrJMXPort,
+                   enable_dist_query=?YZ_ENABLE_DIST_QUERY
                   },
             {ok, S}
     end.
 
 handle_call(getpid, _, S) ->
     {reply, get_pid(?S_PORT(S)), S};
+handle_call(enabled, _, #state{enable_dist_query=EnableDistQuery} = S) ->
+    {reply, EnableDistQuery, S};
+handle_call({enabled, NewValue}, _, #state{enable_dist_query=OldValue} = S) ->
+    case {yz_solr:is_up(), OldValue, NewValue} of
+        {true, false, true} ->
+            riak_core_node_watcher:service_up(yokozuna, self());
+        {_, true, false} ->
+            riak_core_node_watcher:service_down(yokozuna);
+        _ ->
+            ok
+    end,
+    {reply, OldValue, S#state{enable_dist_query=NewValue}};
 handle_call(Req, _, S) ->
     ?WARN("unexpected request ~p", [Req]),
     {noreply, S}.
@@ -118,21 +152,34 @@ handle_cast(Req, S) ->
     {noreply, S}.
 
 handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
-    case yz_solr:is_up() of
-        true ->
-            %% solr finished its startup, be merry
-            ?INFO("solr is up", []),
+    case {yz_solr:is_up(), ?YZ_ENABLE_DIST_QUERY} of
+        {true, true} ->
             riak_core_node_watcher:service_up(yokozuna, self()),
-            {noreply, S};
-        false when WaitTimeSecs > 0 ->
+            solr_is_up(S);
+        {true, false} ->
+            solr_is_up(S);
+        {false, _} when WaitTimeSecs > 0 ->
             %% solr hasn't finished yet, keep waiting
             schedule_solr_check(WaitTimeSecs),
             {noreply, S};
-        false ->
+        {false, _} ->
             %% solr did not finish startup quickly enough, or has just
             %% crashed and the exit message is on its way, shutdown
             {stop, "solr didn't start in alloted time", S}
     end;
+handle_info(tick, #state{is_up=IsUp, enable_dist_query=EnableDistQuery} = S) ->
+    NewIsUp = yz_solr:is_up(),
+    case {IsUp, NewIsUp, EnableDistQuery} of
+        {false, true, true} ->
+            ?INFO("Solr was down but is now up.  Notifying cluster.", []),
+            riak_core_node_watcher:service_up(yokozuna, self());
+        {true, false, _} ->
+            ?INFO("Solr was up but is now down.  Notifying cluster.", []),
+            riak_core_node_watcher:service_down(yokozuna);
+        _ -> ok
+    end,
+    schedule_tick(),
+    {noreply, S#state{is_up=NewIsUp}};
 handle_info({_Port, {data, Data}}, S=?S_MATCH) ->
     ?INFO("solr stdout/err: ~s", [Data]),
     {noreply, S};
@@ -150,6 +197,8 @@ code_change(_, S, _) ->
     {ok, S}.
 
 terminate(_, S) ->
+    %% service_down is a gen_server:call with infinite timeout
+    spawn(fun() -> riak_core_node_watcher:service_down(yokozuna) end),
     Port = ?S_PORT(S),
     case get_pid(Port) of
         undefined ->
@@ -227,11 +276,33 @@ ensure_data_dir(Dir) ->
 
 %% @private
 %%
+%% @doc Recursively delete target directory. Equivalent to
+%% `rm -rf $DIR` at the shell
+-spec del_dir_recursive(string()) -> ok | {error, enotdir}.
+del_dir_recursive(Path) ->
+    del_dir_recursive(Path, filelib:is_dir(Path)).
+
+-spec del_dir_recursive(string(), boolean()) -> ok | {error, enotdir}.
+del_dir_recursive(DirPath, true) ->
+    FullPaths = [filename:join(DirPath, FilePath) ||
+                    FilePath <- filelib:wildcard("**", DirPath)],
+    {Dirs, Files} = lists:partition(fun filelib:is_dir/1, FullPaths),
+    lists:foreach(fun file:delete/1, Files),
+    %% Delete directories sorted longest to shortest to ensure we delete leaf
+    %% directories first.
+    lists:foreach(fun file:del_dir/1, lists:sort(fun (A,B) -> A > B end, Dirs)),
+    file:del_dir(DirPath);
+del_dir_recursive(_DirPath, _Exists = false) ->
+    {error, enotdir}.
+
+%% @private
+%%
 %% @doc Make sure that the temp directory (passed in as `TempDir')
-%% exists
+%% exists and is new
 -spec ensure_temp_dir(string()) -> ok.
 ensure_temp_dir(TempDir) ->
-    filelib:ensure_dir(filename:join(TempDir, empty)).
+    del_dir_recursive(filename:join(TempDir, "solr-webapp")),
+    ok = filelib:ensure_dir(filename:join(TempDir, empty)).
 
 %% @private
 %%
@@ -268,6 +339,14 @@ schedule_solr_check(WaitTimeSecs) ->
     erlang:send_after(1000, self(), {check_solr, WaitTimeSecs-1}).
 
 %% @private
+%%
+%% @doc Schedule next tick to be sent to this server.
+-spec schedule_tick() -> ok.
+schedule_tick() ->
+    erlang:send_after(?YZ_SOLR_TICK_INTERVAL, self(), tick),
+    ok.
+
+%% @private
 -spec solr_startup_wait() -> seconds().
 solr_startup_wait() ->
     app_helper:get_env(?YZ_APP_NAME,
@@ -280,3 +359,93 @@ solr_jvm_opts() ->
     app_helper:get_env(?YZ_APP_NAME,
                        solr_jvm_opts,
                        ?YZ_DEFAULT_SOLR_JVM_OPTS).
+
+-spec solr_is_up(#state{}) -> {noreply, #state{}}.
+solr_is_up(S) ->
+    %% solr finished its startup, be merry
+    ?INFO("solr is up", []),
+    schedule_tick(),
+    {noreply, S#state{is_up=true}}.
+
+-spec check_solr_index_versions(path()) -> ok.
+check_solr_index_versions(YZRootDir) ->
+    DefaultSolrConfigPath = filename:join([?YZ_PRIV, "conf", "solrconfig.xml"]),
+    DefaultSolrConfigHash = hash_file_contents(DefaultSolrConfigPath),
+    SolrConfigIndexPaths = get_index_solrconfig_paths(YZRootDir),
+    [check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrConfigHash) ||
+        SolrConfigIndexPath <- SolrConfigIndexPaths],
+    ok.
+
+-spec check_index_solrconfig(path(), path(), non_neg_integer()) -> ok.
+check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrConfigHash) ->
+    case hash_file_contents(SolrConfigIndexPath) of
+        DefaultSolrConfigHash ->
+            ok;
+        ?SOLRCONFIG_2_0_HASH ->
+            yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
+            lager:info(
+                "Upgraded ~s to the latest version.", [SolrConfigIndexPath]
+            );
+        _ ->
+            check_index_solrconfig_version(SolrConfigIndexPath)
+    end.
+
+-spec check_index_solrconfig_version(path()) -> ok.
+check_index_solrconfig_version(SolrConfigIndexPath) ->
+    case get_lucene_match_version(SolrConfigIndexPath) of
+        ?LUCENE_MATCH_4_7_VERSION ->
+            lager:warning(
+                "The Solr configuration file ~s has been modified by the user and contains"
+                " an outdated version (~s) under the luceneMatchVersion XML tag."
+                "  Please consider reverting your changes or upgrading the luceneMatchVersion"
+                " XML tag to ~s and restarting.  Note: In order to take full advantage of"
+                " the changes, you should also reindex any data in this Solr core.",
+                [SolrConfigIndexPath, ?LUCENE_MATCH_4_7_VERSION, ?LUCENE_MATCH_4_10_4_VERSION]);
+        ?LUCENE_MATCH_4_10_4_VERSION ->
+            ok;
+        {error, no_lucene_match_version} ->
+            lager:error(
+                "The Solr configuration file ~s does not contain a luceneMatchVersion"
+                " XML tag!",
+                [SolrConfigIndexPath]);
+        UnexpectedVersion ->
+            lager:error(
+                "The Solr configuration file ~s contains a luceneMatchVersion"
+                " XML tag with an unexpected value: ~s",
+                [SolrConfigIndexPath, UnexpectedVersion])
+    end.
+
+-spec get_index_solrconfig_paths(path()) -> [path()].
+get_index_solrconfig_paths(YZRootDir) ->
+    {ok, Files} = file:list_dir(YZRootDir),
+    [YZRootDir ++ "/" ++ File ++ "/conf/solrconfig.xml" ||
+        File <- Files,
+        filelib:is_dir(YZRootDir ++ "/" ++ File)
+            andalso has_solr_config(YZRootDir ++ "/" ++ File)].
+
+-spec has_solr_config(path()) -> boolean().
+has_solr_config(RootPath) ->
+    SolrConfigPath = RootPath ++ "/conf/solrconfig.xml",
+    filelib:is_file(SolrConfigPath) andalso not filelib:is_dir(SolrConfigPath).
+
+-spec get_lucene_match_version(path()) -> string() | {error, no_lucene_match_version}.
+get_lucene_match_version(SolrConfigIndexPath) ->
+    {#xmlElement{content=Contents}, _Rest} = xmerl_scan:file(SolrConfigIndexPath),
+    lucene_match_version(Contents).
+
+-spec lucene_match_version([xmlElement()]) -> string() | {error, no_lucene_match_version}.
+lucene_match_version([]) ->
+    {error, no_lucene_match_version};
+lucene_match_version(
+    [#xmlElement{
+        name=luceneMatchVersion,
+        content=[#xmlText{value=Version}]
+     } | _Rest]) ->
+    Version;
+lucene_match_version([_Element | Rest]) ->
+    lucene_match_version(Rest).
+
+-spec hash_file_contents(path()) -> non_neg_integer().
+hash_file_contents(Path) ->
+    {ok, Data} = file:read_file(Path),
+    erlang:phash2(Data).

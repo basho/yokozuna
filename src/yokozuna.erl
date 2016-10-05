@@ -33,22 +33,28 @@
 %%      disabled to take search load off the cluster while
 %%      investigating latency issues.
 -spec disable(component()) -> ok.
-disable(Component) ->
-    application:set_env(?YZ_APP_NAME, {component, Component}, false).
+disable(index) ->
+    mochiglobal:put(?YZ_APP_ATOM(index_enabled), false);
+disable(search) ->
+    mochiglobal:put(?YZ_APP_ATOM(search_enabled), false).
 
 %% @doc Enabled the given `Component'.  This only needs to be called
 %%      if a component was previously disabled as all components are
 %%      considered enabled by default.
 -spec enable(component()) -> ok.
-enable(Component) ->
-    application:set_env(?YZ_APP_NAME, {component, Component}, true).
+enable(index) ->
+    mochiglobal:put(?YZ_APP_ATOM(index_enabled), true);
+enable(search) ->
+    mochiglobal:put(?YZ_APP_ATOM(search_enabled), true).
 
 %% @doc Determine if the given `Component' is enabled or not.  If a
 %%      component is not explicitly disabled then it is considered
 %%      enabled.
 -spec is_enabled(component()) -> boolean().
-is_enabled(Component) ->
-    app_helper:get_env(?YZ_APP_NAME, {component, Component}, true).
+is_enabled(index) ->
+    mochiglobal:get(?YZ_APP_ATOM(index_enabled), true);
+is_enabled(search) ->
+    mochiglobal:get(?YZ_APP_ATOM(search_enabled), true).
 
 %% @doc Use the results of a search as input to a map-reduce job.
 %%
@@ -227,3 +233,14 @@ search_fold(Results, Start, Params, Positions, Index, Query, Filter, F, Acc) ->
     Docs = extract_docs(Body),
     E = extract_results(Docs, Positions),
     search_fold(E, Start2, Params, Positions, Index, Query, Filter, F, Acc2).
+
+-spec ensure_started(Application :: atom()) -> ok.
+%% @doc Start the named application if not already started.
+%%      Pulled from core, as it's not exported currently
+ensure_started(App) ->
+    case application:start(App) of
+	ok ->
+	    ok;
+	{error, {already_started, App}} ->
+	    ok
+    end.

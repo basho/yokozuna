@@ -58,18 +58,16 @@
 confirm() ->
     [Node1|_] = Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
-    ok = yz_rt:create_bucket_type(Node1, ?TYPE),
+    ok = yz_rt:create_bucket_type(Cluster, ?TYPE),
     ok = yz_rt:create_index_http(Cluster, ?INDEX),
     yz_rt:set_index(Node1, ?BUCKET, ?INDEX),
-    HP = hd(yz_rt:host_entries(rt:connection_info(Cluster))),
 
     %% write_objs writes a seq of 1000 objects
     yz_rt:write_objs(Cluster, ?BUCKET),
 
-    %% time for soft auto commit
-    timer:sleep(1100),
+    yz_rt:commit(Cluster, ?INDEX),
 
-    ?assert(yz_rt:search_expect(yokozuna, HP, ?INDEX, "*", "*", ?TOTAL)),
+    ?assertEqual(ok, yz_rt:search_expect(Node1, ?INDEX, "*", "*", ?TOTAL)),
 
     EDParams = [{wt, json}],
 

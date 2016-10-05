@@ -68,3 +68,279 @@
   {datatype, {duration, ms}},
   hidden
 ]}.
+
+%% @doc The timeout for ibrowse (ibrowse:send_req) requests to Solr's
+%% entropy_data endpoints. Defaults to 60 seconds. It will always round up to the
+%% nearest second, e.g. 1ms = 999 ms = 1s.
+{mapping, "search.solr.ed_request_timeout", "yokozuna.solr_ed_request_timeout",
+[
+  {default, "60s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc To 'enable/disable' AAE for Search.
+%%      * active: out-of-sync keys will be repaired in the background
+%%      * passive: out-of-sync keys are only repaired on read
+%%      * active-debug: like active, but outputs verbose debugging
+%%        information
+{mapping, "search.anti_entropy", "yokozuna.anti_entropy", [
+  {datatype, {enum, [active, passive, 'active-debug']}},
+  {default, active},
+  hidden
+]}.
+
+{translation,
+ "yokozuna.anti_entropy",
+ fun(Conf) ->
+    Setting = cuttlefish:conf_get("search.anti_entropy", Conf),
+    case Setting of
+      active -> {on, []};
+      'active-debug' -> {on, [debug]};
+      passive -> {off, []};
+      _Default -> {on, []}
+    end
+  end
+}.
+
+%% @doc Whether the throttle for Yokozuna active anti-entropy is enabled.
+{mapping, "search.anti_entropy.throttle", "yokozuna.aae_throttle_enabled", [
+  {default, on},
+  {datatype, flag},
+  hidden
+]}.
+
+%% @doc Sets the throttling tiers for active anti-entropy. Each tier
+%% is a minimum solrq queue size and a time-delay that the throttle
+%% should observe at that size and above. For example:
+%%
+%%     search.anti_entropy.throttle.tier1.solrq_queue_length = 0
+%%     search.anti_entropy.throttle.tier1.delay = 0ms
+%%     search.anti_entropy.throttle.tier2.solrq_queue_length = 40
+%%     search.anti_entropy.throttle.tier2.delay = 5ms
+%%
+%% If configured, there must be a tier which includes a mailbox size
+%% of 0. Both .solrq_queue_length and .delay must be set for each tier.
+%% @see search.anti_entropy.throttle
+{mapping,
+ "search.anti_entropy.throttle.$tier.solrq_queue_length",
+ "yokozuna.aae_throttle_limits", [
+  {datatype, integer},
+  hidden,
+  {validators, ["non_negative_integer"]}
+]}.
+
+%% @see search.anti_entropy.throttle.$tier.solrq_queue_length
+{mapping,
+ "search.anti_entropy.throttle.$tier.delay",
+ "yokozuna.aae_throttle_limits", [
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+{translation,
+ "yokozuna.aae_throttle_limits",
+ riak_core_throttle:create_limits_translator_fun("search.anti_entropy", "solrq_queue_length")
+}.
+
+%%===========================================================
+%% Fuse-related settings
+%%===========================================================
+
+%% @doc The number of failures encountered while updating a search index within
+%%      search.queue.error_threshold.failure_interval" before Riak will skip
+%%      updates to that index.
+{mapping, "search.index.error_threshold.failure_count",
+"yokozuna.err_thresh_fail_count", [
+  {default, 3},
+  {datatype, integer},
+  hidden,
+  {validators, ["non_negative_integer"]}
+]}.
+
+%% @doc The window of time during which
+%%      "search.queue.error_threshold.failure_count" failures will cause Riak
+%%      to skip updates to a search index.
+%%      If "search.queue.error_threshold.failure_count" errors have occurred
+%%      within this interval on a given search index, then Riak will skip
+%%      updates to that index until the
+%%      "search.queue.error_threshold.reset_interval" has passed.
+{mapping, "search.index.error_threshold.failure_interval",
+"yokozuna.err_thresh_fail_interval", [
+  {default, "5s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc The amount of time it takes for updates to a given search index to
+%%      resume/refresh once Riak has started skipping update operations.
+{mapping, "search.index.error_threshold.reset_interval",
+"yokozuna.err_thresh_reset_interval", [
+  {default, "30s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc Determines how fuse operator is called: sync or async.
+{mapping, "search.fuse_context", "yokozuna.fuse_ctx", [
+  {default, async},
+  {datatype, {flag, {sync, sync}, {async, async_dirty}}},
+  hidden
+]}.
+
+%%===========================================================
+%% Batching-related mappings for SolrQ workers
+%%===========================================================
+
+%% @doc The minimum batch size, in number of Riak objects. Any batches that
+%%      are smaller than this amount will not be immediately flushed to Solr,
+%%      but are guaranteed to be flushed within the
+%%      "search.queue.batch.flush_interval".
+{mapping, "search.queue.batch.minimum", "yokozuna.solrq_batch_min", [
+  {default, 10},
+  {commented, 10},
+  {datatype, integer},
+  {validators, ["positive_integer"]}
+]}.
+
+%% @doc The maximum batch size, in number of Riak objects. Any batches that are
+%%      larger than this amount will be split, where the first
+%%      search.queue.batch.maximum set of objects will be flushed to Solr, and
+%%      the remaining objects enqueued for that index will be retained until the
+%%      next batch is delivered. This parameter ensures that at most
+%%      "search.queue.batch.maximum object" will be delivered into Solr in any
+%%      given request.
+{mapping, "search.queue.batch.maximum", "yokozuna.solrq_batch_max", [
+  {default, 500},
+  {commented, 500},
+  {datatype, integer},
+  {validators, ["positive_integer"]}
+]}.
+
+%% @doc The maximum delay between notification to flush batches to Solr. This
+%%      setting is used to increase or decrease the frequency of batch delivery
+%%      into Solr, specifically for relatively low-volume input into Riak. This
+%%      setting ensures that data will be delivered into Solr in accordance with
+%%      the "search.queue.batch.minimum" and "search.queue.batch.maximum"
+%%      settings within the specified interval. Batches that are smaller than
+%%      "search.queue.batch.minimum" will be delivered to Solr within this
+%%      interval. This setting will generally hav no effect on heavily loaded
+%%      systems.
+{mapping, "search.queue.batch.flush_interval",
+ "yokozuna.solrq_batch_flush_interval", [
+  {default, "500ms"},
+  {commented, "500ms"},
+  {datatype, [{duration, ms}, {atom, infinity}]}
+]}.
+
+%% @doc The queue high watermark. If the total number of queued messages in a
+%%      Solr Queue Worker instance exceeds this limit, then the calling vnode
+%%      will be blocked until the total number falls below this limit. This
+%%      parameter exercises flow control between Riak and the Riak
+%%      Search batching subsystem if writes into Solr start to fall behind.
+{mapping, "search.queue.high_watermark", "yokozuna.solrq_hwm", [
+  {default, 1000},
+  {commented, 1000},
+  {datatype, integer},
+  {validators, ["non_negative_integer"]}
+]}.
+
+%% @doc The strategy for how we handle purging when we hit the
+%%      search.queue.high_watermark.
+%%      - purge_one -> Removes the oldest item on the queue from an
+%%        erroring (references to fuses blown in the code) index in
+%%        order to get below the search.queue.high_watermark.
+%%      - purge_index -> Removes all items associated with one random
+%%        erroring (references to fuses blown in the code) index in
+%%        order to get below the search.queue.high_watermark.
+%%      - purge_all -> Removes all items associated with all
+%%        erroring (references to fuses blown in the code) indices in
+%%        order to get below the search.queue.high_watermark.
+%%      - off -> purging is disabled
+{mapping, "search.queue.high_watermark.purge_strategy",
+ "yokozuna.solrq_hwm_purge_strategy", [
+  {default, purge_one},
+  {commented, purge_one},
+  {datatype, {enum, [purge_one, purge_index, purge_all, off]}}
+]}.
+
+%% @doc The amount of time to wait before a drain operation times out.
+%%      If a drain times out during an AAE exchange, the exchange is cancelled
+%%      and retried at a later time.
+{mapping, "search.queue.drain.timeout", "yokozuna.solrq_drain_timeout", [
+  {default, "1m"},
+  {commented, "1m"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc The amount of time to wait before a drain cancel times out.
+%%      If a drain cancel times out during an AAE exchange, the entity
+%%      responsible for draining is forcibly terminated, and the exchange
+%%      is cancelled and retried at a later time.
+{mapping, "search.queue.drain.cancel.timeout", "yokozuna.solrq_drain_cancel_timeout", [
+  {default, "5s"},
+  {commented, "5s"},
+  {datatype, {duration, ms}},
+  hidden
+]}.
+
+%% @doc When enabled, enqueued Riak objects are drained prior to an AAE
+%%      exchange, in order to minimize AAE activity, and during shutdown.
+%%      If AAE is disabled, this setting only has an effect on shutdown
+%%      behavior. Enabling draining may introduce blocking of put requests
+%%      while the drain is happening, but can reduce AAE repairs when the
+%%      High Water Mark is set higher than the default.
+{mapping, "search.queue.drain.enable", "yokozuna.solrq_drain_enable", [
+  {default, on},
+  {commented, on},
+  {datatype, flag},
+  hidden
+]}.
+
+%% @doc The value to use for the `max_sessions' configuration for the ibrowse
+%% process used by Yokozuna.
+{mapping, "search.ibrowse_max_sessions", "yokozuna.ibrowse_max_sessions",
+ [{default, 100},
+  {datatype, integer},
+  hidden,
+  {validators, ["positive_integer"]}]}.
+
+%% @doc The value to use for the `max_pipeline_size' configuration for the
+%% ibrowse process used by Yokozuna.
+{mapping, "search.ibrowse_max_pipeline_size", "yokozuna.ibrowse_max_pipeline_size",
+ [{default, 1},
+  {datatype, integer},
+  hidden,
+  {validators, ["positive_integer"]}]}.
+
+%% @doc Whether to allow Yokozuna queries on this node
+{mapping, "cluster.job.yokozuna.query", "riak_core.job_accept_class", [
+    merge,
+    {datatype, {flag, enabled, disabled}},
+    {default, enabled},
+    {commented, enabled}
+]}.
+
+%% @doc Enable or disable this node in distributed query plans.  If enabled,
+%% this node will participate in distributed Solr queries.  If disabled, the
+%% node will be excluded from yokozuna cover plans, and will therefore never
+%% be consulted in a distributed query.  Note that this node may still be used
+%% to execute a query.  Use this flag if you have a long running administrative
+%% operation (e.g., reindexing) which requires that the node be removed from
+%% query plans, and which would otherwise result in inconsistent search results.
+{mapping, "search.dist_query", "yokozuna.enable_dist_query", [
+  {default, on},
+  {datatype, flag},
+  hidden
+]}.
+
+%%===========================================================
+%% Validators
+%%===========================================================
+
+{validator, "positive_integer", "must be a positive integer > 0",
+  fun(X) -> X > 0 end}.
+
+{validator, "non_negative_integer", "must be an integer >= 0",
+  fun(X) -> X >= 0 end}.

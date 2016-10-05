@@ -53,10 +53,12 @@ store_and_search(Cluster, Bucket, Index, Key, Headers, CT, Body, Field, Term) ->
     lager:info("Storing to bucket ~s", [URL]),
     {ok, "204", _, _} = ibrowse:send_req(URL, Headers, put, Body),
     yz_rt:commit(Cluster, Index),
-    {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
+    {ok, "200", _, ReturnedBody} = ibrowse:send_req(URL, [{"accept", CT}], get,
+                                                    []),
     ?assertEqual(Body, list_to_binary(ReturnedBody)),
     lager:info("Verify values are indexed"),
-    ?assert(yz_rt:search_expect(HP, Index, Field, Term, 1)),
+    Node = yz_rt:select_random(Cluster),
+    ?assertEqual(ok, yz_rt:search_expect(Node, Index, Field, Term, 1)),
     ok.
 
 confirm_body_search_encoding(Cluster) ->
