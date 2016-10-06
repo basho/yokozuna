@@ -56,7 +56,7 @@ get_solr()
                 if [ -d $TMP_DIR ]; then
                     cp $FILENAME $TMP_DIR
                 else
-                    mkdir $TMP_DIR
+                    mkdir -m 1777 $TMP_DIR
                     cp $FILENAME $TMP_DIR
                 fi
             fi
