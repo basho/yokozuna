@@ -545,7 +545,7 @@ clear_tree(S=#state{index=Index}) ->
     S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->
-    S2 = close_trees(S),
+    S2 = close_trees(S, true),
     {_,Tree0} = hd(S#state.trees), % deliberately using state with live db ref
     hashtree:destroy(Tree0),
     S2.
@@ -563,7 +563,11 @@ maybe_build(S) ->
 %%
 %% @doc Flush and close the trees if not closed already.
 -spec close_trees(#state{}) -> #state{}.
-close_trees(S=#state{trees=Trees, closed=false}) ->
+close_trees(State) ->
+    close_trees(State, false).
+
+-spec close_trees(#state{}, SkipUpdate::boolean()) -> #state{}.
+close_trees(S=#state{trees=Trees, closed=false}, _WillDestroy=false) ->
     Trees2 = [begin
                   NewTree =
                       try hashtree:next_rebuild(Tree) of
@@ -584,10 +588,18 @@ close_trees(S=#state{trees=Trees, closed=false}) ->
                       end,
                   {IdxN, NewTree}
               end || {IdxN, Tree} <- Trees],
-    Trees3 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees2],
-    S#state{trees=Trees3, closed=true};
-close_trees(S) ->
+    really_close_trees(Trees2, S);
+close_trees(#state{trees=Trees, closed=false}=State, _WillDestroy=true) ->
+    really_close_trees(Trees, State);
+close_trees(S, _) ->
     S.
+
+really_close_trees(Trees2, S) ->
+    lists:foreach(fun really_close_tree/1, Trees2),
+    S#state{trees = undefined, closed = true}.
+
+really_close_tree({_IdxN, Tree}) ->
+    hashtree:close(Tree).
 
 -spec build_or_rehash(pid(), state()) -> ok.
 build_or_rehash(Tree, S) ->
