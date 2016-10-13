@@ -368,7 +368,7 @@ handle_info({timeout, TimerRef, flush},
     {noreply, flush(State#state{timer_ref = undefined})};
 
 handle_info({timeout, _TimerRef, flush}, State) ->
-    lager:info("Received timeout from stale Timer Reference"),
+    lager:debug("Received timeout from stale Timer Reference"),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
