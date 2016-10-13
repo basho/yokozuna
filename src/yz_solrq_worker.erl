@@ -47,12 +47,12 @@
 -define(COUNT_PER_REPORT, 20).
 
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
--type pending_vnode() :: {pid(), atom()}.
+-type pending_processes() :: {pid(), atom()}.
 -type drain_info() :: {pid(), reference()} | undefined.
 -type worker_state_status() ::
       {all_queue_len, non_neg_integer()}
     | {queue_hwm, non_neg_integer()}
-    | {pending_vnode, pending_vnode()}
+    | {pending_processes, pending_processes()}
     | {drain_info, drain_info()}
     | {purge_strategy, purge_strategy()
     | {queue, yz_queue()}
@@ -74,7 +74,9 @@
     index :: index_name(),
     partition :: p(),
     queue_hwm = 1000 :: non_neg_integer(),
-    pending_vnode = none :: pending_vnode() | none,
+    %% Both the vnode and the yz_exchange_fsm can call into `index`.
+    %% Therefore, we need a list of processes, not just a single vnode PID
+    pending_processes = [] :: [pending_processes()],
     drain_info = undefined :: drain_info(),
     purge_strategy :: purge_strategy(),
     helper_pid = undefined :: pid() | undefined,
@@ -221,7 +223,7 @@ handle_call({index, E}, From, State0) ->
 handle_call(status, _From, #state{} = State) ->
     {reply, internal_status(State), State};
 handle_call({set_hwm, NewHWM}, _From, #state{queue_hwm = OldHWM} = State) ->
-    {reply, {ok, OldHWM}, maybe_unblock_vnodes(State#state{queue_hwm = NewHWM})};
+    {reply, {ok, OldHWM}, maybe_unblock_processes(State#state{queue_hwm = NewHWM})};
 handle_call(get_hwm, _From, #state{queue_hwm = HWM} = State) ->
     {reply, HWM, State};
 handle_call({set_index, Min, Max, DelayMS}, _From, State0) ->
@@ -324,7 +326,7 @@ handle_cast(healed_fuse, #state{} = State) ->
 %%          that have not been delivered (a subset of what was sent for delivery)
 %%          and should be retried.  This handler will decrement the all_queues_len
 %%          field on the solrq state record by the supplied NumDelievered value
-%%          thus potentially unblocking any vnodes waiting on this solrq instance,
+%%          thus potentially unblocking any processes waiting on this solrq instance,
 %%          if the number of queued messages are above the high water mark.
 %% @end
 %%
@@ -332,7 +334,7 @@ handle_cast({batch_complete, {_NumDelivered, Result}},
         #state{} = State) ->
     ?EQC_DEBUG("batch_complete.  State: ~p~n", [debug_state(State)]),
     State1 = handle_batch(Result, State#state{in_flight_len = 0}),
-    State2 = maybe_unblock_vnodes(State1),
+    State2 = maybe_unblock_processes(State1),
     State3 = maybe_send_batch_to_helper(State2),
     State4 = maybe_start_timer(State3),
     ?EQC_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(State4)]),
@@ -453,19 +455,19 @@ internal_status(#state{queue = Queue, aux_queue = AuxQueue} = State) ->
         ++ [{queue_len, queue:len(Queue)}, {aux_queue_len, queue:len(AuxQueue)}].
 
 %% @doc Check HWM, if we are not over it send a reply.
-maybe_send_reply(From, #state{} = State) ->
+maybe_send_reply(From, #state{pending_processes = PendingProcesses} = State) ->
     case over_hwm(State) of
         true ->
-            log_blocked_vnode(From, State),
+            log_blocked_process(From, State),
             yz_stat:blocked_vnode(From),
-            State#state{pending_vnode = From};
+            State#state{pending_processes = [From | PendingProcesses] };
         false ->
             gen_server:reply(From, ok),
             State
     end.
 
-log_blocked_vnode(From, State) ->
-    lager:info("Blocking vnode ~p due to SolrQ ~p exceeding HWM of ~p", [
+log_blocked_process(From, State) ->
+    lager:info("Blocking process ~p due to SolrQ ~p exceeding HWM of ~p", [
         From,
         self(),
         State#state.queue_hwm]),
@@ -503,7 +505,7 @@ flush(State) ->
 handle_blown_fuse(#state{} = State) ->
     State1 = State#state{fuse_blown = true},
     State2 = maybe_purge(State1),
-    State3 = maybe_unblock_vnodes(State2),
+    State3 = maybe_unblock_processes(State2),
     State3.
 
 %% @doc purge entries depending on purge strategy if we are over the HWM
@@ -657,23 +659,28 @@ maybe_cancel_timer(#state{timer_ref=TimerRef} = State) ->
     erlang:cancel_timer(TimerRef),
     State#state{timer_ref =undefined}.
 
-%% @doc Send replies to blocked vnodes if under the high water mark
+%% @doc Send replies to blocked processes if under the high water mark
 %%      and return updated state
--spec maybe_unblock_vnodes(state()) -> state().
-maybe_unblock_vnodes(#state{pending_vnode = none} = State) ->
+-spec maybe_unblock_processes(state()) -> state().
+maybe_unblock_processes(#state{pending_processes = []} = State) ->
     State;
-maybe_unblock_vnodes(#state{pending_vnode = PendingVnode} = State) ->
+maybe_unblock_processes(#state{pending_processes = PendingProcesses, queue_hwm = QueueHWM} = State) ->
     case over_hwm(State) of
         true ->
             State;
         _ ->
-            lager:debug("Unblocking vnode ~p due to SolrQ ~p going below HWM of ~p", [
-                PendingVnode,
-                self(),
-                State#state.queue_hwm]),
-            gen_server:reply(PendingVnode, ok),
-            State#state{pending_vnode = none}
+            lists:foreach(fun(PendingProcess) ->
+                unblock_process(PendingProcess, QueueHWM) end,
+                          PendingProcesses),
+            State#state{pending_processes = []}
     end.
+
+unblock_process(PendingProcess, HWM) ->
+    lager:debug("Unblocking process ~p due to SolrQ ~p going below HWM of ~p", [
+        PendingProcess,
+        self(),
+        HWM]),
+    gen_server:reply(PendingProcess, ok).
 
 maybe_start_timer(#state{delayms_max = infinity}=State) ->
     lager:debug("Infinite delay, will not start timer and flush."),
