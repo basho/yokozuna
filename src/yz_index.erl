@@ -366,7 +366,10 @@ remove_non_owned_data(Index, Ring) ->
     LNonOwned = yz_cover:logical_partitions(Ring, NonOwned),
     Queries = [{'query', <<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>}
                || LP <- LNonOwned],
-    ok = yz_solr:delete(Index, Queries),
+    case yz_solr:delete(Index, Queries) of
+      ok -> ok;
+      {error, nothing_to_delete} -> ok
+    end,
     NonOwned.
 
 -spec schema_name(index_info()) -> schema_name().
