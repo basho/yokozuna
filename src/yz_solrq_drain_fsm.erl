@@ -152,7 +152,7 @@ wait({drain_complete, Token},
             lager:debug("Solrq drain completed for all workers for partition ~p.  Resuming batching.", [Partition]),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(StartTS)),
             CompleteCallback = fun() ->
-                [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()]
+                [yz_solrq_worker:drain_complete(Name) || Name <- get_solrq_ids(Partition)]
             end,
             maybe_update_yz_index_hashtree(
                 ExchangeFSMPid, YZIndexHashtreeUpdateParams, CompleteCallback
@@ -165,8 +165,8 @@ wait({drain_complete, Token},
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
-handle_sync_event(cancel, _From, _StateName, State) ->
-    [yz_solrq_worker:cancel_drain(Name) || Name <- yz_solrq:solrq_worker_names()],
+handle_sync_event(cancel, _From, _StateName, #state{partition=Partition} = State) ->
+    [yz_solrq_worker:cancel_drain(Name) || Name <- get_solrq_ids(Partition)],
     {stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
