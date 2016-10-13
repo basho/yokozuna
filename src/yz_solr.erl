@@ -172,6 +172,7 @@ delete(Index, Ops) ->
     case ibrowse:send_req(URL, Headers, post, JSON, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
+        {ok, "404", _, _} -> {error, nothing_to_delete};
         Err -> {error, Err}
     end.
 
