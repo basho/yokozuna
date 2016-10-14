@@ -448,6 +448,8 @@
 -define(YZ_ERR_FIELD_XML, ?YZ_FIELD_XML(?YZ_ERR_FIELD_S)).
 -define(YZ_ERR_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_err\" and @type=\"_yz_str\" and @indexed=\"true\" and @multiValued=\"false\"]").
 
+-define(YZ_TEXT_FIELD_XPATH, "/schema/fields/field[@name=\"text\" and @type=\"text_general\" and @indexed=\"true\" and @multiValued=\"true\"]").
+
 -define(YZ_IS_YZ_FIELD_S(Name),
         Name == ?YZ_ID_FIELD_S orelse
         Name == ?YZ_ED_FIELD_S orelse
