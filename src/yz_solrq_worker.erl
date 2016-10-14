@@ -242,8 +242,8 @@ handle_call({set_purge_strategy, NewPurgeStrategy},
 handle_call(cancel_drain, _From, State) ->
     NewState = handle_drain_complete(State),
     {reply, ok, NewState};
-handle_call(all_queue_len, _From, #state{queue = Queue} = State) ->
-    Len = queue:len(Queue),
+handle_call(all_queue_len, _From, #state{queue = Queue, aux_queue = AuxQueue, in_flight_len = InFlightLen} = State) ->
+    Len = queue:len(Queue) + queue:len(AuxQueue) + InFlightLen,
     {reply, Len, State};
 handle_call(reload_appenv, _From, State) ->
     {reply, ok, read_appenv(State)}.

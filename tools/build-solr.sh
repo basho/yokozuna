@@ -8,7 +8,7 @@
 #>
 #> Example:
 #>
-#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.10.4-yz http://archive.apache.org/dist/lucene/solr/4.10.4/solr-4.10.4-src.tgz | tee build-solr.out
+#>   ./build-solr.sh --patch-dir ~/yokozuna/solr-patches /tmp/build-solr solr-4.7.0-yz http://archive.apache.org/dist/lucene/solr/4.7.0/solr-4.7.0-src.tgz | tee build-solr.out
 
 set -e
 
@@ -79,9 +79,9 @@ WORK_DIR=$1; shift
 NAME=$1; shift
 URL=$1; shift
 
-if ! javac -version 2>&1 | egrep "1\.7\.[0-9_.]+"
+if ! javac -version 2>&1 | egrep "1\.6\.[0-9_.]+"
 then
-    echo "JDK 1.7 must be used to compile Solr"
+    echo "JDK 1.6 must be used to compile Solr"
     exit 1
 fi
 
