@@ -47,6 +47,10 @@ start_drain_fsm(Parameters) ->
     ).
 -spec start_queue_pair(Index::index_name(), Partition::p()) -> ok.
 start_queue_pair(Index, Partition) ->
+    lager:info(
+        "Starting solrq supervisor for index ~p and partition ~p",
+        [Index, Partition]
+    ),
     validate_child_started(
         supervisor:start_child(?MODULE, queue_pair_spec({Index, Partition}))).
 
@@ -101,10 +105,10 @@ validate_child_started(Error) ->
 
 required_queues() ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    Partitions = riak_core_ring:my_indices(Ring),
+    Partitions = yz_misc:owned_and_next_partitions(node(), Ring),
     Indexes = yz_index:get_indexes_from_meta(),
     [{Index, Partition} ||
-        Partition <- Partitions,
+        Partition <- ordsets:to_list(Partitions),
         Index <- Indexes].
 %% TODO: we shouldn't need ?YZ_INDEX_TOMBSTONE if we just update the YZ AAE tree
 %% when we call index rather than pushing the value all the way to the solrq
@@ -120,6 +124,10 @@ sync_active_queue_pairs() ->
     ok.
 
 stop_queue_pair(Index, Partition) ->
+    lager:info(
+        "Stopping solrq supervisor for index ~p and partition ~p",
+        [Index, Partition]
+    ),
     SupId = {Index, Partition},
     case supervisor:terminate_child(?MODULE, SupId) of
         ok ->

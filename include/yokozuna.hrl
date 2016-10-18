@@ -113,7 +113,10 @@
 %%    take care of it.
 -type component() :: search | index.
 
--type solr_entry()   :: {bkey(), obj(), write_reason(), p(), short_preflist(),
+
+-type object_pair() :: {obj(), obj() | no_old_object}.
+
+-type solr_entry()   :: {bkey(), object_pair(), write_reason(), p(), short_preflist(),
     hash()}.
 -type solr_entries() :: [solr_entry()].
 

@@ -93,6 +93,7 @@ remove(Index) ->
     FuseName = fuse_name_for_index(Index),
     fuse:remove(FuseName),
     yz_stat:delete_dynamic_stats(Index, ?DYNAMIC_STATS),
+    remove_fuse_stats(FuseName),
     ok.
 
 -spec reset(index_name()) -> ok.
@@ -230,3 +231,14 @@ round_trip_through_fuse_name(IndexName) ->
     FuseName = fuse_name_for_index(IndexName),
     index_for_fuse_name(FuseName).
 -endif.
+
+%% @doc Remove exometer stats for fuse `Name'.
+remove_fuse_stats(Name) ->
+    _ = exometer:delete(metric(Name, ok)),
+    _ = exometer:delete(metric(Name, blown)),
+    _ = exometer:delete(metric(Name, melt)),
+    ok.
+
+%% Internal.
+metric(Name, Counter) ->
+    [fuse, Name, Counter].

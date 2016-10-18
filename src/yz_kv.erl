@@ -30,8 +30,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type delops() :: []|[{id, _}]|[{siblings, _}].
-
 %%%===================================================================
 %%% TODO: move to riak_core
 %%%===================================================================
@@ -214,20 +212,20 @@ index_binary(Bucket, Key, Bin, Reason, P) ->
         true ->
             RObj = riak_object:from_binary(Bucket, Key, Bin),
             index(
-                RObj, Reason, P
+                {RObj, no_old_object}, Reason, P
             );
         _ -> ok
     end.
 
 %% @doc Index the data supplied in the Riak Object.
--spec index(riak_object:riak_object(), write_reason(), p()) -> ok.
-index(Obj, Reason, P) ->
+-spec index(object_pair(), write_reason(), p()) -> ok.
+index({Obj, _OldObj}=Objects, Reason, P) ->
     case yokozuna:is_enabled(index) andalso ?YZ_ENABLED of
         true ->
             BKey = {riak_object:bucket(Obj), riak_object:key(Obj)},
             Index = yz_kv:get_index(BKey),
 
-            yz_solrq:index(Index, BKey, Obj, Reason, P);
+            yz_solrq:index(Index, BKey, Objects, Reason, P);
         false ->
             ok
     end.
@@ -276,50 +274,16 @@ update_hashtree(Action, Partition, IdxN, BKey) ->
         not_registered ->
             ok;
         Tree ->
-            Method = get_method(),
             case Action of
                 {insert, ObjHash} ->
-                    yz_index_hashtree:insert(Method, IdxN, BKey,
+                    yz_index_hashtree:insert(IdxN, BKey,
                                              ObjHash, Tree, []),
                     ok;
                 delete ->
-                    yz_index_hashtree:delete(Method, IdxN, BKey, Tree),
+                    yz_index_hashtree:delete(IdxN, BKey, Tree),
                     ok
             end
     end.
-
-%% @private
-%%
-%% @doc Determine the method used to make the hashtree update.  Most
-%% updates will be performed in async manner but want to occasionally
-%% use a blocking call to avoid overloading the hashtree.
-%%
-%% NOTE: This uses the process dictionary and thus is another function
-%% which relies running on a long-lived process.  In this case that
-%% process is the KV vnode.  In the future this should probably use
-%% cast only + sidejob for overload protection.
--spec get_method() -> async | sync.
-get_method() ->
-    case get(yz_hashtree_tokens) of
-        undefined ->
-            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
-            async;
-        N when N > 0 ->
-            put(yz_hashtree_tokens, N - 1),
-            async;
-        _ ->
-            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
-            sync
-    end.
-
-%% @private
-%%
-%% @doc Return the max number of async hashtree calls that may be
-%% performed before requiring a blocking call.
--spec max_hashtree_tokens() -> pos_integer().
-max_hashtree_tokens() ->
-    %% Use same max as riak_kv
-    app_helper:get_env(riak_kv, anti_entropy_max_async, 90).
 
 %% @doc Write a value
 -spec put(any(), binary(), binary(), binary(), string()) -> ok.
@@ -339,50 +303,6 @@ put(Client, Bucket, Key, Value, ContentType) ->
 -spec check_flag(term()) -> boolean().
 check_flag(Flag) ->
     true == erlang:get(Flag).
-
-%% @private
-%%
-%% @doc General cleanup for non-sibling-permitted documents,
-%%      setting up a delete operation of the bkey if the field
-%%      contains a tombstone.
-%%      e.g. for allow_mult=false/lww=true/datatype/sc
--spec cleanup([doc()], bkey()) -> [{bkey, bkey()}].
-cleanup([], _BKey) ->
-    [];
-cleanup([{doc, Fields}|T], BKey) ->
-    case proplists:is_defined(tombstone, Fields) of
-        true -> [{bkey, BKey}];
-        false -> cleanup(T, BKey)
-    end.
-
-%% @private
-%% @doc Cleanup for siblings-permitted objects.
-%%      `Last-case' if single-document and has no tombstones is to cleanup
-%%      possible siblings on reconcilation.
-%%
-%%      If there's a tombstone, remove w/ bkey Query.
-%%
-%%      For Docs > 1, we start w/ & remove the original doc_id (ODocID) in order
-%%      to preserve vtag-based ids used for sibling writes, but just remove
-%%      via BKey if there's at least 1 tombstone.
-%%
-%%      Tombstone tuples come through as {tombstone, <<>>}.
--spec cleanup_for_sibs([doc()], bkey(), binary()|[{id, binary()}])
-                      -> [{id, binary()}|{siblings, bkey()}].
-cleanup_for_sibs(Docs, BKey, ODocID) when is_binary(ODocID) ->
-    case length(Docs) > 1 of
-        true -> cleanup_for_sibs(Docs, BKey, [{id, ODocID}]);
-        false -> cleanup_for_sibs(Docs, BKey, [])
-    end;
-cleanup_for_sibs([{doc, Fields}|T], BKey, Ops) ->
-    case proplists:is_defined(tombstone, Fields) of
-        true -> [{bkey, BKey}];
-        false -> cleanup_for_sibs(T, BKey, Ops)
-    end;
-cleanup_for_sibs([], BKey, []) ->
-    [{siblings, BKey}];
-cleanup_for_sibs([], _BKey, Ops) ->
-    Ops.
 
 %% @private
 %%
@@ -508,21 +428,6 @@ siblings_permitted(Obj, BProps) when is_list(BProps) ->
         {_, _, _} -> true
     end;
 siblings_permitted(_, _) -> true.
-
-%% @private
-%%
-%% @doc Set yz_solr:index delete operation(s).
-%%      If object relates to lww=true/allow_mult=false/datatype/sc
-%%      do cleanup of tombstones only.
--spec delete_operation(riak_kv_bucket:props(), obj(), [doc()],
-                       bkey(), lp()) -> delops().
-delete_operation(BProps, Obj, Docs, BKey, LP) ->
-    case siblings_permitted(Obj, BProps) of
-        true -> cleanup_for_sibs(Docs,
-                                BKey,
-                                yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)));
-        _ -> cleanup(Docs, BKey)
-    end.
 
 %% @private
 %%

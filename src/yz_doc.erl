@@ -68,6 +68,8 @@ doc_id(O, Partition, Sibling) ->
     end.
 
 %% @doc grab all siblings' vtags from Object contents
+sibling_vtags(Cs) when length(Cs) == 1 ->
+    [none];
 sibling_vtags(Cs) -> [get_vtag(MD) || {MD, _V} <- Cs].
 
 %% @doc count of Object contents that are siblings and not tombstones
