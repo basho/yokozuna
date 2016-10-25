@@ -197,7 +197,7 @@ index(Core, Docs, DelOps) ->
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
 
-    timer:sleep(10),
+    timer:sleep(100),
 
     case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
