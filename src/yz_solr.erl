@@ -196,6 +196,9 @@ index(Core, Docs, DelOps) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
+
+    timer:sleep(10),
+
     case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
         Err -> throw({"Failed to index docs", Err})
