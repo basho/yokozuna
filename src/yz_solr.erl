@@ -183,6 +183,9 @@ entropy_data(Core, Filter) ->
             {error, X}
     end.
 
+log_index(URL, JSON) ->
+    file:write_file("/tmp/solr_replay.log", io_lib:fwrite("~p;~p~n", [URL, JSON]), [append]).
+
 %% @doc Index the given `Docs'.
 index(Core, Docs) ->
     index(Core, Docs, []).
@@ -197,7 +200,7 @@ index(Core, Docs, DelOps) ->
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
 
-    timer:sleep(1000),
+    log_index(URL, binary_to_list(iolist_to_binary(JSON))),
 
     case ibrowse:send_req(URL, Headers, post, JSON, Opts, ?SOLR_TIMEOUT) of
         {ok, "200", _, _} -> ok;
