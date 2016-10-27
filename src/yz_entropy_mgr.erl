@@ -54,7 +54,11 @@ get_lock(Type) ->
 
 -spec get_lock(term(), pid()) -> ok | max_concurrency.
 get_lock(Type, Pid) ->
-    gen_server:call(?MODULE, {get_lock, Type, Pid}, infinity).
+    gen_server:call(?MODULE, {get_lock, Type, Pid}, ?YZ_ENTROPY_LOCK_TIMEOUT).
+
+-spec release_lock(term()) -> ok.
+release_lock(Pid) ->
+    gen_server:cast(?MODULE, {release_lock, Pid}).
 
 -spec get_tree(p()) -> {ok, tree()} | not_registered.
 get_tree(Index) ->
@@ -80,7 +84,8 @@ exchange_status(Index, IndexN, Status) ->
 %% @doc Returns true of AAE is enabled, false otherwise.
 -spec enabled() -> boolean().
 enabled() ->
-    riak_kv_entropy_manager:enabled().
+    {Enabled, _} = settings(),
+    Enabled.
 
 %% @doc Set AAE to either `automatic' or `manual' mode. In automatic mode, the
 %%      entropy manager triggers all necessary hashtree exchanges. In manual
@@ -140,6 +145,7 @@ expire_trees() ->
 %%%===================================================================
 
 init([]) ->
+    ok = init_throttle(0),
     Trees = get_trees_from_sup(),
     schedule_tick(),
     {_, Opts} = settings(),
@@ -147,6 +153,7 @@ init([]) ->
                true -> manual;
                false -> automatic
            end,
+    set_debug(proplists:is_defined(debug, Opts)),
     S = #state{mode=Mode,
                trees=Trees,
                kv_trees=[],
@@ -217,6 +224,10 @@ handle_cast(clear_trees, S) ->
 handle_cast(expire_trees, S) ->
     ok = expire_all_trees(S#state.trees),
     {noreply, S};
+
+handle_cast({release_lock, Pid}, S) ->
+    S2 = maybe_release_lock(Pid, S),
+    {noreply, S2};
 
 handle_cast(_Msg, S) ->
     lager:warning("Unexpected cast: ~p", [_Msg]),
@@ -307,9 +318,8 @@ settings() ->
         {off, Opts} ->
             {false, Opts};
         X ->
-            lager:warning("Invalid setting for riak_kv/anti_entropy: ~p", [X]),
+            lager:warning("Invalid setting for yz/riak_kv/anti_entropy: ~p", [X]),
             application:set_env(?YZ_APP_NAME, anti_entropy, {off, []}),
-            application:set_env(riak_kv, anti_entropy, {off, []}),
             {false, []}
     end.
 
@@ -506,6 +516,23 @@ maybe_poke_tree(S) ->
     end.
 
 %%%===================================================================
+%%% Throttling
+%%%===================================================================
+
+throttle() ->
+    riak_core_throttle:throttle(?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY).
+
+init_throttle(InitialThrottle) ->
+    ok = riak_core_throttle:init(?YZ_APP_NAME,
+                                 ?YZ_ENTROPY_THROTTLE_KEY,
+                                 {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
+                                  ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
+                                 {?YZ_ENTROPY_THROTTLE_ENABLED_KEY, true}),
+    ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
+                                         ?YZ_ENTROPY_THROTTLE_KEY,
+                                         InitialThrottle).
+
+%%%===================================================================
 %%% Exchanging
 %%%===================================================================
 
@@ -620,9 +647,9 @@ maybe_exchange(Ring, S) ->
             S2;
         {NextExchange, S2} ->
             {Index, IndexN} = NextExchange,
-            case already_exchanging(Index, S) of
+            case already_exchanging(Index, S2) of
                 true ->
-                    requeue_exchange(Index, IndexN, S2);
+                    S2;
                 false ->
                     case start_exchange(Index, IndexN, Ring, S2) of
                         {ok, S3} -> S3;
@@ -673,3 +700,23 @@ requeue_exchange(Index, {StartIdx, N}, S) ->
             Exchanges = S#state.exchange_queue ++ [Exchange],
             S#state{exchange_queue=Exchanges}
     end.
+
+%% @TODO Create general debug function for modules used in riak_kv generally
+%% @doc Toggle debug mode, which prints verbose AAE information to the console.
+-spec set_debug(boolean()) -> ok.
+set_debug(Enabled) ->
+    Modules = [yz_index_hashtree,
+               yz_entropy_mgr,
+               yz_exchange_fsm,
+               yz_solrq_drain_mgr,
+               yz_solrq_drain_fsm],
+    case Enabled of
+        true ->
+            [lager:trace_console([{module, Mod}]) || Mod <- Modules];
+        false ->
+            [begin
+                 {ok, Trace} = lager:trace_console([{module, Mod}]),
+                 lager:stop_trace(Trace)
+             end || Mod <- Modules]
+    end,
+    ok.

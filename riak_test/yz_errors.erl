@@ -2,9 +2,7 @@
 -module(yz_errors).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
-                run_bb/2, search_expect/5,
-                select_random/1, verify_count/2,
-                write_terms/2]).
+                search_expect/5]).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -38,6 +36,7 @@ test_errors(Cluster) ->
 expect_bad_json(Cluster) ->
     Index = <<"bad_json">>,
     Bucket = {<<"bad_json">>,<<"bucket">>},
+    Node = yz_rt:select_random(Cluster),
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
     ok = yz_rt:create_index_http(Cluster, Index),
     lager:info("Write bad json [~p]", [HP]),
@@ -53,12 +52,12 @@ expect_bad_json(Cluster) ->
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
     %% Sleep for soft commit
     timer:sleep(1100),
-    ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
-    ok.
+    ?assertEqual(ok, search_expect(Node, Index, ?YZ_ERR_FIELD_S, "1", 1)).
 
 expect_bad_xml(Cluster) ->
     Index = <<"bad_xml">>,
     Bucket = {Index,<<"bucket">>},
+    Node = yz_rt:select_random(Cluster),
     HP = yz_rt:select_random(host_entries(rt:connection_info(Cluster))),
     ok = yz_rt:create_index_http(Cluster, Index),
     lager:info("Write bad xml [~p]", [HP]),
@@ -71,8 +70,7 @@ expect_bad_xml(Cluster) ->
     yz_rt:commit(Cluster, Index),
     %% still store the value in riak
     {ok, "200", _, Body} = ibrowse:send_req(URL, [{"accept", CT}], get, []),
-    ?assert(search_expect(HP, Index, ?YZ_ERR_FIELD_S, "1", 1)),
-    ok.
+    ?assertEqual(ok, search_expect(Node, Index, ?YZ_ERR_FIELD_S, "1", 1)).
 
 expect_bad_query(Cluster) ->
     Index = <<"bad_query">>,
