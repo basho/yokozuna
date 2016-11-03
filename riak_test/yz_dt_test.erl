@@ -14,7 +14,7 @@
         [{?COUNTER, counter},
          {?SET, set},
          {?HLL, hll},
-         {?GSET, set},
+         {?GSET, gset},
          {?MAP, map}]).
 
 -import(yz_rt, [create_index/2,
@@ -76,8 +76,8 @@ set_update(PB) ->
 gset_update(PB) ->
     Dynamos = lists:foldl(fun riakc_gset:add_element/2, riakc_gset:new(), [<<"Riak">>, <<"Cassandra">>, <<"Voldemort">>, <<"Couchbase">>]),
     Erlangs = lists:foldl(fun riakc_gset:add_element/2, riakc_gset:new(), [<<"Riak">>, <<"Couchbase">>, <<"CouchDB">>]),
-    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?SET, <<"databass">>}, <<"dynamo">>, riakc_gset:to_op(Dynamos))),
-    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?SET, <<"databass">>}, <<"erlang">>, riakc_gset:to_op(Erlangs))).
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?GSET, <<"databass">>}, <<"dynamo">>, riakc_gset:to_op(Dynamos))),
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?GSET, <<"databass">>}, <<"erlang">>, riakc_gset:to_op(Erlangs))).
 
 set_search(Node) ->
     ?assertSearch(Node, ?SET, "set", "Riak", 2),
