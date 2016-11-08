@@ -48,7 +48,7 @@
 
 -type solrq_message() :: tuple().  % {BKey, Docs, Reason, P}.
 -type pending_processes() :: {pid(), atom()}.
--type drain_info() :: {pid(), reference()} | undefined.
+-type drain_info() :: {pid(), Token::reference(), DrainFSMMonitor::reference()} | undefined.
 -type worker_state_status() ::
       {all_queue_len, non_neg_integer()}
     | {queue_hwm, non_neg_integer()}
@@ -81,7 +81,7 @@
     purge_strategy :: purge_strategy(),
     helper_pid = undefined :: pid() | undefined,
     queue = queue:new()     :: yz_queue(),   % solrq_message()
-    timer_ref = undefined   :: reference()|undefined,
+    flush_timer_ref = undefined   :: reference()|undefined,
     batch_min = yz_solrq:get_min_batch_size() :: solrq_batch_min(),
     batch_max = yz_solrq:get_max_batch_size() :: solrq_batch_max(),
     delayms_max = yz_solrq:get_flush_interval() :: solrq_batch_flush_interval(),
@@ -115,9 +115,9 @@ status(QPid) ->
 status(QPid, Timeout) ->
     gen_server:call(QPid, status, Timeout).
 
--spec index(solrq_id(), bkey(), obj(), write_reason(), p()) -> ok.
-index(QPid, BKey, Obj, Reason, P) ->
-    gen_server:call(QPid, {index, {BKey, Obj, Reason, P}}, infinity).
+-spec index(solrq_id(), bkey(), object_pair(), write_reason(), p()) -> ok.
+index(QPid, BKey, Objects, Reason, P) ->
+    gen_server:call(QPid, {index, {BKey, Objects, Reason, P}}, infinity).
 
 -spec set_hwm(Index :: index_name(), Partition :: p(), HWM :: solrq_hwm()) ->
     {ok, OldHWM :: solrq_hwm()} | {error, bad_hwm_value}.
@@ -217,7 +217,7 @@ handle_call({index, E}, From, State0) ->
     State2 = maybe_send_reply(From, State1),
     State3 = enqueue(E, State2),
     State4 = maybe_send_batch_to_helper(State3),
-    FinalState = maybe_start_timer(State4),
+    FinalState = maybe_start_flush_timer(State4),
     ?EQC_DEBUG("index.  NewState: ~p~n", [debug_state(FinalState)]),
     {noreply, FinalState};
 handle_call(status, _From, #state{} = State) ->
@@ -240,7 +240,7 @@ handle_call({set_purge_strategy, NewPurgeStrategy},
     #state{purge_strategy=OldPurgeStrategy} = State) ->
     {reply, {ok, OldPurgeStrategy}, State#state{purge_strategy=NewPurgeStrategy}};
 handle_call(cancel_drain, _From, State) ->
-    NewState = handle_drain_complete(State),
+    NewState = stop_draining(State),
     {reply, ok, NewState};
 handle_call(all_queue_len, _From, #state{queue = Queue} = State) ->
     Len = queue:len(Queue),
@@ -259,12 +259,16 @@ handle_cast(stop, State) ->
 %%      during its prepare state, typically as the result of
 %%      a request to drain the queues.
 %%
-%%      This handler will iterate over all IndexQs in the
-%%      solrq, and initiate a drain on the queue, if it is currently
+%%      This handler initiate a drain on the queue, if it is currently
 %%      non-empty.
 %% @end
 %%
-%% TODO:
+handle_cast({drain, DPid, Token, _TargetPartition},
+        #state{draining = Draining}=State) when Draining =/= false ->
+    %% Drain already in progress - notify caller and continue
+    yz_solrq_drain_fsm:drain_already_in_progress(DPid, Token),
+    {noreply, State};
+
 handle_cast({drain, DPid, Token, TargetPartition},
             #state{queue = Queue,
                    in_flight_len = InFlightLen,
@@ -272,23 +276,9 @@ handle_cast({drain, DPid, Token, TargetPartition},
             when TargetPartition == undefined; TargetPartition == QueueParitition ->
     ?EQC_DEBUG("drain{~p=DPid, ~p=Token, ~p=Partition}.  State: ~p~n",
                [DPid, Token, TargetPartition, internal_status(State)]),
-    NewState0 = case {queue:is_empty(Queue), InFlightLen} of
-        {true, 0} ->
-            State#state{draining = wait_for_drain_complete};
-        {true, _InFlightLen} ->
-            State#state{draining = true};
-        _ ->
-            drain_queue(State)
-        end,
-    NewState =
-        case NewState0#state.draining of
-            wait_for_drain_complete ->
-                yz_solrq_drain_fsm:drain_complete(DPid, Token),
-                NewState0;
-            _ ->
-                NewState0#state{drain_info = {DPid, Token}}
-
-        end,
+    NewState0 = monitor_draining_process(DPid, State, Token),
+    NewState = maybe_drain_queue(Queue, InFlightLen, NewState0),
+    maybe_send_drain_complete(NewState#state.draining, DPid, Token),
     ?EQC_DEBUG("drain.  NewState: ~p~n", [internal_status(NewState)]),
     {noreply, NewState};
 
@@ -308,7 +298,7 @@ handle_cast(blown_fuse, State) ->
 %% @end
 %%
 handle_cast(healed_fuse, #state{} = State) ->
-    State1 = maybe_start_timer(State#state{fuse_blown = false}),
+    State1 = maybe_start_flush_timer(State#state{fuse_blown = false}),
     State2 = maybe_send_batch_to_helper(State1),
     {noreply, State2};
 
@@ -336,7 +326,7 @@ handle_cast({batch_complete, {_NumDelivered, Result}},
     State1 = handle_batch(Result, State#state{in_flight_len = 0}),
     State2 = maybe_unblock_processes(State1),
     State3 = maybe_send_batch_to_helper(State2),
-    State4 = maybe_start_timer(State3),
+    State4 = maybe_start_flush_timer(State3),
     ?EQC_DEBUG("batch_complete.  NewState: ~p~n", [debug_state(State4)]),
     {noreply, State4};
 
@@ -350,27 +340,54 @@ handle_cast({batch_complete, {_NumDelivered, Result}},
 %% @end
 %%
 handle_cast(drain_complete, State) ->
-    State1 = handle_drain_complete(State),
+    State1 = stop_draining(State),
     {noreply, State1}.
 
-handle_drain_complete(#state{queue = Queue,
-                             aux_queue = AuxQueue} = State) ->
+monitor_draining_process(DPid, State, Token) ->
+    MonitorRef = erlang:monitor(process, DPid),
+    State#state{drain_info = {DPid, Token, MonitorRef}}.
+
+maybe_drain_queue(Queue, InFlightLen, State) ->
+    case {queue:is_empty(Queue), InFlightLen} of
+        {true, 0} ->
+            %% If our queue is empty, and we have no in-flight messages,
+            %% skip the `draining=true` state and go
+            %% straight to `wait_for_drain_complete`
+            State#state{draining = wait_for_drain_complete};
+        _ ->
+            drain_queue(State)
+    end.
+
+stop_draining(#state{queue      = Queue,
+                     aux_queue  = AuxQueue,
+                     drain_info = DrainInfo} = State) ->
+    maybe_demonitor_draining_process(DrainInfo),
     State1 = State#state{
         queue     = queue:join(Queue, AuxQueue),
         aux_queue = queue:new(),
-        draining  = false},
+        draining  = false,
+        drain_info=undefined},
     State2 = maybe_send_batch_to_helper(State1),
-    State3 = maybe_start_timer(State2),
-    State3#state{drain_info = undefined}.
+    maybe_start_flush_timer(State2).
 
 
 %% @doc Timer has fired - request a helper.
 handle_info({timeout, TimerRef, flush},
-            #state{timer_ref = TimerRef} = State) ->
-    {noreply, flush(State#state{timer_ref = undefined})};
+            #state{flush_timer_ref = TimerRef} = State) ->
+    {noreply, flush(State#state{flush_timer_ref = undefined})};
 
 handle_info({timeout, _TimerRef, flush}, State) ->
     lager:debug("Received timeout from stale Timer Reference"),
+    {noreply, State};
+
+handle_info({'DOWN', MonitorRef, process, DPid, Info},
+    #state{draining=Draining, drain_info = {DPid, _Token, MonitorRef}} = State)
+    when Draining =:= true; Draining =:= wait_for_drain_complete ->
+    lager:info("Drain FSM terminated for reason ~p without notifying of drain_complete.  Resuming normal operations.", [Info]),
+    NewState = stop_draining(State),
+    {noreply, NewState};
+
+handle_info({'DOWN', _MonitorRef, process, _DPid, _Info}, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -415,7 +432,7 @@ handle_batch(ok, #state{draining = true,
                         queue = Queue}=State) ->
     case queue:is_empty(Queue) of
         true ->
-            #state{drain_info={DPid, Token}, batch_start = T1} = State,
+            #state{drain_info={DPid, Token, _MonitorRef}, batch_start = T1} = State,
             yz_stat:batch_end(?YZ_TIME_ELAPSED(T1)),
             yz_solrq_drain_fsm:drain_complete(DPid, Token),
             State#state{draining = wait_for_drain_complete,
@@ -536,8 +553,6 @@ queue_has_items(#state{queue     = Queue,
 %%              to purge from the aux_queue, if it is not empty.
 %% purge_index: Purge all entries (both in the regular queue and in the
 %%              aux_queue) from a randomly blown indexq
-%% purge_all:   Purge all entries (both in the regular queue and in the
-%%              aux_queue) from all blown indexqs
 %%
 -spec purge(state()) -> state().
 purge(State) ->
@@ -635,7 +650,7 @@ send_batch_to_helper(#state{index = Index,
             State2;
         false ->
             % may be another full batch
-            maybe_start_timer(State2)
+            maybe_start_flush_timer(State2)
     end.
 
 %% @doc Get up to batch_max entries.
@@ -653,11 +668,11 @@ prepare_for_batching(#state{queue = Q, batch_max = Max} = State) ->
 
 %%      If previous `TimerRef' was set, but not yet triggered, cancel it
 %%      first as it's invalid for the next batch of this queue.
-maybe_cancel_timer(#state{timer_ref=undefined} = State) ->
+maybe_cancel_timer(#state{flush_timer_ref =undefined} = State) ->
     State;
-maybe_cancel_timer(#state{timer_ref=TimerRef} = State) ->
+maybe_cancel_timer(#state{flush_timer_ref =TimerRef} = State) ->
     erlang:cancel_timer(TimerRef),
-    State#state{timer_ref =undefined}.
+    State#state{flush_timer_ref =undefined}.
 
 %% @doc Send replies to blocked processes if under the high water mark
 %%      and return updated state
@@ -682,22 +697,22 @@ unblock_process(PendingProcess, HWM) ->
         HWM]),
     gen_server:reply(PendingProcess, ok).
 
-maybe_start_timer(#state{delayms_max = infinity}=State) ->
+maybe_start_flush_timer(#state{delayms_max = infinity} = State) ->
     lager:debug("Infinite delay, will not start timer and flush."),
-    State#state{timer_ref = undefined};
-maybe_start_timer(#state{timer_ref = undefined,
-                         fuse_blown = false,
-                         delayms_max = DelayMS,
-                         queue = Queue} = State) ->
+    State#state{flush_timer_ref = undefined};
+maybe_start_flush_timer(#state{flush_timer_ref = undefined,
+                               fuse_blown      = false,
+                               delayms_max     = DelayMS,
+                               queue           = Queue} = State) ->
     case queue:is_empty(Queue) of
         true ->
             State;
         false ->
             TimerRef = erlang:start_timer(DelayMS, self(), flush),
-            State#state{timer_ref = TimerRef}
+            State#state{flush_timer_ref = TimerRef}
     end;
 %% timer already running or blown fuse, so don't start a new timer.
-maybe_start_timer(State) ->
+maybe_start_flush_timer(State) ->
     State.
 
 %% @doc Read settings from the application environment
@@ -739,10 +754,23 @@ debug_state(State) ->
         {all_queue_len, Len},
         {drain_info, State#state.drain_info},
         {batch_start, State#state.batch_start},
-        {timer_ref, State#state.timer_ref}
+        {timer_ref, State#state.flush_timer_ref}
     ] ++ debug_indexq(State).
 
 get_helper(Index, Partition, State0) ->
     HelperName = yz_solrq:helper_regname(Index, Partition),
     HPid = whereis(HelperName),
     State0#state{helper_pid = HPid}.
+
+maybe_send_drain_complete(wait_for_drain_complete, DPid, Token) ->
+    yz_solrq_drain_fsm:drain_complete(DPid, Token);
+maybe_send_drain_complete(_Draining, _DPid, _Token) ->
+    ok.
+
+maybe_demonitor_draining_process({_DPid, _TokenRef, MonRef})
+    when is_reference(MonRef) ->
+    %% Demonitor and remove a potential 'DOWN'
+    %% message from this MonRef in our mailbox
+    erlang:demonitor(MonRef, [flush]);
+maybe_demonitor_draining_process(undefined) ->
+    ok.

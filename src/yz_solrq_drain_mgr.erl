@@ -141,29 +141,52 @@ maybe_drain(false, ExchangeFSMPid, Params) ->
 actual_drain(Params, ExchangeFSMPid) ->
     DrainTimeout = application:get_env(?YZ_APP_NAME,
                                        ?SOLRQ_DRAIN_TIMEOUT, ?SOLRQ_DRAIN_TIMEOUT_DEFAULT),
-    {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params),
+    Params1 = [{owner_pid, self()} | Params],
+    {ok, Pid} = yz_solrq_sup:start_drain_fsm(Params1),
     Reference = erlang:monitor(process, Pid),
     yz_solrq_drain_fsm:start_prepare(Pid),
     try
-        receive
-            {'DOWN', Reference, process, Pid, normal} ->
-                lager:debug("Drain ~p completed normally.", [Pid]),
-                ok;
-            {'DOWN', Reference, process, Pid, Reason} ->
-                lager:debug("Drain ~p failed with reason ~p", [Pid, Reason]),
-                yz_stat:drain_fail(),
-                maybe_exchange_fsm_drain_error(ExchangeFSMPid, Reason),
+        WorkersResumed = wait_for_workers_resumed_or_crash(DrainTimeout, Reference, Pid, ExchangeFSMPid),
+        case WorkersResumed of
+            ok ->
+                wait_for_exit(Reference, Pid, ExchangeFSMPid);
+            {error, Reason} ->
                 {error, Reason}
-        after DrainTimeout ->
-            lager:debug("Drain ~p timed out.  Cancelling...", [Pid]),
-            yz_stat:drain_timeout(),
-            _ = cancel(Reference, Pid),
-            maybe_exchange_fsm_drain_error(ExchangeFSMPid, timeout),
-            {error, timeout}
         end
     after
         erlang:demonitor(Reference)
     end.
+
+wait_for_workers_resumed_or_crash(DrainTimeout, Reference, Pid, ExchangeFSMPid) ->
+    receive
+        workers_resumed ->
+            lager:debug("Workers resumed."),
+            ok;
+        {'DOWN', Reference, process, Pid, Reason} ->
+            lager:error("Drain ~p exited prematurely.", [Pid]),
+            handle_drain_fsm_pid_crash(Reason, ExchangeFSMPid)
+    after DrainTimeout ->
+        lager:debug("Drain ~p timed out.  Cancelling...", [Pid]),
+        yz_stat:drain_timeout(),
+        _ = cancel(Reference, Pid),
+        maybe_exchange_fsm_drain_error(ExchangeFSMPid, timeout),
+        {error, timeout}
+    end.
+
+wait_for_exit(Reference, Pid, ExchangeFSMPid) ->
+    receive
+        {'DOWN', Reference, process, Pid, normal} ->
+            lager:debug("Drain ~p completed normally.", [Pid]),
+            ok;
+        {'DOWN', Reference, process, Pid, Reason} ->
+            lager:error("Drain ~p crashed with reason ~p.", [Pid, Reason]),
+            handle_drain_fsm_pid_crash(Reason, ExchangeFSMPid)
+    end.
+
+handle_drain_fsm_pid_crash(Reason, ExchangeFSMPid) ->
+    yz_stat:drain_fail(),
+    maybe_exchange_fsm_drain_error(ExchangeFSMPid, Reason),
+    {error, Reason}.
 
 enabled() ->
     application:get_env(?YZ_APP_NAME, ?SOLRQ_DRAIN_ENABLE, ?SOLRQ_DRAIN_ENABLE_DEFAULT).

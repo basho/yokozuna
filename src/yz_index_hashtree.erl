@@ -51,25 +51,58 @@ start_link(Index, RPs) ->
     gen_server:start_link(?MODULE, [Index, RPs], []).
 
 %% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given
+%%      `Id'.  The result of this call is not useful, as it may fail
+%%       but is protected by a `try/catch'
+-spec insert({p(),n()}, bkey(), binary(), tree(), list()) ->
+    ok | term().
+insert(Id, BKey, Hash, Tree, Options) ->
+    SyncOrAsync = hashtree_call_mode(),
+    insert(SyncOrAsync, Id, BKey, Hash, Tree, Options).
+
+%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given
 %%      `Id'.  The result of a sync call should be ignored since it
 %%      uses `catch'.
+%%      WARNING: In almost all cases, the caller should use `insert/5'
+%%               rather than calling `insert/6' directly to prevent mailbox
+%%               overload of the hashtree.
 -spec insert(async | sync, {p(),n()}, bkey(), binary(), tree(), list()) ->
                     ok | term().
 insert(async, Id, BKey, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
 insert(sync, Id, BKey, Hash, Tree, Options) ->
-    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity).
+    try
+        gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity)
+    catch
+        Error ->
+            lager:error("Synchronous insert into hashtree failed for reason ~p", [Error])
+    end.
 
 %% @doc Delete the `BKey' from `Tree'.  The id will be determined from
 %%      `BKey'.  The result of the sync call should be ignored since
 %%      it uses catch.
+-spec delete({p(),n()}, bkey(), tree()) -> ok.
+delete(Id, BKey, Tree) ->
+    SyncOrAsync = hashtree_call_mode(),
+    delete(SyncOrAsync, Id, BKey, Tree).
+
+%% @doc Delete the `BKey' from `Tree'.  The id will be determined from
+%%      `BKey'.  The result of the sync call should be ignored since
+%%      it uses catch.
+%%      WARNING: In almost all cases, the caller should use `delete/3'
+%%               rather than calling `delete/4' directly to prevent mailbox
+%%               overload of the hashtree.
 -spec delete(async | sync, {p(),n()}, bkey(), tree()) -> ok.
 delete(async, Id, BKey, Tree) ->
     gen_server:cast(Tree, {delete, Id, BKey});
 
 delete(sync, Id, BKey, Tree) ->
-    catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
+    try
+        gen_server:call(Tree, {delete, Id, BKey}, infinity)
+    catch
+        Error ->
+            lager:error("Synchronous delete from hashtree failed for reason ~p", [Error])
+    end.
 
 -spec update({p(), n()}, tree()) -> ok.
 update(Id, Tree) ->
@@ -329,7 +362,7 @@ fold_keys(Partition, Tree, Indexes) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
                 IndexN = get_index_n(BKey),
-                insert(async, IndexN, BKey, Hash, Tree, [if_missing])
+                insert(IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
     [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
@@ -433,6 +466,40 @@ do_delete(Id, Key, S=#state{trees=Trees}) ->
         _ ->
             handle_unexpected_key(Id, Key, S)
     end.
+
+%% @private
+%%
+%% @doc Determine the method used to make the hashtree update.  Most
+%% updates will be performed in async manner but want to occasionally
+%% use a blocking call to avoid overloading the hashtree.
+%%
+%% NOTE: This uses the process dictionary and thus is another function
+%% which relies running on a long-lived process.  In this case that
+%% process is the KV vnode.  In the future this should probably use
+%% cast only + sidejob for overload protection.
+-spec hashtree_call_mode() -> async | sync.
+hashtree_call_mode() ->
+    case get(yz_hashtree_tokens) of
+        undefined ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            async;
+        N when N > 0 ->
+            put(yz_hashtree_tokens, N - 1),
+            async;
+        _ ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            sync
+    end.
+
+%% @private
+%%
+%% @doc Return the max number of async hashtree calls that may be
+%% performed before requiring a blocking call.
+-spec max_hashtree_tokens() -> pos_integer().
+max_hashtree_tokens() ->
+    %% Use same max as riak_kv if no override provided
+    app_helper:get_env(yokozuna, anti_entropy_max_async,
+        app_helper:get_env(riak_kv, anti_entropy_max_async, 90)).
 
 -spec handle_unexpected_key({p(),n()}, binary(), state()) -> state().
 handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->

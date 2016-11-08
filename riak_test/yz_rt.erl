@@ -27,6 +27,9 @@
 -type search_type() :: solr | yokozuna.
 -type cluster() :: cluster().
 
+-type intercept() :: {{TargetFunctionName::atom(), TargetArity::non_neg_integer()}, InterceptFunctionName::atom()}.
+-type intercepts() :: [intercept()].
+
 -export_type([prop/0, props/0, cluster/0]).
 
 %% @doc Get {Host, Port} from `Cluster'.
@@ -552,6 +555,7 @@ remove_index(Node, BucketType) ->
     ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, Props]).
 
 really_remove_index(Cluster, {BucketType, Bucket}, Index, PBConn) ->
+    lager:info("Removing index ~p", [Index]),
     Node = hd(Cluster),
     F = fun(_) ->
                 Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
@@ -965,17 +969,17 @@ check_fuse_status(Node, Partition, Indices, FuseCheckFunction) ->
 
 -spec intercept_index_batch(node() | cluster(), module()) -> ok | [ok].
 intercept_index_batch(Cluster, Intercept) ->
-    add_intercept(
+    add_intercepts(
       Cluster,
-      yz_solr, index_batch, 2, Intercept).
+      yz_solr, [{{index_batch, 2}, Intercept}]).
 
--spec add_intercept(node() | cluster(), module(), atom(), non_neg_integer(), module()) -> ok | [ok].
-add_intercept(Cluster, Module, Function, Arity, Intercept) when is_list(Cluster) ->
-    [add_intercept(Node, Module, Function, Arity, Intercept) || Node <- Cluster];
-add_intercept(Node, Module, Function, Arity, Intercept) ->
+-spec add_intercepts(node() | cluster(), module(), intercepts()) -> ok | [ok].
+add_intercepts(Cluster, Module, Intercepts) when is_list(Cluster) ->
+    [add_intercepts(Node, Module, Intercepts) || Node <- Cluster];
+add_intercepts(Node, Module, Intercepts) ->
     rt_intercept:add(
       Node,
-      {Module, [{{Function, Arity}, Intercept}]}).
+      {Module, Intercepts}).
 
 -spec set_yz_aae_mode(node() | cluster(), automatic | manual) -> ok | [ok].
 set_yz_aae_mode(Cluster, Mode) when is_list(Cluster) ->

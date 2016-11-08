@@ -253,15 +253,12 @@
 %%      - purge_index -> Removes all items associated with one random
 %%        erroring (references to fuses blown in the code) index in
 %%        order to get below the search.queue.high_watermark.
-%%      - purge_all -> Removes all items associated with all
-%%        erroring (references to fuses blown in the code) indices in
-%%        order to get below the search.queue.high_watermark.
 %%      - off -> purging is disabled
 {mapping, "search.queue.high_watermark.purge_strategy",
  "yokozuna.solrq_hwm_purge_strategy", [
   {default, purge_one},
   {commented, purge_one},
-  {datatype, {enum, [purge_one, purge_index, purge_all, off]}}
+  {datatype, {enum, [purge_one, purge_index, off]}}
 ]}.
 
 %% @doc The amount of time to wait before a drain operation times out.

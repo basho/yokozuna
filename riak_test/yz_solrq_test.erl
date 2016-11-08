@@ -111,17 +111,18 @@ confirm() ->
     pass.
 
 confirm_drain_fsm_failure(Cluster) ->
+    lager:info("Starting confirm_drain_fsm_failure"),
     yz_stat:reset(),
     try
         yz_rt:load_intercept_code(Cluster),
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_crash),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_fsm, [{{prepare, 2}, prepare_crash}]),
         %% drain solrqs and wait until the drain failure stats are touched
         yz_rt:drain_solrqs(Cluster),
         yz_rt:wait_until(Cluster, fun check_drain_failure_stats/1),
 
         lager:info("confirm_drain_fsm_failure ok")
     after
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_orig)
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_fsm, [{{prepare, 2}, prepare_orig}])
     end.
 
 check_drain_failure_stats(Node) ->
@@ -138,19 +139,20 @@ check_drain_failure_stats(Node) ->
     yz_rt:check_stat_values(Stats, Pairs).
 
 confirm_drain_fsm_timeout(Cluster) ->
+    lager:info("Starting confirm_drain_fsm_timeout"),
     yz_stat:reset(),
     [rpc:call(
-        Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 500])
+        Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 250])
             || Node <- Cluster],
     try
         yz_rt:load_intercept_code(Cluster),
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_sleep_1s),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_fsm, [{{resume_workers, 1}, resume_workers_sleep_1s}]),
         yz_rt:drain_solrqs(Cluster),
         yz_rt:wait_until(Cluster, fun check_drain_timeout_stats/1),
 
         lager:info("confirm_drain_fsm_timeout ok")
     after
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_orig),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_fsm, [{{resume_workers, 1}, resume_workers_orig}]),
         [rpc:call(
             Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 60000])
                 || Node <- Cluster]
@@ -170,17 +172,21 @@ check_drain_timeout_stats(Node) ->
     yz_rt:check_stat_values(Stats, Pairs).
 
 confirm_drain_fsm_kill(Cluster) ->
+    lager:info("Starting confirm_drain_fsm_kill"),
     [rpc:call(
         Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 10])
         || Node <- Cluster],
+    %% technically not needed for this test (because the cancel intercept will
+    %% just return timeout), but added for completeness
     [rpc:call(
         Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_CANCEL_TIMEOUT, 10])
         || Node <- Cluster],
     try
         yz_test_listener:start(),
         yz_rt:load_intercept_code(Cluster),
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_sleep_5s),
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_mgr, unlink_and_kill, 2, count_unlink_and_kill),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_fsm, [{{resume_workers, 1}, resume_workers_sleep_1s},
+                                                           {{cancel, 2}, cancel_timeout}]),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_mgr, [{{unlink_and_kill, 2}, count_unlink_and_kill}]),
         yz_rt:drain_solrqs(Cluster),
         yz_rt:wait_until(Cluster, fun check_drain_cancel_timeout_stats/1),
 
@@ -188,8 +194,9 @@ confirm_drain_fsm_kill(Cluster) ->
 
         lager:info("confirm_drain_fsm_kill ok")
     after
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_fsm, prepare, 2, prepare_orig),
-        yz_rt:add_intercept(Cluster, yz_solrq_drain_mgr, unlink_and_kill, 2, unlink_and_kill_orig),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_fsm, [{{resume_workers, 1}, resume_workers_orig},
+                                                           {{cancel, 2}, cancel_orig}]),
+        yz_rt:add_intercepts(Cluster, yz_solrq_drain_mgr, [{{unlink_and_kill, 2}, unlink_and_kill_orig}]),
         yz_test_listener:stop(),
         [rpc:call(
             Node, application, set_env, [?YZ_APP_NAME, ?SOLRQ_DRAIN_TIMEOUT, 60000])
@@ -214,6 +221,7 @@ check_drain_cancel_timeout_stats(Node) ->
 
 
 confirm_batch_size(Cluster, PBConn, BKey, Index) ->
+    lager:info("Starting confirm_batch_size"),
     %% First, put one less than the min batch size and expect that there are no
     %% search results (because the index operations are queued).
     Count = ?SOLRQ_BATCH_MIN_SETTING - 1,
@@ -246,6 +254,7 @@ confirm_batch_size(Cluster, PBConn, BKey, Index) ->
     ok.
 
 confirm_hwm(Cluster, PBConn, Bucket, Index, HWM) ->
+    lager:info("Starting confirm_hwm"),
     yz_rt:drain_solrqs(Cluster),
     {OldMin, OldMax, OldDelay} = set_index(Cluster, Index, 1, 100, 100),
     try
@@ -267,6 +276,7 @@ confirm_hwm(Cluster, PBConn, Bucket, Index, HWM) ->
 gteq(A, B) -> A >= B.
 
 confirm_draining(Cluster, PBConn, Bucket, Index) ->
+    lager:info("Starting confirm_draining"),
     Count = ?SOLRQ_BATCH_MIN_SETTING - 1,
     Count = put_objects(PBConn, Bucket, Count),
     yz_rt:commit(Cluster, Index),
@@ -278,6 +288,7 @@ confirm_draining(Cluster, PBConn, Bucket, Index) ->
     ok.
 
 confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
+    lager:info("Starting confirm_requeue_undelivered"),
     yz_rt:load_intercept_code(Node),
     yz_rt:intercept_index_batch(Node, index_batch_returns_other_error),
 
@@ -300,6 +311,7 @@ confirm_requeue_undelivered([Node|_] = Cluster, PBConn, BKey, Index) ->
     ok.
 
 confirm_no_contenttype_data(Cluster, PBConn, BKey, Index) ->
+    lager:info("Starting confirm_no_contenttype_data"),
     yz_rt:set_index(Cluster, Index, 1, 100, 100),
     Count = 1,
     Count = put_no_contenttype_objects(PBConn, BKey, Count),
@@ -309,6 +321,7 @@ confirm_no_contenttype_data(Cluster, PBConn, BKey, Index) ->
     ok.
 
 confirm_purge_strategy(Cluster, PBConn) ->
+    lager:info("Starting confirm_purge_strategy"),
     confirm_purge_one_strategy(Cluster, PBConn,
                                {?BUCKET5, ?INDEX5}),
     confirm_purge_idx_strategy(Cluster, PBConn,
