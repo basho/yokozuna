@@ -194,7 +194,12 @@ key_exchange(timeout, S=#state{index=Index,
     AccFun = fun(KeyDiffs, Accum) ->
         hashtree_compare_accum_fun(Index, KeyDiffs, Accum)
     end,
-    case yz_index_hashtree:compare(IndexN, Remote, AccFun, {0, 0}, YZTree) of
+    async_do_compare(IndexN, Remote, AccFun, YZTree),
+    {next_state, key_exchange, S};
+
+key_exchange({compare_complete, CompareResult}, State=#state{index=Index,
+                                                         index_n=IndexN}) ->
+    case CompareResult of
         {error, Reason} ->
             lager:error("An error occurred comparing hashtrees.  Error: ~p", [Reason]);
         {0, 0} ->
@@ -204,7 +209,19 @@ key_exchange(timeout, S=#state{index=Index,
             lager:info("Will delete ~p keys and repair ~b keys of partition ~p for preflist ~p",
                        [YZDeleteCount, YZRepairCount, Index, IndexN])
     end,
-    {stop, normal, S}.
+    {stop, normal, State}.
+
+async_do_compare(IndexN, Remote, AccFun, YZTree) ->
+    ExchangePid = self(),
+    spawn_link(
+        fun() ->
+            CompareResult = yz_index_hashtree:compare(IndexN, Remote, AccFun, {0, 0}, YZTree),
+            compare_complete(ExchangePid, CompareResult)
+        end).
+
+compare_complete(ExchangePid, CompareResult) ->
+    gen_fsm:send_event(ExchangePid, {compare_complete, CompareResult}).
+
 
 %%%===================================================================
 %%% Internal functions
