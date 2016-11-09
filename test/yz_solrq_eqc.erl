@@ -574,7 +574,7 @@ start_solrqs(Partitions, Indexes) ->
     %% Ring retrieval for required workers
     meck:expect(riak_core_ring_manager, get_my_ring, fun() -> {ok, not_a_real_ring} end),
     meck:expect(yz_misc, owned_and_next_partitions, fun(_, _) -> unique_entries(Partitions) end),
-    meck:expect(yz_index, get_indexes_from_meta, fun() -> unique_entries(Indexes) end),
+    meck:expect(yz_index, get_indexes_from_meta, fun() -> unique_entries(Indexes) -- [?YZ_INDEX_TOMBSTONE] end),
     %% And start up supervisors to own the solrq/solrq helper
     _ = yz_solrq_sup:start_link(),
     _ = yz_solrq_sup:sync_active_queue_pairs().
