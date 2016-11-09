@@ -54,11 +54,11 @@
 %%% API functions
 %%%===================================================================
 
--spec index(index_name(), bkey(), obj(), write_reason(), p()) -> ok.
-index(Index, BKey, Obj, Reason, P) ->
+-spec index(index_name(), bkey(), object_pair(), write_reason(), p()) -> ok.
+index(Index, BKey, ObjectPair, Reason, P) ->
     WorkerName = yz_solrq:worker_regname(Index, P),
     ok = ensure_worker(Index, P),
-    yz_solrq_worker:index(WorkerName, BKey, Obj, Reason, P).
+    yz_solrq_worker:index(WorkerName, BKey, ObjectPair, Reason, P).
 
 %% @doc From the hash, return the registered name of a queue
 -spec worker_regname(index_name(), p()) -> regname().
