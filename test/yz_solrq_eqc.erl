@@ -572,8 +572,10 @@ wait_for_vnodes_msgs([Pid | Pids], Ref) ->
 
 start_solrqs(Partitions, Indexes) ->
     %% Ring retrieval for required workers
-    meck:expect(riak_core_ring_manager, get_my_ring, fun() -> {ok, not_a_real_ring} end),
-    meck:expect(yz_misc, owned_and_next_partitions, fun(_, _) -> unique_entries(Partitions) end),
+    UniquePartitions = unique_entries(Partitions),
+    meck:expect(riak_core_vnode_manager, all_vnodes, fun(riak_kv_vnode) ->
+        [{riak_kv_vnode, Idx, fake_pid} || Idx <- UniquePartitions]
+                                                     end),
     meck:expect(yz_index, get_indexes_from_meta, fun() -> unique_entries(Indexes) -- [?YZ_INDEX_TOMBSTONE] end),
     %% And start up supervisors to own the solrq/solrq helper
     _ = yz_solrq_sup:start_link(),
