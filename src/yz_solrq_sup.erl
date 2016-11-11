@@ -104,15 +104,18 @@ validate_child_started(Error) ->
     throw(Error).
 
 required_queues() ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    Partitions = yz_misc:owned_and_next_partitions(node(), Ring),
-    Indexes = yz_index:get_indexes_from_meta(),
-    [{Index, Partition} ||
-        Partition <- ordsets:to_list(Partitions),
-        Index <- Indexes].
-%% TODO: we shouldn't need ?YZ_INDEX_TOMBSTONE if we just update the YZ AAE tree
-%% when we call index rather than pushing the value all the way to the solrq
-        %%Index =/= ?YZ_INDEX_TOMBSTONE].
+    AllVnodes = riak_core_vnode_manager:all_vnodes(riak_kv_vnode),
+    Partitions = [Idx || {_Mod, Idx, _Pid} <- AllVnodes],
+    %% Indexes includes ?YZ_INDEX_TOMBSTONE because we need to write the entries
+    %% for non-indexed data to the YZ AAE tree. Excluding them makes this process
+    %% constantly start and stop these queues.
+    Indexes = yz_index:get_indexes_from_meta() ++ [?YZ_INDEX_TOMBSTONE],
+    CalculatedQueues = [{Index, Partition} ||
+        Partition <- Partitions,
+        Index <- Indexes],
+    CalculatedQueues.
+    %% TODO: we shouldn't need ?YZ_INDEX_TOMBSTONE if we just update the YZ AAE tree
+    %% when we call index rather than pushing the value all the way to the solrq
 
 sync_active_queue_pairs() ->
     ActiveQueues = active_queues(),

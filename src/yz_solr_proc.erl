@@ -191,7 +191,13 @@ handle_info({'EXIT', _Port, Reason}, S=?S_MATCH) ->
             {stop, normal, S};
         _ ->
             {stop, {port_exit, Reason}, S}
-    end.
+    end;
+
+%% ibrowse does not protect from late replies - handle them here
+handle_info({Ref, _Msg} = Message, State)
+    when is_reference(Ref) ->
+    lager:info("Received late reply: ~p", [Message]),
+    {noreply, State}.
 
 code_change(_, S, _) ->
     {ok, S}.
