@@ -230,7 +230,7 @@ owned_and_next_partitions(Node, Ring) ->
 
 %% @doc Filter out all entries for partitions that are not currently owned or
 %%      this node is a future owner of.
--spec filter_out_fallbacks(ordset(p), solr_entries()) -> [{bkey(), obj(),
+-spec filter_out_fallbacks(ordset(p), solr_entries()) -> [{bkey(), object_pair(),
     write_reason(), p()}].
 filter_out_fallbacks(OwnedAndNext, Entries) ->
     lists:filter(fun({_Bkey, _Obj, _Reason, P}) ->

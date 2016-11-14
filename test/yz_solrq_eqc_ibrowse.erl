@@ -32,7 +32,7 @@
     code_change/3]).
 
 -ifdef(EQC).
-%% -define(EQC_DEBUG(S, F), eqc:format(S, F)).
+%%-define(EQC_DEBUG(S, F), io:fwrite(user, S, F)).
 -define(EQC_DEBUG(S, F), ok).
 -else.
 -define(EQC_DEBUG(S, F), ok).
@@ -83,7 +83,7 @@ handle_call(
         expected=Expected
     } = State
 ) ->
-    ?EQC_DEBUG("In get_response", []),
+    ?EQC_DEBUG("In get_response~n", []),
     SolrReqs = parse_solr_reqs(mochijson2:decode(B)),
     {Keys, Res, NewFailed} = get_response(SolrReqs, KeyRes, AlredyFailed),
     WrittenKeys = case Res of
@@ -114,7 +114,7 @@ handle_call({wait, Keys}, From, #state{written=Written} = State) ->
                 true ->
                     {reply, ok, State};
                 _ ->
-                    ?EQC_DEBUG("Process ~p waiting for keys...: ~p", [From, Keys]),
+                    ?EQC_DEBUG("Process ~p waiting for keys...: ~p~n", [From, Keys]),
                     {noreply, State#state{root=From, expected=lists:usort(Keys)}}
             end
     end;
@@ -146,6 +146,8 @@ parse_solr_req({<<"add">>, {struct, [{<<"doc">>, Doc}]}}) ->
     {add, find_key_field(Doc)};
 parse_solr_req({<<"delete">>, {struct, [{<<"query">>, Query}]}}) ->
     {delete, parse_delete_query(Query)};
+parse_solr_req({<<"delete">>, {struct, [{<<"id">>, Id}]}}) ->
+    {delete, parse_delete_id(Id)};
 parse_solr_req({delete, _Query}) ->
     {delete, could_parse_bkey};
 parse_solr_req({Other, Thing}) ->
@@ -156,6 +158,10 @@ find_key_field({struct, Props}) ->
 
 parse_delete_query(Query) ->
     {match, [Key]} = re:run(Query, "(XKEYX[0-9]+)",[{capture,[1],binary}]),
+    Key.
+
+parse_delete_id(Id) ->
+    {match, [Key]} = re:run(Id, "(XKEYX[0-9]+)",[{capture,[1],binary}]),
     Key.
 
 

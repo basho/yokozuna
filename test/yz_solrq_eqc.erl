@@ -139,7 +139,6 @@ prop_ok() ->
                 Pids = ?MODULE:send_entries(PE),
                 yz_solrq_drain_mgr:drain(),
                 wait_for_vnodes(Pids, timer:seconds(20)),
-                timer:sleep(500),
                 catch yz_solrq_eqc_ibrowse:wait(expected_keys(Entries)),
                 IBrowseKeys = yz_solrq_eqc_ibrowse:keys(),
                 MeltsByIndex = melts_by_index(Entries),
@@ -152,7 +151,7 @@ prop_ok() ->
                             eqc:format("melts_by_index: ~p~n", [MeltsByIndex]),
                             eqc:format("Entries: ~p\n", [Entries]),
                             %debug_history([ibrowse, solr_responses, yz_kv])
-                            debug_history([solr_responses])
+                            eqc:format("debug history: ~p\n", [debug_history([solr_responses, ibrowse])])
                         end,
                         begin
                         %% For each vnode, spawn a process and start sending
@@ -176,7 +175,7 @@ prop_ok() ->
                                         %% TODO Modify ordering test to center around key order, NOT partition order.
                                         %% requires a fairly significant change to the test structure, becuase currently
                                         %% all keys are unique.
-                                        {insert_order, ordered(expected_entry_keys(PE), IBrowseKeys)},
+                                        %% {insert_order, ordered(expected_entry_keys(PE), IBrowseKeys)},
                                         {melts, equals(MeltsByIndex, errors_by_index(Entries))}
                                     ])
                         %        )
@@ -541,7 +540,7 @@ send_vnode_entries(Runner, P, Events)  ->
     Runner ! {self(), done}.
 
 make_obj(B,K) ->
-    riak_object:new(B, K, K, "application/yz_solrq_eqc"). % Set Key as value
+    {riak_object:new(B, K, K, "application/yz_solrq_eqc"), no_old_object}. % Set Key as value
 
 %% Wait for send_entries - should probably set a global timeout and
 %% and look for that instead
@@ -573,9 +572,11 @@ wait_for_vnodes_msgs([Pid | Pids], Ref) ->
 
 start_solrqs(Partitions, Indexes) ->
     %% Ring retrieval for required workers
-    meck:expect(riak_core_ring_manager, get_my_ring, fun() -> {ok, not_a_real_ring} end),
-    meck:expect(riak_core_ring, my_indices, fun(_) -> unique_entries(Partitions) end),
-    meck:expect(yz_index, get_indexes_from_meta, fun() -> unique_entries(Indexes) end),
+    UniquePartitions = unique_entries(Partitions),
+    meck:expect(riak_core_vnode_manager, all_vnodes, fun(riak_kv_vnode) ->
+        [{riak_kv_vnode, Idx, fake_pid} || Idx <- UniquePartitions]
+                                                     end),
+    meck:expect(yz_index, get_indexes_from_meta, fun() -> unique_entries(Indexes) -- [?YZ_INDEX_TOMBSTONE] end),
     %% And start up supervisors to own the solrq/solrq helper
     _ = yz_solrq_sup:start_link(),
     _ = yz_solrq_sup:sync_active_queue_pairs().
@@ -587,8 +588,7 @@ start_solrqs(Partitions, Indexes) ->
 %%     {parse_solr_url(Url), parse_solr_reqs(mochijson2:decode(JsonIolist))}.
 
 debug_history(Mods) ->
-    [io:format("~p\n====\n~p\n\n", [Mod, meck:history(Mod)]) || Mod <- Mods],
-    ok.
+    [{Mod, meck:history(Mod)} || Mod <- Mods].
 
 -else. %% EQC is not defined
 

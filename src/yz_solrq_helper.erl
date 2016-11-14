@@ -34,8 +34,8 @@
 
 %% TODO: Dynamically pulse_instrument.
 -ifdef(EQC).
-%% -define(EQC_DEBUG(S, F), ok).
--define(EQC_DEBUG(S, F), eqc:format(S, F)).
+-define(EQC_DEBUG(S, F), _=element(1, {S, F}), ok).
+%%-define(EQC_DEBUG(S, F), eqc:format(S, F)).
 %%-define(EQC_DEBUG(S, F), io:fwrite(user, S, F)).
 debug_entries(Entries) ->
     [erlang:element(1, Entry) || Entry <- Entries].
@@ -150,9 +150,9 @@ do_batch(Index, Entries0) ->
     LI = yz_cover:logical_index(Ring),
     OwnedAndNext = yz_misc:owned_and_next_partitions(node(), Ring),
 
-    Entries1 = [{BKey, Obj, Reason, P,
-        riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj, P)} ||
-        {BKey, Obj, Reason, P} <-
+    Entries1 = [{BKey, {Obj, _OldObj}, Reason, P,
+                 riak_kv_util:get_index_n(BKey), yz_kv:hash_object(Obj, P)} ||
+        {BKey, {Obj, _OldObj}, Reason, P} <-
             yz_misc:filter_out_fallbacks(OwnedAndNext, Entries0)],
     case update_solr(Index, LI, Entries1) of
         ok ->
@@ -160,23 +160,20 @@ do_batch(Index, Entries0) ->
             ok;
         {ok, Entries2} ->
             update_aae_and_repair_stats(Entries2),
-            {ok, [{BKey, Obj, Reason, P} || {BKey, Obj, Reason, P, _, _} <- Entries2]};
+            {ok, [{BKey, Objects, Reason, P} || {BKey, Objects, Reason, P, _, _} <- Entries2]};
         {error, Reason} ->
             {error, Reason}
     end.
 
 
-%% @doc Entries is [{Index, BKey, Obj, Reason, P, ShortPL, Hash}]
+%% @doc Entries is [{BKey, Obj, Reason, P, ShortPL, Hash}]
 -spec update_solr(index_name(), logical_idx(), solr_entries()) ->
                          ok | {ok, SuccessEntries :: solr_entries()} |
                          {error, fuse_blown} | {error, tuple()}.
 update_solr(_Index, _LI, []) -> % nothing left after filtering fallbacks
     ok;
-update_solr(Index, LI, Entries) when ?YZ_SHOULD_INDEX(Index) ->
+update_solr(Index, LI, Entries0) when ?YZ_SHOULD_INDEX(Index) ->
     case yz_fuse:check(Index) of
-        ok ->
-            send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
-                                      Entries);
         blown ->
             %% ?EQC_DEBUG(                       "Fuse Blown: can't currently send solr "
             %%       "operations for index ~s", [Index]),
@@ -186,8 +183,8 @@ update_solr(Index, LI, Entries) when ?YZ_SHOULD_INDEX(Index) ->
             %% yz_index:add_index/1 on 1st creation or diff-check.
             %% We send entries until we can ask again for
             %% ok | error, as we wait for the tick.
-            send_solr_ops_for_entries(Index, solr_ops(LI, Entries),
-                                      Entries)
+            Ops = solr_ops(LI, Entries0),
+            send_solr_ops_for_entries(Index, Ops, Entries0)
     end;
 update_solr(_Index, _LI, _Entries) ->
     ok.
@@ -198,50 +195,83 @@ solr_ops(LI, Entries) ->
     [get_ops_for_entry(Entry, LI) || Entry <- Entries].
 
 -spec get_ops_for_entry(solr_entry(), logical_idx()) -> solr_ops().
-get_ops_for_entry({BKey, Obj0, Reason, P, ShortPL, Hash}, LI) ->
+get_ops_for_entry({BKey, {Obj0, _OldObj}=Objects, Reason, P, ShortPL, Hash}, LI) ->
     {Bucket, _} = BKey,
     BProps = riak_core_bucket:get_bucket(Bucket),
     Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
     ObjValues = riak_object:get_values(Obj),
     Action = get_reason_action(Reason),
-    get_ops_for_entry_action(Action, ObjValues, LI, P, Obj, BKey, ShortPL,
+    get_ops_for_entry_action(Action, ObjValues, LI, P, Objects, BKey, ShortPL,
         Hash, BProps).
 
 -spec get_ops_for_entry_action(write_action(), [riak_object:value()],
-        logical_idx(), p(), obj(), bkey(), short_preflist(), hash(),
+        logical_idx(), p(), object_pair(), bkey(), short_preflist(), hash(),
         riak_core_bucket:properties()) -> solr_ops().
-get_ops_for_entry_action(_Action, [notfound], _LI, _P, _Obj, BKey,
-        _ShortPL, _Hash, _BProps) ->
-    [{delete, yz_solr:encode_delete({bkey, BKey})}];
-get_ops_for_entry_action(anti_entropy_delete, _ObjValues, LI, P, Obj, _BKey,
-        _ShortPL, _Hash, _BProps) ->
+get_ops_for_entry_action(_Action, [notfound], LI, P, _Objects, BKey,
+                         _ShortPL, _Hash, _BProps) ->
+    LP = yz_cover:logical_partition(LI, P),
+    [{delete, yz_solr:encode_delete({bkey, BKey, LP})}];
+get_ops_for_entry_action(anti_entropy_delete, _ObjValues, LI, P, _FakeObjects, BKey,
+                         _ShortPL, _Hash, _BProps) ->
+    %% anti-entropy is the "case of last resort" and at this point
+    %% we need to do a cleanup of _any_ documents that may be
+    %% floating around.
+    get_ops_for_object_cleanup(BKey, LI, P);
+get_ops_for_entry_action(anti_entropy, _ObjValues, LI, P, {Obj, _OldObj}, BKey,
+                         ShortPL, Hash, _BProps) ->
+    %% anti-entropy is the "case of last resort" and at this point
+    %% we need to do a cleanup of _any_ documents that may be
+    %% floating around.
+    DeleteOpsForEntry = get_ops_for_object_cleanup(BKey, LI, P),
+    AddOpsForEntry = get_ops_for_add(LI, ShortPL, P, Obj, Hash),
+    [DeleteOpsForEntry, AddOpsForEntry];
+get_ops_for_entry_action(delete, _ObjValues, LI, P, {Obj, _OldObj}, _BKey,
+                         _ShortPL, _Hash, BProps) ->
+    [get_ops_for_deletes(LI, P, Obj, BProps)];
+
+get_ops_for_entry_action(Action, _ObjValues, LI, P, {Obj, OldObj}, _BKey,
+                         ShortPL, Hash, BProps) when
+                                Action == handoff;
+                                Action == put ->
+    DeleteOps = get_ops_for_deletes(LI, P, OldObj, BProps),
+    AddOps = get_ops_for_add(LI, ShortPL, P, Obj, Hash),
+    [DeleteOps, AddOps].
+
+get_ops_for_object_cleanup(BKey, LI, P) ->
+    LP = yz_cover:logical_partition(LI, P),
+    [[{delete, yz_solr:encode_delete({bkey, BKey, LP})}]].
+
+get_ops_for_add(LI, ShortPL, P, Obj, Hash) ->
+    LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
+    LP = yz_cover:logical_partition(LI, P),
+    Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
+                            ?INT_TO_BIN(LP)),
+    AddOps = yz_doc:adding_docs(Docs),
+    [{add, yz_solr:encode_doc(Doc)} ||
+        Doc <- AddOps].
+
+
+get_ops_for_deletes(_LI, _P, no_old_object, _BProps) ->
+    [];
+get_ops_for_deletes(LI, P, Obj, BProps) ->
+    case yz_kv:siblings_permitted(Obj, BProps) of
+        true ->
+            get_ops_for_sibling_deletes(LI, P, Obj);
+        _ ->
+            get_ops_for_no_sibling_deletes(LI, P, Obj)
+    end.
+
+get_ops_for_no_sibling_deletes(LI, P, Obj) ->
+    LP = yz_cover:logical_partition(LI, P),
+    DocId = yz_doc:doc_id(Obj, ?INT_TO_BIN(LP)),
+    [{delete, yz_solr:encode_delete({id, DocId})}].
+
+get_ops_for_sibling_deletes(LI, P, Obj) ->
     LP = yz_cover:logical_partition(LI, P),
     DocIds = yz_doc:doc_ids(Obj, ?INT_TO_BIN(LP)),
-    DeleteOps =
-        [{delete, yz_solr:encode_delete({id, DocId})}
-            || DocId <- DocIds],
-    [DeleteOps];
-get_ops_for_entry_action(delete, _ObjValues, _LI, _P, _Obj, BKey,
-        _ShortPL, _Hash, _BProps) ->
-    [{delete, yz_solr:encode_delete({bkey, BKey})}];
-get_ops_for_entry_action(Action, _ObjValues, LI, P, Obj, BKey,
-        ShortPL, Hash, BProps) when Action == handoff;
-                                    Action == put;
-                                    Action == anti_entropy ->
-            LFPN = yz_cover:logical_partition(LI, element(1, ShortPL)),
-            LP = yz_cover:logical_partition(LI, P),
-            Docs = yz_doc:make_docs(Obj, Hash, ?INT_TO_BIN(LFPN),
-                ?INT_TO_BIN(LP)),
-            AddOps = yz_doc:adding_docs(Docs),
-            DeleteOps = yz_kv:delete_operation(BProps, Obj, Docs, BKey,
-                LP),
-
-            OpsForEntry = [[{delete, yz_solr:encode_delete(DeleteOp)} ||
-                DeleteOp <- DeleteOps],
-                [{add, yz_solr:encode_doc(Doc)}
-                    || Doc <- AddOps]
-            ],
-            [OpsForEntry].
+    DeleteOps = [{delete, yz_solr:encode_delete({id, DocId})}
+                    || DocId <- DocIds],
+    [DeleteOps].
 
 %% @doc A function that takes in an `Index', a list of `Ops' and the list
 %%      of `Entries', and attempts to batch_index them into Solr.
@@ -256,8 +286,9 @@ get_ops_for_entry_action(Action, _ObjValues, LI, P, Obj, BKey,
                                        {error, tuple()}.
 send_solr_ops_for_entries(Index, Ops, Entries) ->
     T1 = os:timestamp(),
+    PreparedOps = prepare_ops_for_batch(Index, Ops),
     %% ?EQC_DEBUG("send_solr_ops_for_entries: About to send entries. ~p", Entries),
-    case yz_solr:index_batch(Index, prepare_ops_for_batch(Ops)) of
+    case yz_solr:index_batch(Index, PreparedOps) of
         ok ->
             yz_stat:index_end(Index, length(Ops), ?YZ_TIME_ELAPSED(T1)),
             ok;
@@ -295,9 +326,8 @@ send_solr_single_ops(Index, Ops) ->
                   end,
                   Ops).
 
-
 single_op_batch(Index, Op) ->
-    Ops = prepare_ops_for_batch([Op]),
+    Ops = prepare_ops_for_batch(Index, [Op]),
     case yz_solr:index_batch(Index, Ops) of
         ok ->
             T1 = os:timestamp(),
@@ -382,8 +412,10 @@ get_reason_action(Reason) when is_tuple(Reason) ->
 get_reason_action(Reason) ->
     Reason.
 
--spec prepare_ops_for_batch(solr_ops()) -> solr_entries().
-prepare_ops_for_batch(Ops) ->
+-define(QUERY(Bin), {struct, [{'query', Bin}]}).
+
+-spec prepare_ops_for_batch(index_name(), solr_ops()) -> solr_entries().
+prepare_ops_for_batch(_Index, Ops) ->
     %% Flatten combined operators for a batch.
     lists:flatten(Ops).
 

@@ -34,6 +34,8 @@
                 built :: integer(),
                 timeout :: pos_integer()}).
 
+-type repair_count() :: {DeleteCount::non_neg_integer(), RepairCount::non_neg_integer()}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -189,26 +191,37 @@ key_exchange(timeout, S=#state{index=Index,
                 (_, _) ->
                      ok
              end,
+    AccFun = fun(KeyDiffs, Accum) ->
+        hashtree_compare_accum_fun(Index, KeyDiffs, Accum)
+    end,
+    async_do_compare(IndexN, Remote, AccFun, YZTree),
+    {next_state, key_exchange, S};
 
-    AccFun = fun(KeyDiff, Count) ->
-                     lists:foldl(fun(Diff, InnerCount) ->
-                                     case repair(Index, Diff) of
-                                         full_repair -> InnerCount + 1;
-                                         _ -> InnerCount
-                                     end
-                                 end, Count, KeyDiff)
-             end,
-    case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
+key_exchange({compare_complete, CompareResult}, State=#state{index=Index,
+                                                         index_n=IndexN}) ->
+    case CompareResult of
         {error, Reason} ->
             lager:error("An error occurred comparing hashtrees.  Error: ~p", [Reason]);
-        0 ->
+        {0, 0} ->
             yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
-        Count ->
-            yz_stat:detected_repairs(Count),
-            lager:info("Will repair ~b keys of partition ~p for preflist ~p",
-                       [Count, Index, IndexN])
+        {YZDeleteCount, YZRepairCount} ->
+            yz_stat:detected_repairs(YZDeleteCount + YZRepairCount),
+            lager:info("Will delete ~p keys and repair ~b keys of partition ~p for preflist ~p",
+                       [YZDeleteCount, YZRepairCount, Index, IndexN])
     end,
-    {stop, normal, S}.
+    {stop, normal, State}.
+
+async_do_compare(IndexN, Remote, AccFun, YZTree) ->
+    ExchangePid = self(),
+    spawn_link(
+        fun() ->
+            CompareResult = yz_index_hashtree:compare(IndexN, Remote, AccFun, {0, 0}, YZTree),
+            compare_complete(ExchangePid, CompareResult)
+        end).
+
+compare_complete(ExchangePid, CompareResult) ->
+    gen_fsm:send_event(ExchangePid, {compare_complete, CompareResult}).
+
 
 %%%===================================================================
 %%% Internal functions
@@ -222,6 +235,30 @@ exchange_bucket_kv(Tree, IndexN, Level, Bucket) ->
 exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
+-spec hashtree_compare_accum_fun(p(), [keydiff()], repair_count()) ->
+    repair_count().
+hashtree_compare_accum_fun(Index, KeyDiffs, Accum) ->
+    lists:foldl(
+        fun(KeyDiff, InnerAccum) ->
+            repair_fold_func(Index, KeyDiff, InnerAccum)
+        end,
+        Accum,
+        KeyDiffs
+    ).
+
+-spec repair_fold_func(p(), keydiff(), repair_count()) ->
+    repair_count().
+repair_fold_func(Index, KeyDiff, Accum) ->
+    RepairResult = repair(Index, KeyDiff),
+    update_repair_func_accum(RepairResult, KeyDiff, Accum).
+
+update_repair_func_accum(full_repair, _KeyDiff={remote_missing, _KeyBin}, {YZDeleteCount, YZRepairCount}) ->
+    {YZDeleteCount + 1, YZRepairCount};
+update_repair_func_accum(full_repair, _KeyDiff, {YZDeleteCount, YZRepairCount}) ->
+    {YZDeleteCount, YZRepairCount + 1};
+update_repair_func_accum(_RepairType, _KeyDiff, Accum) ->
+    Accum.
+
 %% @private
 %%
 %% @doc If Yokozuna gets {remote_missing, _} b/c yz has it, but kv doesn't.
@@ -234,16 +271,11 @@ repair(Partition, {remote_missing, KeyBin}) ->
     Index = yz_kv:get_index(BKey),
     FakeObj = fake_kv_object(BKey),
     yz_entropy_mgr:throttle(),
-    case yz_kv:should_index(Index) of
-        true ->
-            Repair = full_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
-            Repair;
-        false ->
-            Repair = tree_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
-            Repair
-    end;
+    Repair = determine_repair_type(Index),
+    yz_solrq:index(Index, BKey, {FakeObj, no_old_object},
+                   {anti_entropy_delete, Repair}, Partition),
+    Repair;
+
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
@@ -254,18 +286,10 @@ repair(Partition, {_Reason, KeyBin}) ->
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
             yz_entropy_mgr:throttle(),
-            case yz_kv:should_index(Index) of
-                true ->
-                    Repair = full_repair,
-                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
-                                   Partition),
-                    Repair;
-                false ->
-                    Repair = tree_repair,
-                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
-                                   Partition),
-                    Repair
-            end;
+            Repair = determine_repair_type(Index),
+            yz_solrq:index(Index, BKey, {Obj, no_old_object},
+                           {anti_entropy, Repair}, Partition),
+            Repair;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
             %% is fine because hashtree updates are async and the
@@ -275,6 +299,14 @@ repair(Partition, {_Reason, KeyBin}) ->
             %% the case of other errors just ignore them and let the
             %% next exchange retry the repair if it is still needed.
             failed_repair
+    end.
+
+determine_repair_type(Index) ->
+    case yz_kv:should_index(Index) of
+        true ->
+            full_repair;
+        false ->
+            tree_repair
     end.
 
 %% @private

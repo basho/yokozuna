@@ -217,11 +217,13 @@ handle_cast({exchange_status, Pid, Index, {StartIdx, N}, Status}, S) ->
     {noreply, S2};
 
 handle_cast(clear_trees, S) ->
+    lager:info("Clearing YZ hashtrees and stopping all current exchanges."),
     clear_all_exchanges(S#state.exchanges),
     clear_all_trees(S#state.trees),
     {noreply, S};
 
 handle_cast(expire_trees, S) ->
+    lager:info("Expiring YZ hashtrees."),
     ok = expire_all_trees(S#state.trees),
     {noreply, S};
 
