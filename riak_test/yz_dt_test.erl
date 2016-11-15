@@ -8,11 +8,13 @@
 -define(COUNTER, <<"counters">>).
 -define(SET, <<"sets">>).
 -define(HLL, <<"hlls">>).
+-define(GSET, <<"gsets">>).
 -define(MAP, <<"maps">>).
 -define(TYPES,
         [{?COUNTER, counter},
          {?SET, set},
          {?HLL, hll},
+         {?GSET, gset},
          {?MAP, map}]).
 
 -import(yz_rt, [create_index/2,
@@ -40,12 +42,14 @@ confirm() ->
     counter_update(PB),
     set_update(PB),
     hll_update(PB),
+    gset_update(PB),
     map_update(PB),
 
     %% Search the index for the types
     counter_search(ANode),
     set_search(ANode),
     hll_search(ANode),
+    gset_search(ANode),
     map_search(ANode),
 
     pass.
@@ -68,6 +72,12 @@ set_update(PB) ->
                           [<<"Riak">>, <<"Couchbase">>, <<"CouchDB">>]),
     ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?SET, <<"databass">>}, <<"dynamo">>, riakc_set:to_op(Dynamos))),
     ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?SET, <<"databass">>}, <<"erlang">>, riakc_set:to_op(Erlangs))).
+
+gset_update(PB) ->
+    Dynamos = lists:foldl(fun riakc_gset:add_element/2, riakc_gset:new(), [<<"Riak">>, <<"Cassandra">>, <<"Voldemort">>, <<"Couchbase">>]),
+    Erlangs = lists:foldl(fun riakc_gset:add_element/2, riakc_gset:new(), [<<"Riak">>, <<"Couchbase">>, <<"CouchDB">>]),
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?GSET, <<"databass">>}, <<"dynamo">>, riakc_gset:to_op(Dynamos))),
+    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?GSET, <<"databass">>}, <<"erlang">>, riakc_gset:to_op(Erlangs))).
 
 set_search(Node) ->
     ?assertSearch(Node, ?SET, "set", "Riak", 2),
@@ -102,6 +112,12 @@ hll_search(Node) ->
     ?assertSearch(Node, ?HLL, "hll", "[4 TO 1000]", 1),
     ?assertSearch(Node, ?HLL, "hll", "[5 TO 1000]", 0),
     ?assertSearch(Node, ?HLL, "hll", "[0 TO 2]", 0).
+
+gset_search(Node) ->
+    ?assertSearch(Node, ?GSET, "gset", "Riak", 2),
+    ?assertSearch(Node, ?GSET, "gset", "CouchDB", 1),
+    ?assertSearch(Node, ?GSET, "gset", "Voldemort", 1),
+    ?assertSearch(Node, ?GSET, "gset", "C*", 2).
 
 map_update(PB) ->
     Sam = lists:foldl(fun({Key, Fun}, Map) ->
