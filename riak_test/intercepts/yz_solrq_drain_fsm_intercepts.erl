@@ -27,19 +27,24 @@
 prepare_crash(start, State) ->
     {stop, {error, something_bad_happened}, State}.
 
-
-%% Put a 5 second sleep in front of prepare.
-prepare_sleep_5s(start, State) ->
-    timer:sleep(5000),
-    ?M:prepare_orig(start, State).
-
-
-%% Put a 5 second sleep in front of prepare.
-prepare_sleep_1s(start, State) ->
+%% Put a 1 second sleep in front of resume_workers.
+resume_workers_sleep_1s(Pid) ->
     timer:sleep(1000),
-    ?M:prepare_orig(start, State).
+    ?M:resume_workers_orig(Pid).
 
-
-%% restore the original
+%% restore the original prepare
 prepare_orig(start, State) ->
     ?M:prepare_orig(start, State).
+
+%% restore the original resume_workers
+resume_workers_orig(Pid) ->
+    ?M:resume_workers_orig(Pid).
+
+%% Timeout on a cancel, full stop
+cancel_timeout(_Pid, _CancelTimeout) ->
+    lager:log(info, self(), "Intercepting cancel/2 and returning timeout"),
+    timeout.
+
+%% restore the original cancel
+cancel_orig(Pid, CancelTimeout) ->
+    ?M:cancel_orig(Pid, CancelTimeout).

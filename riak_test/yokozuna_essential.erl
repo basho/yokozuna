@@ -418,7 +418,10 @@ verify_correct_solrqs(Cluster) ->
     ?assertEqual(ok, rt:wait_until(Cluster, fun check_queues_match/1)).
 
 check_queues_match(Node) ->
-    CurrentIndexes = rpc:call(Node, yz_index, get_indexes_from_meta, []),
+    %% Current Indexes includes ?YZ_INDEX_TOMBSTONE because we need to write the entries
+    %% for non-indexed data to the YZ AAE tree. Excluding them makes the solrq supervisor
+    %% constantly start and stop these queues.
+    CurrentIndexes = rpc:call(Node, yz_index, get_indexes_from_meta, []) ++ [?YZ_INDEX_TOMBSTONE],
     OwnedPartitions = rt:partitions_for_node(Node),
     ActiveQueues = rpc:call(Node, yz_solrq_sup, active_queues, []),
     ExpectedQueueus = [{Index, Partition} || Index <- CurrentIndexes, Partition <- OwnedPartitions],

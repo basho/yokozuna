@@ -10,31 +10,34 @@
 -define(BUCKET_TYPE, <<"data">>).
 -define(INDEX1, <<"fruit_aae">>).
 -define(INDEX2, <<"fruitpie_aae">>).
--define(BUCKETWITHTYPE,
-        {?BUCKET_TYPE, ?INDEX2}).
+-define(BUCKETWITHTYPE, {?BUCKET_TYPE, ?INDEX2}).
 -define(BUCKET, ?INDEX1).
 -define(REPAIR_MFA, {yz_exchange_fsm, repair, 2}).
 -define(SPACER, "testfor spaces ").
 -define(AAE_THROTTLE_LIMITS, [{-1, 0}, {10000, 10}]).
--define(CFG,
-        [{riak_core,
-          [
-           {ring_creation_size, 16},
-           {default_bucket_props, [{n_val, ?N}]},
-           {handoff_concurrency, 10},
-           {vnode_management_timer, 1000}
-          ]},
-         {yokozuna,
-          [
-           {enabled, true},
-           {?SOLRQ_DRAIN_ENABLE, true},
-           {anti_entropy_tick, 1000},
-           %% allow AAE to build trees and exchange rapidly
-           {anti_entropy_build_limit, {100, 1000}},
-           {anti_entropy_concurrency, 8},
-           {aae_throttle_limits, ?AAE_THROTTLE_LIMITS}
-          ]}
-        ]).
+-define(CFG, [
+    {riak_core, [
+        {ring_creation_size, 16},
+        {default_bucket_props, [{n_val, ?N}]},
+        {handoff_concurrency, 10},
+        {vnode_management_timer, 1000}
+    ]},
+    {riak_kv, [
+        {force_hashtree_upgrade, true},
+        {anti_entropy_tick, 1000},
+        {anti_entropy_build_limit, {100, 1000}},
+        {anti_entropy_concurrency, 8}
+    ]},
+    {yokozuna, [
+        {enabled, true},
+        {?SOLRQ_DRAIN_ENABLE, true},
+        {anti_entropy_tick, 1000},
+        %% allow AAE to build trees and exchange rapidly
+        {anti_entropy_build_limit, {100, 1000}},
+        {anti_entropy_concurrency, 8},
+        {aae_throttle_limits, ?AAE_THROTTLE_LIMITS}
+    ]}
+]).
 
 confirm() ->
     Cluster = rt:build_cluster(5, ?CFG),
@@ -101,15 +104,14 @@ aae_run(Cluster, Bucket, Index) ->
 
             RepairCountBefore = get_cluster_repair_count(Cluster),
             yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-            NumKeys = [{Bucket, K} || K <- yz_rt:random_keys(?NUM_KEYS)],
-            NumKeysSpaces = [{Bucket, add_space_to_key(K)} ||
+            RandomBKeys = [{Bucket, K} || K <- yz_rt:random_keys(?NUM_KEYS)],
+            RandomBKeysWithSpaces = [{Bucket, add_space_to_key(K)} ||
                                 K <- yz_rt:random_keys(?NUM_KEYS_SPACES)],
-            {DelNumKeys, _ChangeKeys} = lists:split(length(NumKeys) div 2,
-                                                    NumKeys),
-            {DelNumKeysSpaces, _ChangeKeysSpaces} = lists:split(
-                                                length(NumKeysSpaces) div 2,
-                                                NumKeysSpaces),
-            AllDelKeys = DelNumKeys ++ DelNumKeysSpaces,
+            {RandomBKeysToDelete, _} = lists:split(length(RandomBKeys) div 2, RandomBKeys),
+            {RandomBKeysWithSpacesToDelete, _} = lists:split(
+                                                length(RandomBKeysWithSpaces) div 2,
+                                                RandomBKeysWithSpaces),
+            AllDelKeys = RandomBKeysToDelete ++ RandomBKeysWithSpacesToDelete,
             lager:info("Deleting ~p keys", [length(AllDelKeys)]),
             [delete_key_in_solr(Cluster, Index, K) || K <- AllDelKeys],
             lager:info("Verify Solr indexes missing"),
@@ -174,7 +176,7 @@ create_orphan_postings(Cluster, Index, Bucket, Keys) ->
     Keys2 = [{Bucket, ?INT_TO_BIN(K)} || K <- Keys],
     lager:info("Create orphan postings with keys ~p", [Keys]),
     ObjNodePs = [create_obj_node_partition_tuple(Cluster, Key) || Key <- Keys2],
-    [ok = rpc:call(Node, yz_kv, index, [Obj, put, P])
+    [ok = rpc:call(Node, yz_kv, index, [{Obj, no_old_object}, put, P])
      || {Obj, Node, P} <- ObjNodePs],
     yz_rt:commit(Cluster, Index),
     ok.
@@ -330,7 +332,8 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
     %% 1. write KV data to non-indexed bucket
     Conn = yz_rt:select_random(PBConns),
     lager:info("write 1 bad search field to bucket ~p", [Bucket]),
-    Obj = riakc_obj:new(Bucket, <<"akey_bad_data">>, <<"{\"date_register\":3333}">>,
+    Key = <<"akey_bad_data">>,
+    Obj = riakc_obj:new(Bucket, Key, <<"{\"date_register\":3333}">>,
                         "application/json"),
 
     ok = riakc_pb_socket:put(Conn, Obj),
@@ -348,6 +351,11 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
 
     %% 5. verify count after expiration
     verify_exchange_after_expire(Cluster, Index),
+
+    %% 6. Because it's possible we'll try to repair this key again
+    %% after clearing trees, delete it from KV
+    ok = riakc_pb_socket:delete(Conn, Bucket, Key),
+    yz_rt:commit(Cluster, Index),
 
     ok;
 verify_count_and_repair_after_error_value(_Cluster, _Bucket, _Index, _PBConns) ->

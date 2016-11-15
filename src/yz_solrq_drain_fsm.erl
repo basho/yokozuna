@@ -31,7 +31,20 @@
     terminate/3,
     code_change/4]).
 
--export([start_prepare/1, prepare/2, wait/2, drain_complete/2]).
+%% gen_fsm states
+-export([
+    prepare/2,
+    wait_for_drain_complete/2,
+    wait_for_snapshot_complete/2,
+    wait_for_yz_hashtree_updated/2
+]).
+
+%% API
+-export([
+    start_prepare/1,
+    drain_complete/2,
+    drain_already_in_progress/2,
+    resume_workers/1]).
 
 -include("yokozuna.hrl").
 -define(SERVER, ?MODULE).
@@ -41,7 +54,8 @@
     exchange_fsm_pid,
     yz_index_hashtree_update_params,
     partition,
-    time_start
+    time_start,
+    owner_pid
 }).
 
 %%%===================================================================
@@ -79,6 +93,16 @@ start_link(Params) ->
 drain_complete(DPid, Token) ->
     gen_fsm:send_event(DPid, {drain_complete, Token}).
 
+%% @doc Notify the drain FSM identified by DPid that the solrq associated
+%% with the specified Token has an existing drain request in progress and
+%% cannot perform another drain at this time.
+%%
+%% NB. This function is typically called from each solrq.
+%% @end
+%%
+drain_already_in_progress(DPid, Token) ->
+    gen_fsm:send_event(DPid, {drain_already_in_progress, Token}).
+
 %% @doc Start draining.  This operation will send a start message to this
 %% FSM with a start message, which in turn will initiate drains on all of
 %% the solrqs.
@@ -110,6 +134,15 @@ cancel(DPid, Timeout) ->
             timeout
     end.
 
+%%
+%% Resume workers, typically called from the callback supplied to
+%% yz_index_hashtree.  We are declaring this one-liner as a public
+%% API function in order to have an effective intecept in riak_test
+%% C.f., yz_solrq_test:confirm_drain_fsm_timeout
+%%
+resume_workers(Pid) ->
+    gen_fsm:send_event(Pid, resume_workers).
+
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
@@ -118,7 +151,8 @@ init(Params) ->
     {ok, prepare, #state{
         exchange_fsm_pid = proplists:get_value(?EXCHANGE_FSM_PID, Params),
         yz_index_hashtree_update_params = proplists:get_value(?YZ_INDEX_HASHTREE_PARAMS, Params),
-        partition = proplists:get_value(?DRAIN_PARTITION, Params)
+        partition = proplists:get_value(?DRAIN_PARTITION, Params),
+        owner_pid = proplists:get_value(owner_pid, Params)
     }}.
 
 
@@ -137,7 +171,7 @@ prepare(start, #state{partition = P} = State) ->
 %% normally.  Otherwise, we keep waiting.
 %% @end
 %%
-wait({drain_complete, Token},
+wait_for_drain_complete({drain_complete, Token},
     #state{
         tokens = Tokens,
         exchange_fsm_pid = ExchangeFSMPid,
@@ -151,22 +185,64 @@ wait({drain_complete, Token},
         [] ->
             lager:debug("Solrq drain completed for all workers for partition ~p.  Resuming batching.", [Partition]),
             yz_stat:drain_end(?YZ_TIME_ELAPSED(StartTS)),
-            CompleteCallback = fun() ->
-                [yz_solrq_worker:drain_complete(Name) || Name <- yz_solrq:solrq_worker_names()]
+            Self = self(),
+            %%
+            %% This callback function will be called from within the
+            %% yz_index_hashtree, after the hashtree we are exchanging
+            %% is snapshotted, but before it is updated.  In this callback
+            %% we let the workers know they can resume normal operations,
+            %% and we inform ourself that workers have been resumed.
+            %%
+            SnapshotCompleteCallback = fun() ->
+                resume_workers(Self)
             end,
-            maybe_update_yz_index_hashtree(
-                ExchangeFSMPid, YZIndexHashtreeUpdateParams, CompleteCallback
+            spawn_link(
+                fun() ->
+                    maybe_update_yz_index_hashtree(
+                        ExchangeFSMPid, YZIndexHashtreeUpdateParams, SnapshotCompleteCallback
+                    ),
+                    gen_fsm:send_event(Self, yz_hashtree_updated)
+                end
             ),
-            {stop, normal, NewState};
+            {next_state, wait_for_snapshot_complete, NewState};
         _ ->
-            {next_state, wait, NewState}
-    end.
+            {next_state, wait_for_drain_complete, NewState}
+    end;
+%% If a drain is already in progress, but we are draining all queues,
+%% Try again until the previous drain completes.
+wait_for_drain_complete({drain_already_in_progress, Token, QPid},
+        #state{partition=undefined,
+            tokens = Tokens0}=State) ->
+    NewToken = yz_solrq_worker:drain(QPid, undefined),
+    Tokens1 = lists:delete(Token, Tokens0),
+    Tokens2 = [NewToken | Tokens1],
+    {next_state, wait_for_drain_complete, State#state{tokens = Tokens2}};
+
+%% In the case of a single-partition drain, just stop and let
+%% the calling process handle retries
+wait_for_drain_complete({drain_already_in_progress, _Token}, State) ->
+    {stop, overlapping_drain_requested, State}.
+
+%% The workers have resumed normal operations.  Draining is now "complete",
+%% but we need to wait for the yz_index_hashtree to update its inner hashes,
+%% which can take some time.  In the meantime, notify the process waiting
+%% for drains to complete
+wait_for_snapshot_complete(resume_workers, #state{partition=Partition, owner_pid=OwnerPid} = State) ->
+    lists:foreach(
+        fun yz_solrq_worker:drain_complete/1,
+        get_solrq_ids(Partition)
+    ),
+    notify_workers_resumed(OwnerPid),
+    {next_state, wait_for_yz_hashtree_updated, State}.
+
+wait_for_yz_hashtree_updated(yz_hashtree_updated, State) ->
+    {stop, normal, State}.
 
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
-handle_sync_event(cancel, _From, _StateName, State) ->
-    [yz_solrq_worker:cancel_drain(Name) || Name <- yz_solrq:solrq_worker_names()],
+handle_sync_event(cancel, _From, _StateName, #state{partition=Partition} = State) ->
+    [yz_solrq_worker:cancel_drain(Name) || Name <- get_solrq_ids(Partition)],
     {stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
@@ -185,8 +261,11 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+notify_workers_resumed(OwnerPid) ->
+    OwnerPid ! workers_resumed.
+
 maybe_update_yz_index_hashtree(undefined, undefined, Callback) ->
-    Callback(),
+    maybe_callback(Callback),
     ok;
 maybe_update_yz_index_hashtree(Pid, {YZTree, Index, IndexN}, Callback) ->
     yz_exchange_fsm:update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback).
@@ -209,7 +288,7 @@ maybe_send_drain_messages(_P, [],  #state{
 maybe_send_drain_messages(P, SolrqIds, State) ->
     TS = os:timestamp(),
     Tokens = [yz_solrq_worker:drain(SolrqId, P) || SolrqId <- SolrqIds],
-    {next_state, wait, State#state{tokens = Tokens, time_start = TS}}.
+    {next_state, wait_for_drain_complete, State#state{tokens = Tokens, time_start = TS}}.
 
 %%
 %% @doc if partition is `undefined` then drain all queues.
@@ -221,4 +300,9 @@ get_solrq_ids(undefined) ->
 %% @doc drain all queues for a particular partition, `P`.
 get_solrq_ids(P) ->
     yz_solrq:solrq_workers_for_partition(P).
+
+maybe_callback(undefined) ->
+    ok;
+maybe_callback(Callback) ->
+    Callback().
 

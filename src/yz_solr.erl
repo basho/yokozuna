@@ -62,7 +62,7 @@
 
 -type delete_op() :: {id, binary()}
                    | {bkey, bkey()}
-                   | {siblings, bkey()}
+                   | {bkey, bkey(), lp()}
                    | {'query', binary()}.
 
 -type ibrowse_config_key() :: max_sessions | max_pipeline_size.
@@ -438,24 +438,28 @@ encode_commit() ->
 %%
 %% @doc Encode a delete operation into a mochijson2 compatiable term.
 -spec encode_delete(delete_op()) -> {struct, [{atom(), binary()}]}.
+encode_delete({bkey, {{Type, Bucket},Key}, LP}) ->
+    PNQ = encode_field_query(?YZ_PN_FIELD_B, escape_special_chars(?INT_TO_BIN(LP))),
+    TypeQ = encode_field_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
+    BucketQ = encode_field_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
+    KeyQ = encode_field_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
+    ?QUERY(<<TypeQ/binary, " AND ", BucketQ/binary, " AND ", KeyQ/binary, " AND ", PNQ/binary>>);
+%% NOTE: Used for testing only. This deletes _all_ documents for _all_ partitions
+%% which may cause extra docs to be deleted if a fallback partition exists
+%% on the same node as a primary, or if handoff is still ongoing in a newly-built
+%% cluster
 encode_delete({bkey,{{Type, Bucket},Key}}) ->
-    TypeQ = encode_nested_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
-    BucketQ = encode_nested_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
-    KeyQ = encode_nested_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
+    TypeQ = encode_field_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
+    BucketQ = encode_field_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
+    KeyQ = encode_field_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
     ?QUERY(<<TypeQ/binary," AND ",BucketQ/binary, " AND ",KeyQ/binary>>);
+%% NOTE: Also only used for testing
 encode_delete({bkey,{Bucket,Key}}) ->
     %% Need to take legacy (pre 2.0.0) objects into account.
-    encode_delete({bkey,{{?DEFAULT_TYPE,Bucket},Key}});
-encode_delete({siblings,{{Type,Bucket},Key}}) ->
-    VTagQ = <<?YZ_VTAG_FIELD_B/binary,":[* TO *]">>,
-    TypeQ = encode_nested_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
-    BucketQ = encode_nested_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
-    KeyQ = encode_nested_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
-    ?QUERY(<<VTagQ/binary," AND ",TypeQ/binary," AND ",
-             BucketQ/binary," AND ",KeyQ/binary>>);
-encode_delete({siblings,{Bucket,Key}}) ->
+    encode_delete({bkey,{{?DEFAULT_TYPE, Bucket}, Key}});
+encode_delete({bkey, {Bucket,Key}, LP}) ->
     %% Need to take legacy (pre 2.0.0) objects into account.
-    encode_delete({siblings,{{?DEFAULT_TYPE,Bucket},Key}});
+    encode_delete({bkey, {{?DEFAULT_TYPE, Bucket}, Key}, LP});
 encode_delete({'query', Query}) ->
     ?QUERY(Query);
 encode_delete({id, Id}) ->
@@ -474,18 +478,17 @@ encode_field({Name,Value}) ->
 
 %% @private
 %%
-%% @doc Encode a field and query into a Solr nested query using the
-%% term query parser.
--spec encode_nested_query(binary(), binary()) -> binary().
-encode_nested_query(Field, Query) ->
-    <<"_query_:\"{!term f=",Field/binary,"}",Query/binary,"\"">>.
+%% @doc Encode a field and query.
+-spec encode_field_query(binary(), binary()) -> binary().
+encode_field_query(Field, Query) ->
+    <<Field/binary,":\"",Query/binary,"\"">>.
 
 %% @private
 %%
 %% @doc Escape the backslash and double quote chars to prevent from
 %% being improperly interpreted by Solr's query parser.
 -spec escape_special_chars(binary()) ->binary().
-escape_special_chars(Bin) ->
+escape_special_chars(Bin) when is_binary(Bin)->
     Bin2 = binary:replace(Bin, <<"\\">>, <<"\\\\">>, [global]),
     binary:replace(Bin2, <<"\"">>, <<"\\\"">>, [global]).
 
