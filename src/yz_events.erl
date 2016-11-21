@@ -59,6 +59,8 @@
 
 -define(DEFAULT_EVENTS_FULL_CHECK_AFTER, 60).
 -define(DEFAULT_EVENTS_TICK_INTERVAL, 1000).
+-define(UNKNOWN_QUEUE_LENGTH, -1).
+
 
 %%%===================================================================
 %%% API
@@ -260,6 +262,7 @@ sync_indexes() ->
                     lager:info("Delta: Removed: ~p Added: ~p Same: ~p",
                         [Removed, Added, Same])
             end,
+            ok = yz_solrq_sup:sync_active_queue_pairs(),
             ok = sync_indexes(Removed, Added, Same);
         {error, _Reason} ->
             ok

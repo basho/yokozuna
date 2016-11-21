@@ -15,6 +15,7 @@
 -define(NUM_NODES, 1).
 -define(RING_SIZE, 8).
 -define(NUM_ENTRIES, 10).
+-define(EVENT_TICK_INTERVAL, 1000).
 
 -define(CFG, [
     {riak_core, [
@@ -29,7 +30,6 @@
     ]},
     {yokozuna, [
         {enabled, true},
-        {?SOLRQ_WORKER_COUNT, 1},
         {?SOLRQ_BATCH_MIN, 6},
         {?SOLRQ_BATCH_FLUSH_INTERVAL, 100000},
         {?SOLRQ_HWM, 10},
@@ -39,7 +39,12 @@
         %% allow AAE to build trees and exchange rapidly
         {anti_entropy_tick, 1000},
         {anti_entropy_build_limit, {100, 1000}},
-        {anti_entropy_concurrency, 8}
+        {anti_entropy_concurrency, 8},
+        %% Force a complete check of indexes after every tick
+        %% to make yokozuna remove/add indexes faster
+        %% Needed for recreate test
+        {events_full_check_after, 1},
+        {events_tick_interval, ?EVENT_TICK_INTERVAL}
     ]}
 ]).
 
@@ -55,16 +60,16 @@ prepare_cluster(NumNodes) ->
     Cluster.
 
 confirm_stats(Cluster) ->
-    {Host, Port} = yz_rt:select_random(
-        [yz_rt:riak_pb(I) || {_,I} <- rt:connection_info(Cluster)]
-    ),
+    PBConn0 = get_pb_connection(Cluster),
     Index = <<"yz_stat_test">>,
     Bucket = {Index, <<"b1">>},
+    create_indexed_bucket(Cluster, Bucket, Index, PBConn0),
 
-    {ok, PBConn} = riakc_pb_socket:start_link(Host, Port),
-    yz_rt:create_indexed_bucket(PBConn, Cluster, Bucket, Index, ?N_VAL),
-    {ok, BProps} = riakc_pb_socket:get_bucket(PBConn, Bucket),
-    ?assertEqual(?N_VAL, proplists:get_value(n_val, BProps)),
+    %% because the cluster will die w/o fix for this confirm step,
+    %% it closes the PB connection. Will get another once it's done
+    confirm_recreate_indexed_bucket(Cluster, Bucket, Index, PBConn0),
+
+    PBConn = get_pb_connection(Cluster),
     %%
     %% Clear the yz and kv hashtrees, because we have created a new
     %% bucket type with a different n_vals.
@@ -76,16 +81,41 @@ confirm_stats(Cluster) ->
 
     yz_rt:set_yz_aae_mode(Cluster, manual),
 
-    yz_rt:reset_stats(Cluster),
-    Values = populate_data_and_wait(PBConn, Cluster, Bucket, Index, ?NUM_ENTRIES),
-    yz_rt:verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
-    yz_rt:verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL),
-    yz_rt:wait_until(Cluster, fun check_index_stats/1),
+    Values = confirm_index_stats(Cluster, PBConn, Bucket, Index),
 
-    yz_rt:reset_stats(Cluster),
-    search_values(PBConn, Index, Values),
-    yz_rt:wait_until(Cluster, fun check_query_stats/1),
+    confirm_query_stats(Cluster, PBConn, Index, Values),
 
+    confirm_aae_repair_and_stats(Cluster, Index, Bucket, Values),
+
+    confirm_extract_fail_stats(Cluster, PBConn, Bucket),
+
+    confirm_fuse_and_purge_stats(Cluster, PBConn, Index, Bucket),
+
+    riakc_pb_socket:stop(PBConn).
+
+get_pb_connection(Cluster) ->
+    {Host, Port} = yz_rt:select_random(
+        [yz_rt:riak_pb(I) || {_, I} <- rt:connection_info(Cluster)]
+    ),
+    {ok, PBConn} = riakc_pb_socket:start_link(Host, Port),
+    PBConn.
+
+create_indexed_bucket(Cluster, Bucket, Index, PBConn) ->
+    yz_rt:create_indexed_bucket(PBConn, Cluster, Bucket, Index, ?N_VAL),
+    {ok, BProps} = riakc_pb_socket:get_bucket(PBConn, Bucket),
+    ?assertEqual(?N_VAL, proplists:get_value(n_val, BProps)).
+
+confirm_fuse_and_purge_stats(Cluster, PBConn, Index, Bucket) ->
+    yz_rt:reset_stats(Cluster),
+    blow_fuses(Cluster, PBConn, Index, Bucket),
+    yz_rt:wait_until(Cluster, fun check_fuse_and_purge_stats/1).
+
+confirm_extract_fail_stats(Cluster, PBConn, Bucket) ->
+    yz_rt:reset_stats(Cluster),
+    write_bad_json(Cluster, PBConn, Bucket, 1),
+    yz_rt:wait_until(Cluster, fun check_index_extract_fail_stats/1).
+
+confirm_aae_repair_and_stats(Cluster, Index, Bucket, Values) ->
     yz_rt:reset_stats(Cluster),
     [delete_key_in_solr(Cluster, Index, {Bucket, K}) || K <- Values],
     yz_rt:verify_num_match(yokozuna, Cluster, Index, 0),
@@ -94,20 +124,22 @@ confirm_stats(Cluster) ->
     yz_rt:wait_for_full_exchange_round(Cluster),
     yz_rt:drain_solrqs(Cluster),
     yz_rt:wait_until(Cluster, fun check_aae_stats/1),
-
     yz_rt:reset_stats(Cluster),
     yz_rt:verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
+    yz_rt:verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL).
+
+confirm_query_stats(Cluster, PBConn, Index, Values) ->
+    yz_rt:reset_stats(Cluster),
+    search_values(PBConn, Index, Values),
+    yz_rt:wait_until(Cluster, fun check_query_stats/1).
+
+confirm_index_stats(Cluster, PBConn, Bucket, Index) ->
+    yz_rt:reset_stats(Cluster),
+    Values = populate_data_and_wait(PBConn, Cluster, Bucket, Index, ?NUM_ENTRIES),
+    yz_rt:verify_num_match(yokozuna, Cluster, Index, ?NUM_ENTRIES),
     yz_rt:verify_num_match(solr, Cluster, Index, ?NUM_ENTRIES * ?N_VAL),
-
-    yz_rt:reset_stats(Cluster),
-    write_bad_json(Cluster, PBConn, Bucket, 1),
-    yz_rt:wait_until(Cluster, fun check_index_fail_stats/1),
-
-    yz_rt:reset_stats(Cluster),
-    blow_fuses(Cluster, PBConn, Index, Bucket),
-    yz_rt:wait_until(Cluster, fun check_fuse_and_purge_stats/1),
-
-    riakc_pb_socket:stop(PBConn).
+    yz_rt:wait_until(Cluster, fun check_index_stats/1),
+    Values.
 
 clear_hashtrees(Cluster) ->
     yz_rt:clear_kv_trees(Cluster),
@@ -121,10 +153,14 @@ populate_data(_, _, 0, Acc) ->
     Acc;
 populate_data(Pid, Bucket, Count, Acc)->
     KV = gen_random_name(16),
-    PO = riakc_obj:new(Bucket, KV, KV, "text/plain"),
-    ok = riakc_pb_socket:put(Pid, PO, []),
-    lager:info("Wrote Bucket ~p key ~p", [Bucket, KV]),
+    write_key(Pid, Bucket, KV, KV),
     populate_data(Pid, Bucket, Count - 1, [KV|Acc]).
+
+write_key(Pid, Bucket, Key, Value) ->
+    PO = riakc_obj:new(Bucket, Key, Value, "text/plain"),
+    ok = riakc_pb_socket:put(Pid, PO, []),
+    lager:info("Wrote Bucket ~p key ~p", [Bucket, Key]).
+
 
 populate_data_and_wait(Pid, Cluster, Bucket, Index, Count) ->
     Values = populate_data(Pid, Bucket, Count, []),
@@ -169,9 +205,10 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
     yz_rt:set_index(Cluster, Index, 1, 99999, 99999),
     yz_rt:set_hwm(Cluster, 1),
     yz_rt:set_purge_strategy(Cluster, ?PURGE_ONE),
+    Key = <<"blow_a_fuse">>,
     try
         [yz_rt:load_intercept_code(Node) || Node <- Cluster],
-        yz_rt:intercept_index_batch(Cluster, index_batch_throw_exception),
+        yz_rt:intercept_index_batch(Cluster, index_batch_returns_other_error),
         %%
         %% Send a message through each the indexq on the solrq, which
         %% will trip the fuse; however
@@ -179,8 +216,8 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         %% we need to wait until the solrqs are blown.
         %%
         lager:info("Writing one entry to blow fuse..."),
-        populate_data(PBConn, Bucket, 1),
-        yz_rt:wait_until_fuses_blown(Cluster, yz_solrq_worker_0001, [Index]),
+        write_key(PBConn, Bucket, Key, Key),
+        yz_rt:wait_until_fuses_blown(Cluster, 0, [Index]),
         %%
         %% At this point, the indexq in yz_solrq_worker_0001 corresponding
         %% to the Index should be blown.
@@ -188,16 +225,16 @@ blow_fuses(Cluster, PBConn, Index, Bucket) ->
         %% will trigger a purge.
         %%
         lager:info("Writing next entry to purge previous entry..."),
-        populate_data(PBConn, Bucket, 1)
+        write_key(PBConn, Bucket, Key, Key)
     after
         %%
         %% Revert the intercept, and drain, giving time for the
         %% fuse to reset.  Commit to Solr so that we can run a query.
         %%
         yz_rt:intercept_index_batch(Cluster, index_batch_call_orig),
-        yz_rt:wait_until_fuses_reset(Cluster, yz_solrq_worker_0001, [Index]),
+        yz_rt:wait_until_fuses_reset(Cluster, 0, [Index]),
         lager:info("Writing one last entry to set the threshold ok stat ..."),
-        populate_data(PBConn, Bucket, 1),
+        write_key(PBConn, Bucket, Key, Key),
         yz_rt:drain_solrqs(Cluster),
         yz_rt:commit(Cluster, Index)
     end.
@@ -267,16 +304,16 @@ check_index_stats(Node) ->
     ],
     yz_rt:check_stat_values(Stats, Pairs).
 
-check_index_fail_stats(Node) ->
+check_index_extract_fail_stats(Node) ->
     Stats = rpc:call(Node, yz_stat, get_stats, []),
 
-    IFail = proplists:get_value(?STAT_NAME([index, fail]), Stats),
+    IFail = proplists:get_value(?STAT_NAME([index, extract, fail]), Stats),
     IFailCount = proplists:get_value(count, IFail),
     IFailOne = proplists:get_value(one, IFail),
 
     Pairs = [
-        {index_fail_count, IFailCount, '>', 0},
-        {index_fail_one, IFailOne, '>', 0}
+        {index_extract_fail_count, IFailCount, '>', 0},
+        {index_extract_fail_one, IFailOne, '>', 0}
     ],
     yz_rt:check_stat_values(Stats, Pairs).
 
@@ -370,3 +407,26 @@ check_fuse_and_purge_stats(Node) ->
         {error_threshold_recovered_one, ErrorThresholdRecoveredOneValue, '>', 0}
     ],
     yz_rt:check_stat_values(Stats, Pairs).
+
+%% @doc This test exists to test the ability to remove and recreate an index.
+%% Specifically, there were issues using the `fuse_stats_exometer' plugin
+%% as in its `init' function it always calls `exometer:new' rather than
+%% `re_register' which would have not crashed. We will be submitting a PR
+%% to fuse to get this resolved, but in the mean time there's a workaround
+%% in `yz_fuse' to remove the exometer statistics on fuse removal.
+confirm_recreate_indexed_bucket(Cluster, Bucket, Index, PBConn) ->
+    rt:setup_log_capture(Cluster),
+    lager:info("Removing index ~p", [Index]),
+    yz_rt:really_remove_index(Cluster, Bucket, Index, PBConn),
+    ?assert(rt:expect_in_log(hd(Cluster), "Delta: Removed: \\[<<\"yz_stat_test\">>\\] Added: \\[\\] Same: \\[\\]")),
+    lager:info("Recreating index ~p", [Index]),
+    ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, ?N_VAL}]),
+    %% Stop the PB Connection so it doesn't crash our test
+    riakc_pb_socket:stop(PBConn),
+    yz_rt:wait_for_index(Cluster, Index),
+    Props = [{?YZ_INDEX, Index}],
+    lager:info("Adding index ~p back to bucket ~p", [Index, Bucket]),
+    rpc:call(hd(Cluster), riak_core_bucket, set_bucket, [Bucket, Props]),
+    %% Allow yz_events to tick before continuing to ensure index is removed
+    timer:sleep(?EVENT_TICK_INTERVAL + 100),
+    ?assert(rt:expect_not_in_logs(hd(Cluster), "gen_server fuse_server terminated with reason: exists")).

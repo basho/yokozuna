@@ -34,6 +34,8 @@
                 built :: integer(),
                 timeout :: pos_integer()}).
 
+-type repair_count() :: {DeleteCount::non_neg_integer(), RepairCount::non_neg_integer()}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -62,9 +64,9 @@ drain_error(Pid, Reason) ->
 %% Use at your own risk (or ignore).
 %% @end
 %%
--spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist()) -> ok.
-update_yz_index_hashtree(Pid, YZTree, Index, IndexN) ->
-    do_update(Pid, yz_index_hashtree, YZTree, Index, IndexN).
+-spec update_yz_index_hashtree(pid(), tree(), p(), short_preflist(), fun() | undefined) -> ok.
+update_yz_index_hashtree(Pid, YZTree, Index, IndexN, Callback) ->
+    do_update(Pid, yz_index_hashtree, YZTree, Index, IndexN, Callback).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -91,9 +93,12 @@ handle_event(_Event, StateName, S) ->
 handle_sync_event(_Event, _From, StateName, S) ->
     {reply, ok, StateName, S}.
 
-handle_info({'DOWN', _, _, _, _}, _StateName, S) ->
+handle_info({'DOWN', _, _, _, _} = Msg, _StateName, S) ->
     %% Either the entropy manager, local hashtree, or remote hashtree has
     %% exited. Stop exchange.
+    lager:notice(
+        "YZ Exchange FSM received a DOWN message from a process it was "
+        "monitoring.  The received message is: ~p", [Msg]),
     {stop, normal, S};
 
 handle_info(_Info, StateName, S) ->
@@ -186,24 +191,37 @@ key_exchange(timeout, S=#state{index=Index,
                 (_, _) ->
                      ok
              end,
-
-    AccFun = fun(KeyDiff, Count) ->
-                     lists:foldl(fun(Diff, InnerCount) ->
-                                     case repair(Index, Diff) of
-                                         full_repair -> InnerCount + 1;
-                                         _ -> InnerCount
-                                     end
-                                 end, Count, KeyDiff)
-             end,
-    case yz_index_hashtree:compare(IndexN, Remote, AccFun, 0, YZTree) of
-        0 ->
-            yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
-        Count ->
-            yz_stat:detected_repairs(Count),
-            lager:info("Will repair ~b keys of partition ~p for preflist ~p",
-                       [Count, Index, IndexN])
+    AccFun = fun(KeyDiffs, Accum) ->
+        hashtree_compare_accum_fun(Index, KeyDiffs, Accum)
     end,
-    {stop, normal, S}.
+    async_do_compare(IndexN, Remote, AccFun, YZTree),
+    {next_state, key_exchange, S};
+
+key_exchange({compare_complete, CompareResult}, State=#state{index=Index,
+                                                         index_n=IndexN}) ->
+    case CompareResult of
+        {error, Reason} ->
+            lager:error("An error occurred comparing hashtrees.  Error: ~p", [Reason]);
+        {0, 0} ->
+            yz_kv:update_aae_exchange_stats(Index, IndexN, 0);
+        {YZDeleteCount, YZRepairCount} ->
+            yz_stat:detected_repairs(YZDeleteCount + YZRepairCount),
+            lager:info("Will delete ~p keys and repair ~b keys of partition ~p for preflist ~p",
+                       [YZDeleteCount, YZRepairCount, Index, IndexN])
+    end,
+    {stop, normal, State}.
+
+async_do_compare(IndexN, Remote, AccFun, YZTree) ->
+    ExchangePid = self(),
+    spawn_link(
+        fun() ->
+            CompareResult = yz_index_hashtree:compare(IndexN, Remote, AccFun, {0, 0}, YZTree),
+            compare_complete(ExchangePid, CompareResult)
+        end).
+
+compare_complete(ExchangePid, CompareResult) ->
+    gen_fsm:send_event(ExchangePid, {compare_complete, CompareResult}).
+
 
 %%%===================================================================
 %%% Internal functions
@@ -217,6 +235,30 @@ exchange_bucket_kv(Tree, IndexN, Level, Bucket) ->
 exchange_segment_kv(Tree, IndexN, Segment) ->
     riak_kv_index_hashtree:exchange_segment(IndexN, Segment, Tree).
 
+-spec hashtree_compare_accum_fun(p(), [keydiff()], repair_count()) ->
+    repair_count().
+hashtree_compare_accum_fun(Index, KeyDiffs, Accum) ->
+    lists:foldl(
+        fun(KeyDiff, InnerAccum) ->
+            repair_fold_func(Index, KeyDiff, InnerAccum)
+        end,
+        Accum,
+        KeyDiffs
+    ).
+
+-spec repair_fold_func(p(), keydiff(), repair_count()) ->
+    repair_count().
+repair_fold_func(Index, KeyDiff, Accum) ->
+    RepairResult = repair(Index, KeyDiff),
+    update_repair_func_accum(RepairResult, KeyDiff, Accum).
+
+update_repair_func_accum(full_repair, _KeyDiff={remote_missing, _KeyBin}, {YZDeleteCount, YZRepairCount}) ->
+    {YZDeleteCount + 1, YZRepairCount};
+update_repair_func_accum(full_repair, _KeyDiff, {YZDeleteCount, YZRepairCount}) ->
+    {YZDeleteCount, YZRepairCount + 1};
+update_repair_func_accum(_RepairType, _KeyDiff, Accum) ->
+    Accum.
+
 %% @private
 %%
 %% @doc If Yokozuna gets {remote_missing, _} b/c yz has it, but kv doesn't.
@@ -228,16 +270,11 @@ repair(Partition, {remote_missing, KeyBin}) ->
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
     FakeObj = fake_kv_object(BKey),
-    case yz_kv:should_index(Index) of
-        true ->
-            Repair = full_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
-            Repair;
-        false ->
-            Repair = tree_repair,
-            yz_solrq:index(Index, BKey, FakeObj, {anti_entropy_delete, Repair}, Partition),
-            Repair
-    end;
+    Repair = determine_repair_type(Index),
+    yz_solrq:index(Index, BKey, {FakeObj, no_old_object},
+                   {anti_entropy_delete, Repair}, Partition),
+    Repair;
+
 repair(Partition, {_Reason, KeyBin}) ->
     %% Either Yokozuna is missing the key or the hash doesn't
     %% match. In either case the object must be re-indexed.
@@ -247,18 +284,10 @@ repair(Partition, {_Reason, KeyBin}) ->
     %% node is owner.
     case yz_kv:local_get(Partition, BKey) of
         {ok, Obj} ->
-            case yz_kv:should_index(Index) of
-                true ->
-                    Repair = full_repair,
-                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
-                                   Partition),
-                    Repair;
-                false ->
-                    Repair = tree_repair,
-                    yz_solrq:index(Index, BKey, Obj, {anti_entropy, Repair},
-                                   Partition),
-                    Repair
-            end;
+            Repair = determine_repair_type(Index),
+            yz_solrq:index(Index, BKey, {Obj, no_old_object},
+                           {anti_entropy, Repair}, Partition),
+            Repair;
         _Other ->
             %% In most cases Other will be `{error, notfound}' which
             %% is fine because hashtree updates are async and the
@@ -270,13 +299,17 @@ repair(Partition, {_Reason, KeyBin}) ->
             failed_repair
     end.
 
+determine_repair_type(Index) ->
+    case yz_kv:should_index(Index) of
+        true ->
+            full_repair;
+        false ->
+            tree_repair
+    end.
+
 %% @private
 fake_kv_object({Bucket, Key}) ->
     riak_object:new(Bucket, Key, <<"fake object">>).
-
-%% @private
-do_update(ToWhom, Module, Tree, Index, IndexN) ->
-    do_update(ToWhom, Module, Tree, Index, IndexN, undefined).
 
 %% @private
 do_update(ToWhom, Module, Tree, Index, IndexN, Callback) ->
@@ -291,8 +324,8 @@ do_update(ToWhom, Module, Tree, Index, IndexN, Callback) ->
 %% @private
 module_update(riak_kv_index_hashtree, Index, Tree, Callback) ->
     riak_kv_index_hashtree:update(Index, Tree, Callback);
-module_update(yz_index_hashtree, Index, Tree, undefined) ->
-    yz_index_hashtree:update(Index, Tree).
+module_update(yz_index_hashtree, Index, Tree, Callback) ->
+    yz_index_hashtree:update(Index, Tree, Callback).
 
 %% @private
 update_request(Module, Tree, Index, IndexN, Callback) ->

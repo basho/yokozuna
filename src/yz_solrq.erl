@@ -18,10 +18,9 @@
 %% -------------------------------------------------------------------
 -module(yz_solrq).
 
--export([index/5, worker_regname/1, helper_regname/1,
-         random_helper/0,
-         num_worker_specs/0,
-         num_helper_specs/0,
+-export([index/5,
+         worker_regname/2,
+         helper_regname/2,
          set_hwm/1,
          set_index/4,
          set_purge_strategy/1,
@@ -29,19 +28,19 @@
          blown_fuse/1,
          healed_fuse/1,
          solrq_worker_names/0,
-         solrq_helper_names/0,
-         queue_total_length/0]).
+         queue_total_length/0,
+         get_max_batch_size/0,
+         get_min_batch_size/0,
+         get_flush_interval/0,
+         all_solrq_workers/0,
+         solrq_workers_for_partition/1,
+         solrq_worker_pairs_for_index/1]).
 
 -include("yokozuna.hrl").
-
-% exported for yz_solrq_sup
--export([set_solrq_worker_tuple/1, set_solrq_helper_tuple/1,
-         get_solrq_worker_tuple/0, get_solrq_helper_tuple/0]).
 
 % for debugging only
 -export([status/0]).
 
--type phash() :: integer().
 -type regname() :: atom().
 -type size_resps() :: same_size | {shrank, non_neg_integer()} |
                       {grew, non_neg_integer()}.
@@ -55,97 +54,68 @@
 %%% API functions
 %%%===================================================================
 
--spec index(index_name(), bkey(), obj(), write_reason(), p()) -> ok.
-index(Index, BKey, Obj, Reason, P) ->
-    Hash = erlang:phash2({Index, BKey}),
-    Worker = yz_solrq:worker_regname(Hash),
-    yz_solrq_worker:index(Worker, Index, BKey, Obj, Reason, P).
+-spec index(index_name(), bkey(), object_pair(), write_reason(), p()) -> ok.
+index(Index, BKey, ObjectPair, Reason, P) ->
+    WorkerName = yz_solrq:worker_regname(Index, P),
+    ok = ensure_worker(Index, P),
+    yz_solrq_worker:index(WorkerName, BKey, ObjectPair, Reason, P).
 
 %% @doc From the hash, return the registered name of a queue
--spec worker_regname(phash()) -> regname().
-worker_regname(Hash) ->
-    case get_solrq_worker_tuple() of
-        undefined ->
-            error(solrq_sup_not_started);
-        Names ->
-            Index = 1 + (Hash rem size(Names)),
-            element(Index, Names)
-    end.
+-spec worker_regname(index_name(), p()) -> regname().
+worker_regname(Index, Partition) ->
+    make_regname("yz_solrq_worker_", Partition, Index).
+
+make_regname(Prefix, Partition, Index) ->
+    list_to_atom(Prefix ++
+        integer_to_list(Partition) ++ "_" ++
+        binary_to_list(Index)).
 
 %% @doc From the hash, return the registered name of a helper
--spec helper_regname(phash()) -> regname().
-helper_regname(Hash) ->
-    case get_solrq_helper_tuple() of
-        undefined ->
-            error(solrq_sup_not_started);
-        Names ->
-            Index = 1 + (Hash rem size(Names)),
-            element(Index, Names)
-    end.
-
-%% @doc return a random helper
--spec random_helper() -> regname().
-random_helper() ->
-    case get_solrq_helper_tuple() of
-        undefined ->
-            error(solrq_sup_not_started);
-        Names ->
-            Index = random:uniform(size(Names)),
-            element(Index, Names)
-    end.
-
-%% @doc Active queue count
--spec num_worker_specs() -> non_neg_integer().
-num_worker_specs() ->
-    yz_solrq_sup:child_count(yz_solrq_worker).
-
-%% @doc Active helper count
--spec num_helper_specs() -> non_neg_integer().
-num_helper_specs() ->
-    yz_solrq_sup:child_count(yz_solrq_helper).
-
+-spec helper_regname(index_name(), p()) -> regname().
+helper_regname(Index, Partition) ->
+    make_regname("yz_solrq_helper_", Partition, Index).
 
 %% @doc Set the high water mark on all queues
--spec set_hwm(solrq_hwm()) -> [{atom(),
+-spec set_hwm(solrq_hwm()) -> [{{index_name(), p()},
                                {ok | error,
                                 solrq_hwm() | bad_hwm_value}}].
 set_hwm(HWM) ->
-    [{Name, yz_solrq_worker:set_hwm(Name, HWM)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+    [{IndexPartition, yz_solrq_worker:set_hwm(Index, Partition, HWM)} ||
+        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_queues()].
 
 %% @doc Set the index parameters for all queues (note, index goes back to appenv
 %%      queue is empty).
 -spec set_index(index_name(), solrq_batch_min(), solrq_batch_max(),
                 solrq_batch_flush_interval()) ->
-                       [{atom(), {ok | error, {Params :: number()} |
+                       [{{index_name(), p()}, {ok | error, {Params :: number()} |
                                   bad_index_params}}].
 set_index(Index, Min, Max, DelayMsMax) ->
-    [{Name, yz_solrq_worker:set_index(Name, Index, Min, Max, DelayMsMax)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+    [{IndexPartition, yz_solrq_worker:set_index(Index, Partition, Min, Max, DelayMsMax)} ||
+        {_Index, Partition} = IndexPartition <- solrq_worker_pairs_for_index(Index)].
 
 %% @doc Set the purge strategy on all queues
 -spec set_purge_strategy(purge_strategy()) ->
-                                [{atom(), {ok | error,
+                                [{{index_name(), p()}, {ok | error,
                                            purge_strategy()
                                            | bad_purge_strategy}}].
 set_purge_strategy(PurgeStrategy) ->
-    [{Name, yz_solrq_worker:set_purge_strategy(Name, PurgeStrategy)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+    [{IndexPartition, yz_solrq_worker:set_purge_strategy(Index, Partition, PurgeStrategy)} ||
+        {Index, Partition} =IndexPartition <- yz_solrq_sup:active_queues()].
 
 %% @doc Request each solrq reloads from appenv - currently only affects HWM
--spec reload_appenv() -> [{atom(), ok}].
+-spec reload_appenv() -> [{{index_name(), p()}, ok}].
 reload_appenv() ->
-    [{Name, yz_solrq_worker:reload_appenv(Name)} ||
-        Name <- tuple_to_list(get_solrq_worker_tuple())].
+    [{IndexPartition, yz_solrq_worker:reload_appenv(Index, Partition)} ||
+        {Index, Partition} = IndexPartition <- yz_solrq_sup:active_queues()].
 
 %% @doc Signal to all Solrqs that a fuse has blown for the the specified index.
 -spec blown_fuse(index_name()) -> ok.
 blown_fuse(Index) ->
     lists:foreach(
         fun(Name) ->
-            yz_solrq_worker:blown_fuse(Name, Index)
+            yz_solrq_worker:blown_fuse(Name)
         end,
-        solrq_worker_names()
+        solrq_workers_for_index(Index)
     ).
 
 %% @doc Signal to all Solrqs that a fuse has healed for the the specified index.
@@ -153,9 +123,9 @@ blown_fuse(Index) ->
 healed_fuse(Index) ->
     lists:foreach(
         fun(Name) ->
-            yz_solrq_worker:healed_fuse(Name, Index)
+            yz_solrq_worker:healed_fuse(Name)
         end,
-        solrq_worker_names()
+        solrq_workers_for_index(Index)
     ).
 
 %% @doc Return the status of all solrq workers.
@@ -166,42 +136,58 @@ status() ->
 %% @doc Return the list of solrq names registered with this supervisor
 -spec solrq_worker_names() -> [atom()].
 solrq_worker_names() ->
-    tuple_to_list(get_solrq_worker_tuple()).
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {Index, Partition} <- yz_solrq_sup:active_queues()].
 
-%% @doc Return the list of solrq names registered with this supervisor
--spec solrq_helper_names() -> [atom()].
-solrq_helper_names() ->
-    tuple_to_list(get_solrq_helper_tuple()).
+-spec all_solrq_workers() -> [atom()].
+all_solrq_workers() ->
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {Index, Partition} <- yz_solrq_sup:active_queues()].
+
+-spec solrq_workers_for_partition(Partition :: p()) -> [atom()].
+solrq_workers_for_partition(Partition) ->
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {Index, WorkerPartition} <- yz_solrq_sup:active_queues(),
+        Partition == WorkerPartition].
+
+-spec solrq_worker_pairs_for_index(Index :: index_name()) -> [{index_name(), p()}].
+solrq_worker_pairs_for_index(Index) ->
+    [{Index, Partition} ||
+        {WorkerIndex, Partition} <- yz_solrq_sup:active_queues(),
+        Index == WorkerIndex].
+
+-spec solrq_workers_for_index(Index :: index_name()) -> [atom()].
+solrq_workers_for_index(Index) ->
+    [yz_solrq:worker_regname(Index, Partition) ||
+        {WorkerIndex, Partition} <- yz_solrq_sup:active_queues(),
+        Index == WorkerIndex].
 
 %% @doc return the total length of all solrq workers on the node.
 -spec queue_total_length() -> non_neg_integer().
 queue_total_length() ->
-    lists:sum([yz_solrq_worker:all_queue_len(Name) || Name <- tuple_to_list(get_solrq_worker_tuple())]).
+    lists:sum([yz_solrq_worker:all_queue_len(Index, Partition) || {Index, Partition} <- yz_solrq_sup:active_queues()]).
 
+get_max_batch_size() ->
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MAX, ?SOLRQ_BATCH_MAX_DEFAULT).
+
+get_min_batch_size() ->
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_MIN, ?SOLRQ_BATCH_MIN_DEFAULT).
+
+get_flush_interval() ->
+    app_helper:get_env(?YZ_APP_NAME, ?SOLRQ_BATCH_FLUSH_INTERVAL,
+        ?SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
-get_solrq_worker_tuple() ->
-    mochiglobal:get(?SOLRQS_TUPLE_KEY).
-
-set_solrq_worker_tuple(Size) ->
-    mochiglobal:put(?SOLRQS_TUPLE_KEY, solrq_workers_tuple(Size)).
-
-get_solrq_helper_tuple() ->
-    mochiglobal:get(?SOLRQ_HELPERS_TUPLE_KEY).
-
-set_solrq_helper_tuple(Size) ->
-    mochiglobal:put(?SOLRQ_HELPERS_TUPLE_KEY, solrq_helpers_tuple(Size)).
-
-solrq_workers_tuple(Queues) ->
-    list_to_tuple([int_to_worker_regname(I) || I <- lists:seq(1, Queues)]).
-
-solrq_helpers_tuple(Helpers) ->
-    list_to_tuple([int_to_helper_regname(I) || I <- lists:seq(1, Helpers)]).
-
-int_to_worker_regname(I) ->
-    list_to_atom(lists:flatten(io_lib:format("yz_solrq_worker_~4..0b", [I]))).
-
-int_to_helper_regname(I) ->
-    list_to_atom(lists:flatten(io_lib:format("yz_solrq_helper_~4..0b", [I]))).
+ensure_worker(Index, Partition) ->
+    WorkerName = yz_solrq:worker_regname(Index, Partition),
+    case whereis(WorkerName) of
+        undefined ->
+            %% Two processes may both get here at once. It's ok to ignore the
+            %% return value here, as we would just ignore the already_started
+            %% error anyway.
+            ok = yz_solrq_sup:start_queue_pair(Index, Partition);
+        _Pid ->
+            ok
+    end.

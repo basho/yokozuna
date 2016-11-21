@@ -113,7 +113,10 @@
 %%    take care of it.
 -type component() :: search | index.
 
--type solr_entry()   :: {bkey(), obj(), write_reason(), p(), short_preflist(),
+
+-type object_pair() :: {obj(), obj() | no_old_object}.
+
+-type solr_entry()   :: {bkey(), object_pair(), write_reason(), p(), short_preflist(),
     hash()}.
 -type solr_entries() :: [solr_entry()].
 
@@ -263,6 +266,15 @@
 -define(YZ_ENTROPY_LOCK_TIMEOUT,
     app_helper:get_env(?YZ_APP_NAME, anti_entropy_lock_timeout, 10000)).
 
+-define(YZ_ENABLE_DIST_QUERY,
+    app_helper:get_env(?YZ_APP_NAME, enable_dist_query, true)).
+
+-define(YZ_ENTROPY_THROTTLE_KEY, aae_throttle).
+-define(YZ_ENTROPY_THROTTLE_LIMITS_KEY, aae_throttle_limits).
+-define(YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,
+        [{-1,0}, {500,10}, {1000,50}, {5000,250}, {10000,1000}, {50000,3000}]).
+-define(YZ_ENTROPY_THROTTLE_ENABLED_KEY, aae_throttle_enabled).
+
 -type hashtree() :: hashtree:hashtree().
 -type exchange() :: {p(), {p(), n()}}.
 -type exchange_mode() :: automatic | manual.
@@ -358,6 +370,7 @@
 
 -define(TOMBSTONE, <<>>).
 -define(YZ_INDEX_TOMBSTONE, <<"_dont_index_">>).
+-define(YZ_SHOULD_INDEX(Index), Index =/= ?YZ_INDEX_TOMBSTONE).
 -define(YZ_INDEX, search_index).
 
 %%%===================================================================
@@ -498,12 +511,13 @@
 %%%===================================================================
 
 -define(SOLRQ_BATCH_MIN, solrq_batch_min).
+-define(SOLRQ_BATCH_MIN_DEFAULT, 10).
 -define(SOLRQ_BATCH_MAX, solrq_batch_max).
+-define(SOLRQ_BATCH_MAX_DEFAULT, 500).
 -define(SOLRQ_BATCH_FLUSH_INTERVAL, solrq_batch_flush_interval).
+-define(SOLRQ_BATCH_FLUSH_INTERVAL_DEFAULT, 500).
 -define(SOLRQ_HWM, solrq_hwm).
--define(SOLRQ_HWM_PURGE, solrq_hwm_purge).
--define(SOLRQ_WORKER_COUNT, solrq_worker_count).
--define(SOLRQ_HELPER_COUNT, solrq_helper_count).
+-define(SOLRQ_HWM_DEFAULT, 1000).
 -define(SOLRQ_HWM_PURGE_STRATEGY, solrq_hwm_purge_strategy).
 -define(PURGE_NONE, off).
 -define(PURGE_ONE, purge_one).
@@ -514,7 +528,7 @@
 -type solrq_batch_max()            :: pos_integer().
 -type solrq_batch_flush_interval() :: non_neg_integer()|infinity.
 -type solrq_hwm()                  :: non_neg_integer().
--type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX|?PURGE_ALL.
+-type purge_strategy()             :: ?PURGE_NONE|?PURGE_ONE|?PURGE_IDX.
 
 %%%===================================================================
 %%% draining
@@ -524,8 +538,12 @@
 -define(YZ_INDEX_HASHTREE_PARAMS, yz_index_hashtree_update_params).
 -define(DRAIN_PARTITION, drain_partition).
 -define(SOLRQ_DRAIN_TIMEOUT, solrq_drain_timeout).
+-define(SOLRQ_DRAIN_TIMEOUT_DEFAULT, 60000).
 -define(SOLRQ_DRAIN_ENABLE, solrq_drain_enable).
+-define(SOLRQ_DRAIN_ENABLE_DEFAULT, true).
 -define(SOLRQ_DRAIN_CANCEL_TIMEOUT, solrq_drain_cancel_timeout).
+-define(SOLRQ_DRAIN_CANCEL_TIMEOUT_DEFAULT, 5000).
+
 
 -type drain_param() ::
     {?EXCHANGE_FSM_PID, pid()} |

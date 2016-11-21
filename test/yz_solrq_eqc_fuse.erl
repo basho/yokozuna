@@ -33,12 +33,6 @@
     code_change/3
 ]).
 
--ifdef(PULSE).
--include_lib("pulse/include/pulse.hrl").
--compile([export_all, {parse_transform, pulse_instrument}]).
--compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
--endif.
-
 -define(SERVER, ?MODULE).
 
 -record(state, {
