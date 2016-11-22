@@ -28,3 +28,5 @@ dialyzer_warnings
 dialyzer_unhandled_warnings
 /.eqc-info
 /current_counterexample.eqc
+.idea/**
+*.iml

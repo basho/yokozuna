@@ -7,12 +7,10 @@
               {yokozuna, [{enabled, true}]}]).
 -define(COUNTER, <<"counters">>).
 -define(SET, <<"sets">>).
--define(HLL, <<"hlls">>).
 -define(MAP, <<"maps">>).
 -define(TYPES,
         [{?COUNTER, counter},
          {?SET, set},
-         {?HLL, hll},
          {?MAP, map}]).
 
 -import(yz_rt, [create_index/2,
@@ -39,13 +37,11 @@ confirm() ->
     %% Update some datatypes
     counter_update(PB),
     set_update(PB),
-    hll_update(PB),
     map_update(PB),
 
     %% Search the index for the types
     counter_search(ANode),
     set_search(ANode),
-    hll_search(ANode),
     map_search(ANode),
 
     pass.
@@ -74,34 +70,6 @@ set_search(Node) ->
     ?assertSearch(Node, ?SET, "set", "CouchDB", 1),
     ?assertSearch(Node, ?SET, "set", "Voldemort", 1),
     ?assertSearch(Node, ?SET, "set", "C*", 2).
-
-hll_update(PB) ->
-    Dynamos = lists:foldl(fun riakc_hll:add_element/2, riakc_hll:new(),
-                          [<<"Riak">>, <<"Cassandra">>, <<"Voldemort">>,
-                           <<"Couchbase">>]),
-    Erlangs = riakc_hll:add_elements([<<"Riak">>,
-                                      <<"Couchbase">>,
-                                      <<"CouchDB">>],
-                                     riakc_hll:new()),
-    Bucket = {?HLL, <<"databass">>},
-    ?assertEqual(ok,
-                 riakc_pb_socket:update_type(
-                   PB, Bucket, <<"dynamo">>, riakc_hll:to_op(Dynamos))),
-    ?assertEqual(ok, riakc_pb_socket:update_type(
-                       PB, Bucket, <<"erlang">>, riakc_hll:to_op(Erlangs))),
-    {ok, CheckDynamo} = riakc_pb_socket:fetch_type(PB, Bucket, <<"dynamo">>),
-    ?assertEqual(riakc_hll:value(CheckDynamo), 4),
-    {ok, CheckErlang} = riakc_pb_socket:fetch_type(PB, Bucket, <<"erlang">>),
-    ?assertEqual(riakc_hll:value(CheckErlang), 3).
-
-hll_search(Node) ->
-    ?assertSearch(Node, ?HLL, "hll", "3", 1),
-    ?assertSearch(Node, ?HLL, "hll", "4", 1),
-    ?assertSearch(Node, ?HLL, "hll", "2", 0),
-    ?assertSearch(Node, ?HLL, "hll", "[0 TO 3]", 1),
-    ?assertSearch(Node, ?HLL, "hll", "[4 TO 1000]", 1),
-    ?assertSearch(Node, ?HLL, "hll", "[5 TO 1000]", 0),
-    ?assertSearch(Node, ?HLL, "hll", "[0 TO 2]", 0).
 
 map_update(PB) ->
     Sam = lists:foldl(fun({Key, Fun}, Map) ->

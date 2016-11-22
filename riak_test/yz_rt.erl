@@ -863,21 +863,18 @@ load_intercept_code(Node) ->
                               "*.erl"]),
     rt_intercept:load_code(Node, [CodePath]).
 
-rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices) ->
-    rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, fun rt:no_op/1).
-
 -spec rolling_upgrade(cluster() | node(),
                       current | previous | legacy,
                       UpgradeConfig :: props(),
                       WaitForServices :: [atom()]) -> ok.
-rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices)
   when is_list(Cluster) ->
     lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
-    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
+    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices)
      || Node <- Cluster],
     ok;
-rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck) ->
-    rt:upgrade(Node, Version, UpgradeConfig, UpgradeCallabck),
+rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
+    rt:upgrade(Node, Version, UpgradeConfig),
     [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
     ok.
 

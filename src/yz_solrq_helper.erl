@@ -195,13 +195,13 @@ solr_ops(LI, Entries) ->
     [get_ops_for_entry(Entry, LI) || Entry <- Entries].
 
 -spec get_ops_for_entry(solr_entry(), logical_idx()) -> solr_ops().
-get_ops_for_entry({BKey, {Obj0, _OldObj}=Objects, Reason, P, ShortPL, Hash}, LI) ->
+get_ops_for_entry({BKey, {Obj0, OldObj}, Reason, P, ShortPL, Hash}, LI) ->
     {Bucket, _} = BKey,
     BProps = riak_core_bucket:get_bucket(Bucket),
     Obj = yz_kv:maybe_merge_siblings(BProps, Obj0),
     ObjValues = riak_object:get_values(Obj),
     Action = get_reason_action(Reason),
-    get_ops_for_entry_action(Action, ObjValues, LI, P, Objects, BKey, ShortPL,
+    get_ops_for_entry_action(Action, ObjValues, LI, P, {Obj, OldObj}, BKey, ShortPL,
         Hash, BProps).
 
 -spec get_ops_for_entry_action(write_action(), [riak_object:value()],
