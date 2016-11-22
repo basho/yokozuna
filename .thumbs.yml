@@ -1,6 +1,4 @@
 minimum_reviewers: 2
-docker: true
-docker_image: "davidxd/yoko"
 build_steps:
  - make clean
  - make test
