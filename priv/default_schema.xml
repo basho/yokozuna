@@ -82,6 +82,7 @@
    <dynamicField name="*_dts" type="date"    indexed="true"  stored="true" multiValued="true"/>
    <dynamicField name="*_coordinate"  type="tdouble" indexed="true"  stored="false" multiValued="false"/>
    <dynamicField name="*_p" type="location" indexed="true" stored="true" multiValued="false"/>
+   <dynamicField name="*_srpt" type="location_rpt" indexed="true" stored="true" multiValued="false"/>
 
    <!-- some trie-coded dynamic fields for faster range queries -->
    <dynamicField name="*_ti" type="tint"    indexed="true"  stored="true" multiValued="false"/>
@@ -406,6 +407,17 @@
     See http://wiki.apache.org/solr/SpatialSearch
    -->
     <fieldtype name="geohash" class="solr.GeoHashField"/>
+
+   <!-- An alternative geospatial field type new to Solr 4.  It supports multiValued and polygon shapes.
+    For more information about this and other Spatial fields new to Solr 4, see:
+    http://wiki.apache.org/solr/SolrAdaptersForLuceneSpatial4
+   -->
+   <!-- `maxDistErr` of one meter (0.001 kilometers) is just a bit less than 0.000009 degrees.
+    For more information about this, see:
+    https://archive.apache.org/dist/lucene/solr/ref-guide/apache-solr-ref-guide-4.7.pdf
+   -->
+   <fieldType name="location_rpt" class="solr.SpatialRecursivePrefixTreeFieldType"
+              geo="true" distErrPct="0.025" maxDistErr="0.000009" units="degrees" />
 
    <!-- some examples for different languages (generally ordered by ISO code) -->
 
