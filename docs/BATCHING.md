@@ -106,7 +106,7 @@ Using this command will only temporarily enable or disable distributed query unt
 
 ## Configuration
 
-The behavior of the batching subsystem may be controlled via the following Cuttlefish configuration parameters, as defined in `riak.conf`.  Consult the Cuttlefish schema (TODO add link) for the associated configuration settings in the Riak `advanced.config` file.
+The behavior of the batching subsystem may be controlled via the following Cuttlefish configuration parameters, as defined in `riak.conf`.  Consult [the Cuttlefish schema](/priv/yokozuna.schema) for the associated configuration settings in the Riak `advanced.config` file.
 
 * `search.queue.batch.minimum` (default: 10) The minimum batch size, in number of Riak objects. Any batches that are smaller than this amount will not be immediately flushed to Solr, but are guaranteed to be flushed within the value specified in `search.queue.batch.flush_interval`.
 
