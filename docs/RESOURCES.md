@@ -17,7 +17,7 @@ Solr Links
 
 * [Solr Homepage][solr-home]
 
-* [Solr 4.7 Reference Guide][solr-ref] - This is both a good reference and a place for beginners to start.  The fundamental aspects of Solr are covered here.
+* [Solr 4.10.4 Reference Guide][solr-ref] - This is both a good reference and a place for beginners to start.  The fundamental aspects of Solr are covered here.
 
 
 Books
@@ -49,5 +49,5 @@ Books
 
 [solr-home]: http://lucene.apache.org/solr/
 
-[solr-ref]: https://www.apache.org/dyn/closer.cgi/lucene/solr/ref-guide/apache-solr-ref-guide-4.7.pdf
+[solr-ref]: https://archive.apache.org/dist/lucene/solr/ref-guide/apache-solr-ref-guide-4.10.pdf
 
