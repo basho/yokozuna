@@ -20,7 +20,7 @@ When enqueuing an object, a worker and helper process pair is selected based on 
 
 The following diagram illustrates the relationship between Riak vnodes, Yokozuna workers and helpers, and Apache Solr:
 
-![YZ Batching Overview](https://raw.githubusercontent.com/basho/yokozuna/docs/yz-batching-overview.png)
+![YZ Batching Overview](/docs/yz-batching-overview.png)
 
 Each helper process is stateless; a helper's only role is to dequeue batches from the workers, to transform those batches into something that Solr can understand, and to dispatch the transformed batches to Solr (and report the results back to the worker process, on whose behalf it is doing the work).
 
