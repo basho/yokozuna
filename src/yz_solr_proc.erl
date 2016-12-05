@@ -54,12 +54,6 @@
 -define(S_PORT(S), S#state.port).
 -define(YZ_DEFAULT_SOLR_JVM_OPTS, "").
 
--define(SOLRCONFIG_2_0_HASH, 64816669).
--define(LUCENE_MATCH_4_7_VERSION, "4.7").
--define(LUCENE_MATCH_4_10_4_VERSION, "4.10.4").
-
--type path() :: string().
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -104,7 +98,6 @@ set_dist_query(Value) ->
 init([Dir, TempDir, SolrPort, SolrJMXPort]) ->
     ensure_data_dir(Dir),
     ensure_temp_dir(TempDir),
-    check_solr_index_versions(Dir),
     case get_java_path() of
         undefined ->
             %% This logging call is needed because the stop reason
@@ -282,32 +275,10 @@ ensure_data_dir(Dir) ->
 
 %% @private
 %%
-%% @doc Recursively delete target directory. Equivalent to
-%% `rm -rf $DIR` at the shell
--spec del_dir_recursive(string()) -> ok | {error, enotdir}.
-del_dir_recursive(Path) ->
-    del_dir_recursive(Path, filelib:is_dir(Path)).
-
--spec del_dir_recursive(string(), boolean()) -> ok | {error, enotdir}.
-del_dir_recursive(DirPath, true) ->
-    FullPaths = [filename:join(DirPath, FilePath) ||
-                    FilePath <- filelib:wildcard("**", DirPath)],
-    {Dirs, Files} = lists:partition(fun filelib:is_dir/1, FullPaths),
-    lists:foreach(fun file:delete/1, Files),
-    %% Delete directories sorted longest to shortest to ensure we delete leaf
-    %% directories first.
-    lists:foreach(fun file:del_dir/1, lists:sort(fun (A,B) -> A > B end, Dirs)),
-    file:del_dir(DirPath);
-del_dir_recursive(_DirPath, _Exists = false) ->
-    {error, enotdir}.
-
-%% @private
-%%
 %% @doc Make sure that the temp directory (passed in as `TempDir')
 %% exists and is new
 -spec ensure_temp_dir(string()) -> ok.
 ensure_temp_dir(TempDir) ->
-    del_dir_recursive(filename:join(TempDir, "solr-webapp")),
     ok = filelib:ensure_dir(filename:join(TempDir, empty)).
 
 %% @private
@@ -373,85 +344,3 @@ solr_is_up(S) ->
     schedule_tick(),
     {noreply, S#state{is_up=true}}.
 
--spec check_solr_index_versions(path()) -> ok.
-check_solr_index_versions(YZRootDir) ->
-    DefaultSolrConfigPath = filename:join([?YZ_PRIV, "conf", "solrconfig.xml"]),
-    DefaultSolrConfigHash = hash_file_contents(DefaultSolrConfigPath),
-    SolrConfigIndexPaths = get_index_solrconfig_paths(YZRootDir),
-    [check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrConfigHash) ||
-        SolrConfigIndexPath <- SolrConfigIndexPaths],
-    ok.
-
--spec check_index_solrconfig(path(), path(), non_neg_integer()) -> ok.
-check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrConfigHash) ->
-    case hash_file_contents(SolrConfigIndexPath) of
-        DefaultSolrConfigHash ->
-            ok;
-        ?SOLRCONFIG_2_0_HASH ->
-            yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
-            lager:info(
-                "Upgraded ~s to the latest version.", [SolrConfigIndexPath]
-            );
-        _ ->
-            check_index_solrconfig_version(SolrConfigIndexPath)
-    end.
-
--spec check_index_solrconfig_version(path()) -> ok.
-check_index_solrconfig_version(SolrConfigIndexPath) ->
-    case get_lucene_match_version(SolrConfigIndexPath) of
-        ?LUCENE_MATCH_4_7_VERSION ->
-            lager:warning(
-                "The Solr configuration file ~s has been modified by the user and contains"
-                " an outdated version (~s) under the luceneMatchVersion XML tag."
-                "  Please consider reverting your changes or upgrading the luceneMatchVersion"
-                " XML tag to ~s and restarting.  Note: In order to take full advantage of"
-                " the changes, you should also reindex any data in this Solr core.",
-                [SolrConfigIndexPath, ?LUCENE_MATCH_4_7_VERSION, ?LUCENE_MATCH_4_10_4_VERSION]);
-        ?LUCENE_MATCH_4_10_4_VERSION ->
-            ok;
-        {error, no_lucene_match_version} ->
-            lager:error(
-                "The Solr configuration file ~s does not contain a luceneMatchVersion"
-                " XML tag!",
-                [SolrConfigIndexPath]);
-        UnexpectedVersion ->
-            lager:error(
-                "The Solr configuration file ~s contains a luceneMatchVersion"
-                " XML tag with an unexpected value: ~s",
-                [SolrConfigIndexPath, UnexpectedVersion])
-    end.
-
--spec get_index_solrconfig_paths(path()) -> [path()].
-get_index_solrconfig_paths(YZRootDir) ->
-    {ok, Files} = file:list_dir(YZRootDir),
-    [YZRootDir ++ "/" ++ File ++ "/conf/solrconfig.xml" ||
-        File <- Files,
-        filelib:is_dir(YZRootDir ++ "/" ++ File)
-            andalso has_solr_config(YZRootDir ++ "/" ++ File)].
-
--spec has_solr_config(path()) -> boolean().
-has_solr_config(RootPath) ->
-    SolrConfigPath = RootPath ++ "/conf/solrconfig.xml",
-    filelib:is_file(SolrConfigPath) andalso not filelib:is_dir(SolrConfigPath).
-
--spec get_lucene_match_version(path()) -> string() | {error, no_lucene_match_version}.
-get_lucene_match_version(SolrConfigIndexPath) ->
-    {#xmlElement{content=Contents}, _Rest} = xmerl_scan:file(SolrConfigIndexPath),
-    lucene_match_version(Contents).
-
--spec lucene_match_version([xmlElement()]) -> string() | {error, no_lucene_match_version}.
-lucene_match_version([]) ->
-    {error, no_lucene_match_version};
-lucene_match_version(
-    [#xmlElement{
-        name=luceneMatchVersion,
-        content=[#xmlText{value=Version}]
-     } | _Rest]) ->
-    Version;
-lucene_match_version([_Element | Rest]) ->
-    lucene_match_version(Rest).
-
--spec hash_file_contents(path()) -> non_neg_integer().
-hash_file_contents(Path) ->
-    {ok, Data} = file:read_file(Path),
-    erlang:phash2(Data).

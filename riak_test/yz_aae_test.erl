@@ -22,7 +22,6 @@
         {vnode_management_timer, 1000}
     ]},
     {riak_kv, [
-        {force_hashtree_upgrade, true},
         {anti_entropy_tick, 1000},
         {anti_entropy_build_limit, {100, 1000}},
         {anti_entropy_concurrency, 8}

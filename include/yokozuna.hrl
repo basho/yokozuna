@@ -269,12 +269,6 @@
 -define(YZ_ENABLE_DIST_QUERY,
     app_helper:get_env(?YZ_APP_NAME, enable_dist_query, true)).
 
--define(YZ_ENTROPY_THROTTLE_KEY, aae_throttle).
--define(YZ_ENTROPY_THROTTLE_LIMITS_KEY, aae_throttle_limits).
--define(YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS,
-        [{-1,0}, {500,10}, {1000,50}, {5000,250}, {10000,1000}, {50000,3000}]).
--define(YZ_ENTROPY_THROTTLE_ENABLED_KEY, aae_throttle_enabled).
-
 -type hashtree() :: hashtree:hashtree().
 -type exchange() :: {p(), {p(), n()}}.
 -type exchange_mode() :: automatic | manual.
