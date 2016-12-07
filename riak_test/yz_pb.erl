@@ -70,11 +70,12 @@ create_index(Cluster, BucketType, Index) ->
 
 create_index(Cluster, BucketType, Index, UseDefaultSchema) when
       is_boolean(UseDefaultSchema) ->
-    create_index(Cluster, BucketType, Index, 3, UseDefaultSchema);
+    create_index(Cluster, BucketType, Index, [{use_default_schema, UseDefaultSchema}]);
 create_index(Cluster, BucketType, Index, Nval) when is_integer(Nval) ->
-    create_index(Cluster, BucketType, Index, Nval, true).
-
-create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, [{n_val, Nval}]);
+create_index(Cluster, BucketType, Index, Props) when is_list(Props) ->
+    Nval = proplists:get_value(n_val, Props, 3),
+    UseDefaultSchema = proplists:get_value(use_default_schema, Props, true),
     Node = select_random(Cluster),
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     lager:info("create_index ~s for bucket type ~s [~p]", [Index, BucketType, {Host, Port}]),
@@ -103,6 +104,9 @@ create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
     yz_rt:wait_for_bucket_type(Cluster, BucketType),
     riakc_pb_socket:stop(Pid),
     ok.
+
+create_index(Cluster, BucketType, Index, Nval, UseDefaultSchema) ->
+    create_index(Cluster, BucketType, Index, [{n_val, Nval}, {use_default_schema, UseDefaultSchema}]).
 
 store_and_search(Cluster, Bucket, Key, Body, Search, Params) ->
     store_and_search(Cluster, Bucket, Key, Body, "text/plain", Search, Params).
@@ -167,14 +171,14 @@ confirm_admin_index(Cluster) ->
     [{Host, Port}] = host_entries(rt:connection_info([Node])),
     {ok, Pid} = riakc_pb_socket:start_link(Host, (Port-1)),
     F = fun(_) ->
-                %% Remove index from bucket props and delete it
-                yz_rt:remove_index(Node, Index),
-                DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
-                case DelResp of
-                    ok -> true;
-                    {error,<<"notfound">>} -> true
-                end
-    end,
+        %% Remove index from bucket props and delete it
+        yz_rt:remove_index(Node, Index),
+        DelResp = riakc_pb_socket:delete_search_index(Pid, Index),
+        case DelResp of
+            ok -> true;
+            {error,<<"notfound">>} -> true
+        end
+        end,
     yz_rt:wait_until(Cluster, F),
     riakc_pb_socket:stop(Pid),
     ok.

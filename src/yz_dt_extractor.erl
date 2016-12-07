@@ -108,7 +108,8 @@ extract_fields(Name, flag, Value, #state{fields=Fields, field_separator=Sep}=Sta
     FieldName = field_name(Name, flag, Sep),
     State#state{fields=[{FieldName, Value}|Fields]}.
 
--spec field_name(field_path_name(), datatype(), binary()) -> undefined | binary().
+-spec field_name(field_path_name(), datatype(), binary()) -> undefined |
+                                                            binary().
 field_name(undefined, map, _Sep) ->
     undefined;
 field_name(undefined, Type, _Sep) ->

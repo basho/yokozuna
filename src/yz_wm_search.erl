@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2012-2016 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -92,7 +92,7 @@ resource_forbidden(RD, Ctx=#ctx{security=Security}, Permission,
             {false, RD, Ctx}
     end.
 
-
+-spec forbidden(#wm_reqdata{}, #ctx{}) -> {boolean(), #wm_reqdata{}, #ctx{}}.
 %% @doc Uses the riak_kv,secure_referer_check setting rather
 %%      as opposed to a special yokozuna-specific config
 forbidden(RD, Ctx=#ctx{security=undefined}) ->

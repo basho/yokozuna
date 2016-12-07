@@ -6,7 +6,7 @@
 
 disable_index_test()->
   yokozuna:disable(index),
-  ?assertEqual(yz_kv:index({},delete,{}), ok).
+  ?assertEqual(yz_kv:index({riak_object:new({<<"type">>, <<"bucket">>}, <<"key">>, <<"value">>), no_old_object}, delete, {}), ok).
 
 disable_search_test()->
     yokozuna:disable(search),

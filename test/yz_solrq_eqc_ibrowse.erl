@@ -31,13 +31,11 @@
     terminate/2,
     code_change/3]).
 
--ifdef(PULSE).
--include_lib("pulse/include/pulse.hrl").
--compile([export_all, {parse_transform, pulse_instrument}]).
--compile({pulse_replace_module, [{gen_server, pulse_gen_server}]}).
--define(PULSE_DEBUG(S,F), pulse:format(S,F)).
+-ifdef(EQC).
+%%-define(EQC_DEBUG(S, F), io:fwrite(user, S, F)).
+-define(EQC_DEBUG(S, F), ok).
 -else.
--define(PULSE_DEBUG(S,F), ok).
+-define(EQC_DEBUG(S, F), ok).
 -endif.
 
 -define(SERVER, ?MODULE).
@@ -85,6 +83,7 @@ handle_call(
         expected=Expected
     } = State
 ) ->
+    ?EQC_DEBUG("In get_response~n", []),
     SolrReqs = parse_solr_reqs(mochijson2:decode(B)),
     {Keys, Res, NewFailed} = get_response(SolrReqs, KeyRes, AlredyFailed),
     WrittenKeys = case Res of
@@ -100,7 +99,7 @@ handle_call(
         _ ->
             proceed
     end,
-    ?PULSE_DEBUG("yz_solrq_eqc_ibrowse: response: ~p~n", [{Keys, Res}]),
+    ?EQC_DEBUG("yz_solrq_eqc_ibrowse: response: ~p~n", [{Keys, Res}]),
     {reply, {Keys, Res}, State#state{written = NewWritten, failed = NewFailed}};
 
 handle_call(keys, _From, #state{written = Written} = State) ->
@@ -113,10 +112,9 @@ handle_call({wait, Keys}, From, #state{written=Written} = State) ->
         _ ->
             case lists:usort(Written) == lists:usort(Keys) of
                 true ->
-                    timer:sleep(500),
                     {reply, ok, State};
                 _ ->
-                    ?PULSE_DEBUG("Process ~p waiting for keys...: ~p", [From, Keys]),
+                    ?EQC_DEBUG("Process ~p waiting for keys...: ~p~n", [From, Keys]),
                     {noreply, State#state{root=From, expected=lists:usort(Keys)}}
             end
     end;
@@ -148,6 +146,8 @@ parse_solr_req({<<"add">>, {struct, [{<<"doc">>, Doc}]}}) ->
     {add, find_key_field(Doc)};
 parse_solr_req({<<"delete">>, {struct, [{<<"query">>, Query}]}}) ->
     {delete, parse_delete_query(Query)};
+parse_solr_req({<<"delete">>, {struct, [{<<"id">>, Id}]}}) ->
+    {delete, parse_delete_id(Id)};
 parse_solr_req({delete, _Query}) ->
     {delete, could_parse_bkey};
 parse_solr_req({Other, Thing}) ->
@@ -158,6 +158,10 @@ find_key_field({struct, Props}) ->
 
 parse_delete_query(Query) ->
     {match, [Key]} = re:run(Query, "(XKEYX[0-9]+)",[{capture,[1],binary}]),
+    Key.
+
+parse_delete_id(Id) ->
+    {match, [Key]} = re:run(Id, "(XKEYX[0-9]+)",[{capture,[1],binary}]),
     Key.
 
 

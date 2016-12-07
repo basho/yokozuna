@@ -13,15 +13,11 @@
          {?SET, set},
          {?MAP, map}]).
 
--import(yz_rt, [
-                connection_info/1,
-                create_index/2,
-                search_expect/5
-               ]).
+-import(yz_rt, [create_index/2,
+                search_expect/5]).
 
 -define(assertSearch(Node, Index, Field, Query, Count),
         ?assertEqual(ok, search_expect(Node, Index, Field, Query, Count))).
-
 
 confirm() ->
     application:start(ibrowse),
@@ -35,20 +31,24 @@ confirm() ->
           %% Create bucket types for datatypes with given indexes
           rt:create_and_activate_bucket_type(Node, BType, [{datatype, Type},
                                                            {allow_mult, true},
-                                                           {search_index, BType}])
+                                                           {search_index, BType}
+                                                          ])
       end || {BType, Type} <- ?TYPES ],
     %% Update some datatypes
     counter_update(PB),
     set_update(PB),
     map_update(PB),
+
     %% Search the index for the types
     counter_search(ANode),
     set_search(ANode),
     map_search(ANode),
+
     pass.
 
 counter_update(PB) ->
-    ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?COUNTER, <<"1">>}, <<"10">>, {counter, {increment, 10}, undefined})),
+    ?assertEqual(ok,
+                 riakc_pb_socket:update_type(PB, {?COUNTER, <<"1">>}, <<"10">>, {counter, {increment, 10}, undefined})),
     ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?COUNTER, <<"2">>}, <<"100">>, {counter, {increment, 100}, undefined})),
     ?assertEqual(ok, riakc_pb_socket:update_type(PB, {?COUNTER, <<"1">>}, <<"1000">>, {counter, {decrement, 1000}, undefined})).
 

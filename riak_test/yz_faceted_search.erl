@@ -91,7 +91,9 @@ put_restaurants(Cluster, Bucket) ->
                           put_restaurant(Pid, Bucket, Key, Restaurant)
                   end,
                   lists:zip(Keys, Restaurants)),
-    yz_rt:commit(Cluster, ?INDEX).
+    yz_rt:commit(Cluster, ?INDEX),
+    % wait until the expected number of documents are queryable
+    yz_rt:search_expect(Cluster, ?INDEX, "name", "*", length(?RESTAURANTS)).
 
 -spec create_restaurant_json(binary(), binary(), binary(), integer()) -> binary().
 create_restaurant_json(Name, City, State, Price) ->
@@ -111,7 +113,7 @@ verify_field_faceting(Cluster, Index) ->
     lager:info("Field faceting: ~p, ~p, ~p", [HP, Index, Params]),
     {ok, "200", _Hdr, Res} = yz_rt:search(HP, Index, "name", "*", Params),
     Struct = mochijson2:decode(Res),
-    lager:info("Field faceting results: ~p", [Struct]),
+    lager:debug("Field faceting results: ~p", [Struct]),
 
     NumFound = kvc:path([<<"response">>, <<"numFound">>], Struct),
     ?assertEqual(5, NumFound),
@@ -141,7 +143,7 @@ verify_query_facets(HP, Index, Params) ->
     lager:info("Query faceting: ~p, ~p, ~p", [HP, Index, Params]),
     {ok, "200", _Hdr, Res} = yz_rt:search(HP, Index, "state", "Ohio", Params),
     Struct = mochijson2:decode(Res),
-    lager:info("Query faceting results: ~p", [Struct]),
+    lager:debug("Query faceting results: ~p", [Struct]),
     {struct, FacetQueries} = kvc:path([<<"facet_counts">>,
                                        <<"facet_queries">>],
                                       Struct),
