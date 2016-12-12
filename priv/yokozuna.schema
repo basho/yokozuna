@@ -332,6 +332,13 @@
   hidden
 ]}.
 
+%% @doc Add yokozuna to the riak_kv index modules
+{mapping, "search.index_module", "riak_kv.index_module", [
+    {datatype, atom},
+    {default, yokozuna},
+    hidden
+]}.
+
 %%===========================================================
 %% Validators
 %%===========================================================

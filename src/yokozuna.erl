@@ -27,6 +27,26 @@
 %%% API
 %%%===================================================================
 
+%% @doc Index a Riak object, given a reason and partition under which
+%%      the object is being indexed.  The object pair contains the new
+%%      and old objects, in the case where a read-before-write resulted
+%%      in an old object we can use to delete siblings before updating.
+-spec index(object_pair(), write_reason(), p()) -> ok.
+index(RObjPair, Reason, Idx) ->
+    yz_kv:index(RObjPair, Reason, Idx).
+
+%% @doc Index a Riak object encoded as a n erlang binary.  This function
+%%      is typically called from the write-once path, where there is no
+%%      old object to
+-spec index_binary(bucket(), key(), binary(), write_reason(), p()) -> ok.
+index_binary(Bucket, Key, Bin, Reason, P) ->
+    yz_kv:index_binary(Bucket, Key, Bin, Reason, P).
+
+%% @doc Determine whether a bucket is searchable, based on its properties.
+-spec is_searchable(riak_kv_bucket:props()) -> boolean().
+is_searchable(BProps) ->
+    yz_kv:is_search_enabled_for_bucket(BProps).
+
 %% @doc Disable the given `Component'.  The main reason for disabling
 %%      a component is to help in diagnosing issues in a live,
 %%      production environment.  E.g. the `search' component may be
