@@ -113,6 +113,7 @@ start_mock_components(Options) ->
     riak_core_ring_manager:setup_ets(test),
     setup_mockring(RingSize),
     riak_kv_entropy_info:create_table(),
+    riak_core_capability:start_link(),
     riak_kv_entropy_manager:start_link(),
     ok.
 
