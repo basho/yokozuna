@@ -172,7 +172,7 @@ function build_riak_yokozuna()
 
 function build_riak_test()
 {
-    maybe_clone riak_test git://github.com/basho/riak_test.git
+    maybe_clone riak_test https://github.com/basho/riak_test.git
     pushd riak_test
 
     info "building riak_test"
@@ -226,9 +226,9 @@ function run_riak_test_tests()
 
 sanity_check
 
-YZ_SRC=git://github.com/basho/yokozuna.git
+YZ_SRC=https://github.com/basho/yokozuna.git
 YZ_BRANCH=develop
-RIAK_SRC=git://github.com/basho/riak.git
+RIAK_SRC=https://github.com/basho/riak.git
 RIAK_BRANCH=develop
 TEST_ONLY=
 

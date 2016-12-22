@@ -57,7 +57,7 @@ TGZ=$RIAK_DIR.tar.gz
 pushd $WD                       # in working dir
 
 if [ ! -d $RIAK_DIR ]; then
-    git clone git://github.com/basho/riak.git $RIAK_DIR
+    git clone https://github.com/basho/riak.git $RIAK_DIR
 fi
 
 pushd $RIAK_DIR                 # in riak
@@ -75,7 +75,7 @@ fi
 sed -i"bak" -e "/{yokozuna.*/{
 N
 N
-s#{yokozuna.*#{yokozuna, \".*\", {git, \"git://github.com/basho/yokozuna.git\", {tag, \"v${VSN}\"}}},#
+s#{yokozuna.*#{yokozuna, \".*\", {git, \"https://github.com/basho/yokozuna.git\", {tag, \"v${VSN}\"}}},#
 }" rebar.config
 
 git commit -am "Checkout Yokozuna version v$VSN"
