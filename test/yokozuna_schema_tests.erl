@@ -78,7 +78,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.aae_throttle_enabled", true),
     cuttlefish_unit:assert_not_configured(Config, "yokozuna.aae_throttle_limits"),
     cuttlefish_unit:assert_config(Config, "yokozuna.enable_dist_query", true),
-    cuttlefish_unit:assert_config(Config, "riak_kv.index_module", yokozuna),
+    cuttlefish_unit:assert_config(Config, "riak_kv.update_hook", yokozuna),
     ok.
 
 override_schema_test() ->

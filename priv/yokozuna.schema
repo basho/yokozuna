@@ -332,8 +332,9 @@
   hidden
 ]}.
 
-%% @doc Add yokozuna to the riak_kv index modules
-{mapping, "search.index_module", "riak_kv.index_module", [
+%% @doc Set the riak_kv update hook to be the yokozuna module, which
+%%      implements the `riak_kv_update_hook` behavior
+{mapping, "search.update_hook", "riak_kv.update_hook", [
     {datatype, atom},
     {default, yokozuna},
     hidden

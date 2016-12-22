@@ -23,29 +23,54 @@
 
 -type fold_fun() :: fun(([term()], Acc::term()) -> Acc::term()).
 
+-behaviour(riak_kv_update_hook).
+
+%% riak_kv_update_hook behaviors
+-export([
+    update/3,
+    update_binary/5,
+    requires_existing_object/1,
+    should_handoff/1
+]).
+
+%%%===================================================================
+%% riak_kv_update_hook behavior
+%%%===================================================================
+
+%% @doc see riak_kv_update_hook:update/3
+-spec update(
+    riak_kv_update_hook:object_pair(),
+    riak_kv_update_hook:update_reason(),
+    riak_kv_update_hook:partition()
+) -> ok.
+update(RObjPair, Reason, Idx) ->
+    yz_kv:index(RObjPair, Reason, Idx).
+
+%% @doc see riak_kv_update_hook:update_binary/5
+-spec update_binary(
+    riak_core_bucket:bucket(),
+    riak_object:key(),
+    binary(),
+    riak_kv_update_hook:update_reason(),
+    riak_kv_update_hook:partition()
+) -> ok.
+update_binary(Bucket, Key, Bin, Reason, P) ->
+    yz_kv:index_binary(Bucket, Key, Bin, Reason, P).
+
+%% @doc see riak_kv_update_hook:requires_existing_object/1
+-spec requires_existing_object(riak_kv_bucket:props()) -> boolean().
+requires_existing_object(BProps) ->
+    yz_kv:is_search_enabled_for_bucket(BProps).
+
+%% @doc see riak_kv_update_hook:should_handoff/1
+-spec should_handoff(riak_kv_update_hook:handoff_dest()) -> boolean().
+should_handoff(HandoffSpec) ->
+    yz_kv:should_handoff(HandoffSpec).
+
+
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-%% @doc Index a Riak object, given a reason and partition under which
-%%      the object is being indexed.  The object pair contains the new
-%%      and old objects, in the case where a read-before-write resulted
-%%      in an old object we can use to delete siblings before updating.
--spec index(object_pair(), write_reason(), p()) -> ok.
-index(RObjPair, Reason, Idx) ->
-    yz_kv:index(RObjPair, Reason, Idx).
-
-%% @doc Index a Riak object encoded as a n erlang binary.  This function
-%%      is typically called from the write-once path, where there is no
-%%      old object to
--spec index_binary(bucket(), key(), binary(), write_reason(), p()) -> ok.
-index_binary(Bucket, Key, Bin, Reason, P) ->
-    yz_kv:index_binary(Bucket, Key, Bin, Reason, P).
-
-%% @doc Determine whether a bucket is searchable, based on its properties.
--spec is_searchable(riak_kv_bucket:props()) -> boolean().
-is_searchable(BProps) ->
-    yz_kv:is_search_enabled_for_bucket(BProps).
 
 %% @doc Disable the given `Component'.  The main reason for disabling
 %%      a component is to help in diagnosing issues in a live,
