@@ -490,9 +490,9 @@ siblings_permitted_test_() ->
              process_flag(trap_exit, true),
              riak_core_ring_manager:cleanup_ets(test),
              catch application:stop(riak_core),
-             catch(riak_core_metadata_hashtree:stop()),
-             catch(riak_core_claimant:stop()),
-             catch(riak_core_ring_manager:stop()),
+             catch(exit(whereis(riak_core_riak_core_metadata_hashtreeclaimant), shutdown)),
+             catch(exit(whereis(riak_core_claimant), shutdown)),
+             catch(exit(whereis(riak_core_ring_manager), shutdown)),
              catch(exit(whereis(riak_core_ring_events), shutdown)),
              application:unset_env(riak_core, default_bucket_props),
              meck:unload(riak_core_capability)
