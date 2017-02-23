@@ -116,8 +116,7 @@ test_ed_timeout_error(Cluster, Index, Partition, _Config) ->
     Node = rt:select_random(Cluster),
 
     %% load and install the intercept
-    rt_intercept:load_code(Node, [filename:join([rt_config:get(yz_dir),
-        "riak_test", "intercepts", "*.erl"])]),
+    yz_rt:load_intercept_code(Node),
     rt_intercept:add(Node, {yz_solr, [{{entropy_data, 2},
                                       entropy_data_cant_complete}]}),
 
