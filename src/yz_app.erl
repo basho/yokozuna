@@ -122,9 +122,6 @@ initialize_atoms() ->
 maybe_setup(false) ->
     ok;
 maybe_setup(true) ->
-    Ring = yz_misc:get_ring(raw),
-    RSEnabled = yz_rs_migration:is_riak_search_enabled(),
-    yz_rs_migration:strip_rs_hooks(RSEnabled, Ring),
     Routes = yz_wm_search:routes() ++ yz_wm_extract:routes() ++
         yz_wm_index:routes() ++ yz_wm_schema:routes(),
     ok = yz_events:add_guarded_handler(yz_events, []),
@@ -141,19 +138,7 @@ maybe_setup(true) ->
     ok = yz_schema:setup_schema_bucket(),
     ok = set_ibrowse_config(),
     yz_misc:add_routes(Routes),
-    maybe_register_pb(RSEnabled),
     ok.
-
-%% @doc Conditionally register PB service IFF Riak Search is not
-%%      enabled.
--spec maybe_register_pb(boolean()) -> ok.
-maybe_register_pb(true) ->
-    lager:info("Not registering Yokozuna protocol buffer services"
-               " because Riak Search is enabled as well"),
-    ok;
-maybe_register_pb(false) ->
-    ok = riak_api_pb_service:register(?QUERY_SERVICES),
-    ok = riak_api_pb_service:register(?ADMIN_SERVICES).
 
 %% @private
 %%
