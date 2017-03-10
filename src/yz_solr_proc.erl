@@ -55,6 +55,7 @@
 -define(YZ_DEFAULT_SOLR_JVM_OPTS, "").
 
 -define(SOLRCONFIG_2_0_HASH, 64816669).
+-define(SOLRCONFIG_2_0_8_HASH, 7665368).
 -define(LUCENE_MATCH_4_7_VERSION, "4.7").
 -define(LUCENE_MATCH_4_10_4_VERSION, "4.10.4").
 
@@ -386,15 +387,22 @@ check_solr_index_versions(YZRootDir) ->
 check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrConfigHash) ->
     case hash_file_contents(SolrConfigIndexPath) of
         DefaultSolrConfigHash ->
-            ok;
+            lager:debug("Solr config ~s appears to be up to date.", [SolrConfigIndexPath]);
         ?SOLRCONFIG_2_0_HASH ->
-            yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
-            lager:info(
-                "Upgraded ~s to the latest version.", [SolrConfigIndexPath]
-            );
+            upgrade_solr_config(SolrConfigIndexPath, DefaultSolrConfigPath, "2.0");
+        %% NB. Riak 2.0.8 introduced a small change to solrconfig.xml
+        ?SOLRCONFIG_2_0_8_HASH ->
+            upgrade_solr_config(SolrConfigIndexPath, DefaultSolrConfigPath, "2.0.8");
         _ ->
             check_index_solrconfig_version(SolrConfigIndexPath)
     end.
+
+-spec upgrade_solr_config(path(), path(), string()) -> ok.
+upgrade_solr_config(SolrConfigIndexPath, DefaultSolrConfigPath, Version) ->
+    yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
+    lager:info(
+        "Upgraded ~s from ~s to the latest version.", [SolrConfigIndexPath, Version]
+    ).
 
 -spec check_index_solrconfig_version(path()) -> ok.
 check_index_solrconfig_version(SolrConfigIndexPath) ->
