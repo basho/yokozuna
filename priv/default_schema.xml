@@ -97,6 +97,7 @@
    <field name="counter" type="int"    indexed="true" stored="true" multiValued="false" />
    <field name="set"     type="string" indexed="true" stored="true" multiValued="true" />
    <field name="hll"     type="int"    indexed="true" stored="true" multiValued="false" />
+   <field name="gset"    type="string" indexed="true" stored="true" multiValued="true" />
 
    <!-- Riak datatypes embedded fields -->
    <dynamicField name="*_flag"     type="boolean" indexed="true" stored="true" multiValued="false" />
