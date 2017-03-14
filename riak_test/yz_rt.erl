@@ -95,6 +95,7 @@
     riak_pb/1,
     rolling_upgrade/2,
     rolling_upgrade/4,
+    rolling_upgrade/5,
     run_bb/2,
     schema_url/2,
     search/4,
@@ -864,13 +865,22 @@ store_schema(PBConn, Name, Raw) ->
 -spec rolling_upgrade([node()], current | previous | legacy) -> ok.
 rolling_upgrade(Cluster, Version) ->
     rolling_upgrade(Cluster, Version, same, [riak_kv, yokozuna]).
--spec rolling_upgrade([node()], current | previous | legacy, props() | same, [atom()]) -> ok.
-rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices) when is_list(Cluster) ->
+
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices) ->
+    rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, fun rt:no_op/1).
+
+-spec rolling_upgrade(cluster() | node(),
+    current | previous | legacy,
+    UpgradeConfig :: props(),
+    WaitForServices :: [atom()]) -> ok.
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
+    when is_list(Cluster) ->
     lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
-    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) || Node <- Cluster],
+    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
+        || Node <- Cluster],
     ok;
-rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
-    rt:upgrade(Node, Version, UpgradeConfig),
+rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck) ->
+    rt:upgrade(Node, Version, UpgradeConfig, UpgradeCallabck),
     [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
     ok.
 
