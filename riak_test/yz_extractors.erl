@@ -155,7 +155,12 @@
            {anti_entropy_concurrency, 8},
            {anti_entropy_tick, 1000},
            %% but start with AAE turned off so as not to interfere with earlier parts of the test
-           {anti_entropy, {off, []}}
+           {anti_entropy, {off, []}},
+           %% speed up AAE tree rebuilds, now that we are using sweeper
+           {sweep_concurrency, 8},
+           {sweep_tick, 1023},
+           %% don't let hashtree upgrades delay exchanges
+           {force_hashtree_upgrade, true}
           ]},
          {yokozuna,
           [
@@ -335,7 +340,7 @@ test_extractor_with_aae_expire(Cluster, Index, Bucket, Packet) ->
     rpc:multicall(Cluster, riak_kv_entropy_manager, enable, []),
 
     yz_rt:expire_trees(Cluster),
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_aae(Cluster),
 
     yz_rt:search_expect(ANode, Index, <<"host">>,
                               <<"www*">>, 1),
@@ -357,7 +362,7 @@ test_extractor_with_aae_expire(Cluster, Index, Bucket, Packet) ->
                               <<"GET">>, 1),
 
     yz_rt:expire_trees(Cluster),
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_aae(Cluster),
 
     yz_rt:search_expect(ANode, Index, <<"method">>,
                               <<"GET">>, 1),
