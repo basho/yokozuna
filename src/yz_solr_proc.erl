@@ -401,7 +401,7 @@ check_index_solrconfig(SolrConfigIndexPath, DefaultSolrConfigPath, DefaultSolrCo
 upgrade_solr_config(SolrConfigIndexPath, DefaultSolrConfigPath, Version) ->
     yz_misc:copy_files([DefaultSolrConfigPath], filename:dirname(SolrConfigIndexPath)),
     lager:info(
-        "Upgraded ~s from ~s to the latest version.", [SolrConfigIndexPath, Version]
+        "Upgraded ~s from ~s (or higher) to the latest version.", [SolrConfigIndexPath, Version]
     ).
 
 -spec check_index_solrconfig_version(path()) -> ok.
