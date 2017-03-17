@@ -17,12 +17,9 @@
 -->
 
 <schema name="default" version="1.5">
- <fields>
 
    <!-- TODO: is this needed? -->
    <field name="_version_" type="long" indexed="true" stored="true"/>
-
-   <field name="text" type="text_general" indexed="true" stored="false" multiValued="true"/>
 
    <dynamicField name="*_i"  type="int"    indexed="true"  stored="true"  multiValued="false"/>
    <dynamicField name="*_is" type="int"    indexed="true"  stored="true"  multiValued="true"/>
@@ -134,11 +131,15 @@
 
    <!-- Flag indicating if this doc is the product of a failed object extraction -->
    <field name="_yz_err" type="_yz_str" indexed="true" stored="false" multiValued="false"/>
- </fields>
 
  <uniqueKey>_yz_id</uniqueKey>
 
-  <types>
+  <!-- Enable only if the client does not know what fields may be
+       searched because it's very expensive to index everything
+       twice. -->
+  <!-- <field name="_text_" type="text_general" indexed="true" stored="false" multiValued="true"/> -->
+  <!-- <copyField source="*" dest="_text_"/> -->
+
     <!-- YZ String: Used for non-analyzed fields -->
     <fieldType name="_yz_str" class="solr.StrField" sortMissingLast="true" />
 
@@ -803,6 +804,5 @@
         <filter class="solr.SnowballPorterFilterFactory" language="Turkish"/>
       </analyzer>
     </fieldType>
- </types>
 
 </schema>
