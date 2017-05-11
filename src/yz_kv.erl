@@ -406,7 +406,9 @@ get_and_set_tree(Partition) ->
 is_metadata_consistent(RemoteNode) ->
     BucketTypesPrefix = {core, bucket_types},
     Server = {riak_core_metadata_hashtree, RemoteNode},
-    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix}, 1000),
+    %% Timeout = app_helper:get_env(yokozuna, metadata_prefix_hash_timeout, 5000),
+    RemoteHash = gen_server:call(Server, {prefix_hash, BucketTypesPrefix},
+        app_helper:get_env(yokozuna, metadata_prefix_hash_timeout, 5000)),
     %% TODO Even though next call is local should also add 1s timeout
     %% since this call blocks vnode.  Or see above.
     LocalHash = riak_core_metadata_hashtree:prefix_hash(BucketTypesPrefix),
