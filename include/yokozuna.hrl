@@ -220,8 +220,6 @@
 %% microseconds.
 -define(YZ_TIME_ELAPSED(StartTime), timer:now_diff(os:timestamp(), StartTime)).
 
--define(RS_SVC, riak_search).
-
 -define(SOLR_HOST_CONTEXT, "/internal_solr").
 
 %%%===================================================================
