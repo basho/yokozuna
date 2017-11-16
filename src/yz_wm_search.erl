@@ -35,7 +35,8 @@
 %% @doc Return the list of routes provided by this resource.
 -spec routes() -> [tuple()].
 routes() ->
-    [{["solr", index, "select"], ?MODULE, []}].
+    [{["search", "query", index], ?MODULE, []},
+     {["solr", index, "select"], ?MODULE, []}].
 
 %%%===================================================================
 %%% Callbacks
