@@ -107,6 +107,11 @@ test() ->
 check() ->
     eqc:check(prop_correct()).
 
+check(F) ->
+    {ok, B} = file:read_file(F),
+    CE = binary_to_term(B),
+    eqc:check(eqc_statem:show_states(prop_correct()), CE).
+
 test(N) ->
     eqc:quickcheck(numtests(N, prop_correct())).
 
@@ -390,21 +395,24 @@ compare_post(S, _Args, Res) ->
     YZTreeData = dict:fetch(?TEST_INDEX_N, S#state.yz_idx_objects),
     KVTreeData = dict:fetch(?TEST_INDEX_N, S#state.kv_idx_objects),
 
-    LeftDiff = dict:fold(fun(BKey, Hash, Count) ->
+    HashDifferAcc = ordsets:new(),
+
+    LeftDiff = dict:fold(fun(BKey, Hash, {Count, HashDiff}) ->
                                  case dict:find(BKey, KVTreeData) of
-                                     {ok, Hash} -> Count;
-                                     {ok, _OtherHash} -> Count;
-                                     error -> Count+1
+                                     {ok, Hash} -> {Count, HashDiff};
+                                     {ok, _OtherHash} -> {Count, ordsets:add_element(BKey, HashDiff)};
+                                     error -> {Count+1, HashDiff}
                                  end
-                         end, 0, YZTreeData),
-    RightDiff = dict:fold(fun(BKey, Hash, Count) ->
+                         end, {0, HashDifferAcc}, YZTreeData),
+    {C, HD} = dict:fold(fun(BKey, Hash, {Count, HashDiff}) ->
                                  case dict:find(BKey, YZTreeData) of
-                                     {ok, Hash} -> Count;
-                                     {ok, _OtherHash} -> Count;
-                                     error -> Count+1
+                                     {ok, Hash} -> {Count, HashDiff};
+                                     {ok, _OtherHash} -> {Count, ordsets:add_element(BKey, HashDiff)};
+                                     error -> {Count+1, HashDiff}
                                  end
                          end, LeftDiff, KVTreeData),
 
+    RightDiff = C + ordsets:size(HD),
     eq(RightDiff, Res).
 
 %% @doc compare - Runs comparison between *local* YZ Idx Hashtree and
@@ -469,6 +477,15 @@ repair(_, {remote_missing, KeyBin}) ->
             tree_repair
     end;
 repair(_Partition, {missing, KeyBin}) ->
+    BKey = binary_to_term(KeyBin),
+    Index = yz_kv:get_index(BKey),
+    case yz_kv:should_index(Index) of
+        true ->
+            full_repair;
+        false ->
+            tree_repair
+    end;
+repair(_Partition, {different, KeyBin}) ->
     BKey = binary_to_term(KeyBin),
     Index = yz_kv:get_index(BKey),
     case yz_kv:should_index(Index) of
