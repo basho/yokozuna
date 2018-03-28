@@ -85,7 +85,7 @@
 -type logical_cover_set() :: [logical_cover_pair()].
 -type solr_host_mapping() :: [{node(), {string(),string()}}].
 -type plan() :: {[node()], logical_cover_set(), solr_host_mapping()}.
-
+-type cover_plan_token() :: integer() | undefined.
 -type ring_event() :: {ring_event, riak_core_ring:riak_core_ring()}.
 -type event() :: ring_event().
 

@@ -32,9 +32,11 @@
 -include("yokozuna.hrl").
 
 -record(state, {
-          %% The ring used to calculate the current cached plan.
-          ring_used :: ring()
-         }).
+    %% The ring used to calculate the current cached plan.
+    ring_used :: ring(),
+    %% A cache of plans, from {n_val(), id()} to {timestamp(), plan()}
+    plan_cache = dict:new() :: dict:dict()
+}).
 
 %%%===================================================================
 %%% API
@@ -60,13 +62,27 @@ logical_partitions(Ring, Partitions) ->
     ordsets:from_list([logical_partition(LI, P) || P <- Partitions]).
 
 %% @doc Get the coverage plan for `Index'.
--spec plan(index_name()) -> {ok, plan()} | {error, term()}.
 plan(Index) ->
+    plan(Index, undefined).
+
+-spec plan(index_name(), cover_plan_token()) -> {ok, plan()} | {error, term()}.
+plan(Index, CoverPlanToken) ->
     NVal = yz_index:get_n_val_from_index(Index),
-    case mochiglobal:get(?INT_TO_ATOM(NVal), undefined) of
-        undefined -> calc_plan(NVal, yz_misc:get_ring(transformed));
-        Plan -> Plan
+    case lookup_plan({NVal, CoverPlanToken}) of
+        undefined ->
+            Ring = yz_misc:get_ring(transformed),
+            CalcPlan = calc_plan(NVal, Ring),
+            maybe_cache_plan(CalcPlan, NVal, CoverPlanToken);
+        Plan ->
+            {ok, Plan}
     end.
+
+-spec maybe_cache_plan({error, term() | {ok, plan()}}, n(), cover_plan_token()) -> {ok, plan()} | {error, term()}.
+maybe_cache_plan({error, Term}, _NVal, _CoverPlanToken) ->
+    {error, Term};
+maybe_cache_plan({ok, Plan}, NVal, CoverPlanToken) ->
+    ok = cache_plan({NVal, CoverPlanToken}, Plan),
+    {ok, Plan}.
 
 -spec reify_partitions(ring(), ordset(lp())) -> ordset(p()).
 reify_partitions(Ring, LPartitions) ->
@@ -75,6 +91,19 @@ reify_partitions(Ring, LPartitions) ->
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+-type uuid() :: binary().
+-type plan_id() :: {n(), uuid() | undefined}.
+
+-spec cache_plan(plan_id(), plan()) -> ok.
+cache_plan(PlanId, Plan) ->
+    gen_server:call(?MODULE, {cache_plan, PlanId, current_ms(), Plan}, infinity).
+
+lookup_plan(PlanId) ->
+    gen_server:call(?MODULE, {lookup_plan, PlanId, current_ms()}, infinity).
+
+delete_plan(PlanId) ->
+    gen_server:call(?MODULE, {delete_plan, PlanId}, infinity).
 
 %%%===================================================================
 %%% Callbacks
@@ -103,6 +132,21 @@ handle_info(Req, S) ->
 handle_call(get_ring_used, _, S) ->
     Ring = S#state.ring_used,
     {reply, Ring, S};
+handle_call({cache_plan, PlanId, Timestamp, Plan}, _From, #state{plan_cache=PlanCache} = S) ->
+    NewPlanCache = dict:store(PlanId, {Timestamp, Plan}, PlanCache),
+    {reply, ok, S#state{plan_cache=NewPlanCache}};
+handle_call({lookup_plan, PlanId, Timestamp}, _From, #state{plan_cache=PlanCache} = S) ->
+    Reply = case dict:find(PlanId, PlanCache) of
+        {ok, {_Timestamp, Plan}} ->
+            Plan;
+        error ->
+            undefined
+    end,
+    NewPlanCache = dict:store(PlanId, {Timestamp, Plan}, PlanCache),
+    {reply, Reply, S#state{plan_cache=NewPlanCache}};
+handle_call({delete_plan, PlanId}, _From, #state{plan_cache=PlanCache} = S) ->
+    NewPlanCache = dict:erase(PlanId, PlanCache),
+    {reply, ok, S#state{plan_cache=NewPlanCache}};
 handle_call(Req, _, S) ->
     lager:warning("Unexpected request ~p", [Req]),
     {noreply, S}.
@@ -130,15 +174,27 @@ add_filtering(N, Q, LPI, PS) ->
 %%
 %% @doc Calculate a plan from the `NVal' and then store an entry
 %%      of the NVal's atom in the plan cache.
--spec cache_plan(n(), ring()) -> ok.
-cache_plan(NVal, Ring) ->
+-spec calc_and_cache_plan(n(), ring()) -> ok.
+calc_and_cache_plan(NVal, Ring) ->
     case calc_plan(NVal, Ring) of
         {error, _} ->
             mochiglobal:put(?INT_TO_ATOM(NVal), undefined);
         {ok, Plan} ->
-            mochiglobal:put(?INT_TO_ATOM(NVal), {ok, Plan})
+            {ok, _Plan, _CoverPlanToken} = cache_plan(Plan, NVal),
+            ok
     end,
     ok.
+
+%-spec cache_plan(plan(), n()) -> {ok, plan(), cover_plan_token()}.
+%cache_plan(Plan, NVal) ->
+%    CoverPlanToken = get_token(Plan),
+%    mochiglobal:put(?INT_TO_ATOM(NVal), {ok, Plan, CoverPlanToken}),
+%    mochiglobal:put(plan_key(NVal, CoverPlanToken), {ok, Plan, CoverPlanToken}),
+%    {ok, Plan, CoverPlanToken}.
+
+-spec get_token(plan()) -> cover_plan_token().
+get_token(Plan) ->
+    erlang:phash2(Plan).
 
 %% @private
 %%
@@ -292,7 +348,7 @@ schedule_tick() ->
 -spec update_all_plans(ring()) -> ok.
 update_all_plans(Ring) ->
     NVals = get_index_nvals(),
-    _ = [ok = cache_plan(N, Ring) || N <- NVals],
+    _ = [ok = calc_and_cache_plan(N, Ring) || N <- NVals],
     ok.
 
 get_index_nvals() ->
@@ -313,3 +369,14 @@ add_node_watcher_callback() ->
                 false -> ok
             end
         end).
+
+plan_key(NVal, undefined) ->
+    ?INT_TO_ATOM(NVal);
+plan_key(NVal, "*") ->
+    erlang:list_to_atom(?INT_TO_STR(NVal) ++ "_*");
+plan_key(NVal, CoverPlanToken) ->
+    erlang:list_to_atom(?INT_TO_STR(NVal) ++ "_" ++ ?INT_TO_STR(CoverPlanToken)).
+
+current_ms() ->
+    {MegaSecs, Secs, MicroSecs} = os:timestamp(),
+    (MegaSecs * 1000000 + Secs) * 1000 + round(MicroSecs / 1000).

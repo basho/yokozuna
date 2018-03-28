@@ -312,19 +312,59 @@ jmx_port() ->
 dist_search(Core, Params) ->
     dist_search(Core, [], Params).
 
+-define(TAG_CURSOR_MARK, "cursorMark").
+
 dist_search(Core, Headers, Params) ->
+    YZCursorMark = proplists:get_value(?TAG_CURSOR_MARK, Params),
+    dist_search(Core, Headers, Params, YZCursorMark).
+
+dist_search(Core, Headers, Params, undefined) ->
     Plan = yz_cover:plan(Core),
-    case Plan of
-        {ok, {Nodes, FilterPairs, Mapping}} ->
-            HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
-            ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
-            ShardFrags2 = string:join(ShardFrags, ","),
-            ShardFQs = build_shard_fq(FilterPairs, Mapping),
-            Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
-            search(Core, Headers, Params2);
-        {error, _} = Err ->
-            Err
-    end.
+    maybe_do_dist_search(Core, Headers, Params, Plan);
+dist_search(Core, Headers, Params0, YZCursorMark) ->
+    {SolrCursorMark, CoverPlanToken} = decompose_yz_cursormark(YZCursorMark),
+    Plan = yz_cover:plan(Core, CoverPlanToken),
+    Params1 = [{?TAG_CURSOR_MARK, SolrCursorMark} | proplists:delete(?TAG_CURSOR_MARK, Params0)],
+    maybe_do_dist_search(Core, Headers, Params1, Plan).
+
+decompose_yz_cursormark("*") ->
+    {"*", generate_new_token()};
+decompose_yz_cursormark(YZCursorMark) ->
+    erlang:binary_to_term(base64:decode(YZCursorMark)).
+
+compose_yz_cursormark(SolrCursorMark, CoverPlanToken) ->
+    base64:encode(erlang:term_to_binary({SolrCursorMark, CoverPlanToken})).
+
+generate_new_token() ->
+    %% TODO make this a UUID
+    N = random:uniform(4294967296),
+    <<N:32>>.
+
+maybe_do_dist_search(_Core, _Headers, _Params, {error, _Reason} = Result) ->
+    Result;
+maybe_do_dist_search(Core, Headers, Params, {ok, {Nodes, FilterPairs, Mapping}, CoverPlanToken}) ->
+    lager:info("FDUSHIN> CoverPlanToken=~p", [CoverPlanToken]),
+    HostPorts = [proplists:get_value(Node, Mapping) || Node <- Nodes],
+    ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
+    ShardFrags2 = string:join(ShardFrags, ","),
+    ShardFQs = build_shard_fq(FilterPairs, Mapping),
+    Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
+    maybe_compose_search_results(Core, Headers, Params2, CoverPlanToken).
+
+maybe_compose_search_results(Core, Headers, Params, undefined) ->
+    search(Core, Headers, Params);
+maybe_compose_search_results(Core, RequestHeaders, Params, CoverPlanToken) ->
+    {ResponseHeaders, ResponseBody} = search(Core, RequestHeaders, Params),
+    {ResponseHeaders, compose_response(ResponseBody, CoverPlanToken)}.
+
+compose_response(ResponseBody, CoverPlanToken) ->
+    ResponseJSON = mochijson2:decode(ResponseBody),
+    SolrCursorMark = kvc:path([nextCursorMark], ResponseJSON),
+    YZCursorMark = compose_yz_cursormark(SolrCursorMark, CoverPlanToken),
+    mochijson2:encode({struct, [
+        {response, get_response(ResponseJSON)},
+        {nextCursorMark, YZCursorMark}
+    ]}).
 
 search(Core, Headers, Params) ->
     Body = mochiweb_util:urlencode(Params),
