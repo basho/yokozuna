@@ -106,11 +106,14 @@ start_mock_components(Options) ->
     application:load(lager),
     ok = lager:start(),
     riak_core_metadata_manager:start_link([{data_dir, "eqc_test_data"}]),
+    riak_core_table_owner:start_link(),
+    riak_core_throttle:init(),
     riak_core_ring_events:start_link(),
     riak_core_ring_manager:start_link(test),
     riak_core_ring_manager:setup_ets(test),
     setup_mockring(RingSize),
     riak_kv_entropy_info:create_table(),
+    riak_core_capability:start_link(),
     riak_kv_entropy_manager:start_link(),
     ok.
 
@@ -121,6 +124,7 @@ cleanup_mock_components() ->
     stop_process(riak_core_ring_manager),
     stop_process(riak_core_metadata_manager),
     stop_process(riak_kv_entropy_manager),
+    stop_process(riak_core_table_owner),
     application:stop(riak_core),
     application:stop(riak_kv),
     application:unload(riak_core),

@@ -145,6 +145,7 @@ expire_trees() ->
 %%%===================================================================
 
 init([]) ->
+    ok = init_throttle(0),
     Trees = get_trees_from_sup(),
     schedule_tick(),
     {_, Opts} = settings(),
@@ -216,11 +217,13 @@ handle_cast({exchange_status, Pid, Index, {StartIdx, N}, Status}, S) ->
     {noreply, S2};
 
 handle_cast(clear_trees, S) ->
+    lager:info("Clearing YZ hashtrees and stopping all current exchanges."),
     clear_all_exchanges(S#state.exchanges),
     clear_all_trees(S#state.trees),
     {noreply, S};
 
 handle_cast(expire_trees, S) ->
+    lager:info("Expiring YZ hashtrees."),
     ok = expire_all_trees(S#state.trees),
     {noreply, S};
 
@@ -515,6 +518,23 @@ maybe_poke_tree(S) ->
     end.
 
 %%%===================================================================
+%%% Throttling
+%%%===================================================================
+
+throttle() ->
+    riak_core_throttle:throttle(?YZ_APP_NAME, ?YZ_ENTROPY_THROTTLE_KEY).
+
+init_throttle(InitialThrottle) ->
+    ok = riak_core_throttle:init(?YZ_APP_NAME,
+                                 ?YZ_ENTROPY_THROTTLE_KEY,
+                                 {?YZ_ENTROPY_THROTTLE_LIMITS_KEY,
+                                  ?YZ_ENTROPY_THROTTLE_DEFAULT_LIMITS},
+                                 {?YZ_ENTROPY_THROTTLE_ENABLED_KEY, true}),
+    ok = riak_core_throttle:set_throttle(?YZ_APP_NAME,
+                                         ?YZ_ENTROPY_THROTTLE_KEY,
+                                         InitialThrottle).
+
+%%%===================================================================
 %%% Exchanging
 %%%===================================================================
 
@@ -629,9 +649,9 @@ maybe_exchange(Ring, S) ->
             S2;
         {NextExchange, S2} ->
             {Index, IndexN} = NextExchange,
-            case already_exchanging(Index, S) of
+            case already_exchanging(Index, S2) of
                 true ->
-                    requeue_exchange(Index, IndexN, S2);
+                    S2;
                 false ->
                     case start_exchange(Index, IndexN, Ring, S2) of
                         {ok, S3} -> S3;

@@ -109,9 +109,14 @@ process(#rpbyokozunaindexputreq{
             index = #rpbyokozunaindex{
                 name = IndexName,
                 schema = SchemaName,
-                n_val = Nval}}, State) ->
-    Timeout = app_helper:get_env(?YZ_APP_NAME, index_put_timeout_ms,
-                                 ?DEFAULT_IDX_CREATE_TIMEOUT),
+                n_val = Nval},
+            timeout = T0}, State) ->
+    Timeout =
+        case T0 of
+            undefined -> app_helper:get_env(yokozuna, index_put_timeout_ms,
+                                            ?DEFAULT_IDX_CREATE_TIMEOUT);
+            _ -> T0
+        end,
 
     case maybe_create_index(IndexName, SchemaName, Nval, Timeout) of
         ok ->

@@ -36,6 +36,10 @@
 %%     {<<"set">>, <<"Riak">>},
 %%     {<<"set">>, <<"Voldemort">>}]
 %% '''
+%% HyperLogLog example:
+%% ```
+%%    [{<<"hll">>, <<"10004">>}]
+%% '''
 %% Map example (note the output of embedded types and conversion of
 %% module to symbolic type):
 %% ```
@@ -72,7 +76,7 @@
          }).
 -type state() :: #state{}.
 -type field_path_name() :: undefined | {binary() | undefined, binary()}.
--type datatype() :: map | set | counter | register | flag.
+-type datatype() :: map | set | counter | register | flag | hll.
 -spec extract(binary()) -> fields() | {error, any()}.
 extract(Value) ->
     extract(Value, ?NO_OPTIONS).
@@ -88,7 +92,8 @@ extract(Value0, Opts) ->
 
 -spec extract_fields(#crdt{}, state()) -> fields().
 extract_fields(#crdt{mod=Mod, value=Data}, S) ->
-    #state{fields=F} = extract_fields(undefined, riak_kv_crdt:from_mod(Mod), Mod:value(Data), S),
+    #state{fields=F} = extract_fields(undefined, riak_kv_crdt:from_mod(Mod),
+                                      Mod:value(Data), S),
     F.
 
 -spec extract_fields(field_path_name(), datatype(), term(), state()) -> state().
@@ -106,9 +111,15 @@ extract_fields(Name, register, Value, #state{fields=Fields, field_separator=Sep}
     State#state{fields=[{FieldName, Value}|Fields]};
 extract_fields(Name, flag, Value, #state{fields=Fields, field_separator=Sep}=State) ->
     FieldName = field_name(Name, flag, Sep),
-    State#state{fields=[{FieldName, Value}|Fields]}.
+    State#state{fields=[{FieldName, Value}|Fields]};
 
--spec field_name(field_path_name(), datatype(), binary()) -> undefined | binary().
+extract_fields(Name, hll=Type, Value, #state{fields=Fields,
+                                             field_separator=Sep}=State) ->
+    FieldName = field_name(Name, Type, Sep),
+    State#state{fields=[{FieldName, ?INT_TO_BIN(Value)}|Fields]}.
+
+-spec field_name(field_path_name(), datatype(), binary()) -> undefined |
+                                                            binary().
 field_name(undefined, map, _Sep) ->
     undefined;
 field_name(undefined, Type, _Sep) ->

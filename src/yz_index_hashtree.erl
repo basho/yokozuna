@@ -51,32 +51,69 @@ start_link(Index, RPs) ->
     gen_server:start_link(?MODULE, [Index, RPs], []).
 
 %% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given
+%%      `Id'.  The result of this call is not useful, as it may fail
+%%       but is protected by a `try/catch'
+-spec insert({p(),n()}, bkey(), binary(), tree(), list()) ->
+    ok | term().
+insert(Id, BKey, Hash, Tree, Options) ->
+    SyncOrAsync = hashtree_call_mode(),
+    insert(SyncOrAsync, Id, BKey, Hash, Tree, Options).
+
+%% @doc Insert the given `Key' and `Hash' pair on `Tree' for the given
 %%      `Id'.  The result of a sync call should be ignored since it
 %%      uses `catch'.
+%%      WARNING: In almost all cases, the caller should use `insert/5'
+%%               rather than calling `insert/6' directly to prevent mailbox
+%%               overload of the hashtree.
 -spec insert(async | sync, {p(),n()}, bkey(), binary(), tree(), list()) ->
                     ok | term().
 insert(async, Id, BKey, Hash, Tree, Options) ->
     gen_server:cast(Tree, {insert, Id, BKey, Hash, Options});
 
 insert(sync, Id, BKey, Hash, Tree, Options) ->
-    catch gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity).
+    try
+        gen_server:call(Tree, {insert, Id, BKey, Hash, Options}, infinity)
+    catch
+        Error ->
+            lager:error("Synchronous insert into hashtree failed for reason ~p", [Error])
+    end.
 
 %% @doc Delete the `BKey' from `Tree'.  The id will be determined from
 %%      `BKey'.  The result of the sync call should be ignored since
 %%      it uses catch.
+-spec delete({p(),n()}, bkey(), tree()) -> ok.
+delete(Id, BKey, Tree) ->
+    SyncOrAsync = hashtree_call_mode(),
+    delete(SyncOrAsync, Id, BKey, Tree).
+
+%% @doc Delete the `BKey' from `Tree'.  The id will be determined from
+%%      `BKey'.  The result of the sync call should be ignored since
+%%      it uses catch.
+%%      WARNING: In almost all cases, the caller should use `delete/3'
+%%               rather than calling `delete/4' directly to prevent mailbox
+%%               overload of the hashtree.
 -spec delete(async | sync, {p(),n()}, bkey(), tree()) -> ok.
 delete(async, Id, BKey, Tree) ->
     gen_server:cast(Tree, {delete, Id, BKey});
 
 delete(sync, Id, BKey, Tree) ->
-    catch gen_server:call(Tree, {delete, Id, BKey}, infinity).
+    try
+        gen_server:call(Tree, {delete, Id, BKey}, infinity)
+    catch
+        Error ->
+            lager:error("Synchronous delete from hashtree failed for reason ~p", [Error])
+    end.
 
--spec update({p(),n()}, tree()) -> ok.
+-spec update({p(), n()}, tree()) -> ok.
 update(Id, Tree) ->
-    gen_server:call(Tree, {update_tree, Id}, infinity).
+    gen_server:call(Tree, {update_tree, Id, undefined}, infinity).
+
+-spec update({p(),n()}, tree(), fun()) -> ok.
+update(Id, Tree, Callback) ->
+    gen_server:call(Tree, {update_tree, Id, Callback}, infinity).
 
 -spec compare({p(),n()}, hashtree:remote_fun(),
-              undefined | hashtree:acc_fun(T), term(), tree()) -> T.
+              undefined | hashtree:acc_fun(T), term(), tree()) -> T | {error, Reason::term()}.
 compare(Id, Remote, AccFun, Acc, Tree) ->
     gen_server:call(Tree, {compare, Id, Remote, AccFun, Acc}, infinity).
 
@@ -182,7 +219,7 @@ handle_call({get_lock, Type, Pid}, _From, S) ->
     {Reply, S2} = do_get_lock(Type, Pid, S),
     {reply, Reply, S2};
 
-handle_call({update_tree, Id}, From, S) ->
+handle_call({update_tree, Id, Callback}, From, S) ->
     lager:debug("Updating tree for partition ~p preflist ~p",
                [S#state.index, Id]),
     apply_tree(Id,
@@ -192,6 +229,7 @@ handle_call({update_tree, Id}, From, S) ->
                        Self = self(),
                        spawn_link(
                          fun() ->
+                                 catch maybe_callback(Callback),
                                  hashtree:update_perform(SnapTree),
                                  gen_server:cast(Self, {updated, Id}),
                                  gen_server:reply(From, ok)
@@ -201,8 +239,8 @@ handle_call({update_tree, Id}, From, S) ->
                S);
 
 handle_call({compare, Id, Remote, AccFun, Acc}, From, S) ->
-    do_compare(Id, Remote, AccFun, Acc, From, S),
-    {noreply, S};
+    S2 = do_compare(Id, Remote, AccFun, Acc, From, S),
+    {noreply, S2};
 
 handle_call(destroy, _From, S) ->
     S2 = destroy_trees(S),
@@ -255,11 +293,13 @@ handle_cast(expire, S) ->
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
+handle_info({'EXIT', _SomeOtherProc, normal}, S) ->
+    {noreply, S};
 handle_info({'DOWN', Ref, _, _, _}, S) ->
     S2 = maybe_release_lock(Ref, S),
     {noreply, S2};
-
-handle_info(_Info, S) ->
+handle_info(Message, S) ->
+    lager:error("Received unhandled message with message ~p", [Message]),
     {noreply, S}.
 
 terminate(_Reason, S) ->
@@ -322,7 +362,7 @@ fold_keys(Partition, Tree, Indexes) ->
                 %% TODO: return _yz_fp from iterator and use that for
                 %%       more efficient get_index_N
                 IndexN = get_index_n(BKey),
-                insert(async, IndexN, BKey, Hash, Tree, [if_missing])
+                insert(IndexN, BKey, Hash, Tree, [if_missing])
         end,
     Filter = [{partition, LogicalPartition}],
     [yz_entropy:iterate_entropy_data(I, Filter, F) || I <- Indexes].
@@ -427,6 +467,40 @@ do_delete(Id, Key, S=#state{trees=Trees}) ->
             handle_unexpected_key(Id, Key, S)
     end.
 
+%% @private
+%%
+%% @doc Determine the method used to make the hashtree update.  Most
+%% updates will be performed in async manner but want to occasionally
+%% use a blocking call to avoid overloading the hashtree.
+%%
+%% NOTE: This uses the process dictionary and thus is another function
+%% which relies running on a long-lived process.  In this case that
+%% process is the KV vnode.  In the future this should probably use
+%% cast only + sidejob for overload protection.
+-spec hashtree_call_mode() -> async | sync.
+hashtree_call_mode() ->
+    case get(yz_hashtree_tokens) of
+        undefined ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            async;
+        N when N > 0 ->
+            put(yz_hashtree_tokens, N - 1),
+            async;
+        _ ->
+            put(yz_hashtree_tokens, max_hashtree_tokens() - 1),
+            sync
+    end.
+
+%% @private
+%%
+%% @doc Return the max number of async hashtree calls that may be
+%% performed before requiring a blocking call.
+-spec max_hashtree_tokens() -> pos_integer().
+max_hashtree_tokens() ->
+    %% Use same max as riak_kv if no override provided
+    app_helper:get_env(yokozuna, anti_entropy_max_async,
+        app_helper:get_env(riak_kv, anti_entropy_max_async, 90)).
+
 -spec handle_unexpected_key({p(),n()}, binary(), state()) -> state().
 handle_unexpected_key(Id, Key, S=#state{index=Partition}) ->
     RP = riak_kv_util:responsible_preflists(Partition),
@@ -484,17 +558,26 @@ do_compare(Id, Remote, AccFun, Acc, From, S) ->
             %% This case shouldn't happen, but might as well safely handle it.
             lager:warning("Tried to compare nonexistent tree "
                           "(vnode)=~p (preflist)=~p", [S#state.index, Id]),
-            gen_server:reply(From, []);
+            gen_server:reply(From, []),
+            S;
         {ok, Tree} ->
             spawn_link(
-              fun() ->
-                      Remote(init, self()),
-                      Result = hashtree:compare(Tree, Remote, AccFun, Acc),
-                      Remote(final, self()),
-                      gen_server:reply(From, Result)
-              end)
+                fun() -> async_do_compare(Remote, Tree, AccFun, Acc, From) end
+            ),
+            S
+    end.
+
+async_do_compare(Remote, Tree, AccFun, Acc, From) ->
+    Result = try
+        Remote(init, self()),
+        CompareResult = hashtree:compare(Tree, Remote, AccFun, Acc),
+        Remote(final, self()),
+        CompareResult
+    catch
+        _:Reason ->
+            {error, Reason}
     end,
-    ok.
+    gen_server:reply(From, Result).
 
 %% TODO: OMG cache this with entry in proc dict, use `_yz_fp' as Index
 %%       and keep an orddict(Bucket,N) in proc dict
@@ -529,7 +612,7 @@ clear_tree(S=#state{index=Index}) ->
     S3#state{built=false, expired=false}.
 
 destroy_trees(S) ->
-    S2 = close_trees(S),
+    S2 = close_trees(S, true),
     {_,Tree0} = hd(S#state.trees), % deliberately using state with live db ref
     hashtree:destroy(Tree0),
     S2.
@@ -547,7 +630,11 @@ maybe_build(S) ->
 %%
 %% @doc Flush and close the trees if not closed already.
 -spec close_trees(#state{}) -> #state{}.
-close_trees(S=#state{trees=Trees, closed=false}) ->
+close_trees(State) ->
+    close_trees(State, false).
+
+-spec close_trees(#state{}, SkipUpdate::boolean()) -> #state{}.
+close_trees(S=#state{trees=Trees, closed=false}, _WillDestroy=false) ->
     Trees2 = [begin
                   NewTree =
                       try hashtree:next_rebuild(Tree) of
@@ -568,10 +655,18 @@ close_trees(S=#state{trees=Trees, closed=false}) ->
                       end,
                   {IdxN, NewTree}
               end || {IdxN, Tree} <- Trees],
-    Trees3 = [{IdxN, hashtree:close(Tree)} || {IdxN, Tree} <- Trees2],
-    S#state{trees=Trees3, closed=true};
-close_trees(S) ->
+    really_close_trees(Trees2, S);
+close_trees(#state{trees=Trees, closed=false}=State, _WillDestroy=true) ->
+    really_close_trees(Trees, State);
+close_trees(S, _) ->
     S.
+
+really_close_trees(Trees2, S) ->
+    lists:foreach(fun really_close_tree/1, Trees2),
+    S#state{trees = undefined, closed = true}.
+
+really_close_tree({_IdxN, Tree}) ->
+    hashtree:close(Tree).
 
 -spec build_or_rehash(pid(), state()) -> ok.
 build_or_rehash(Tree, S) ->
@@ -676,3 +771,8 @@ handle_iter_keys(Tree, Index, IterKeys) ->
             lager:debug("YZ AAE tree build failed: ~p", [Index]),
             gen_server:cast(Tree, build_failed)
     end.
+
+maybe_callback(undefined) ->
+    ok;
+maybe_callback(Callback) ->
+    Callback().

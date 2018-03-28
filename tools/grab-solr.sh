@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 #
 # Script to grab Solr and embed in priv dir. This script assumes it is
 # being called from root dir or tools dir.
@@ -18,13 +18,14 @@ PRIV_DIR=../priv
 CONF_DIR=$PRIV_DIR/conf
 SOLR_DIR=$PRIV_DIR/solr
 BUILD_DIR=../build
-VSN=solr-4.7.0-yz-1
+VSN=solr-4.10.4-yz-2
 FILENAME=$VSN.tgz
 TMP_DIR=/var/tmp/yokozuna
 TMP_FILE=$TMP_DIR/$FILENAME
 SRC_DIR=$BUILD_DIR/$VSN
 EXAMPLE_DIR=$SRC_DIR/example
 COL1_DIR=$EXAMPLE_DIR/solr/collection1
+: ${ARTIFACT_URL_PREFIX:="http://s3.amazonaws.com/files.basho.com"}
 
 check_for_solr()
 {
@@ -52,11 +53,11 @@ get_solr()
                 ln -s $TMP_FILE $FILENAME
             else
                 echo "Pulling Solr from S3"
-                download "http://s3.amazonaws.com/files.basho.com/solr/$FILENAME"
+                download "${ARTIFACT_URL_PREFIX}/solr/$FILENAME"
                 if [ -d $TMP_DIR ]; then
                     cp $FILENAME $TMP_DIR
                 else
-                    mkdir $TMP_DIR
+                    mkdir -m 1777 $TMP_DIR
                     cp $FILENAME $TMP_DIR
                 fi
             fi
@@ -120,7 +121,7 @@ then
     fi
 
     echo "Downloading $YZ_JAR_NAME"
-    download "http://s3.amazonaws.com/files.basho.com/yokozuna/$YZ_JAR_NAME"
+    download "${ARTIFACT_URL_PREFIX}/yokozuna/$YZ_JAR_NAME"
     mv $YZ_JAR_NAME $JAVA_LIB/$YZ_JAR_NAME
 fi
 
@@ -131,6 +132,6 @@ MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
 if [ ! -e $EXT_LIB/$MON_JAR_NAME ]
 then
     echo "Downloading $MON_JAR_NAME"
-    download "http://s3.amazonaws.com/files.basho.com/yokozuna/$MON_JAR_NAME"
+    download "${ARTIFACT_URL_PREFIX}/yokozuna/$MON_JAR_NAME"
     mv $MON_JAR_NAME $EXT_LIB/$MON_JAR_NAME
 fi

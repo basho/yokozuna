@@ -1,7 +1,156 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2015-2017 Basho Technologies, Inc.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+%%-------------------------------------------------------------------
+
 -module(yz_rt).
--compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").
+
+-export([
+    add_intercepts/3,
+    assert_search/6,
+    bb_driver_setup/0,
+    brutal_kill_remove_index_dirs/3,
+    build_bb_driver/3,
+    check_exists/2,
+    check_fuse_status/4,
+    check_stat_values/2,
+    clean_dir/1,
+    clear_aae_trees/1,
+    clear_kv_trees/1,
+    clear_trees/1,
+    close_pb_conns/1,
+    commit/2,
+    connection_info/1,
+    count_calls/2,
+    create_and_set_index/4,
+    create_and_set_index/5,
+    create_bucket_type/2,
+    create_index/2,
+    create_index/3,
+    create_index/4,
+    create_index_http/2,
+    create_index_http/3,
+    create_indexed_bucket/4,
+    create_indexed_bucket/5,
+    create_indexed_bucket_type/3,
+    create_indexed_bucket_type/4,
+    create_indexed_bucket_type/5,
+    drain_solrqs/1,
+    entropy_data_url/3,
+    expire_aae_trees/1,
+    expire_kv_trees/1,
+    expire_trees/1,
+    find_representatives/3,
+    gen_keys/1,
+    get_call_count/2,
+    get_count/1,
+    get_solrq/3,
+    host_entries/1,
+    host_port/1,
+    http/4,
+    http/5,
+    http/6,
+    http_put/4,
+    http_put/5,
+    index_url/2,
+    index_url/3,
+    intercept_index_batch/2,
+    internal_solr_url/4,
+    load_data/4,
+    load_data/5,
+    load_intercept_code/1,
+    load_module/2,
+    maybe_create_ets/0,
+    merge_config/2,
+    node_solr_port/1,
+    open_pb_conns/1,
+    override_schema/5,
+    pb_write_data/5,
+    prepare_cluster/2,
+    random_binary/1,
+    random_keys/1,
+    random_keys/2,
+    really_remove_index/4,
+    remove_index/2,
+    remove_index_dirs/3,
+    reset_stats/1,
+    riak_http/1,
+    riak_pb/1,
+    rolling_upgrade/2,
+    rolling_upgrade/4,
+    rolling_upgrade/5,
+    run_bb/2,
+    schema_url/2,
+    search/4,
+    search/5,
+    search/6,
+    search/7,
+    search_expect/5,
+    search_expect/6,
+    search_expect/7,
+    search_url/2,
+    select_random/1,
+    set_bucket_props/3,
+    set_bucket_type_index/2,
+    set_bucket_type_index/3,
+    set_bucket_type_index/4,
+    set_hwm/2,
+    set_index/3,
+    set_index/4,
+    set_index/5,
+    set_purge_strategy/2,
+    set_yz_aae_mode/2,
+    setup_drain_intercepts/1,
+    solr_http/1,
+    stop_tracing/0,
+    store_schema/3,
+    trace_count/2,
+    verify_count/2,
+    verify_num_found_query/3,
+    verify_num_match/3,
+    verify_num_match/4,
+    wait_for_aae/1,
+    wait_for_all_trees/1,
+    wait_for_bucket_type/2,
+    wait_for_full_exchange_round/1,
+    wait_for_full_exchange_round/2,
+    wait_for_index/2,
+    wait_for_joins/1,
+    wait_for_schema/2,
+    wait_for_schema/3,
+    wait_for_solr/1,
+    wait_until/2,
+    wait_until_fuses_blown/3,
+    wait_until_fuses_reset/3,
+    write_data/4,
+    write_data/5,
+    write_data/6,
+    write_obj/2,
+    write_objs/2,
+    write_objs/3,
+    write_objs/4,
+    write_objs_parallel/4,
+    write_objs_parallel/5,
+    write_terms/2
+]).
+
 -define(YZ_RT_ETS, yz_rt_ets).
 -define(YZ_RT_ETS_OPTS, [public, named_table, {write_concurrency, true}]).
 -define(NO_BODY, <<>>).
@@ -21,11 +170,15 @@
 %% Copied from rt.erl, would be nice if there was a rt.hrl
 -type interface() :: {http, tuple()} | {pb, tuple()}.
 -type interfaces() :: [interface()].
+-type count() :: non_neg_integer().
 -type conn_info() :: [{node(), interfaces()}].
 -type prop() :: {atom(), any()}.
 -type props() :: [prop()].
 -type search_type() :: solr | yokozuna.
 -type cluster() :: cluster().
+
+-type intercept() :: {{TargetFunctionName::atom(), TargetArity::non_neg_integer()}, InterceptFunctionName::atom()}.
+-type intercepts() :: [intercept()].
 
 -export_type([prop/0, props/0, cluster/0]).
 
@@ -51,6 +204,7 @@ prepare_cluster(NumNodes, Config) ->
     Cluster = join_all(Nodes),
     wait_for_joins(Cluster),
     rt:wait_for_cluster_service(Cluster, yokozuna),
+    lager:info("Cluster ~p is prepared.", [Cluster]),
     Cluster.
 
 -spec connection_info(list()) -> orddict:orddict().
@@ -73,11 +227,13 @@ create_bucket_type(Cluster, BucketType, Props) ->
 
 -spec create_indexed_bucket_type(cluster(), binary(), index_name()) -> ok.
 create_indexed_bucket_type(Cluster, BucketType, IndexName) ->
-    ok = create_index(Cluster, IndexName),
-    ok = create_bucket_type(Cluster, BucketType, [{?YZ_INDEX, IndexName}]).
+    create_indexed_bucket_type(Cluster, BucketType, IndexName, []).
 
--spec create_indexed_bucket_type(cluster(), binary(), index_name(),
-                                 schema_name()) -> ok.
+-spec create_indexed_bucket_type(cluster(), binary(), index_name(), proplist()|schema_name()) -> ok.
+create_indexed_bucket_type(Cluster, BucketType, IndexName, Properties) when is_list(Properties) ->
+    NVal = proplists:get_value(n_val, Properties, 3),
+    ok = create_index(Cluster, IndexName, ?YZ_DEFAULT_SCHEMA_NAME, NVal),
+    ok = create_bucket_type(Cluster, BucketType, [{?YZ_INDEX, IndexName} | Properties]);
 create_indexed_bucket_type(Cluster, BucketType, IndexName, SchemaName) ->
     ok = create_index(Cluster, IndexName, SchemaName),
     ok = create_bucket_type(Cluster, BucketType, [{?YZ_INDEX, IndexName}]).
@@ -291,6 +447,67 @@ load_data(Cluster, Bucket, YZBenchDir, NumKeys, Operations) ->
 load_data(Cluster, Bucket, YZBenchDir, NumKeys) ->
     load_data(Cluster, Bucket, YZBenchDir, NumKeys, [{load_fruit, 1}]).
 
+
+-spec write_data(cluster(), bucket(), non_neg_integer(), non_neg_integer()) ->
+    [ok | {error, term()}].
+write_data(Cluster, Bucket, Start, Count) ->
+    ValueGenerator = fun(Key) -> {Key, "text/plain"} end,
+    write_data(Cluster, Bucket, Start, Count, ValueGenerator).
+
+-spec write_data(cluster(), bucket(), non_neg_integer(), non_neg_integer(), fun((non_neg_integer()) -> ok | term()))  ->
+    [ok | {error, term()}].
+write_data(Cluster, Bucket, Start, Count, ValueGenerator) ->
+    Node = select_random(Cluster),
+    rt:wait_for_service(Node, riak_kv),
+    Pid = rt:pbc(Node),
+    F = fun(N, Acc) ->
+        Key = list_to_binary(integer_to_list(N)),
+        {Value, ContentType} = ValueGenerator(Key),
+        Obj = riakc_obj:new(Bucket, Key, Value, ContentType),
+        %lager:info("Writing {~p, ~p} ...", [Key, Value]),
+        try riakc_pb_socket:put(Pid, Obj) of
+            ok ->
+                [ok | Acc];
+            Other ->
+                [{error, Other} | Acc]
+        catch
+            What:Why ->
+                [{error, {What, Why}} | Acc]
+        end
+    end,
+    lager:info("Writing ~p objects to Riak...", [Count]),
+    lists:foldl(F, [], lists:seq(Start, (Start + Count) - 1)).
+
+-spec write_data([node()], pid(), index_name(), {schema_name(), raw_schema()},
+    bucket(), [binary()]) -> ok.
+write_data(Cluster, Pid, Index, {SchemaName, SchemaData},
+    Bucket, Keys) ->
+    riakc_pb_socket:set_options(Pid, [queue_if_disconnected]),
+
+    riakc_pb_socket:create_search_schema(Pid, SchemaName, SchemaData),
+
+    create_and_set_index(Cluster, Pid, Bucket, Index, SchemaName),
+    yz_rt:commit(Cluster, Index),
+
+    %% Write keys
+    lager:info("Writing ~p keys", [length(Keys)]),
+    [ok = rt:pbc_write(Pid, Bucket, Key, Key, "text/plain") || Key <- Keys],
+    ok.
+
+%% @doc Write `Keys' via the PB interface to a `Bucket' and have them
+%%      searchable in an `Index'.
+-spec pb_write_data([node()], pid(), index_name(), bucket(), [binary()]) -> ok.
+pb_write_data(Cluster, Pid, Index, Bucket, Keys) ->
+    riakc_pb_socket:set_options(Pid, [queue_if_disconnected]),
+
+    create_and_set_index(Cluster, Pid, Bucket, Index),
+    yz_rt:commit(Cluster, Index),
+
+    %% Write keys
+    lager:info("Writing ~p keys", [length(Keys)]),
+    [ok = rt:pbc_write(Pid, Bucket, Key, Key, "text/plain") || Key <- Keys],
+    ok.
+
 %% @doc Load the BEAM for `Module' across the `Nodes'.  This allows
 %% use of higher order functions, defined in a riak test module, on
 %% the Riak node.
@@ -343,6 +560,48 @@ riak_pb({_Node, ConnInfo}) ->
 riak_pb(ConnInfo) ->
     proplists:get_value(pb, ConnInfo).
 
+-spec create_and_set_index([node()], pid(), bucket(), index_name()) -> ok.
+create_and_set_index(Cluster, Pid, Bucket, Index) ->
+    %% Create a search index and associate with a bucket
+    lager:info("Create a search index ~s and associate it with bucket ~s",
+        [Index, Bucket]),
+    _ = riakc_pb_socket:create_search_index(Pid, Index),
+    %% For possible legacy upgrade reasons or general check around the cluster,
+    %% wrap create index in a wait
+    wait_for_index(Cluster, Index),
+    set_index_pid(Pid, hd(Cluster), Bucket, Index).
+-spec create_and_set_index([node()], pid(), bucket(), index_name(),
+    schema_name()) -> ok.
+create_and_set_index(Cluster, Pid, Bucket, Index, Schema) ->
+    %% Create a search index and associate with a bucket
+    lager:info("Create a search index ~s with a custom schema named ~s and " ++
+    "associate it with bucket ~p", [Index, Schema, Bucket]),
+    _ = riakc_pb_socket:create_search_index(Pid, Index, Schema, []),
+    %% For possible legacy upgrade reasons or general check around the cluster,
+    %% wrap create index in a wait
+    wait_for_index(Cluster, Index),
+    set_index_pid(Pid, hd(Cluster), Bucket, Index).
+
+-spec set_index_pid(pid(), node(), bucket(), index_name()) -> ok.
+set_index_pid(Pid, Node, {BucketType, _Bucket}, Index) when is_pid(Pid) ->
+    lager:info("Create and activate map-based bucket type ~s and tie it to search_index ~s",
+        [BucketType, Index]),
+    rt:create_and_activate_bucket_type(Node, BucketType, [{search_index, Index}]);
+set_index_pid(Pid, _Node, Bucket, Index) when is_pid(Pid) ->
+    ok = riakc_pb_socket:set_search_index(Pid, Bucket, Index).
+
+-spec set_index(node(), bucket(), index_name(), n()) -> ok | {error, any()}.
+set_index(Node, Bucket, Index, NVal) ->
+    Props = [{?YZ_INDEX, Index}, {n_val, NVal}],
+    set_bucket_props(Node, Bucket, Props).
+
+%% @doc Associate the `Index' with the `Bucket', sending the request
+%% to `Node'.
+-spec set_index(node(), bucket(), index_name()) -> ok | {error, any()}.
+set_index(Node, Bucket, Index) ->
+    Props = [{?YZ_INDEX, Index}],
+    set_bucket_props(Node, Bucket, Props).
+
 run_bb(Method, File) ->
     Fun = case Method of
               sync -> cmd;
@@ -390,6 +649,18 @@ clean_dir("/") ->
 clean_dir(Dir) ->
     os:cmd(io_lib:format("rm -rf ~s", [Dir])),
     os:cmd(io_lib:format("mkdir -p ~s", [Dir])).
+
+-spec verify_num_found_query([node()], index_name(), count()) -> ok.
+verify_num_found_query(Cluster, Index, ExpectedCount) ->
+    F = fun(Node) ->
+        Pid = rt:pbc(Node),
+        {ok, {_, _, _, NumFound}} = riakc_pb_socket:search(Pid, Index, <<"*:*">>),
+        lager:info("Check Count, Expected: ~p | Actual: ~p~n",
+            [ExpectedCount, NumFound]),
+        ExpectedCount =:= NumFound
+        end,
+    wait_until(Cluster, F),
+    ok.
 
 -spec search_expect(node()|cluster(), index_name(), string(), string(),
                     non_neg_integer()) -> ok.
@@ -444,6 +715,24 @@ search_expect(Nodes, yokozuna=Type, Index, Name, Term, Expect)
 search_expect(Node, Type, Index, Name, Term, Expect) ->
     search_expect([Node], Type, Index, Name, Term, Expect).
 
+assert_search(Pid, Cluster, Index, Search, SearchExpect, Params) ->
+    F = fun(_) ->
+        lager:info("Searching ~p and asserting it exists",
+            [SearchExpect]),
+        case riakc_pb_socket:search(Pid, Index, Search, Params) of
+            {ok,{search_results,[{_Index,Fields}], _Score, Found}} ->
+                ?assert(lists:member(SearchExpect, Fields)),
+                case Found of
+                    1 -> true;
+                    0 -> false
+                end;
+            {ok, {search_results, [], _Score, 0}} ->
+                lager:info("Search has not yet yielded data"),
+                false
+        end
+        end,
+    wait_until(Cluster, F).
+
 search(HP, Index, Name, Term) ->
     search(HP, Index, Name, Term, "").
 
@@ -495,18 +784,6 @@ select_random(List) ->
     Idx = random:uniform(Length),
     lists:nth(Idx, List).
 
-%% @doc Associate the `Index' with the `Bucket', sending the request
-%% to `Node'.
--spec set_index(node(), bucket(), index_name()) -> ok | {error, any()}.
-set_index(Node, Bucket, Index) ->
-    Props = [{?YZ_INDEX, Index}],
-    set_bucket_props(Node, Bucket, Props).
-
--spec set_index(node(), bucket(), index_name(), n()) -> ok | {error, any()}.
-set_index(Node, Bucket, Index, NVal) ->
-    Props = [{?YZ_INDEX, Index}, {n_val, NVal}],
-    set_bucket_props(Node, Bucket, Props).
-
 -spec set_bucket_props(node(), bucket(), props()) -> ok | {error, any()}.
 set_bucket_props(Node, Bucket, Props) ->
     rpc:call(Node, riak_core_bucket, set_bucket, [Bucket, Props]).
@@ -516,6 +793,25 @@ remove_index(Node, BucketType) ->
     lager:info("Remove index from bucket type ~s [~p]", [BucketType, Node]),
     Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
     ok = rpc:call(Node, riak_core_bucket_type, update, [BucketType, Props]).
+
+really_remove_index(Cluster, {BucketType, Bucket}, Index, PBConn) ->
+    lager:info("Removing index ~p", [Index]),
+    Node = hd(Cluster),
+    F = fun(_) ->
+                Props = [{?YZ_INDEX, ?YZ_INDEX_TOMBSTONE}],
+                %% Remove index from bucket props and delete it
+                rpc:call(Node, riak_core_bucket, set_bucket, [{BucketType, Bucket}, Props]),
+                remove_index(Node, BucketType),
+                DelResp = riakc_pb_socket:delete_search_index(PBConn, Index),
+                case DelResp of
+                    ok -> true;
+                    {error,<<"notfound">>} -> true;
+                    _ ->
+                        lager:info("Attempting to remove index ~p: Result was ~p", [Index, DelResp]),
+                        false
+                end
+        end,
+    yz_rt:wait_until(Cluster, F).
 
 -spec set_bucket_type_index(cluster(), binary()) -> ok.
 set_bucket_type_index(Cluster, BucketType) ->
@@ -540,12 +836,14 @@ create_indexed_bucket(PBConn, Cluster, Bucket, Index) ->
     create_indexed_bucket(PBConn, Cluster, Bucket, Index, 1).
 
 -spec create_indexed_bucket(pid(),
-    cluster(),
-    {binary(), binary()},
-    index_name(),
-    pos_integer()) -> ok.
-create_indexed_bucket(PBConn, Cluster, {BType, _Bucket}, Index, NVal) ->
+                            cluster(),
+                            {binary(), binary()},
+                            index_name(),
+                            pos_integer()) -> ok.
+create_indexed_bucket(PBConn, Cluster, {BType, Bucket}, Index, NVal) ->
+    lager:info("Creating index ~p", [Index]),
     ok = riakc_pb_socket:create_search_index(PBConn, Index, <<>>, [{n_val, NVal}]),
+    lager:info("Binding index ~p to bucket ~p", [Index, {BType, Bucket}]),
     ok = set_bucket_type_index(Cluster, BType, Index, NVal).
 
 -spec solr_http({node(), orddict:orddict()}) -> {host(), portnum()}.
@@ -560,6 +858,39 @@ solr_http(ConnInfo) ->
 store_schema(PBConn, Name, Raw) ->
     lager:info("Storing schema ~s", [Name]),
     ?assertEqual(ok, riakc_pb_socket:create_search_schema(PBConn, Name, Raw)),
+    ok.
+
+%% @doc Peform a rolling upgrade of the `Cluster' to a different `Version' based
+%%      on current | previous | legacy.
+-spec rolling_upgrade([node()], current | previous | legacy) -> ok.
+rolling_upgrade(Cluster, Version) ->
+    rolling_upgrade(Cluster, Version, same, [riak_kv, yokozuna]).
+
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices) ->
+    rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, fun rt:no_op/1).
+
+-spec rolling_upgrade(cluster() | node(),
+    current | previous | legacy,
+    UpgradeConfig :: props(),
+    WaitForServices :: [atom()]) -> ok.
+rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
+    when is_list(Cluster) ->
+    lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
+    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck)
+        || Node <- Cluster],
+    ok;
+rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck) ->
+    rt:upgrade(Node, Version, UpgradeConfig, UpgradeCallabck),
+    [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
+    ok.
+
+%% @doc Use AAE status to verify that exchange has occurred for all
+%%      partitions since the time this function was invoked.
+-spec wait_for_aae([node()]) -> ok.
+wait_for_aae(Cluster) ->
+    lager:info("Wait for AAE to migrate/repair indexes"),
+    wait_for_all_trees(Cluster),
+    wait_for_full_exchange_round(Cluster, erlang:now()),
     ok.
 
 %% @doc Wait for all AAE trees to be built.
@@ -636,7 +967,7 @@ wait_for_schema(Cluster, Name, Content) ->
                                 Name == proplists:get_value(name, PL);
                             _ ->
                                 (Name == proplists:get_value(name, PL)) and
-                                    (Content == proplists:get_value(content, PL))
+                                                                          (Content == proplists:get_value(content, PL))
                         end;
                     _ ->
                         false
@@ -644,6 +975,57 @@ wait_for_schema(Cluster, Name, Content) ->
         end,
     wait_until(Cluster, F),
     ok.
+
+
+%% @doc Expire YZ trees
+-spec expire_trees([node()]) -> ok.
+expire_trees(Cluster) ->
+    lager:info("Expire all trees"),
+    _ = [ok = rpc:call(Node, yz_entropy_mgr, expire_trees, [])
+        || Node <- Cluster],
+
+    %% The expire is async so just give it a moment
+    timer:sleep(100),
+    ok.
+
+%% @doc Expire YZ trees
+-spec clear_trees([node()]) -> ok.
+clear_trees(Cluster) ->
+    lager:info("Expire all trees"),
+    _ = [ok = rpc:call(Node, yz_entropy_mgr, clear_trees, [])
+        || Node <- Cluster],
+    ok.
+
+brutal_kill_remove_index_dirs(Nodes, IndexName, Services) ->
+    IndexDirs = get_index_dirs(IndexName, Nodes),
+    rt:brutal_kill(hd(Nodes)),
+    [rt:stop(ANode) || ANode <- tl(Nodes)],
+    remove_index_dirs2(Nodes, IndexDirs, Services),
+    ok.
+
+%% @doc Remove index directories, removing the index.
+-spec remove_index_dirs([node()], index_name(), [atom()]) -> ok.
+remove_index_dirs(Nodes, IndexName, Services) ->
+    IndexDirs = get_index_dirs(IndexName, Nodes),
+    [rt:stop(ANode) || ANode <- Nodes],
+    remove_index_dirs2(Nodes, IndexDirs, Services),
+    ok.
+
+remove_index_dirs2(Nodes, IndexDirs, Services) ->
+    lager:info("Remove index dirs: ~p, on nodes: ~p~n",
+        [IndexDirs, Nodes]),
+    [rt:del_dir(binary_to_list(IndexDir)) || IndexDir <- IndexDirs],
+    [start_and_wait(ANode, Services) || ANode <- Nodes].
+
+get_index_dirs(IndexName, Nodes) ->
+    IndexDirs = [rpc:call(Node, yz_index, index_dir, [IndexName]) ||
+        Node <- Nodes],
+    IndexDirs.
+
+start_and_wait(Node, WaitForServices) ->
+    rt:start(Node),
+    [rt:wait_for_service(Node, Service) || Service <- WaitForServices].
+
 
 -spec verify_count(non_neg_integer(), json_string()) -> boolean().
 verify_count(Expected, Resp) ->
@@ -658,20 +1040,30 @@ verify_num_match(Type, Cluster, Index, Num) ->
     if Type =:= solr ->
             Shards = [{N, node_solr_port(N)} || N <- Cluster],
             search_expect(Cluster, Type, Index, "*", "*", Shards,
-                                Num);
+                          Num);
        true ->
             search_expect(Cluster, Type, Index, "*", "*", Num)
     end.
 
--spec wait_for_index(list(), index_name()) -> ok.
+-spec wait_for_index(cluster(), index_name()) -> ok.
 wait_for_index(Cluster, Index) ->
     IsIndexUp =
         fun(Node) ->
-                lager:info("Waiting for index ~s to be avaiable on node ~p",
+                lager:info("Waiting for index ~s to be available on node ~p",
                            [Index, Node]),
                 rpc:call(Node, yz_index, exists, [Index])
         end,
     wait_until(Cluster, IsIndexUp),
+    ok.
+
+-spec wait_for_solr(cluster()) -> ok.
+wait_for_solr(Cluster) ->
+    IsSolrUp =
+        fun(Node) ->
+            lager:info("Waiting for Solr to come up on node ~p", [Node]),
+            rpc:call(Node, yz_solr, is_up, [])
+        end,
+    wait_until(Cluster, IsSolrUp),
     ok.
 
 join_all(Nodes) ->
@@ -709,7 +1101,7 @@ internal_solr_url(Host, Port, Index) ->
     ?FMT("http://~s:~B/internal_solr/~s", [Host, Port, Index]).
 
 -spec internal_solr_url(host(), portnum(), index_name(), [{host(), portnum()}])
-                   -> string().
+                       -> string().
 internal_solr_url(Host, Port, Index, Shards) ->
     internal_solr_url(Host, Port, Index, <<"*">>, <<"*">>, Shards).
 
@@ -785,6 +1177,15 @@ drain_solrqs(Node) ->
     rpc:call(Node, yz_solrq_drain_mgr, drain, []),
     ok.
 
+-spec override_schema(pid(), [node()], index_name(), schema_name(), string()) ->
+    {ok, [node()]}.
+override_schema(Pid, Cluster, Index, Schema, RawUpdate) ->
+    lager:info("Overwrite schema with updated schema"),
+    ok = riakc_pb_socket:create_search_schema(Pid, Schema, RawUpdate),
+    yz_rt:wait_for_schema(Cluster, Schema, RawUpdate),
+    [Node|_] = Cluster,
+    {ok, _} = rpc:call(Node, yz_index, reload, [Index]).
+
 -spec load_intercept_code(node() | cluster()) -> ok.
 load_intercept_code(Cluster) when is_list(Cluster) ->
     [load_intercept_code(Node) || Node <- Cluster];
@@ -795,28 +1196,13 @@ load_intercept_code(Node) ->
                               "*.erl"]),
     rt_intercept:load_code(Node, [CodePath]).
 
--spec rolling_upgrade(cluster() | node(),
-                      current | previous | legacy,
-                      UpgradeConfig :: props(),
-                      WaitForServices :: [atom()]) -> ok.
-rolling_upgrade(Cluster, Version, UpgradeConfig, WaitForServices)
-  when is_list(Cluster) ->
-    lager:info("Perform rolling upgrade on cluster ~p", [Cluster]),
-    [rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices)
-     || Node <- Cluster],
-    ok;
-rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices) ->
-    rt:upgrade(Node, Version, UpgradeConfig),
-    [rt:wait_for_service(Node, Service) || Service <- WaitForServices],
-    ok.
-
 -spec setup_drain_intercepts(cluster()) -> ok.
 setup_drain_intercepts(Cluster) ->
     [load_intercept_code(Node) || Node <- Cluster],
     [rt_intercept:add(
-        N,
-        {yz_solrq_drain_mgr, [{{drain, 1}, delay_drain}]}
-    ) || N <- Cluster],
+       N,
+       {yz_solrq_drain_mgr, [{{drain, 1}, delay_drain}]}
+      ) || N <- Cluster],
     ok.
 
 -spec expire_aae_trees(cluster()) -> [ok].
@@ -840,7 +1226,7 @@ clear_kv_trees(Cluster) ->
     [ok = rpc:call(Node, riak_kv_entropy_manager, clear_trees, []) || Node <- Cluster].
 
 -spec set_index(cluster(), index_name(), solrq_batch_min(), solrq_batch_max(),
-    solrq_batch_flush_interval()) -> {[any()],[atom()]}.
+                solrq_batch_flush_interval()) -> {[any()],[atom()]}.
 set_index(Cluster, Index, Min, Max, DelayMsMax) ->
     rpc:multicall(Cluster, yz_solrq, set_index, [Index, Min, Max, DelayMsMax]).
 
@@ -852,56 +1238,63 @@ set_hwm(Cluster, Hwm) ->
 set_purge_strategy(Cluster, PurgeStrategy) ->
     rpc:multicall(Cluster, yz_solrq, set_purge_strategy, [PurgeStrategy]).
 
--spec wait_until_fuses_blown(node() | cluster(), solrq_id(), [index_name()]) ->
-    ok | [ok].
-wait_until_fuses_blown(Cluster, SolrqId, Indices) when is_list(Cluster) ->
-    [wait_until_fuses_blown(Node, SolrqId, Indices) || Node <- Cluster];
-wait_until_fuses_blown(Node, SolrqId, Indices) ->
+-spec wait_until_fuses_blown(node() | cluster(), p(), [index_name()]) ->
+                                    ok | [ok].
+wait_until_fuses_blown(Cluster, Partition, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_blown(Node, Partition, Indices) || Node <- Cluster];
+wait_until_fuses_blown(Node, Partition, Indices) ->
     F = fun({Index, IndexQ}) ->
-        lager:info("Waiting for fuse to blow for index ~p", [{Index, IndexQ}]),
-        proplists:get_value(fuse_blown, IndexQ)
+                lager:info("Waiting for fuse to blow for index ~p", [{Index, IndexQ}]),
+                proplists:get_value(fuse_blown, IndexQ)
         end,
-    check_fuse_status(Node, SolrqId, Indices, F).
+    check_fuse_status(Node, Partition, Indices, F).
 
--spec wait_until_fuses_reset(node() | cluster(), module(), [index_name()]) ->
-    ok | [ok].
-wait_until_fuses_reset(Cluster, SolrqId, Indices) when is_list(Cluster) ->
-    [wait_until_fuses_reset(Node, SolrqId, Indices) || Node <- Cluster];
-wait_until_fuses_reset(Node, SolrqId, Indices) ->
+-spec wait_until_fuses_reset(node() | cluster(), p(), [index_name()]) ->
+                                    ok | [ok].
+wait_until_fuses_reset(Cluster, Partition, Indices) when is_list(Cluster) ->
+    [wait_until_fuses_reset(Node, Partition, Indices) || Node <- Cluster];
+wait_until_fuses_reset(Node, Partition, Indices) ->
     F = fun({Index, IndexQ}) ->
-        lager:info("Waiting for fuse to reset for index ~p", [{Index, IndexQ}]),
-        not proplists:get_value(fuse_blown, IndexQ)
+                lager:info("Waiting for fuse to reset for index ~p", [{Index, IndexQ}]),
+                not proplists:get_value(fuse_blown, IndexQ)
         end,
-    check_fuse_status(Node, SolrqId, Indices, F).
+    check_fuse_status(Node, Partition, Indices, F).
 
 %% @private
-check_fuse_status(Node, SolrqId, Indices, FuseCheckFunction) ->
+check_fuse_status(Node, Partition, Indices, FuseCheckFunction) ->
+    SolrQNames =
+        [{Index, yz_solrq:worker_regname(Index, Partition)} ||
+            Index <- Indices],
     F = fun(N) ->
-        Solrqs = rpc:call(N, yz_solrq, status, []),
-        Solrq = proplists:get_value(SolrqId, Solrqs),
-        IndexQs = proplists:get_value(indexqs, Solrq),
-        MatchingIndexQs = lists:filter(
-            FuseCheckFunction,
-            IndexQs
-        ),
-        MatchingIndices = [Index || {Index, _IndexQ} <- MatchingIndexQs],
-        sets:is_subset(sets:from_list(Indices), sets:from_list(MatchingIndices))
+                Solrqs = rpc:call(N, yz_solrq, status, []),
+                IndexQs = [
+                           begin
+                               Solrq = proplists:get_value(SolrqName, Solrqs),
+                               {Index, Solrq}
+                           end ||
+                              {Index, SolrqName} <- SolrQNames],
+                MatchingIndexQs = lists:filter(
+                                    FuseCheckFunction,
+                                    IndexQs
+                                   ),
+                MatchingIndices = [Index || {Index, _IndexQ} <- MatchingIndexQs],
+                sets:is_subset(sets:from_list(Indices), sets:from_list(MatchingIndices))
         end,
     wait_until([Node], F).
 
 -spec intercept_index_batch(node() | cluster(), module()) -> ok | [ok].
 intercept_index_batch(Cluster, Intercept) ->
-    add_intercept(
-        Cluster,
-        yz_solr, index_batch, 2, Intercept).
+    add_intercepts(
+      Cluster,
+      yz_solr, [{{index_batch, 2}, Intercept}]).
 
--spec add_intercept(node() | cluster(), module(), atom(), non_neg_integer(), module()) -> ok | [ok].
-add_intercept(Cluster, Module, Function, Arity, Intercept) when is_list(Cluster) ->
-    [add_intercept(Node, Module, Function, Arity, Intercept) || Node <- Cluster];
-add_intercept(Node, Module, Function, Arity, Intercept) ->
+-spec add_intercepts(node() | cluster(), module(), intercepts()) -> ok | [ok].
+add_intercepts(Cluster, Module, Intercepts) when is_list(Cluster) ->
+    [add_intercepts(Node, Module, Intercepts) || Node <- Cluster];
+add_intercepts(Node, Module, Intercepts) ->
     rt_intercept:add(
-        Node,
-        {Module, [{{Function, Arity}, Intercept}]}).
+      Node,
+      {Module, Intercepts}).
 
 -spec set_yz_aae_mode(node() | cluster(), automatic | manual) -> ok | [ok].
 set_yz_aae_mode(Cluster, Mode) when is_list(Cluster) ->
@@ -918,14 +1311,14 @@ gen_keys(SeqMax) ->
                                binary_to_list(<<N:64/integer>>))].
 
 -spec check_stat_values(
-    proplists:proplist() | {error, Reason :: term()},
-    [{StatName::atom(), LHS::term(), Comparator::atom(), RHS::term()}])
-        -> boolean().
+        proplists:proplist() | {error, Reason :: term()},
+        [{StatName::atom(), LHS::term(), Comparator::atom(), RHS::term()}])
+                       -> boolean().
 check_stat_values(Stats, Pairs) ->
-    lager:info("STATS: ~p", [Stats]),
+    lager:debug("STATS: ~p", [Stats]),
     lager:info("Pairs: ~p", [Pairs]),
     StillWaiting = [S || S = {_, Value, Cmp, Arg} <- Pairs,
-        not (erlang:Cmp(Value, Arg))],
+                         not (erlang:Cmp(Value, Arg))],
     case StillWaiting of
         [] ->
             true;
@@ -942,3 +1335,33 @@ solr_hp(Node, Cluster) ->
 -spec reset_stats(cluster()) -> [[{list(), ok | {error, any()}}]].
 reset_stats(Cluster) ->
     [rpc:call(Node, yz_stat, reset, []) || Node <- Cluster].
+
+%% returns a dict of the form Solrq -> [BKey] that partitions BKeys
+%% by the solrqs they hash into.
+%% i.e., Union([BKey]) = BKeys and Intersection([BKey]) = []
+%% and for each BKey in BKeys, BKey is in dict(Solrq) iff BKey
+%% hashes to Solrq.
+-spec find_representatives(index_name(), [bkey()], non_neg_integer()) -> dict().
+find_representatives(Index, BKeys, RingSize) ->
+    lists:foldl(
+        fun({Solrq, BKey}, Accum) ->
+            dict:append(Solrq, BKey, Accum)
+        end,
+        dict:new(),
+        [{get_solrq(Index, BKey, RingSize), BKey} || BKey <- BKeys]).
+
+%% returns the solrq proc name that the BKey would hash into
+-spec get_solrq(index_name(), {bucket(), key()}, non_neg_integer()) -> atom().
+get_solrq(Index, BucketKey, RingSize) ->
+    Hash = chash:key_of(BucketKey),
+    Partition = riak_core_ring_util:partition_id_to_hash(
+        riak_core_ring_util:hash_to_partition_id(Hash, RingSize), RingSize),
+    yz_solrq:worker_regname(Index, Partition).
+
+%% @doc Check if index/core exists in metadata, disk via yz_index:exists.
+-spec check_exists([node()], index_name()) -> ok.
+check_exists(Nodes, IndexName) ->
+    wait_until(Nodes,
+        fun(N) ->
+            rpc:call(N, yz_index, exists, [IndexName])
+        end).

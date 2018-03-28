@@ -22,7 +22,30 @@
 %%      All interaction with Solr should go through this API.
 
 -module(yz_solr).
--compile(export_all).
+-export([build_mapping/1,
+         commit/1,
+         core/2,
+         core/3,
+         cores/0,
+         delete/2,
+         dist_search/2,
+         dist_search/3,
+         encode_delete/1,
+         encode_doc/1,
+         entropy_data/2,
+         get_doc_pairs/1,
+         get_ibrowse_config/0,
+         get_response/1,
+         index_batch/2,
+         is_up/0,
+         jmx_port/0,
+         mbeans_and_stats/1,
+         partition_list/1,
+         ping/1,
+         port/0,
+         prepare_json/1,
+         set_ibrowse_config/1,
+         search/3]).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 
@@ -41,7 +64,7 @@
 
 -type delete_op() :: {id, binary()}
                    | {bkey, bkey()}
-                   | {siblings, bkey()}
+                   | {bkey, bkey(), lp()}
                    | {'query', binary()}.
 
 -type ibrowse_config_key() :: max_sessions | max_pipeline_size.
@@ -50,6 +73,15 @@
 
 -export_type([delete_op/0]).
 -export_type([ibrowse_config_key/0, ibrowse_config_value/0, ibrowse_config/0]).
+
+-ifdef(EQC).
+%% -define(EQC_DEBUG(S, F), eqc:format(S, F)).
+-define(EQC_DEBUG(S, F), ok).
+-else.
+-define(EQC_DEBUG(S, F), ok).
+-endif.
+
+
 
 %%%===================================================================
 %%% API
@@ -64,12 +96,6 @@ build_mapping(Nodes) ->
     [{Node, HP} || {Node, HP={_,P}} <- [{Node, host_port(Node)}
                                         || Node <- Nodes],
                    P /= unknown].
-
--spec build_partition_delete_query(ordset(lp())) -> term().
-build_partition_delete_query(LPartitions) ->
-    Deletes = [{delete, ?QUERY(<<?YZ_PN_FIELD_S, ":", (?INT_TO_BIN(LP))/binary>>)}
-               || LP <- LPartitions],
-    mochijson2:encode({struct, Deletes}).
 
 -spec commit(index_name()) -> ok.
 commit(Core) ->
@@ -244,32 +270,40 @@ index(Core, Docs, DelOps) ->
            [{delete, encode_delete(Op)} || Op <- DelOps] ++
                [{add, encode_doc(D)} || D <- Docs]},
     JSON = mochijson2:encode(Ops),
+
+index_batch(Core, Ops) ->
+    ?EQC_DEBUG("index_batch: About to send entries. ~p~n", [Ops]),
+    JSON = encode_json(Ops),
+    ?EQC_DEBUG("index_batch: About to send JSON. ~p~n", [JSON]),
+    maybe_make_http_request(Core, JSON).
+
+maybe_make_http_request(_Core, {error, _} = Error) ->
+    ?EQC_DEBUG("Not making HTTP request due to error: ~p", [Error]),
+    Error;
+maybe_make_http_request(Core, JSON) ->
     URL = ?FMT("~s/~s/update", [base_url(), Core]),
     Headers = [{content_type, "application/json"}],
     Opts = [{response_format, binary}],
-
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
+    ?EQC_DEBUG("About to send_req: ~p", [[URL, Headers, post, JSON, opts, ?YZ_SOLR_REQUEST_TIMEOUT]]),
+    Res = case ibrowse:send_req(URL, Headers, post, JSON, Opts,
                           ?YZ_SOLR_REQUEST_TIMEOUT) of
         {ok, "200", _, _} -> ok;
-        Err -> throw({"Failed to index docs", Err})
-    end.
+        {ok, "400", _, ErrBody} ->
+            {error, {badrequest, ErrBody}};
+        Err ->
+            {error, {other, Err}}
+    end,
+    %% ?PULSE_DEBUG("send_req result: ~p", [Res]),
+    Res.
 
-index_batch(Core, Ops) ->
+encode_json(Ops) ->
     JSON = try
                mochijson2:encode({struct, Ops})
            catch _:E ->
-               throw({"Failed to encode ops", bad_data, E})
+        {error, {bad_data, E}}
            end,
-    URL = ?FMT("~s/~s/update", [base_url(), Core]),
-    Headers = [{content_type, "application/json"}],
-    Opts = [{response_format, binary}],
-    case ibrowse:send_req(URL, Headers, post, JSON, Opts,
-                          ?YZ_SOLR_REQUEST_TIMEOUT) of
-        {ok, "200", _, _} -> ok;
-        {ok, "400", _, ErrBody} -> throw({"Failed to index docs", badrequest,
-                                         ErrBody});
-        Err -> throw({"Failed to index docs", other, Err})
-    end.
+    ?EQC_DEBUG("Encoded JSON: ~p", [JSON]),
+    JSON.
 
 %% @doc Determine if Solr is running.
 -spec is_up() -> boolean().
@@ -315,7 +349,7 @@ partition_list(Core) ->
 -spec ping(index_name()) -> boolean()|error.
 ping(Core) ->
     URL = ?FMT("~s/~s/admin/ping", [base_url(), Core]),
-    Response = ibrowse:send_req(URL, [], get),
+    Response = ibrowse:send_req(URL, [], head),
     Result = case Response of
         {ok, "200", _, _} -> true;
         {ok, "404", _, _} -> false;
@@ -458,24 +492,28 @@ encode_commit() ->
 %%
 %% @doc Encode a delete operation into a mochijson2 compatiable term.
 -spec encode_delete(delete_op()) -> {struct, [{atom(), binary()}]}.
+encode_delete({bkey, {{Type, Bucket},Key}, LP}) ->
+    PNQ = encode_field_query(?YZ_PN_FIELD_B, escape_special_chars(?INT_TO_BIN(LP))),
+    TypeQ = encode_field_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
+    BucketQ = encode_field_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
+    KeyQ = encode_field_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
+    ?QUERY(<<TypeQ/binary, " AND ", BucketQ/binary, " AND ", KeyQ/binary, " AND ", PNQ/binary>>);
+%% NOTE: Used for testing only. This deletes _all_ documents for _all_ partitions
+%% which may cause extra docs to be deleted if a fallback partition exists
+%% on the same node as a primary, or if handoff is still ongoing in a newly-built
+%% cluster
 encode_delete({bkey,{{Type, Bucket},Key}}) ->
-    TypeQ = encode_nested_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
-    BucketQ = encode_nested_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
-    KeyQ = encode_nested_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
+    TypeQ = encode_field_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
+    BucketQ = encode_field_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
+    KeyQ = encode_field_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
     ?QUERY(<<TypeQ/binary," AND ",BucketQ/binary, " AND ",KeyQ/binary>>);
+%% NOTE: Also only used for testing
 encode_delete({bkey,{Bucket,Key}}) ->
     %% Need to take legacy (pre 2.0.0) objects into account.
-    encode_delete({bkey,{{?DEFAULT_TYPE,Bucket},Key}});
-encode_delete({siblings,{{Type,Bucket},Key}}) ->
-    VTagQ = <<?YZ_VTAG_FIELD_B/binary,":[* TO *]">>,
-    TypeQ = encode_nested_query(?YZ_RT_FIELD_B, escape_special_chars(Type)),
-    BucketQ = encode_nested_query(?YZ_RB_FIELD_B, escape_special_chars(Bucket)),
-    KeyQ = encode_nested_query(?YZ_RK_FIELD_B, escape_special_chars(Key)),
-    ?QUERY(<<VTagQ/binary," AND ",TypeQ/binary," AND ",
-             BucketQ/binary," AND ",KeyQ/binary>>);
-encode_delete({siblings,{Bucket,Key}}) ->
+    encode_delete({bkey,{{?DEFAULT_TYPE, Bucket}, Key}});
+encode_delete({bkey, {Bucket,Key}, LP}) ->
     %% Need to take legacy (pre 2.0.0) objects into account.
-    encode_delete({siblings,{{?DEFAULT_TYPE,Bucket},Key}});
+    encode_delete({bkey, {{?DEFAULT_TYPE, Bucket}, Key}, LP});
 encode_delete({'query', Query}) ->
     ?QUERY(Query);
 encode_delete({id, Id}) ->
@@ -494,18 +532,17 @@ encode_field({Name,Value}) ->
 
 %% @private
 %%
-%% @doc Encode a field and query into a Solr nested query using the
-%% term query parser.
--spec encode_nested_query(binary(), binary()) -> binary().
-encode_nested_query(Field, Query) ->
-    <<"_query_:\"{!term f=",Field/binary,"}",Query/binary,"\"">>.
+%% @doc Encode a field and query.
+-spec encode_field_query(binary(), binary()) -> binary().
+encode_field_query(Field, Query) ->
+    <<Field/binary,":\"",Query/binary,"\"">>.
 
 %% @private
 %%
 %% @doc Escape the backslash and double quote chars to prevent from
 %% being improperly interpreted by Solr's query parser.
 -spec escape_special_chars(binary()) ->binary().
-escape_special_chars(Bin) ->
+escape_special_chars(Bin) when is_binary(Bin)->
     Bin2 = binary:replace(Bin, <<"\\">>, <<"\\\\">>, [global]),
     binary:replace(Bin2, <<"\"">>, <<"\\\"">>, [global]).
 
