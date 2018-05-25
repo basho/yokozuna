@@ -57,6 +57,8 @@
                        {delete_data_dir, deleteDataDir}]).
 -define(FIELD_ALIASES, [{continuation, continue},
                         {limit, n}]).
+-define(CURSOR_FIELD_ALIASES, [{continuation, cursorMark},
+                               {limit, rows}]).
 -define(QUERY(Bin), {struct, [{'query', Bin}]}).
 -define(LOCALHOST, "localhost").
 
@@ -200,6 +202,15 @@ delete(Index, Ops) ->
 -spec entropy_data(index_name(), ed_filter()) ->
                           ED::entropy_data() | {error, term()}.
 entropy_data(Core, Filter) ->
+    case app_helper:get_env(?YZ_APP_NAME, entropy_data_cursor, false) of
+        false ->
+            entropy_data_request_handler(Core, Filter);
+        true ->
+            entropy_data_cursor(Core, Filter)
+    end.
+
+
+entropy_data_request_handler(Core, Filter) ->
     Params = [{wt, json}|Filter] -- [{continuation, none}],
     Params2 = proplists:substitute_aliases(?FIELD_ALIASES, Params),
     Opts = [{response_format, binary}],
@@ -215,6 +226,50 @@ entropy_data(Core, Filter) ->
         X ->
             {error, X}
     end.
+
+-define(
+    ED_FORMAT_STRING,
+    "~s/~s/select?q=_yz_pn:~p&wt=json&sort=_yz_id+asc&fl=_yz_rt,_yz_rb,_yz_rk,_yz_ha&~s"
+).
+
+entropy_data_cursor(Core, Filter) ->
+    CursorMark =
+        case proplists:get_value(continuation, Filter) of
+            none -> "*";
+            C ->  C
+        end,
+    Params0 = proplists:delete(continuation, proplists:delete(partition, Filter)),
+    Params1 = [{cursorMark, CursorMark} | Params0],
+    Params2 = proplists:substitute_aliases(?CURSOR_FIELD_ALIASES, Params1),
+    Partition = proplists:get_value(partition, Filter),
+    URL = ?FMT(
+        ?ED_FORMAT_STRING,
+        [base_url(), Core, Partition, mochiweb_util:urlencode(Params2)]
+    ),
+    %lager:info("FDUSHIN> URL: ~s", [URL]),
+    Opts = [{response_format, binary}],
+    case ibrowse:send_req(URL, [], get, [], Opts) of
+        {ok, "200", _Headers, Body} ->
+            R = mochijson2:decode(Body),
+            NextCursorMark = kvc:path([<<"nextCursorMark">>], R),
+            %lager:info("FDUSHIN> CursorMark: ~p NextCursorMark: ~p", [CursorMark, NextCursorMark]),
+            More = NextCursorMark /= CursorMark,
+            Pairs = get_cursor_pairs(R),
+            make_ed(More, NextCursorMark, Pairs);
+        X ->
+            {error, X}
+    end.
+
+%% @doc Index the given `Docs'.
+index(Core, Docs) ->
+    index(Core, Docs, []).
+
+-spec index(index_name(), list(), [delete_op()]) -> ok.
+index(Core, Docs, DelOps) ->
+    Ops = {struct,
+           [{delete, encode_delete(Op)} || Op <- DelOps] ++
+               [{add, encode_doc(D)} || D <- Docs]},
+    JSON = mochijson2:encode(Ops),
 
 index_batch(Core, Ops) ->
     ?EQC_DEBUG("index_batch: About to send entries. ~p~n", [Ops]),
@@ -501,12 +556,29 @@ get_pairs(R) ->
     Docs = kvc:path([<<"response">>, <<"docs">>], R),
     [to_pair(DocStruct) || DocStruct <- Docs].
 
+get_cursor_pairs(R) ->
+    Docs = kvc:path([<<"response">>, <<"docs">>], R),
+    [to_cursor_pair(DocStruct) || DocStruct <- Docs].
+
 %% @doc Convert a doc struct into a pair. Remove the bucket_type to match
 %% kv trees when iterating over entropy data to build yz trees.
 to_pair({struct, [{_,_Vsn},{_,<<"default">>},{_,BName},{_,Key},{_,Base64Hash}]}) ->
     {{BName,Key}, base64:decode(Base64Hash)};
 to_pair({struct, [{_,_Vsn},{_,BType},{_,BName},{_,Key},{_,Base64Hash}]}) ->
     {{{BType, BName},Key}, base64:decode(Base64Hash)}.
+
+to_cursor_pair({struct, Values}) when is_list(Values) ->
+    BucketType = proplists:get_value(?YZ_RT_FIELD_B, Values),
+    BucketName = proplists:get_value(?YZ_RB_FIELD_B, Values),
+    Key =        proplists:get_value(?YZ_RK_FIELD_B, Values),
+    Hash =       base64:decode(proplists:get_value(?YZ_HA_FIELD_B, Values)),
+    Bucket = case BucketName of
+        <<"default">> ->
+            BucketName;
+        _ ->
+            {BucketType, BucketName}
+    end,
+    {{Bucket, Key}, Hash}.
 
 get_doc_pairs(Resp) ->
     Docs = kvc:path([<<"docs">>], Resp),

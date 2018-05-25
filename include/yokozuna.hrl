@@ -400,6 +400,13 @@
 -define(YZ_ED_FIELD_XML, ?YZ_FIELD_XML(?YZ_ED_FIELD_S)).
 -define(YZ_ED_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ed\" and @type=\"_yz_str\" and @indexed=\"true\" and @multiValued=\"false\"]").
 
+%% Entropy Data
+-define(YZ_HA_FIELD, '_yz_ha').
+-define(YZ_HA_FIELD_S, "_yz_ha").
+-define(YZ_HA_FIELD_B, <<"_yz_ha">>).
+-define(YZ_HA_FIELD_XML, ?YZ_FIELD_XML(?YZ_HA_FIELD_S)).
+-define(YZ_HA_FIELD_XPATH, "/schema/fields/field[@name=\"_yz_ha\" and @type=\"_yz_str\" and @stored=\"true\" and @multiValued=\"false\"]").
+
 %% First Partition Number
 -define(YZ_FPN_FIELD, '_yz_fpn').
 -define(YZ_FPN_FIELD_S, "_yz_fpn").

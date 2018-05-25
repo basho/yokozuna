@@ -35,6 +35,7 @@
         %% allow AAE to build trees and exchange rapidly
         {anti_entropy_build_limit, {100, 1000}},
         {anti_entropy_concurrency, 8},
+        {entropy_data_cursor, true},
         {aae_throttle_limits, ?AAE_THROTTLE_LIMITS}
     ]}
 ]).

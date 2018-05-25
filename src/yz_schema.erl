@@ -152,6 +152,7 @@ verify_uk(Schema) ->
 verify_fields({ok, Schema}) ->
     Fields = [?YZ_ID_FIELD_XPATH,
               ?YZ_ED_FIELD_XPATH,
+              ?YZ_HA_FIELD_XPATH,
               ?YZ_FPN_FIELD_XPATH,
               ?YZ_VTAG_FIELD_XPATH,
               ?YZ_PN_FIELD_XPATH,
