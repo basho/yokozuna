@@ -25,7 +25,7 @@ TMP_FILE=$TMP_DIR/$FILENAME
 SRC_DIR=$BUILD_DIR/$VSN
 EXAMPLE_DIR=$SRC_DIR/example
 COL1_DIR=$EXAMPLE_DIR/solr/collection1
-: ${ARTIFACT_URL_PREFIX:="http://s3.amazonaws.com/files.basho.com"}
+: ${ARTIFACT_URL_PREFIX:="https://s3.amazonaws.com/files.basho.com"}
 
 check_for_solr()
 {
@@ -36,11 +36,11 @@ check_for_solr()
 download()
 {
     if which wget > /dev/null; then
-        wget --no-check-certificate --progress=dot:mega $1
+        wget --progress=dot:mega $1
     elif which curl > /dev/null; then
-        curl --insecure --progress-bar -O $1
+        curl --progress-bar -O $1
     elif which fetch > /dev/null; then
-        fetch --no-verify-peer $1
+        fetch $1
     fi
 }
 
