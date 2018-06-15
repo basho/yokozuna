@@ -79,9 +79,9 @@ WORK_DIR=$1; shift
 NAME=$1; shift
 URL=$1; shift
 
-if ! javac -version 2>&1 | egrep "1\.7\.[0-9_.]+"
+if ! javac -version 2>&1 | egrep "1\.8\.[0-9_.]+"
 then
-    echo "JDK 1.7 must be used to compile Solr"
+    echo "JDK 1.8+ must be used to compile Solr"
     exit 1
 fi
 

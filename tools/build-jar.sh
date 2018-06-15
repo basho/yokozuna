@@ -24,9 +24,9 @@ if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
     exit 1
 fi
 
-if ! javac -version 2>&1 | egrep "1\.7\.[0-9_.]+"
+if ! javac -version 2>&1 | egrep $'(?:1\.[789]|10)\.'
 then
-    echo "JDK 1.7 must be used to compile these jars"
+    echo "JDK 1.8+ must be used to compile these jars"
     exit 1
 fi
 
@@ -51,57 +51,57 @@ SOLR_WAR=$SOLR_DIR/webapps/solr.war
 SOLR_JAR_DIR=../build/solr-jars
 
 if [ ! -e $SOLR_WAR ]; then
-    echo "Download the Solr package..."
+    echo "Downloading the Solr package..."
     ./grab-solr.sh
 fi
 
 if [ ! -e $SOLR_JAR_DIR ]; then
-    echo "Explode the WAR..."
+    echo "Exploding ${SOLR_WAR}..."
     mkdir $SOLR_JAR_DIR
     cp $SOLR_WAR $SOLR_JAR_DIR
-    pushd $SOLR_JAR_DIR
-    jar xf solr.war WEB-INF/lib
-    mv WEB-INF/lib/* .
-    rm -rf WEB-INF solr.war
-    popd
+    (cd $SOLR_JAR_DIR                           \
+     && jar xf solr.war WEB-INF/lib             \
+     && mv WEB-INF/lib/* .                      \
+     && rm -rf WEB-INF solr.war)
     # copy logging jars
     cp $SOLR_DIR/lib/ext/* $SOLR_JAR_DIR
 fi
 
 
-echo "Compile..."
-javac -cp "$SOLR_JAR_DIR/*" \
-    ../java_src/com/basho/yokozuna/handler/*.java \
-    ../java_src/com/basho/yokozuna/handler/component/*.java \
-    ../java_src/com/basho/yokozuna/query/*.java \
-    ../java_src/com/basho/yokozuna/monitor/*.java
+echo "Compiling..."
+printf "SOLR_JAR_DIR = %s\n" "${SOLR_JAR_DIR}"
 
-echo "Create yokozuna.jar..."
-if [ ! -e "../priv/java_lib" ]; then
-    mkdir ../priv/java_lib
-fi
+# javac -cp "$SOLR_JAR_DIR/*"                     \
+#     ../java_src/com/basho/yokozuna/*/*.java     \
+#     ../java_src/com/basho/yokozuna/*/*/*.java
 
 YZ_JAR_VSN=3
 YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
 YZ_JAR_SHA=$YZ_JAR_NAME.sha
 
-jar cvf $YZ_JAR_NAME \
-  -C ../java_src/ com/basho/yokozuna/handler \
-  -C ../java_src/ com/basho/yokozuna/query
+echo "Creating ${YZ_JAR_NAME}..."
+mkdir -p ../priv/java_lib
 
+# jar -cvf $YZ_JAR_NAME \
+#   -C ../java_src/ com/basho/yokozuna/handler \
+#   -C ../java_src/ com/basho/yokozuna/query
+(cd ../java_src && ant -f yokozuna.xml all)
+cp ../yz-build/yz-handler.jar $YZ_JAR_NAME
 sha $YZ_JAR_NAME $YZ_JAR_SHA
 
 echo "Finished building yokozuna.jar..."
 
 # monitor has to be packaged separately because it relies on the
 # dynamic classpath the jetty/solr set up
-echo "Create yz_monitor.jar..."
+echo "Create ${YZ_JAR_NAME}..."
 
 MON_JAR_VSN=1
 MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
 MON_JAR_SHA=$MON_JAR_NAME.sha
-jar cvf  $MON_JAR_NAME \
-  -C ../java_src/ com/basho/yokozuna/monitor
+# jar cvf  $MON_JAR_NAME \
+#   -C ../java_src/ com/basho/yokozuna/monitor
+
+cp ../yz-build/yz-monitor.jar $MON_JAR_NAME
 
 sha $MON_JAR_NAME $MON_JAR_SHA
 
