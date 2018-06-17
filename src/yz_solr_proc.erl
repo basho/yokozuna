@@ -231,34 +231,43 @@ build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::", 
 build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
-    Headless = "-Djava.awt.headless=true",
-    SolrHome = "-Dsolr.solr.home=" ++ filename:absname(Dir),
-    HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
-    JettyHome = "-Djetty.home=" ++ YZPrivSolr,
-    JettyTemp = "-Djetty.temp=" ++ filename:absname(TempDir),
-    Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
-    CP = "-cp",
-    CP2 = filename:join([YZPrivSolr, "start.jar"]),
-    %% log4j.properties must be in the classpath unless a full URL
-    %% (e.g. file://) is given for it, and we'd rather not put etc or
-    %% data on the classpath, but we have to templatize the file to
-    %% get the platform log directory into it
-    Logging = "-Dlog4j.configuration=file://" ++
-        filename:join([filename:absname(Etc), "solr-log4j.properties"]),
-    LibDir = "-Dyz.lib.dir=" ++ filename:join([?YZ_PRIV, "java_lib"]),
-    Class = "org.eclipse.jetty.start.Main",
-    case SolrJMXPort of
-        undefined ->
-            JMX = [];
-        _ ->
-            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ integer_to_list(SolrJMXPort),
-            JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
-            JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
-            JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
-    end,
 
-    Args = [Headless, JettyHome, JettyTemp, Port, SolrHome, HostContext, CP, CP2, Logging, LibDir]
-        ++ string:tokens(solr_jvm_opts(), " ") ++ JMX ++ [Class],
+    JOptions = [
+                { "java.awt.headless", true },
+                { "solr.solr.home",    filename:absname(Dir) },
+                { "jetty.home",        YZPrivSolr },
+                { "jetty.base",        YZPrivSolr },
+                { "jetty.port",        SolrPort },
+                { "jetty.temp",        filename:absname(TempDir) },
+
+                %% log4j.properties must be in the classpath unless a full URL
+                %% (e.g. file://) is given for it, and we'd rather not put etc or
+                %% data on the classpath, but we have to templatize the file to
+                %% get the platform log directory into it
+                { "log4j.configuration",
+                  filename:join([filename:absname(Etc), "solr-log4j.properties"]) },
+
+                { "yz.lib.dir", filename:join([?YZ_PRIV, "java_lib"]) }
+               ],
+
+    %% HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
+
+    StartJAR = filename:join([YZPrivSolr, "start.jar"]),
+
+    %% @TODO
+    %% case SolrJMXPort of
+    %%     undefined ->
+    %%         JMX = [];
+    %%     _ ->
+    %%         JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ integer_to_list(SolrJMXPort),
+    %%         JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
+    %%         JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
+    %%         JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
+    %% end,
+
+    JOptArgs = [ io_lib:format("-d~p=~p", [K,V]) || {K,V} <- JOptions ],
+
+    Args = JOptArgs ++ string:tokens(solr_jvm_opts(), " ") ++ ["-jar", StartJAR],
     {JavaPath, Args}.
 
 %% @private
