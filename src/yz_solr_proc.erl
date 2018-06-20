@@ -166,7 +166,7 @@ handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
         {false, _} ->
             %% solr did not finish startup quickly enough, or has just
             %% crashed and the exit message is on its way, shutdown
-            {stop, "solr didn't start in alloted time", S}
+            {stop, "solr didn't start in allowed time", S}
     end;
 handle_info(tick, #state{is_up=IsUp, enable_dist_query=EnableDistQuery} = S) ->
     NewIsUp = yz_solr:is_up(),
@@ -228,7 +228,7 @@ build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::", 
     %% happy, but will never respond to pings, so we can test the
     %% timeout capability
     {os:find_executable("grep"), ["foo"]};
-build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir) ->
+build_cmd(JavaPath, SolrPort, _SolrJMXPort, Dir, TempDir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
 
@@ -237,7 +237,7 @@ build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir) ->
                 { "solr.solr.home",    filename:absname(Dir) },
                 { "jetty.home",        YZPrivSolr },
                 { "jetty.base",        YZPrivSolr },
-                { "jetty.port",        SolrPort },
+                { "jetty.port",        integer_to_binary(SolrPort) },
                 { "jetty.temp",        filename:absname(TempDir) },
 
                 %% log4j.properties must be in the classpath unless a full URL
@@ -265,9 +265,12 @@ build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir) ->
     %%         JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
     %% end,
 
-    JOptArgs = [ io_lib:format("-d~p=~p", [K,V]) || {K,V} <- JOptions ],
+    JOptArgs = [ io_lib:format("-D~ts=~ts", [K,V]) || {K,V} <- JOptions ],
 
-    Args = JOptArgs ++ string:tokens(solr_jvm_opts(), " ") ++ ["-jar", StartJAR],
+    Args = JOptArgs
+        ++ string:tokens(solr_jvm_opts(), " ")
+        ++ ['-jar', StartJAR]
+        ++ ['--module=http'],
     {JavaPath, Args}.
 
 %% @private
