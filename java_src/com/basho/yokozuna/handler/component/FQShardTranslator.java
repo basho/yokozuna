@@ -8,10 +8,8 @@ import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.request.SolrQueryRequest;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.slf4j.*;
 
-import java.io.IOException;
 
 /**
  * Translate custom Yokozuna filter query shard params to normal
@@ -33,16 +31,19 @@ import java.io.IOException;
  * each shard by passing a query param with the name `$host:$port` and
  * a value of the filter query to run. For example:
  *
- *   ?10.0.1.100:10014=_yz_pn:1 OR _yz_pn:7 OR ...\
- *   &10.0.1.101:10014=_yz_pn:4 OR _yz_pn:10 OR ...
- *
+ * <pre>
+ * {@code
+ * ?10.0.1.100:10014=_yz_pn:1 OR _yz_pn:7 OR ...\
+ *    &10.0.1.101:10014=_yz_pn:4 OR _yz_pn:10 OR ...
+ * }
+ * </pre>
  */
 public class FQShardTranslator extends SearchComponent {
     protected static final Logger log = LoggerFactory.getLogger(FQShardTranslator.class);
     public static final String COMPONENT_NAME = "fq_shard_translator";
 
     @Override
-    public void prepare(ResponseBuilder rb) throws IOException {
+    public void prepare(ResponseBuilder rb) {
         SolrQueryRequest req = rb.req;
         SolrParams params = req.getParams();
 
@@ -58,21 +59,19 @@ public class FQShardTranslator extends SearchComponent {
     }
 
     @Override
-    public void process(ResponseBuilder rb) throws IOException {
-        return;
+    public void process(ResponseBuilder rb) {
     }
 
     @Override
-    public void modifyRequest(ResponseBuilder rb, SearchComponent who, ShardRequest sreq) {
-        return;
-    }
+    public void modifyRequest(ResponseBuilder rb, SearchComponent who, ShardRequest sreq) {}
+
 
     @Override
     public String getDescription() {
         return "Yokozuna's FQ Shard Translator";
     }
 
-    @Override
+    // @Override
     public String getSource() {
         return "https://github.com/basho/yokozuna";
     }
