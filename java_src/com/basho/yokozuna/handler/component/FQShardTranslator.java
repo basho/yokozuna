@@ -47,7 +47,7 @@ public class FQShardTranslator extends SearchComponent {
         SolrQueryRequest req = rb.req;
         SolrParams params = req.getParams();
 
-        if (!isDistrib(params)) {
+        if (! rb.isDistributed()) {
             String shardUrl = params.get(ShardParams.SHARD_URL);
             if (shardUrl != null) {
                 String hostPort = shardUrl.substring(0, shardUrl.indexOf('/'));
@@ -74,15 +74,6 @@ public class FQShardTranslator extends SearchComponent {
     // @Override
     public String getSource() {
         return "https://github.com/basho/yokozuna";
-    }
-
-    private boolean isDistrib(SolrParams params) {
-        // Based on HttpShardHandler because rb.isDistrib is not public.
-        boolean distrib = params.getBool("distrib", false);
-        String shards = params.get(ShardParams.SHARDS);
-        boolean hasShardURL = shards != null;
-
-        return hasShardURL || distrib;
     }
 
 }
