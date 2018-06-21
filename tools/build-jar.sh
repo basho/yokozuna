@@ -1,23 +1,10 @@
 #!/usr/bin/env sh
 #
 # Build JAR file containing customer Solr request handlers.
-set -e
+set -eu
 
+source common.sh
 
-function sha
-{
-    file=$1
-    sha_file=$2
-
-    if which sha1sum; then
-        sha1sum $file > $sha_file
-    elif which shasum; then
-        shasum -a 1 $file > $sha_file
-    else
-        echo "Unable to locate program to compute SHA1"
-        exit 1
-    fi
-}
 
 if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
     echo "Couldn't find javac and/or jar, which is needed to compile Yokozuna."
@@ -37,20 +24,15 @@ then
 fi
 
 
-echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NOTICE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
-echo "%                                                                          %"
-echo "% If building new jars to be uploaded to s3 then make sure to update the   %"
-echo "% YZ_JAR_VSN and MON_JAR_VSN variables.                                    %"
-echo "%                                                                          %"
-echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
-
-echo "Build the yokozuna.jar..."
+echo "Building ${YZ_JAR_NAME} ${MON_JAR_NAME}..."
 
 SOLR_DIR=../priv/solr
 SOLR_WAR=$SOLR_DIR/webapps/solr.war
 SOLR_JAR_DIR=../build/solr-jars
 
-if [ ! -e $SOLR_WAR ]; then
+if [ -e $SOLR_WAR ]; then
+    echo "$SOLR_WAR is already there"
+else
     echo "Downloading the Solr package..."
     ./grab-solr.sh
 fi
@@ -75,34 +57,30 @@ printf "SOLR_JAR_DIR = %s\n" "${SOLR_JAR_DIR}"
 #     ../java_src/com/basho/yokozuna/*/*.java     \
 #     ../java_src/com/basho/yokozuna/*/*/*.java
 
-YZ_JAR_VSN=3
-YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
-YZ_JAR_SHA=$YZ_JAR_NAME.sha
-
 echo "Creating ${YZ_JAR_NAME}..."
 mkdir -p ../priv/java_lib
 
 # jar -cvf $YZ_JAR_NAME \
 #   -C ../java_src/ com/basho/yokozuna/handler \
 #   -C ../java_src/ com/basho/yokozuna/query
-(cd ../java_src && ant -f yokozuna.xml all)
-cp ../yz-build/yz-handler.jar $YZ_JAR_NAME
-sha $YZ_JAR_NAME $YZ_JAR_SHA
+(cd ../java_src \
+     && ant all -Dyz_vsn=${YZ_JAR_VSN} -Dyz_mon_vsn=${MON_JAR_VSN} \
+    )
+
+cp ../yz-build/$YZ_JAR_NAME .
+mk_sha $YZ_JAR_NAME $YZ_JAR_SHA
 
 echo "Finished building yokozuna.jar..."
 
 # monitor has to be packaged separately because it relies on the
 # dynamic classpath the jetty/solr set up
-echo "Create ${YZ_JAR_NAME}..."
+echo "--- ${YZ_JAR_NAME}" && ls -l ${YZ_JAR_NAME}*
 
-MON_JAR_VSN=1
-MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
-MON_JAR_SHA=$MON_JAR_NAME.sha
 # jar cvf  $MON_JAR_NAME \
 #   -C ../java_src/ com/basho/yokozuna/monitor
 
-cp ../yz-build/yz-monitor.jar $MON_JAR_NAME
+cp ../yz-build/$MON_JAR_NAME .
+mk_sha $MON_JAR_NAME $MON_JAR_SHA
 
-sha $MON_JAR_NAME $MON_JAR_SHA
+echo "--- ${MON_JAR_NAME}" && ls -l ${MON_JAR_NAME}*
 
-echo "Finished building yz_monitor.jar..."

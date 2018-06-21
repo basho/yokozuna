@@ -7,27 +7,25 @@
 #     ./grab-solr.sh
 #
 #     specify SOLR_PKG_DIR to skip the solr download and use a local copy
-set -x
-set -e
 
-if [ $(basename $PWD) != "tools" ]
-then
-    cd tools
-fi
+set    -eu
+
+[[ $(basename $PWD) == "tools" ]] || cd tools
+
+source common.sh
+
 
 PRIV_DIR=../priv
 CONF_DIR=$PRIV_DIR/conf
-
 
 SOLR_DIR=$PRIV_DIR/solr
 FRESH_SOLR=1
 
 BUILD_DIR=../build
-VSN=solr-4.10.4-yz-2
-VSN=solr-7.3.1-SNAPSHOT
+VSN=solr-7.3.1
 
 FILENAME=$VSN.tgz
-TMP_DIR=/var/tmp/yokozuna
+TMP_DIR="$(pwd)/tmp"
 TMP_FILE=$TMP_DIR/$FILENAME
 SRC_DIR=$BUILD_DIR/$VSN
 
@@ -35,68 +33,48 @@ EXAMPLE_DIR=$SRC_DIR/example
 SERVER_DIR=$SRC_DIR/server
 
 COL1_DIR=$EXAMPLE_DIR/solr/collection1
-: ${ARTIFACT_URL_PREFIX:="https://s3.amazonaws.com/files.basho.com"}
-ARTIFACT_URL_PREFIX=file:///Users/lelf/S/solr-7.3.1/solr/package
+
+# http://apache.cs.uu.nl/lucene/solr/7.3.1/solr-7.3.1.tgz
+# https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz
+# https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz.asc
+# https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz.sha1
+ARTIFACT_URL_PREFIX=https://www.apache.org/dist/lucene/solr/7.3.1
 
 check_for_solr()
 {
     # $SOLR_DIR is preloaded with xml files, so check for the generated jar
-    test -e $SOLR_DIR/start.jar
-}
-
-download()
-{
-    if which fetch > /dev/null; then
-        fetch $1
-    elif which wget > /dev/null; then
-        wget --progress=dot:mega $1
-    elif which curl > /dev/null; then
-        curl --progress-bar -O $1
-    fi
+    [[ -e $SOLR_DIR/start.jar ]]
 }
 
 get_solr()
 {
-        if [ -z ${SOLR_PKG_DIR+x} ]
-        then
-            if [ -e $TMP_FILE ]; then
-                echo "Using cached copy of Solr $TMP_FILE"
-                ln -s $TMP_FILE $FILENAME
-            else
-                echo "Pulling Solr from S3"
-                download "${ARTIFACT_URL_PREFIX}/$FILENAME"
-                if [ -d $TMP_DIR ]; then
-                    cp $FILENAME $TMP_DIR
-                else
-                    mkdir -m 1777 $TMP_DIR
-                    cp $FILENAME $TMP_DIR
-                fi
-            fi
+        mkdir -p ${SOLR_PKG_DIR}
+
+        if [[ -e $TMP_FILE ]]; then
+            echo "Using cached copy of Solr at $TMP_FILE"
+            ln -s $TMP_FILE $FILENAME
         else
-            # This is now obsolete thanks to implicit caching above
-            # but will leave in for now as to not break anyone.
-            echo "Using local copy of Solr $SOLR_PKG_DIR/$FILENAME"
-            cp $SOLR_PKG_DIR/$FILENAME ./
+            echo "Downloading original Solr..."
+            download "${ARTIFACT_URL_PREFIX}/$FILENAME"
+            download "${ARTIFACT_URL_PREFIX}/$FILENAME.sha1"
+            set -u; shasum -s -c $FILENAME.sha1
+            mkdir -p -m 1777 $TMP_DIR
+            cp $FILENAME $TMP_DIR
         fi
-        tar zxf $FILENAME
+
+        tar -xf $FILENAME
+        echo "OK, tar = ${FILENAME}"
 }
 
-if ! check_for_solr
-then
+if check_for_solr; then
+    echo "Solr is there, $SOLR_DIR"
+else
+    mkdir -p $BUILD_DIR && cd $BUILD_DIR
 
-    echo "Create dir $BUILD_DIR"
-    if [ ! -e $BUILD_DIR ]; then
-        mkdir $BUILD_DIR
-    fi
-
-    cd $BUILD_DIR
-
-    if [ ! -e $SRC_DIR ]
+    if [[ ! -e $SRC_DIR ]]
     then
         get_solr
     fi
-
-    echo "Creating Solr dir $SOLR_DIR..."
 
     # Explicitly copy files needed rather than copying everything and
     # removing which requires using cp -rn (since $SOLR_DIR/etc has files
@@ -120,34 +98,4 @@ then
 
     echo "Solr dir created successfully"
 fi
-
-JAVA_LIB=../priv/java_lib
-YZ_JAR_VSN=3
-YZ_JAR_NAME=yz-handler.jar
-YZ_ARTIFACTS_URL=/Users/lelf/S/yokozuna/yz-build
-
-if [[ ! -f $JAVA_LIB/$YZ_JAR_NAME ]]
-then
-    mkdir -p $JAVA_LIB
-    echo "Downloading $YZ_JAR_NAME"
-    # download "${ARTIFACT_URL_PREFIX}/yokozuna/$YZ_JAR_NAME"
-    download ${YZ_ARTIFACTS_URL}/${YZ_JAR_NAME}
-    mv $YZ_JAR_NAME $JAVA_LIB/yokozuna-${YZ_JAR_VSN}.jar
-    #cp ../yz-build/$YZ_JAR_NAME $JAVA_LIB/
-fi
-
-EXT_LIB=../priv/solr/lib/ext
-MON_JAR_VSN=1
-MON_JAR_NAME=yz-monitor.jar
-
-if [[ ! -f $EXT_LIB/$MON_JAR_NAME ]]
-then
-    echo "Downloading $MON_JAR_NAME"
-    #download "${ARTIFACT_URL_PREFIX}/yokozuna/$MON_JAR_NAME"
-    download ${YZ_ARTIFACTS_URL}/${MON_JAR_NAME}
-    mv $MON_JAR_NAME $EXT_LIB/yz_monitor-${MON_JAR_VSN}.jar
-    #cp ../yz-build/$MON_JAR_NAME $EXT_LIB/
-fi
-
-echo Done.
 
