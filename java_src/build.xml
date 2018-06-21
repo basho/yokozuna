@@ -19,10 +19,10 @@
       <javac srcdir="com/basho/yokozuna/handler" includeantruntime="false">
         <classpath>
           <!-- <fileset dir="../build/solr-jars"/> -->
-          <!-- <fileset dir="../build/solr-7.3.1-SNAPSHOT/dist"/> -->
-          <!-- <fileset dir="../build/solr-7.3.1-SNAPSHOT/dist/solrj-lib"/> -->
-          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/lib"/>
-          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/solr-webapp/webapp/WEB-INF/lib"/>
+          <!-- <fileset dir="../build/solr-${solr_vsn}-SNAPSHOT/dist"/> -->
+          <!-- <fileset dir="../build/solr-${solr_vsn}-SNAPSHOT/dist/solrj-lib"/> -->
+          <fileset dir="../build/solr-${solr_vsn}/server/lib"/>
+          <fileset dir="../build/solr-${solr_vsn}/server/solr-webapp/webapp/WEB-INF/lib"/>
         </classpath>
       </javac>
    </target>
@@ -30,8 +30,8 @@
    <target name="yz-monitor.c">
       <javac srcdir="com/basho/yokozuna/monitor" includeantruntime="false">
         <classpath>
-          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/lib"/>
-          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/solr-webapp/webapp/WEB-INF/lib"/>
+          <fileset dir="../build/solr-${solr_vsn}/server/lib"/>
+          <fileset dir="../build/solr-${solr_vsn}/server/solr-webapp/webapp/WEB-INF/lib"/>
         </classpath>
       </javac>
    </target>

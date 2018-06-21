@@ -3,6 +3,7 @@
 # Build JAR file containing customer Solr request handlers.
 set -eu
 
+[[ $(basename $PWD) == "tools" ]] || cd tools
 source common.sh
 
 
@@ -64,7 +65,9 @@ mkdir -p ../priv/java_lib
 #   -C ../java_src/ com/basho/yokozuna/handler \
 #   -C ../java_src/ com/basho/yokozuna/query
 (cd ../java_src \
-     && ant all -Dyz_vsn=${YZ_JAR_VSN} -Dyz_mon_vsn=${MON_JAR_VSN} \
+     && ant all \
+            -Dyz_vsn=${YZ_JAR_VSN} -Dyz_mon_vsn=${MON_JAR_VSN} \
+            -Dsolr_vsn=${SOLR_VSN}
     )
 
 cp ../yz-build/$YZ_JAR_NAME .
