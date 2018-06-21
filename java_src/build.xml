@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="yokozuna">
+  <target name="all" depends="yz-handler.jar,yz-monitor.jar" />
+  
+  <target name="yz-handler.jar" depends="yz-handler.c">
+    <jar destfile="../yz-build/yokozuna-${yz_vsn}.jar"
+         basedir="."
+         includes="com/basho/yokozuna/handler/**/*.class"/>
+  </target>
+
+  <target name="yz-monitor.jar" depends="yz-monitor.c">
+    <jar destfile="../yz-build/yz_monitor-${yz_mon_vsn}.jar"
+         basedir="."
+         includes="**/*.class"/>
+  </target>
+      
+   <target name="yz-handler.c">
+      <javac srcdir="com/basho/yokozuna/handler" includeantruntime="false">
+        <classpath>
+          <!-- <fileset dir="../build/solr-jars"/> -->
+          <!-- <fileset dir="../build/solr-7.3.1-SNAPSHOT/dist"/> -->
+          <!-- <fileset dir="../build/solr-7.3.1-SNAPSHOT/dist/solrj-lib"/> -->
+          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/lib"/>
+          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/solr-webapp/webapp/WEB-INF/lib"/>
+        </classpath>
+      </javac>
+   </target>
+      
+   <target name="yz-monitor.c">
+      <javac srcdir="com/basho/yokozuna/monitor" includeantruntime="false">
+        <classpath>
+          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/lib"/>
+          <fileset dir="../build/solr-7.3.1-SNAPSHOT/server/solr-webapp/webapp/WEB-INF/lib"/>
+        </classpath>
+      </javac>
+   </target>
+
+</project>
+
