@@ -37,21 +37,23 @@ public class Monitor extends Thread {
                     log.debug("Monitor attempting read on stdin");
                 }
                 if (System.in.read() < 0) {
-                    if (log.isInfoEnabled()) {
-                        log.info("Yokozuna has exited - shutting down Solr");
-                    }
-                    System.exit(0);
+                    die();
                 }
                 if (log.isDebugEnabled()) {
                     log.debug("Monitoring succeeded reading stdin");
                 }
             }
             catch (final IOException ioe) {
-                if (log.isInfoEnabled()) {
-                    log.info("Yokozuna has exited - shutting down Solr");
-                }
-                System.exit(0);
+                die();
             }
+    }
+
+    // for dtrace’s sake
+    private void die() {
+        if (log.isInfoEnabled()) {
+            log.info("Yokozuna has exited - shutting down Solr");
+        }
+        System.exit(0);
     }
 
     /**
@@ -59,6 +61,7 @@ public class Monitor extends Thread {
      */
     public static Monitor monitor() {
         final Monitor m = new Monitor();
+        m.setName("riak superviser thread");
         m.start();
         return m;
     }
