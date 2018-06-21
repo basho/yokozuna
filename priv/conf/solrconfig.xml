@@ -633,8 +633,8 @@
        Admin Handlers - This will register all the standard admin
        RequestHandlers.
     -->
-  <requestHandler name="/admin/"
-                  class="solr.admin.AdminHandlers" />
+  <!-- <requestHandler name="/admin/" -->
+  <!--                 class="solr.admin.AdminHandlers" /> -->
   <!-- This single handler is equivalent to the following... -->
   <!--
      <requestHandler name="/admin/luke"       class="solr.admin.LukeRequestHandler" />
@@ -657,12 +657,12 @@
      </requestHandler>
     -->
 
-  <!-- Used by Yokozuna to determine if an index is available. -->
-  <requestHandler name="/admin/ping" class="solr.PingRequestHandler">
-    <lst name="invariants">
-      <str name="q">_yz_id:ping_query</str>
-    </lst>
-  </requestHandler>
+  <!-- <!-\- Used by Yokozuna to determine if an index is available. -\-> -->
+  <!-- <requestHandler name="/admin/ping" class="solr.PingRequestHandler"> -->
+  <!--   <lst name="invariants"> -->
+  <!--     <str name="q">_yz_id:ping_query</str> -->
+  <!--   </lst> -->
+  <!-- </requestHandler> -->
 
   <searchComponent name="fq_shard_translator"
                    class="com.basho.yokozuna.handler.component.FQShardTranslator" />
