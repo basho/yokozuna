@@ -12,7 +12,7 @@ then
     echo "Downloading $YZ_JAR_NAME"
     # download "${ARTIFACT_URL_PREFIX}/yokozuna/$YZ_JAR_NAME"
     download ${YZ_ARTIFACTS_URL}/${YZ_JAR_NAME}
-    mv $YZ_JAR_NAME $JAVA_LIB
+    cp $YZ_JAR_NAME $JAVA_LIB
 fi
 
 EXT_LIB=../priv/solr/lib/ext
@@ -22,7 +22,7 @@ then
     echo "Downloading $MON_JAR_NAME"
     #download "${ARTIFACT_URL_PREFIX}/yokozuna/$MON_JAR_NAME"
     download ${YZ_ARTIFACTS_URL}/${MON_JAR_NAME}
-    mv $MON_JAR_NAME $EXT_LIB
+    cp $MON_JAR_NAME $EXT_LIB
 fi
 
 echo Done.
