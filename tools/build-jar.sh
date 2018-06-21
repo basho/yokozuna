@@ -38,17 +38,17 @@ else
     ./grab-solr.sh
 fi
 
-if [ ! -e $SOLR_JAR_DIR ]; then
-    echo "Exploding ${SOLR_WAR}..."
-    mkdir $SOLR_JAR_DIR
-    cp $SOLR_WAR $SOLR_JAR_DIR
-    (cd $SOLR_JAR_DIR                           \
-     && jar xf solr.war WEB-INF/lib             \
-     && mv WEB-INF/lib/* .                      \
-     && rm -rf WEB-INF solr.war)
-    # copy logging jars
-    cp $SOLR_DIR/lib/ext/* $SOLR_JAR_DIR
-fi
+# if [ ! -e $SOLR_JAR_DIR ]; then
+#     echo "Exploding ${SOLR_WAR}..."
+#     mkdir $SOLR_JAR_DIR
+#     cp $SOLR_WAR $SOLR_JAR_DIR
+#     (cd $SOLR_JAR_DIR                           \
+#      && jar xf solr.war WEB-INF/lib             \
+#      && mv WEB-INF/lib/* .                      \
+#      && rm -rf WEB-INF solr.war)
+#     # copy logging jars
+#     cp $SOLR_DIR/lib/ext/* $SOLR_JAR_DIR
+# fi
 
 
 echo "Compiling..."
