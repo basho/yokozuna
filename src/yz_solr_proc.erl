@@ -231,10 +231,14 @@ build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::", 
 build_cmd(JavaPath, SolrPort, _SolrJMXPort, Dir, TempDir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
+    {ok, Log} = application:get_env(riak_core, platform_log_dir),
 
     JOptions = [
                 { "java.awt.headless", true },
+
                 { "solr.solr.home",    filename:absname(Dir) },
+                { "solr.log.dir",      filename:absname(Log) },
+
                 { "jetty.home",        YZPrivSolr },
                 { "jetty.base",        YZPrivSolr },
                 { "jetty.port",        integer_to_binary(SolrPort) },
@@ -245,7 +249,8 @@ build_cmd(JavaPath, SolrPort, _SolrJMXPort, Dir, TempDir) ->
                 %% data on the classpath, but we have to templatize the file to
                 %% get the platform log directory into it
                 { "log4j.configuration",
-                  filename:join([filename:absname(Etc), "solr-log4j.properties"]) },
+                  "file://" ++ filename:join([filename:absname(Etc), "solr-log4j.properties"])
+                },
 
                 { "yz.lib.dir", filename:join([?YZ_PRIV, "java_lib"]) }
                ],
