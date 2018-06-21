@@ -16,18 +16,6 @@
 
 package com.basho.yokozuna.handler;
 
-import java.io.IOException;
-
-import javax.xml.bind.DatatypeConverter;
-
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.DocIdSetIterator;
-
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.core.PluginInfo;
@@ -37,8 +25,20 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+
+import java.io.IOException;
+
+import org.apache.commons.codec.binary.Base64;
+import org.slf4j.*;
+
+
+//import org.apache.lucene.index.AtomicReader;
+//import org.apache.lucene.index.DocsEnum;
 
 /**
  * This class provides handler logic to iterate over the entropy data
@@ -81,16 +81,17 @@ public class EntropyData
 
         try {
             final SolrIndexSearcher searcher = req.getSearcher();
-            final AtomicReader rdr = searcher.getAtomicReader();
+            final LeafReader rdr = searcher.getSlowAtomicReader();
             BytesRef tmp = null;
             final Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
+                    // .terms(ENTROPY_DATA_FIELD);
 
             if (terms == null) {
                 rsp.add("more", false);
                 return;
             }
 
-            final TermsEnum te = terms.iterator(null);
+            final TermsEnum te = terms.iterator();
 
             if (isContinue(cont)) {
                 if (log.isDebugEnabled()) {
@@ -179,8 +180,9 @@ public class EntropyData
     }
 
     static boolean isLive(final Bits liveDocs, final TermsEnum te) throws IOException {
-        final DocsEnum de = te.docs(liveDocs, null);
-        return de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS;
+        //final DocsEnum de = te.    //docs(liveDocs, null);
+        //return de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS;
+        return true;
     }
 
     static BytesRef decodeCont(final String cont) {
@@ -201,15 +203,10 @@ public class EntropyData
         return "vector clock data iterator";
     }
 
-    @Override
-    public String getVersion() {
-        return "0.0.1";
-    }
-
-    @Override
-    public String getSource() {
-        return "TODO: implement getSource";
-    }
+//    @Override
+//    public String getVersion() {
+//        return "0.0.1";
+//    }
 
     /**
        @param vsn a String vsn number referring to the item's ed handler version
@@ -240,9 +237,11 @@ public class EntropyData
        @param base64EncodedVal base64 encoded string
        @return a string of decoded base64 bytes
     */
-    private String decodeBase64DocPart(String base64EncodedVal) {
-        return new String(DatatypeConverter.parseBase64Binary(
-                              base64EncodedVal));
+
+     public String decodeBase64DocPart(String base64EncodedVal) {
+        //return new String(DatatypeConverter.parseBase64Binary(
+         //                     base64EncodedVal));
+        return new String(Base64.decodeBase64(base64EncodedVal));
     }
 }
 
