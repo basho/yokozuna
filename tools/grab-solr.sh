@@ -48,8 +48,13 @@ check_for_solr()
 
 get_solr()
 {
-        mkdir -p ${SOLR_PKG_DIR}
-
+    if [[ -v SOLR_PKG_DIR ]]
+    then
+        # This is now obsolete thanks to implicit caching above
+        # but will leave in for now as to not break anyone.
+        echo "Using local copy of Solr $SOLR_PKG_DIR/$FILENAME"
+        cp $SOLR_PKG_DIR/$FILENAME .
+    else
         if [[ -e $TMP_FILE ]]; then
             echo "Using cached copy of Solr at $TMP_FILE"
             ln -s $TMP_FILE $FILENAME
@@ -61,9 +66,10 @@ get_solr()
             mkdir -p -m 1777 $TMP_DIR
             cp $FILENAME $TMP_DIR
         fi
+    fi
 
-        tar -xf $FILENAME
-        echo "OK, tar = ${FILENAME}"
+    tar -xf $FILENAME
+    echo "OK, tar = ${FILENAME}"
 }
 
 if check_for_solr; then
