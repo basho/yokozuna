@@ -76,7 +76,7 @@ public class Monitor extends Thread {
         try {
             while(true) {
                 // hang out until thread sees stdin close
-                Thread.sleep(1000);
+                Thread.sleep(1000L);
             }
         }
         catch (final InterruptedException ie) {
