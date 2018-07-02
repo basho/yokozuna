@@ -38,7 +38,7 @@ COL1_DIR=$EXAMPLE_DIR/solr/collection1
 # https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz
 # https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz.asc
 # https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz.sha1
-ARTIFACT_URL_PREFIX=https://www.apache.org/dist/lucene/solr/7.3.1
+ARTIFACT_URL_PREFIX=https://archive.apache.org/dist/lucene/solr/7.3.1/
 
 check_for_solr()
 {
@@ -72,7 +72,7 @@ get_solr()
     echo "OK, tar = ${FILENAME}"
 }
 
-if check_for_solr; then
+if check_for_solr && [[ ! -v FORCE_BUILD_SOLR_DIR ]]; then
     echo "Solr is there, $SOLR_DIR"
 else
     mkdir -p $BUILD_DIR && cd $BUILD_DIR
