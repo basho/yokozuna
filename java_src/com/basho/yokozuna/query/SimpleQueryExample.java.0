@@ -13,19 +13,23 @@
 
 package com.basho.yokozuna.query;
 
-import org.apache.solr.client.solrj.*;
+import java.io.IOException;
+
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 //import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.client.solrj.impl.HttpSolrClient.Builder;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 
-import java.io.IOException;
-
+//@SuppressWarnings("UseOfSystemOutOrSystemErr")
 public class SimpleQueryExample {
 
 
 
-    public static void main(String[] args)
+
+    public static void main(final String[] args)
             throws SolrServerException, IOException {
         final String baseURL = args[0];
         final String index = args[1];
@@ -33,7 +37,8 @@ public class SimpleQueryExample {
         final String term = args[3];
 
         String prefix = baseURL + "/" + index;
-        SolrClient solr = new HttpSolrClient.Builder(prefix).build();
+        SolrClient solr = new Builder(prefix).build();
+        
 
         ModifiableSolrParams params = new ModifiableSolrParams();
         params.set("qt", "/");
