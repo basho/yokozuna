@@ -16,25 +16,30 @@
 
 package com.basho.yokozuna.handler;
 
+import java.io.IOException;
+
+import org.apache.commons.codec.binary.Base64;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+//import org.apache.lucene.search.IndexSearcher;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+//import org.apache.solr.search.BitDocSet;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
 
-import java.io.IOException;
-
-import org.apache.commons.codec.binary.Base64;
-import org.slf4j.*;
+import java.util.*;
 
 
 //import org.apache.lucene.index.AtomicReader;
@@ -51,8 +56,8 @@ public class EntropyData
 
     protected static final Logger log = LoggerFactory.getLogger(EntropyData.class);
     static final BytesRef DEFAULT_CONT = null;
-    static final int DEFAULT_N = 1000;
-    static final String ENTROPY_DATA_FIELD = "_yz_ed";
+    static final int      DEFAULT_N = 1000;
+    static final String   ENTROPY_DATA_FIELD = "_yz_ed";
 
     // Pass info from solrconfig.xml
     public void init(final PluginInfo info) {
@@ -82,9 +87,22 @@ public class EntropyData
         try {
             final SolrIndexSearcher searcher = req.getSearcher();
             final LeafReader rdr = searcher.getSlowAtomicReader();
-            BytesRef tmp = null;
+
+            
+            //BitDocSet bset = searcher.getLiveDocs();
+
+            //IndexSearcher isearcher = searcher;
+            //LeafReaderContext z = isearcher.leafContext;
+
+            
             final Terms terms = rdr.terms(ENTROPY_DATA_FIELD);
-                    // .terms(ENTROPY_DATA_FIELD);
+
+            /*
+            LeafReaderContext lrc = rdr.getContext();
+            LeafReader lr = lrc.reader();
+            BitDocSet bds = searcher.getLiveDocs();
+*/
+
 
             if (terms == null) {
                 rsp.add("more", false);
@@ -92,6 +110,9 @@ public class EntropyData
             }
 
             final TermsEnum te = terms.iterator();
+            
+            BytesRef tmp = null;
+            //new BitDocSet
 
             if (isContinue(cont)) {
                 if (log.isDebugEnabled()) {
@@ -99,11 +120,13 @@ public class EntropyData
                 }
 
                 final TermsEnum.SeekStatus status = te.seekCeil(cont);
-
-                if (status == TermsEnum.SeekStatus.END) {
+                log.debug("seek {} -> {}", cont, status);
+                switch (status) {
+                case END:
                     rsp.add("more", false);
                     return;
-                } else if (status == TermsEnum.SeekStatus.FOUND) {
+                
+                case FOUND:
                     // If this term has already been seen then skip it.
                     tmp = te.next();
 
@@ -111,54 +134,35 @@ public class EntropyData
                         rsp.add("more", false);
                         return;
                     }
-                } else if (status == TermsEnum.SeekStatus.NOT_FOUND) {
+                    break;
+                
+                case NOT_FOUND:
                     tmp = te.next();
+                    break;
                 }
-            } else {
+            }
+            else {
                 tmp = te.next();
             }
 
             int count = 0;
             BytesRef current = null;
             final Bits liveDocs = rdr.getLiveDocs();
-
-            while(!endOfItr(tmp) && count < n) {
+            //BitDocSet sss =            rdr.getLiveDocs();
+            
+            for (BytesRef ref = tmp; ref != null && count < n; ref = te.next()) {
+            //while(!endOfItr(tmp) && count < n) {
+                // • live
                 if (isLive(liveDocs, te)) {
-                    current = BytesRef.deepCopyOf(tmp);
-                    final String text = tmp.utf8ToString();
-                    if (log.isDebugEnabled()) {
-                        log.debug("text: " + text);
-                    }
-                    final String [] vals = text.split(" ");
-
-                    final String docPartition = vals[1];
-
-                    /*
-                      If the partition matches the one we are looking for,
-                      parse the version, bkey, and object hash from the
-                      entropy data field (term).
-                    */
-                    if (partition.equals(docPartition)) {
-                        final String vsn = vals[0];
-
-                        final String [] decoded = decodeForVersion(vsn,
-                                                                   vals[2],
-                                                                   vals[3],
-                                                                   vals[4]);
-
-                        final String hash = vals[5];
-
-                        final SolrDocument tmpDoc = new SolrDocument();
-                        tmpDoc.addField("vsn", vsn);
-                        tmpDoc.addField("riak_bucket_type", decoded[0]);
-                        tmpDoc.addField("riak_bucket_name", decoded[1]);
-                        tmpDoc.addField("riak_key", decoded[2]);
-                        tmpDoc.addField("base64_hash", hash);
-                        docs.add(tmpDoc);
+                    current = BytesRef.deepCopyOf(ref);
+                    Optional<SolrDocument> x = getDoc(partition, current);
+                    if (x.isPresent()) {
+                        docs.add(x.get());
                         count++;
-                    }
-                }
-                tmp = te.next();
+                    }       
+                } // isLive(te)
+
+                //tmp = te.next();
             }
 
             if (count < n) {
@@ -166,7 +170,7 @@ public class EntropyData
             } else {
                 rsp.add("more", true);
                 final String newCont =
-                    org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(current.bytes);
+                        org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(current.bytes);
                 // The continue context for next req to start where
                 // this one finished.
                 rsp.add("continuation", newCont);
@@ -175,14 +179,70 @@ public class EntropyData
             docs.setNumFound(count);
 
         } catch (final Exception e) {
-            e.printStackTrace();
+            log.error("bad things, {}", e);
         }
     }
 
-    static boolean isLive(final Bits liveDocs, final TermsEnum te) throws IOException {
+    static boolean isLive(final Bits liveDocs, final TermsEnum te) {
+        //log.debug("is-live {}", te);
+
+        if (liveDocs == null)
+            return true;
+        try {
+        PostingsEnum posts = te.postings(null, PostingsEnum.NONE);
+        int did = posts.nextDoc();
+        assert did != -1;
+        assert did != PostingsEnum.NO_MORE_DOCS;
+        assert posts.nextDoc() == PostingsEnum.NO_MORE_DOCS;
+
+        boolean r = liveDocs.get(did);
+        log.debug("is-live [{}] => {}", did, r);
+        return r;
+        } catch (IOException e) {
+            log.error("cannot get postings for TermsEnum {}", te);
+            return false;
+        }
+        
         //final DocsEnum de = te.    //docs(liveDocs, null);
         //return de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS;
-        return true;
+        
+        //return true;
+        //te.
+    }
+
+    private Optional<SolrDocument> getDoc(String partition, BytesRef tmp) {
+        final String text = tmp.utf8ToString();
+        if (log.isDebugEnabled()) {
+            log.debug("text: " + text);
+        }
+        final String [] vals = text.split(" ");
+
+        final String docPartition = vals[1];
+
+        /*
+          If the partition matches the one we are looking for,
+          parse the version, bkey, and object hash from the
+          entropy data field (term).
+        */
+        if (partition.equals(docPartition)) {
+            final String vsn = vals[0];
+
+            final String [] decoded = decodeForVersion(vsn,
+                                                       vals[2],
+                                                       vals[3],
+                                                       vals[4]);
+
+            final String hash = vals[5];
+
+            final SolrDocument tmpDoc = new SolrDocument();
+            tmpDoc.addField("vsn", vsn);
+            tmpDoc.addField("riak_bucket_type", decoded[0]);
+            tmpDoc.addField("riak_bucket_name", decoded[1]);
+            tmpDoc.addField("riak_key", decoded[2]);
+            tmpDoc.addField("base64_hash", hash);
+            return Optional.of(tmpDoc);
+        }
+        return Optional.empty();
     }
 
     static BytesRef decodeCont(final String cont) {
