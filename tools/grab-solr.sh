@@ -32,8 +32,6 @@ SRC_DIR=$BUILD_DIR/$VSN
 EXAMPLE_DIR=$SRC_DIR/example
 SERVER_DIR=$SRC_DIR/server
 
-COL1_DIR=$EXAMPLE_DIR/solr/collection1
-
 # http://apache.cs.uu.nl/lucene/solr/7.3.1/solr-7.3.1.tgz
 # https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz
 # https://www.apache.org/dist/lucene/solr/7.3.1/solr-7.3.1.tgz.asc
@@ -72,7 +70,7 @@ get_solr()
     echo "OK, tar = ${FILENAME}"
 }
 
-if check_for_solr && [[ ! -v FORCE_BUILD_SOLR_DIR ]]; then
+if check_for_solr && [[ ! -v FORCE_REBUILD ]]; then
     echo "Solr is there, $SOLR_DIR"
 else
     mkdir -p $BUILD_DIR && cd $BUILD_DIR
