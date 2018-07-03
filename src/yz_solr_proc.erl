@@ -252,7 +252,9 @@ build_cmd(JavaPath, SolrPort, _SolrJMXPort, Dir, TempDir) ->
                   "file://" ++ filename:join([filename:absname(Etc), "solr-log4j.properties"])
                 },
 
-                { "yz.lib.dir", filename:join([?YZ_PRIV, "java_lib"]) }
+                { "yz.lib.dir",
+                  "file://" ++ filename:join(?YZ_PRIV, "java_lib")
+                }
                ],
 
     %% HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
