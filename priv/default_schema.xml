@@ -20,7 +20,7 @@
  <fields>
 
    <!-- TODO: is this needed? -->
-   <field name="_version_" type="long" indexed="true" stored="true"/>
+   <field name="_version_" type="plong" indexed="true" stored="true"/>
 
    <field name="text" type="text_general" indexed="true" stored="false" multiValued="true"/>
 
@@ -140,6 +140,8 @@
     <!-- YZ String: Used for non-analyzed fields -->
     <fieldType name="_yz_str" class="solr.StrField" sortMissingLast="true" />
 
+    <fieldType name="plong" class="solr.LongPointField" docValues="true"/>
+    
     <fieldType name="string" class="solr.StrField" sortMissingLast="true" />
     <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true"/>
 
