@@ -48,7 +48,6 @@
    <dynamicField name="*_bg" type="text_bg" indexed="true" stored="true" multiValued="true"/>
    <dynamicField name="*_ca" type="text_ca" indexed="true" stored="true" multiValued="true"/>
    <dynamicField name="*_cjk" type="text_cjk" indexed="true" stored="true" multiValued="true"/>
-   <dynamicField name="*_ckb" type="text_ckb" indexed="true" stored="true" multiValued="true"/>
    <dynamicField name="*_cz" type="text_cz" indexed="true" stored="true" multiValued="true"/>
    <dynamicField name="*_da" type="text_da" indexed="true" stored="true" multiValued="true"/>
    <dynamicField name="*_de" type="text_de" indexed="true" stored="true" multiValued="true"/>
@@ -453,18 +452,6 @@
         <!-- for any non-CJK -->
         <filter class="solr.LowerCaseFilterFactory"/>
         <filter class="solr.CJKBigramFilterFactory"/>
-      </analyzer>
-    </fieldType>
-
-    <!-- Kurdish -->
-    <fieldType name="text_ckb" class="solr.TextField" positionIncrementGap="100">
-      <analyzer>
-        <tokenizer class="solr.StandardTokenizerFactory"/>
-        <filter class="solr.SoraniNormalizationFilterFactory"/>
-        <!-- for any latin text -->
-        <filter class="solr.LowerCaseFilterFactory"/>
-        <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_ckb.txt"/>
-        <filter class="solr.SoraniStemFilterFactory"/>
       </analyzer>
     </fieldType>
 
