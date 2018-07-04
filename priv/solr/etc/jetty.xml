@@ -10,8 +10,7 @@
 <!-- =============================================================== -->
 
 
-<Configure id="Server" class="org.eclipse.jetty.server.Server"
-           xmlns:riak=".">  <!-- riak-related grep -->
+<Configure id="Server" class="org.eclipse.jetty.server.Server">
 
   <!-- =========================================================== -->
   <!-- Configure the Server Thread Pool.                           -->
@@ -116,7 +115,7 @@
        </Call>
 
        <!-- FIXME so everything else works. Riak doesn’t use /solr point anyway. //lelf -->
-       <Call name="addRule" riak:for="">
+       <Call name="addRule"> <!--riak-->
          <Arg>
            <New class="org.eclipse.jetty.rewrite.handler.RewritePatternRule">
              <Set name="pattern">/solr/*</Set>

@@ -6,8 +6,7 @@
 <!-- by adding a HTTP connector.                                   -->
 <!-- This configuration must be used in conjunction with jetty.xml -->
 <!-- ============================================================= -->
-<Configure id="Server" class="org.eclipse.jetty.server.Server"
-           xmlns:riak="entries for riak">
+<Configure id="Server" class="org.eclipse.jetty.server.Server">
 
 
   <!-- =========================================================== -->
@@ -15,7 +14,7 @@
   <!-- =========================================================== -->
   <Call class="com.basho.yokozuna.monitor.Monitor"
         name="monitor"
-        riak:entry="">
+        >                                           <!--riak-->
   </Call>
 
 
