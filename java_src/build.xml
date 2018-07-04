@@ -1,22 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <project name="yokozuna">
-  <target name="all" depends="yz-handler.jar,yz-monitor.jar" />
+
+  <property name="ant.build.javac.source" value="8" />
+  <property name="ant.build.javac.target" value="8" />
+  <property name="ant.build.javac.destdir" value="out" />
+
+  <property name="solr_vsn"   value="7.3.1" />
+  <property name="yz_vsn"     value="3.2"   />
+  <property name="yz_mon_vsn" value="1.2"   />
+
+  <property name="out">out</property>
+  <property name="tmp">../yz-build</property>
   
-  <target name="yz-handler.jar" depends="yz-handler.c">
-    <jar destfile="../yz-build/yokozuna-${yz_vsn}.jar"
-         basedir="."
-         includes="com/basho/yokozuna/handler/**/*.class"/>
+  <target name="all">
+    <mkdir dir="${out}"/>
+    <delete>
+      <fileset dir="${out}" includes="**/*.class"/>
+    </delete>
+    <antcall target="yz-handler.jar"/>
+    <antcall target="yz-monitor.jar"/>
+  </target>
+  
+  <target name="yz-handler.jar" depends="c">
+    <jar destfile="${tmp}/yokozuna-${yz_vsn}.jar"
+         basedir="${out}"
+         includes="com/basho/yokozuna/handler/**/*.class"
+         />
+    <!-- + com/basho/yokozuna/query/**/*.class -->
   </target>
 
-  <target name="yz-monitor.jar" depends="yz-monitor.c">
-    <jar destfile="../yz-build/yz_monitor-${yz_mon_vsn}.jar"
-         basedir="."
-         includes="**/*.class"/>
+  <target name="yz-monitor.jar" depends="c">
+    <jar destfile="${tmp}/yz_monitor-${yz_mon_vsn}.jar"
+         basedir="${out}"
+         includes="com/basho/yokozuna/monitor/**/*.class"
+         />
   </target>
       
-   <target name="yz-handler.c">
-      <javac srcdir="com/basho/yokozuna/handler" includeantruntime="false">
+   <target name="c">
+     <javac srcdir="." includeantruntime="false"
+            destdir="${out}"
+            includeDestClasses="no"
+            >
         <classpath>
           <!-- <fileset dir="../build/solr-jars"/> -->
           <!-- <fileset dir="../build/solr-${solr_vsn}-SNAPSHOT/dist"/> -->
@@ -27,13 +52,16 @@
       </javac>
    </target>
       
-   <target name="yz-monitor.c">
-      <javac srcdir="com/basho/yokozuna/monitor" includeantruntime="false">
-        <classpath>
+   <target name="docs">
+     <javadoc linksource="yes"
+              sourcepath="." destdir="doc" access="private" source="8"
+              includenosourcepackages="yes"
+              >
+       <classpath>
           <fileset dir="../build/solr-${solr_vsn}/server/lib"/>
           <fileset dir="../build/solr-${solr_vsn}/server/solr-webapp/webapp/WEB-INF/lib"/>
         </classpath>
-      </javac>
+     </javadoc>
    </target>
 
 </project>
