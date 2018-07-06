@@ -6,7 +6,7 @@ set -eu
 
 JAVA_LIB=../priv/java_lib
 
-YZ_ARTIFACTS_URL="$(realpath ../yz-build)"
+YZ_ARTIFACTS_URL="."
 
 if [ ! -f $JAVA_LIB/$YZ_JAR_NAME ] || [ ${FORCE_REBUILD:-0} -gt 0 ]
 then

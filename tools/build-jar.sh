@@ -20,15 +20,9 @@ if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
     exit 1
 fi
 
-if ! javac -version 2>&1 | egrep $'(?:1\.[789]|10)\.'
+if ! javac -version 2>&1 | egrep $'(?:1\\.[789]|10)\\.'
 then
     echo "JDK 1.8+ must be used to compile these jars"
-    exit 1
-fi
-
-if [ $(basename $PWD) != "tools" ]
-then
-    echo "This script must be run from tools directory"
     exit 1
 fi
 
