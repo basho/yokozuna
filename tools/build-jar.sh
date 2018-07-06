@@ -7,6 +7,14 @@ set -eu
 . common.sh
 
 
+if ! [ ${FORCE_REBUILD:-0} -gt 0 ]; then
+    if [ -f $YZ_JAR_NAME ] && [ -f $MON_JAR_NAME ]; then
+        echo "Using pre-packages yokozuna jar files"
+        exit 0
+    fi
+fi
+
+
 if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then
     echo "Couldn't find javac and/or jar, which is needed to compile Yokozuna."
     exit 1
