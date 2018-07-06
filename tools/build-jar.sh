@@ -3,8 +3,8 @@
 # Build JAR file containing customer Solr request handlers.
 set -eu
 
-[[ $(basename $PWD) == "tools" ]] || cd tools
-source common.sh
+[ $(basename $PWD) == "tools" ] || cd tools
+. common.sh
 
 
 if [ ! -x "`which javac`" ] || [ ! -x "`which jar`" ]; then

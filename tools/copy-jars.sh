@@ -1,14 +1,14 @@
 #!/usr/bin/env sh
 set -eu
 
-[[ $(basename $PWD) == "tools" ]] || cd tools
-source common.sh
+[ $(basename $PWD) == "tools" ] || cd tools
+. common.sh
 
 JAVA_LIB=../priv/java_lib
 
 YZ_ARTIFACTS_URL="$(realpath ../yz-build)"
 
-if [ ! -f $JAVA_LIB/$YZ_JAR_NAME ] || (( ${FORCE_REBUILD:-0} ))
+if [ ! -f $JAVA_LIB/$YZ_JAR_NAME ] || [ ${FORCE_REBUILD:-0} -gt 0 ]
 then
     mkdir -p $JAVA_LIB
     echo "Downloading $YZ_JAR_NAME"
@@ -19,7 +19,7 @@ fi
 
 EXT_LIB=../priv/solr/lib/ext
 
-if [ ! -f $EXT_LIB/$MON_JAR_NAME ] ||  (( ${FORCE_REBUILD:-0} ))
+if [ ! -f $EXT_LIB/$MON_JAR_NAME ] || [ ${FORCE_REBUILD:-0} -gt 0 ]
 then
     echo "Downloading $MON_JAR_NAME"
     #download "${ARTIFACT_URL_PREFIX}/yokozuna/$MON_JAR_NAME"

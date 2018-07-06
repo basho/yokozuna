@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Script to grab Solr and embed in priv dir. This script assumes it is
 # being called from root dir or tools dir.
@@ -10,9 +10,8 @@
 
 set    -eu
 
-[[ $(basename $PWD) == "tools" ]] || cd tools
-
-source common.sh
+[ $(basename $PWD) == "tools" ] || cd tools
+. common.sh
 
 
 PRIV_DIR=../priv
@@ -41,19 +40,19 @@ ARTIFACT_URL_PREFIX=https://archive.apache.org/dist/lucene/solr/7.3.1/
 check_for_solr()
 {
     # $SOLR_DIR is preloaded with xml files, so check for the generated jar
-    [[ -e $SOLR_DIR/start.jar ]]
+    [ -e $SOLR_DIR/start.jar ]
 }
 
 get_solr()
 {
-    if [[ -v SOLR_PKG_DIR ]]
+    if [ -n "${SOLR_PKG_DIR:-}" ] && [ -d ${SOLR_PKG_DIR} ]
     then
         # This is now obsolete thanks to implicit caching above
         # but will leave in for now as to not break anyone.
         echo "Using local copy of Solr $SOLR_PKG_DIR/$FILENAME"
         cp $SOLR_PKG_DIR/$FILENAME .
     else
-        if [[ -e $TMP_FILE ]]; then
+        if [ -e $TMP_FILE ]; then
             echo "Using cached copy of Solr at $TMP_FILE"
             ln -s $TMP_FILE $FILENAME
         else
@@ -70,12 +69,12 @@ get_solr()
     echo "OK, tar = ${FILENAME}"
 }
 
-if check_for_solr && [[ ! -v FORCE_REBUILD ]]; then
+if check_for_solr && [ ${FORCE_REBUILD:-0} -gt 0 ]; then
     echo "Solr is there, $SOLR_DIR"
 else
     mkdir -p $BUILD_DIR && cd $BUILD_DIR
 
-    if [[ ! -e $SRC_DIR ]]
+    if [ ! -e $SRC_DIR ]
     then
         get_solr
     fi

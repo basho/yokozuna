@@ -1,17 +1,17 @@
 # -*- Bash -*-
 
 
-declare SOLR_VSN=7.3.1
+readonly SOLR_VSN=7.3.1
 
-declare YZ_JAR_VSN=3.2
-declare YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
-declare YZ_JAR_SHA=$YZ_JAR_NAME.sha
+readonly YZ_JAR_VSN=3.2
+readonly YZ_JAR_NAME=yokozuna-$YZ_JAR_VSN.jar
+readonly YZ_JAR_SHA=$YZ_JAR_NAME.sha
 
-declare MON_JAR_VSN=1.2
-declare MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
-declare MON_JAR_SHA=$MON_JAR_NAME.sha
+readonly MON_JAR_VSN=1.2
+readonly MON_JAR_NAME=yz_monitor-$MON_JAR_VSN.jar
+readonly MON_JAR_SHA=$MON_JAR_NAME.sha
 
-function mk_sha()
+mk_sha()
 {
     file=$1
     sha_file=$2
