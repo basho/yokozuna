@@ -136,22 +136,20 @@ public class EntropyData
 
             int count = 0;                   // TODO just do docs.size()?
 
-            BytesRef current = null;
+            BytesRef lastSeen = null;
 
             {
                 final Bits liveDocs = rdr.getLiveDocs();
 
-                while (te.next() != null && count < n) {
-                    if (isLive(liveDocs, te)) {
-                        final BytesRef ref = te.term();
-                        current = BytesRef.deepCopyOf(ref);  // FIXME why
-
-                        Optional<SolrDocument> x = getDocIfPn(partition, current);
+                for (BytesRef ref = te.term(); ref != null; ref = te.next()) {
+                    if (count < n && isLive(liveDocs, te)) {
+                        lastSeen = BytesRef.deepCopyOf(ref);
+                        Optional<SolrDocument> x = getDocIfPn(partition, lastSeen);
                         if (x.isPresent()) {
                             resultDocs.add(x.get());
                             count++;
                         }
-                    } // isLive(te)
+                    }
                 }
             } //liveDocs
 
@@ -160,9 +158,9 @@ public class EntropyData
             } else {
                 response.add("more", true);
 
-                assert current != null;
+                assert lastSeen != null;
 
-                final String newCont = Base64.encodeBase64URLSafeString(current.bytes);
+                final String newCont = Base64.encodeBase64URLSafeString(lastSeen.bytes);
                 // The continue context for next req to start where
                 // this one finished.
                 response.add("continuation", newCont);
@@ -225,9 +223,9 @@ public class EntropyData
      */
     private Optional<SolrDocument> getDocIfPn(String partition, BytesRef tmp) {
         final String text = tmp.utf8ToString();
-        if (log.isDebugEnabled()) {
-            log.debug("text: " + text);
-        }
+        if (log.isTraceEnabled())
+            log.trace("getDoc if p={}", partition);
+
         final String[] vals = text.split(" ");
 
         final String docPartition = vals[1];
@@ -238,8 +236,10 @@ public class EntropyData
           entropy data field (term).
         */
         if (partition.equals(docPartition)) {
-            final String vsn = vals[0];
+            if (log.isDebugEnabled())
+                log.debug(" getDoc ｢{}｣", text);
 
+            final String vsn = vals[0];
             final String[] decoded = decodeForVersion(vsn,
                                                       vals[2],
                                                       vals[3],
