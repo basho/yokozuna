@@ -15,7 +15,7 @@ package com.basho.yokozuna.query;
 
 import org.apache.solr.client.solrj.*;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
-import org.apache.solr.client.solrj.request.QueryRequest;
+//import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 
@@ -38,7 +38,7 @@ public class SimpleQueryExample {
         ModifiableSolrParams params = new ModifiableSolrParams();
         params.set("qt", "/");
         params.set("q", field + ":" + term);
-        SolrRequest req = new QueryRequest(params);
+        //SolrRequest req = new QueryRequest(params);
 
         QueryResponse resp = solr.query(params);
 

@@ -15,10 +15,11 @@
  */
 
 package com.basho.yokozuna.monitor;
+import org.slf4j.*;
+
 
 import java.io.IOException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
 
 /**
  * Kill Solr when stdin closes, as it will when the Erlang VM shuts
