@@ -40,6 +40,7 @@
    <target name="c">
      <javac srcdir="." includeantruntime="false"
             destdir="${out}"
+            debug="on" debuglevel="lines"
             includeDestClasses="no"
             >
         <classpath>
