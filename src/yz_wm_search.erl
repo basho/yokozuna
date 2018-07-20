@@ -110,7 +110,8 @@ forbidden(ReqDataIn, Context) ->
 process_post(RD, Ctx) ->
     CType = wrq:get_req_header(?HEAD_CTYPE, RD),
     case CType of
-        "application/x-www-form-urlencoded" ->
+        CT when CT == "application/x-www-form-urlencoded";
+                CT == "application/json" ->
             post_search(RD, Ctx, CType);
         _ ->
             {{halt, 415}, RD, Ctx}
