@@ -2,7 +2,7 @@
 set -eu
 
 [ $(basename $PWD) == "tools" ] || cd tools
-. common.sh
+. ./common.sh
 
 JAVA_LIB=../priv/java_lib
 

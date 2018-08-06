@@ -4,7 +4,7 @@
 set -eu
 
 [ $(basename $PWD) == "tools" ] || cd tools
-. common.sh
+. ./common.sh
 
 
 if ! [ ${FORCE_REBUILD:-0} -gt 0 ]; then

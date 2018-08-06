@@ -11,7 +11,7 @@
 set    -eu
 
 [ $(basename $PWD) == "tools" ] || cd tools
-. common.sh
+. ./common.sh
 
 
 PRIV_DIR=../priv
