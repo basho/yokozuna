@@ -23,7 +23,7 @@
 
 -module(yz_solr_proc).
 -include("yokozuna.hrl").
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -behavior(gen_server).
 
 %% Keep compiler warnings away

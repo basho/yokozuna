@@ -23,7 +23,7 @@
 
 -module(yz_index).
 -include("yokozuna.hrl").
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 
 -define(SOLR_INITFAILURES(I, S), kvc:path(erlang:iolist_to_binary(
                                             [<<"initFailures">>, <<".">>, I]),

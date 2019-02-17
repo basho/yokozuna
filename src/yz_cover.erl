@@ -21,7 +21,7 @@
 %%      coverage information for distributed search queries.
 
 -module(yz_cover).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 -behavior(gen_server).
 -export([code_change/3,
          handle_call/3,

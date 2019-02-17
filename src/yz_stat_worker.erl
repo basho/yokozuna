@@ -18,7 +18,7 @@
 %% -------------------------------------------------------------------
 -module(yz_stat_worker).
 -behavior(gen_server).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

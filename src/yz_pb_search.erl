@@ -32,7 +32,8 @@
          encode/1,
          process/2,
          process_stream/3]).
--compile(export_all).
+
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().

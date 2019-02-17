@@ -21,7 +21,7 @@
 %% @doc Functionality for working with Yokozuna documents.
 
 -module(yz_doc).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 -include("yokozuna.hrl").
 
 -define(MD_VTAG, <<"X-Riak-VTag">>).

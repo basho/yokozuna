@@ -18,7 +18,7 @@
 %% -------------------------------------------------------------------
 -module(yz_solrq_drain_fsm).
 
--behaviour(gen_fsm).
+-behaviour(gen_fsm_compat).
 
 %% API
 -export([start_link/0, start_link/1, cancel/2]).
@@ -79,7 +79,7 @@ start_link() ->
 %%
 -spec(start_link(drain_params()) -> {ok, pid()} | ignore | {error, Reason :: term()}).
 start_link(Params) ->
-    gen_fsm:start_link(?MODULE, Params, []).
+    gen_fsm_compat:start_link(?MODULE, Params, []).
 
 %% @doc Notify the drain FSM identified by DPid that the solrq associated
 %% with the specified Token has completed draining.  Note that the solrq
@@ -91,7 +91,7 @@ start_link(Params) ->
 %%
 -spec drain_complete(pid(), reference()) -> ok.
 drain_complete(DPid, Token) ->
-    gen_fsm:send_event(DPid, {drain_complete, Token}).
+    gen_fsm_compat:send_event(DPid, {drain_complete, Token}).
 
 %% @doc Notify the drain FSM identified by DPid that the solrq associated
 %% with the specified Token has an existing drain request in progress and
@@ -101,7 +101,7 @@ drain_complete(DPid, Token) ->
 %% @end
 %%
 drain_already_in_progress(DPid, Token) ->
-    gen_fsm:send_event(DPid, {drain_already_in_progress, Token}).
+    gen_fsm_compat:send_event(DPid, {drain_already_in_progress, Token}).
 
 %% @doc Start draining.  This operation will send a start message to this
 %% FSM with a start message, which in turn will initiate drains on all of
@@ -112,7 +112,7 @@ drain_already_in_progress(DPid, Token) ->
 %%
 -spec start_prepare(pid()) -> no_proc | timeout | term().
 start_prepare(DPid) ->
-    gen_fsm:send_event(DPid, start).
+    gen_fsm_compat:send_event(DPid, start).
 
 %% @doc Cancel a drain.  This operation will result in sending a cancel
 %% message to each of the solrqs, putting them back into a batching state.
@@ -121,7 +121,7 @@ start_prepare(DPid) ->
 -spec cancel(pid(), non_neg_integer()) -> ok | no_proc | timeout.
 cancel(DPid, Timeout) ->
     try
-        gen_fsm:sync_send_all_state_event(DPid, cancel, Timeout)
+        gen_fsm_compat:sync_send_all_state_event(DPid, cancel, Timeout)
     catch
         _:{normal, _}  ->
             %% It's possible that the drain FSM terminates "naturally"
@@ -141,7 +141,7 @@ cancel(DPid, Timeout) ->
 %% C.f., yz_solrq_test:confirm_drain_fsm_timeout
 %%
 resume_workers(Pid) ->
-    gen_fsm:send_event(Pid, resume_workers).
+    gen_fsm_compat:send_event(Pid, resume_workers).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -201,7 +201,7 @@ wait_for_drain_complete({drain_complete, Token},
                     maybe_update_yz_index_hashtree(
                         ExchangeFSMPid, YZIndexHashtreeUpdateParams, SnapshotCompleteCallback
                     ),
-                    gen_fsm:send_event(Self, yz_hashtree_updated)
+                    gen_fsm_compat:send_event(Self, yz_hashtree_updated)
                 end
             ),
             {next_state, wait_for_snapshot_complete, NewState};

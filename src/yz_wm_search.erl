@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 -module(yz_wm_search).
--compile(export_all).
+-compile([nowarn_export_all, export_all]).
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 

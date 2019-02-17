@@ -23,7 +23,7 @@
 %%
 -module(yz_noop_extractor).
 -include("yokozuna.hrl").
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 -define(NOOP_RESULTS, []).
 
 extract(Value) ->

@@ -21,7 +21,7 @@
 -module(yz_app).
 -behaviour(application).
 -export([start/2, stop/1, prep_stop/1, components/0]).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 -include("yokozuna.hrl").
 
 %% 27 is message type rpbsearchqueryreq

@@ -67,7 +67,7 @@
 %%
 
 -module(yz_wm_index).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
