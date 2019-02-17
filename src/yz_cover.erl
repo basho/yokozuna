@@ -154,7 +154,7 @@ calc_plan(NVal, Ring) ->
 %% @doc Create a Riak core coverage plan.
 -spec create_coverage_plan(n()) -> term().
 create_coverage_plan(NVal) ->
-    ReqId = erlang:phash2(erlang:now()),
+    ReqId = erlang:phash2(make_ref()),
     NumPrimaries = 1,
     Selector=all,
     riak_core_coverage_plan:create_plan(Selector,
