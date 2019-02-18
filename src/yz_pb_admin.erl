@@ -36,7 +36,6 @@
          encode/1,
          process/2,
          process_stream/3]).
--compile(export_all).
 
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().

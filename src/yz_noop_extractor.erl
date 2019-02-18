@@ -22,8 +22,9 @@
 %%      for the registered mime type by returning an empty.
 %%
 -module(yz_noop_extractor).
+-export([extract/1, extract/2]).
+
 -include("yokozuna.hrl").
--compile([export_all, nowarn_export_all]).      % @todo //lelf
 -define(NOOP_RESULTS, []).
 
 extract(Value) ->

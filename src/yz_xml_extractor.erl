@@ -38,7 +38,8 @@
 %%   `field_separator' - Use a different field separator than the default of `.'.
 %%
 -module(yz_xml_extractor).
--compile([export_all, nowarn_export_all]).      % @todo //lelf
+-export([extract/1, extract/2]).
+
 -include("yokozuna.hrl").
 -define(DEFAULT_FIELD_SEPARATOR, <<".">>).
 -record(state, {
