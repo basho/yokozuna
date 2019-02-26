@@ -2,17 +2,13 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(STACK_IF_FAIL(Expr),
-        ?IF(try
-                Expr, true
-            catch _:_ ->
-                    false
-            end,
-            ok,
-            begin
+        try
+            _ = Expr, ok
+        catch _:_ ->
                 Trace = erlang:get_stacktrace(),
                 ?debugFmt("~n~p failed: ~p~n", [??Expr, Trace]),
                 throw({expression_failed, ??Expr})
-            end)).
+        end).
 
 %% A replacement for ?assertEqual that prints the entire binary so
 %% that bytes can be compared in case of mismatch.
