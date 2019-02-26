@@ -24,8 +24,8 @@
 -compile([export_all, nowarn_export_all]).      % @todo //lelf
 -include("yokozuna.hrl").
 
-%% 27 is message type rpbsearchqueryreq
-%% 28 is message type rpbsearchqueryresp
+%% 27 is message type RpbSearchQueryReq
+%% 28 is message type RpbSearchQueryResp
 -define(QUERY_SERVICES, [{yz_pb_search, 27, 28}]).
 -define(ADMIN_SERVICES, [{yz_pb_admin, 54, 60}]).
 
