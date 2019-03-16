@@ -45,7 +45,7 @@ init() ->
 decode(Code, Bin) ->
     Msg = riak_pb_codec:decode(Code, Bin),
     case Msg of
-        #'RpbSearchQueryReq'{index=Index} ->
+        #rpbsearchqueryreq{index=Index} ->
             PermAndResource = {?YZ_SECURITY_SEARCH_PERM, {?YZ_SECURITY_INDEX, Index}},
             {ok, Msg, PermAndResource};
         _ ->
@@ -71,7 +71,7 @@ process(Msg, State) ->
                 State}
     end.
 
-maybe_process(true, #'RpbSearchQueryReq'{index=Index}=Msg, State) ->
+maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
     case extract_params(Msg) of
         {ok, Params} ->
             T1 = os:timestamp(),
@@ -99,7 +99,7 @@ maybe_process(true, #'RpbSearchQueryReq'{index=Index}=Msg, State) ->
                                 MaxScore = kvc:path([<<"maxScore">>], Resp),
                                 NumFound = kvc:path([<<"numFound">>], Resp),
 
-                                RPBResp = #'RpbSearchQueryResp'{
+                                RPBResp = #rpbsearchqueryresp{
                                              docs = [encode_doc(Doc) ||
                                                         Doc <- Pairs],
                                              max_score = MaxScore,
@@ -135,12 +135,12 @@ process_stream(_,_,State) ->
 %% Internal functions
 %% ---------------------------------
 
-extract_params(#'RpbSearchQueryReq'{q = <<>>}) ->
+extract_params(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};
-extract_params(#'RpbSearchQueryReq'{q=Query, sort=Sort,
-                                    rows=Rows, start=Start,
-                                    filter=Filter, fl=FieldList,
-                                    df=DefaultField, op=DefaultOp}) ->
+extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
+                                  rows=Rows, start=Start,
+                                  filter=Filter, fl=FieldList,
+                                  df=DefaultField, op=DefaultOp}) ->
     MaybeParams = [{'q.op', DefaultOp},
                    {sort, Sort},
                    {fq, Filter},
@@ -187,10 +187,10 @@ check_sort_on_fl(_Sort, FL) ->
 %% @private
 %%
 %% NOTE: Bypass `riak_pb_search_codec' to avoid 2-pass on `Doc'.
--spec encode_doc([{field_name(), term()}]) -> #'RpbSearchDoc'{}.
+-spec encode_doc([{field_name(), term()}]) -> #rpbsearchdoc{}.
 encode_doc(Doc) ->
     Fields = lists:foldl(fun ?MODULE:encode_field/2, [], Doc),
-    #'RpbSearchDoc'{fields = Fields}.
+    #rpbsearchdoc{fields = Fields}.
 
 %% @private
 -spec encode_field({field_name(), term()}, [{field_name(), term()}]) ->

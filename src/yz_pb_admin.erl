@@ -47,17 +47,17 @@ init() ->
 decode(Code, Bin) ->
     Msg = riak_pb_codec:decode(Code, Bin),
     case Msg of
-        #'RpbYokozunaSchemaPutReq'{} ->
+        #rpbyokozunaschemaputreq{} ->
             {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_SCHEMA}};
-        #'RpbYokozunaSchemaGetReq'{} ->
+        #rpbyokozunaschemagetreq{} ->
             {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_SCHEMA}};
-        #'RpbYokozunaIndexPutReq'{} ->
+        #rpbyokozunaindexputreq{} ->
             {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
-        'RpbYokozunaIndexGetReq' ->
+        rpbyokozunaindexgetreq ->
             {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
-        #'RpbYokozunaIndexGetReq'{} ->
+        #rpbyokozunaindexgetreq{} ->
             {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
-        #'RpbYokozunaIndexDeleteReq'{} ->
+        #rpbyokozunaindexdeletereq{} ->
             {ok, Msg, {?YZ_SECURITY_ADMIN_PERM, ?YZ_SECURITY_INDEX}};
         _ ->
             {ok, Msg}
@@ -67,34 +67,34 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(#'RpbYokozunaSchemaPutReq'{
-            schema = #'RpbYokozunaSchema'{
+process(#rpbyokozunaschemaputreq{
+            schema = #rpbyokozunaschema{
                 name = SchemaName, content = Content}}, State) ->
     case yz_schema:store(SchemaName, Content) of
         ok  ->
-            {reply, #'RpbPutResp'{}, State};
+            {reply, #rpbputresp{}, State};
         {error, Reason} ->
             Msg = io_lib:format("Error storing schema ~s~n", [Reason]),
             {error, Msg, State}
     end;
 
-process(#'RpbYokozunaSchemaGetReq'{name = SchemaName}, State) ->
+process(#rpbyokozunaschemagetreq{name = SchemaName}, State) ->
     case yz_schema:get(SchemaName) of
         {ok, Content} ->
-            Schema = #'RpbYokozunaSchema'{name = SchemaName, content = Content},
-            {reply, #'RpbYokozunaSchemaGetResp'{schema = Schema}, State};
+            Schema = #rpbyokozunaschema{name = SchemaName, content = Content},
+            {reply, #rpbyokozunaschemagetresp{schema = Schema}, State};
         {error, notfound} ->
             {error, "notfound", State}
     end;
 
-process(#'RpbYokozunaIndexDeleteReq'{name = IndexName}, State) ->
+process(#rpbyokozunaindexdeletereq{name = IndexName}, State) ->
     Ring = yz_misc:get_ring(transformed),
     case yz_index:exists(IndexName) of
         true  ->
             case yz_index:associated_buckets(IndexName, Ring) of
                 [] ->
                     ok = yz_index:remove(IndexName),
-                    {reply, 'RpbDelResp', State};
+                    {reply, rpbdelresp, State};
                 Buckets ->
                     Msg = "Can't delete index with associate buckets ~p",
                     Msg2 = lists:flatten(io_lib:fwrite(Msg, [Buckets])),
@@ -104,8 +104,8 @@ process(#'RpbYokozunaIndexDeleteReq'{name = IndexName}, State) ->
             {error, "notfound", State}
     end;
 
-process(#'RpbYokozunaIndexPutReq'{
-            index = #'RpbYokozunaIndex'{
+process(#rpbyokozunaindexputreq{
+            index = #rpbyokozunaindex{
                 name = IndexName,
                 schema = SchemaName,
                 n_val = Nval},
@@ -119,7 +119,7 @@ process(#'RpbYokozunaIndexPutReq'{
 
     case maybe_create_index(IndexName, SchemaName, Nval, Timeout) of
         ok ->
-            {reply, #'RpbPutResp'{}, State};
+            {reply, #rpbputresp{}, State};
         {error, index_not_created_within_timeout} ->
             Msg = io_lib:format("Index ~s not created on all the nodes"
                                 " within ~p ms timeout~n",
@@ -137,17 +137,17 @@ process(#'RpbYokozunaIndexPutReq'{
                      [IndexName, Error]}, State}
     end;
 
-process('RpbYokozunaIndexGetReq', State) ->
+process(rpbyokozunaindexgetreq, State) ->
     Indexes = yz_index:get_indexes_from_meta(),
     Details = [index_details(IndexName)
         || IndexName <- Indexes, yz_index:exists(IndexName)],
-    {reply, #'RpbYokozunaIndexGetResp'{index=Details}, State};
+    {reply, #rpbyokozunaindexgetresp{index=Details}, State};
 
-process(#'RpbYokozunaIndexGetReq'{name = IndexName}, State) ->
+process(#rpbyokozunaindexgetreq{name = IndexName}, State) ->
     case yz_index:exists(IndexName) of
         true ->
             Details = [index_details(IndexName)],
-            {reply, #'RpbYokozunaIndexGetResp'{index=Details}, State};
+            {reply, #rpbyokozunaindexgetresp{index=Details}, State};
          _ ->
             {error, "notfound", State}
     end.
@@ -179,10 +179,10 @@ maybe_create_index(IndexName, SchemaName, Nval, Timeout)->
             yz_index:create(IndexName, Schema, Nval1, Timeout)
     end.
 
--spec index_details(index_name()) -> #'RpbYokozunaIndex'{}.
+-spec index_details(index_name()) -> #rpbyokozunaindex{}.
 index_details(IndexName) ->
     Info = yz_index:get_index_info(IndexName),
-    #'RpbYokozunaIndex'{
+    #rpbyokozunaindex{
         name = IndexName,
         schema = yz_index:schema_name(Info),
         n_val = yz_index:get_n_val(Info)
