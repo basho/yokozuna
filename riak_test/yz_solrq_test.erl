@@ -502,7 +502,7 @@ find_representative_bkeys(Partition, Index, Bucket) ->
     {ok, BKeys} = dict:find(Solrq, Representatives),
     BKeys.
 
--spec find_representatives(index_name(), bucket()) -> dict().
+-spec find_representatives(index_name(), bucket()) -> dict:dict().
 find_representatives(Index, Bucket) ->
     BKeys =
         lists:map(

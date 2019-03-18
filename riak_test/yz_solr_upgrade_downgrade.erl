@@ -213,7 +213,7 @@ verify_upgrade(Cluster) ->
     %%
     %% Wait for a full round of AAE
     %%
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
     %%
     %% Verify that all missing Solr data has been repaired
     %%
@@ -295,7 +295,7 @@ verify_downgrade(Cluster) ->
     %%
     %% Wait for a full round of AAE
     %%
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
     %%
     %% Verify that all missing Solr data has been repaired
     %% (Note that we never added more data to index-a1)
@@ -405,7 +405,7 @@ is_version_4_7(?LUCENE_MATCH_4_7_VERSION) -> true;
 is_version_4_7(_) -> false.
 
 timestamp_str() ->
-    Now = erlang:now(),
+    Now = os:timestamp(),
     {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:now_to_local_time(Now),
     io_lib:format("~b-~2..0b-~2..0bT~2..0b.~2..0b.~2..0b",
         [Year, Month, Day, Hour, Minute, Second]).

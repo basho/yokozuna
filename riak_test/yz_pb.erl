@@ -33,7 +33,6 @@
 </schema>">>).
 
 confirm() ->
-    random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     confirm_admin_schema(Cluster),
@@ -58,7 +57,7 @@ confirm() ->
 
 select_random(List) ->
     Length = length(List),
-    Idx = random:uniform(Length),
+    Idx = rand:uniform(Length),
     lists:nth(Idx, List).
 
 host_entries(ClusterConnInfo) ->

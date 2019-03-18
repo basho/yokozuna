@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 -module(yz_entropy_mgr).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 -behaviour(gen_server).
 -include("yokozuna.hrl").
 

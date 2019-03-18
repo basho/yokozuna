@@ -20,7 +20,7 @@
 
 -module(yz_text_extractor).
 -include("yokozuna.hrl").
--compile(export_all).
+-export([extract/1, extract/2]).
 
 extract(Value) ->
     extract(Value, []).

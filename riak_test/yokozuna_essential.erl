@@ -53,7 +53,6 @@
 confirm() ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
-            random:seed(now()),
             Nodes = rt:deploy_nodes(4, ?CFG),
             Cluster = join(Nodes, 2),
             PBConns = yz_rt:open_pb_conns(Cluster),

@@ -224,7 +224,7 @@ get_stats_for_index(Index) ->
     index_names_round_trip_test_() ->
         [
             {"normal latin characters", ?_assertMatch(<<"foo">>, round_trip_through_fuse_name(<<"foo">>))},
-            {"UTF8 characters", ?_assertMatch(<<"芭蕉">>, round_trip_through_fuse_name(<<"芭蕉">>))}
+            {"UTF8 characters", ?_assertMatch(<<"芭蕉"/utf8>>, round_trip_through_fuse_name(<<"芭蕉"/utf8>>))}
         ].
 
 round_trip_through_fuse_name(IndexName) ->

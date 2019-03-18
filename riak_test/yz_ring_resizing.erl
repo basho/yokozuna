@@ -42,7 +42,6 @@
 confirm() ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
-            random:seed(now()),
 
             %% build the 4 node cluster
             [ANode|_] = Cluster = rt:build_cluster(4, ?CFG),

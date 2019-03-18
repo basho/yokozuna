@@ -32,7 +32,8 @@
          encode/1,
          process/2,
          process_stream/3]).
--compile(export_all).
+
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().
@@ -89,8 +90,7 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
                                 {error, ?YZ_ERR_NOT_ENOUGH_NODES, State};
                             {error, Error} ->
                                 yz_stat:search_fail(),
-                                TraceErr = erlang:get_stacktrace(),
-                                ?ERROR("~p ~p~n", [Error, TraceErr]),
+                                ?ERROR("~p~n", [Error]),
                                 {error, ?YZ_ERR_QUERY_FAILURE, State};
                             {_Headers, Body} ->
                                 R = mochijson2:decode(Body),

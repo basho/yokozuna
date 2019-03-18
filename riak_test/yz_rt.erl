@@ -533,18 +533,18 @@ open_pb_conns(Cluster) ->
 
 -spec random_keys(pos_integer()) -> [binary()].
 random_keys(MaxKey) ->
-    random_keys(4 + random:uniform(100), MaxKey).
+    random_keys(4 + rand:uniform(100), MaxKey).
 
 -spec random_keys(pos_integer(), pos_integer()) -> [binary()].
 random_keys(Num, MaxKey) ->
-    lists:usort([?INT_TO_BIN(random:uniform(MaxKey))
+    lists:usort([?INT_TO_BIN(rand:uniform(MaxKey))
                  || _ <- lists:seq(1, Num)]).
 
 -spec random_binary(pos_integer()) -> binary().
 random_binary(Length) when Length >= 1 ->
     Chars = "abcdefghijklmnopqrstuvwxyz1234567890",
     Value = lists:foldl(fun(_, Acc) ->
-            [lists:nth(random:uniform(length(Chars)), Chars)] ++ Acc
+            [lists:nth(rand:uniform(length(Chars)), Chars)] ++ Acc
         end, [], lists:seq(1, Length)),
     list_to_binary(Value).
 
@@ -781,7 +781,7 @@ quote_unicode(Value) ->
 
 select_random(List) ->
     Length = length(List),
-    Idx = random:uniform(Length),
+    Idx = rand:uniform(Length),
     lists:nth(Idx, List).
 
 -spec set_bucket_props(node(), bucket(), props()) -> ok | {error, any()}.
@@ -890,7 +890,7 @@ rolling_upgrade(Node, Version, UpgradeConfig, WaitForServices, UpgradeCallabck) 
 wait_for_aae(Cluster) ->
     lager:info("Wait for AAE to migrate/repair indexes"),
     wait_for_all_trees(Cluster),
-    wait_for_full_exchange_round(Cluster, erlang:now()),
+    wait_for_full_exchange_round(Cluster, os:timestamp()),
     ok.
 
 %% @doc Wait for all AAE trees to be built.
@@ -920,7 +920,7 @@ wait_for_bucket_type(Cluster, BucketType) ->
 
 -spec wait_for_full_exchange_round(cluster()) -> ok.
 wait_for_full_exchange_round(Cluster) ->
-    wait_for_full_exchange_round(Cluster, erlang:now()).
+    wait_for_full_exchange_round(Cluster, os:timestamp()).
 
 %% @doc Wait for a full exchange round since `Timestamp'.  This means
 %% that all `{Idx,N}' for all partitions must have exchanged after
@@ -1341,7 +1341,7 @@ reset_stats(Cluster) ->
 %% i.e., Union([BKey]) = BKeys and Intersection([BKey]) = []
 %% and for each BKey in BKeys, BKey is in dict(Solrq) iff BKey
 %% hashes to Solrq.
--spec find_representatives(index_name(), [bkey()], non_neg_integer()) -> dict().
+-spec find_representatives(index_name(), [bkey()], non_neg_integer()) -> dict:dict().
 find_representatives(Index, BKeys, RingSize) ->
     lists:foldl(
         fun({Solrq, BKey}, Accum) ->

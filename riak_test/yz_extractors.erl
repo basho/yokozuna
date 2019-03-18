@@ -335,7 +335,7 @@ test_extractor_with_aae_expire(Cluster, Index, Bucket, Packet) ->
     rpc:multicall(Cluster, riak_kv_entropy_manager, enable, []),
 
     yz_rt:expire_trees(Cluster),
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
 
     yz_rt:search_expect(ANode, Index, <<"host">>,
                               <<"www*">>, 1),
@@ -357,7 +357,7 @@ test_extractor_with_aae_expire(Cluster, Index, Bucket, Packet) ->
                               <<"GET">>, 1),
 
     yz_rt:expire_trees(Cluster),
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
 
     yz_rt:search_expect(ANode, Index, <<"method">>,
                               <<"GET">>, 1),

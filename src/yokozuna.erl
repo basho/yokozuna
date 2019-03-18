@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 -module(yokozuna).
 -include("yokozuna.hrl").
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
 
 -type fold_fun() :: fun(([term()], Acc::term()) -> Acc::term()).
 

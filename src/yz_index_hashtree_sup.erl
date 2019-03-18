@@ -1,8 +1,9 @@
 -module(yz_index_hashtree_sup).
 -behavior(supervisor).
 -include("yokozuna.hrl").
--compile(export_all).
--export([init/1]).
+
+-export([trees/0,
+         init/1, start_link/0]).
 
 %% @doc Get the list of trees.
 -spec trees() -> ['restarting' | 'undefined' | pid()].

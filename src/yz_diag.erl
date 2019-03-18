@@ -28,7 +28,7 @@
 %% structures which are properly documented and spec'd so that they
 %% can be used by different consumers.
 -module(yz_diag).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -include("yokozuna.hrl").
 -type either(Term) :: Term | {error, Reason :: term()}.
 -type either_t(Term) :: Term | {error, Reason :: term(), StackTrace :: term()}.
