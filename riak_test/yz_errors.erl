@@ -21,7 +21,6 @@
         ]).
 
 confirm() ->
-    random:seed(now()),
     Cluster = rt:build_cluster(4, ?CFG),
     rt:wait_for_cluster_service(Cluster, yokozuna),
     ok = test_errors(Cluster),

@@ -49,7 +49,6 @@
 ]).
 
 confirm() ->
-    random:seed(now()),
     Cluster = prepare_cluster(?NUM_NODES),
     confirm_stats(Cluster),
     pass.
@@ -184,7 +183,7 @@ search_values(Pid, Index, [Value|Rest]) ->
 gen_random_name(Length) ->
     Chars = "abcdefghijklmnopqrstuvwxyz1234567890",
     Value = lists:foldl(fun(_, Acc) ->
-        [lists:nth(random:uniform(length(Chars)), Chars)] ++ Acc
+        [lists:nth(rand:uniform(length(Chars)), Chars)] ++ Acc
                         end, [], lists:seq(1, Length)),
     list_to_binary(Value).
 

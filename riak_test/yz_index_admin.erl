@@ -451,7 +451,7 @@ index_list_url({Host, Port}) ->
 
 select_random(List) ->
     Length = length(List),
-    Idx = random:uniform(Length),
+    Idx = rand:uniform(Length),
     lists:nth(Idx, List).
 
 url({Host,Port}, Suffix) ->

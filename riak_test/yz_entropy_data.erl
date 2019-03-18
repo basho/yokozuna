@@ -110,7 +110,7 @@ test_entropy_get(Node, Index, PartitionList, EDParams) ->
 -spec test_ed_timeout_error([node()], index_name(), p(), proplist()) -> ok.
 test_ed_timeout_error(Cluster, Index, Partition, _Config) ->
     lager:info("wait for full exchange around before making entropy call"),
-    TS1 = erlang:now(),
+    TS1 = os:timestamp(),
     yz_rt:wait_for_full_exchange_round(Cluster, TS1),
 
     Node = rt:select_random(Cluster),
