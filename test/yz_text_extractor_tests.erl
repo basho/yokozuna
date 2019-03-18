@@ -46,11 +46,11 @@ chinese:
     天明去
     来如春梦几多时
     去似朝云无觅处
-">>).
+"/utf8>>).
 
 
 utf8_test() ->
-    {ok, Txt} = file:read_file("../test/utf8.txt"),
+    {ok, Txt} = file:read_file("test/utf8.txt"),
     Result = yz_text_extractor:extract(Txt),
     case Result of
         {error, Reason} ->
