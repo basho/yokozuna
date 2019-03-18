@@ -16,7 +16,7 @@ make_name_test() ->
 
 %% Verify that the XML extractor maintains UTF-8 encoding.
 utf8_test() ->
-    {ok, SrcXML} = file:read_file("../test/utf8.xml"),
+    {ok, SrcXML} = file:read_file("test/utf8.xml"),
     Result = yz_xml_extractor:extract(SrcXML),
     case Result of
         {error, Reason} ->
