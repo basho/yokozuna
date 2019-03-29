@@ -320,7 +320,14 @@ dist_search(Core, Headers, Params) ->
             ShardFrags = [shard_frag(Core, HostPort) || HostPort <- HostPorts],
             ShardFrags2 = string:join(ShardFrags, ","),
             ShardFQs = build_shard_fq(FilterPairs, Mapping),
-            Params2 = Params ++ [{shards, ShardFrags2}|ShardFQs],
+            %% @todo normalise and filter everything that cannot be ever a valid solr
+            %% param.  It should be possible.  The only problematic thing is
+            %% $substitutions, but they can have their own prefix namespace, like
+            %% param-foo, param-bar.
+            %% For now: just make sure we override shards
+            Params2 = lists:ukeymerge(1,
+                                      lists:keysort(1, [{"shards", ShardFrags2}|ShardFQs]),
+                                      lists:keysort(1, Params)),
             search(Core, Headers, Params2);
         {error, _} = Err ->
             Err
