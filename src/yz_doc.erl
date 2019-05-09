@@ -21,7 +21,7 @@
 %% @doc Functionality for working with Yokozuna documents.
 
 -module(yz_doc).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -include("yokozuna.hrl").
 
 -define(MD_VTAG, <<"X-Riak-VTag">>).
@@ -29,11 +29,7 @@
 -define(YZ_ID_VER, "1").
 -define(YZ_ED_VER, <<"3">>).
 
--ifdef(namespaced_types).
 -type riak_object_dict() :: dict:dict().
--else.
--type riak_object_dict() :: dict().
--endif.
 
 %%%===================================================================
 %%% API

@@ -22,7 +22,7 @@
 %%      Riak KV.
 
 -module(yz_kv).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -include_lib("riak_core/include/riak_core_bucket_type.hrl").
 -include("yokozuna.hrl").
 

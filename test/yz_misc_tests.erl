@@ -25,14 +25,16 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+this_file() -> filename:join("test", atom_to_list(?MODULE) ++ ".erl").
+
 should_copy_skip_test() ->
-    Thisfile = atom_to_list(?MODULE) ++ ".erl",
+    Thisfile = this_file(),
     ?assertNot(yz_misc:should_copy(skip, Thisfile, Thisfile)),
     ?assert(yz_misc:should_copy(skip, "<nofile>", "<nofile>")),
     ?assert(yz_misc:should_copy(skip, Thisfile, "<nofile>")).
 
 should_copy_update_test() ->
-    Thisfile = atom_to_list(?MODULE) ++ ".erl",
+    Thisfile = this_file(),
     %% same file and no file acts the same as skip
     ?assertNot(yz_misc:should_copy(update, Thisfile, Thisfile)),
     ?assert(yz_misc:should_copy(update, "<nofile>", "<nofile>")),
@@ -51,7 +53,7 @@ should_copy_update_test() ->
     end.
 
 should_copy_overwrite_test() ->
-    Thisfile = atom_to_list(?MODULE) ++ ".erl",
+    Thisfile = this_file(),
     ?assert(yz_misc:should_copy(overwrite, Thisfile, Thisfile)),
     ?assert(yz_misc:should_copy(overwrite, "<nofile>", "<nofile>")),
     ?assert(yz_misc:should_copy(overwrite, Thisfile, "<nofile>")).

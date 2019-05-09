@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 %% @doc This module contains functionality related to entropy.
 -module(yz_entropy).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -include("yokozuna.hrl").
 
 %% @doc Iterate all the entropy data in `Index' calling `Fun' for

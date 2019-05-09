@@ -276,7 +276,7 @@ test_and_validate_delete_aae(Pid, Cluster, Bucket, Index) ->
 
     lager:info("Expire and re-check"),
     yz_rt:expire_trees(Cluster),
-    yz_rt:wait_for_full_exchange_round(Cluster, erlang:now()),
+    yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
     drain_and_commit(Cluster, Index),
 
     lager:info("Search all results, expect removed tombstone b/c AAE"
@@ -546,7 +546,7 @@ search_and_validate_found(Pid, Index, Search, ExpectedCount) ->
     ok = rt:wait_until(
            fun() ->
                    try
-                       {ok, {search_results, Results2, _, F}} =
+                       {ok, {search_results, _Results2, _, F}} =
                            riakc_pb_socket:search(Pid, Index, Search),
                        ?assertEqual(ExpectedCount, F),
                        true

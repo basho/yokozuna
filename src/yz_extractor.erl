@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 -module(yz_extractor).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -include("yokozuna.hrl").
 
 -type register_opts() :: [overwrite].

@@ -32,10 +32,10 @@
 %% basic schema test will check to make sure that all defaults from
 %% the schema make it into the generated app.config
 basic_schema_test() ->
-     %% The defaults are defined in ../priv/yokozuna.schema. it is the
+     %% The defaults are defined in priv/yokozuna.schema. it is the
      %% file under test.
     Config = cuttlefish_unit:generate_templated_config(
-               "../priv/yokozuna.schema", [], context(), predefined_schema()),
+               "priv/yokozuna.schema", [], context(), predefined_schema()),
 
     cuttlefish_unit:assert_config(Config, "yokozuna.enabled", false),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_startup_wait", 30),
@@ -118,7 +118,7 @@ override_schema_test() ->
             {["search", "dist_query"], "off"}
            ],
     Config = cuttlefish_unit:generate_templated_config(
-               "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
+               "priv/yokozuna.schema", Conf, context(), predefined_schema()),
 
     cuttlefish_unit:assert_config(Config, "yokozuna.enabled", true),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_startup_wait", 60),
@@ -175,7 +175,7 @@ validations_test() ->
             {["search", "queue", "batch", "maximum"], -10}
     ],
     Config = cuttlefish_unit:generate_templated_config(
-               "../priv/yokozuna.schema", Conf, context(), predefined_schema()),
+               "priv/yokozuna.schema", Conf, context(), predefined_schema()),
     cuttlefish_unit:assert_error_in_phase(Config, validation),
     {error, validation, {errorlist, ListOfErrors0}} = Config,
     ListOfErrors1 = [Error || {error, {validation, Error}} <- ListOfErrors0],
@@ -194,7 +194,7 @@ job_class_defaults_test() ->
 
 confirm_enabled_job_classes({true, RCSchema}) when erlang:is_list(RCSchema) ->
     Config = cuttlefish_unit:generate_templated_config(
-        [RCSchema, "../priv/yokozuna.schema"], [],
+        [RCSchema, "priv/yokozuna.schema"], [],
         riak_core_schema_tests:context() ++ context()),
     Enabled = config_value(?JOB_CLASS_CONFIG_KEY, Config),
 

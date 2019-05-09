@@ -40,7 +40,8 @@
 %%                       default of `.'.
 
 -module(yz_json_extractor).
--compile(export_all).
+-export([extract/1, extract/2]).
+
 -include("yokozuna.hrl").
 -define(DEFAULT_FIELD_SEPARATOR, <<".">>).
 -record(state, {

@@ -71,7 +71,6 @@ verify_throttle_config(Cluster) ->
 aae_run(Cluster, Bucket, Index) ->
     case yz_rt:bb_driver_setup() of
         {ok, YZBenchDir} ->
-            random:seed(now()),
             PBConns = yz_rt:open_pb_conns(Cluster),
             PBConn = yz_rt:select_random(PBConns),
 
@@ -96,7 +95,7 @@ aae_run(Cluster, Bucket, Index) ->
             %% deleting keys it can be subtracted from the total count later
             %% to verify that the exact number of repairs was made given the
             %% number of keys deleted.
-            TS1 = erlang:now(),
+            TS1 = os:timestamp(),
             yz_rt:wait_for_full_exchange_round(Cluster, TS1),
 
             lager:info("Verifying all ~p replicas are in Solr...", [?TOTAL_KEYS_REP]),
@@ -234,7 +233,7 @@ verify_exchange_after_expire(Cluster, Index) ->
     %% The expire is async so just give it a moment
     timer:sleep(100),
 
-    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
 
     yz_rt:verify_num_match(Cluster, Index, ?TOTAL_KEYS),
 
@@ -257,7 +256,7 @@ verify_exchange_after_clear(Cluster, Index) ->
     %% Before exchange of a partition can take place the KV and
     %% Yokozuna hashtree must be built.  Wait for all trees before
     %% checking that Solr indexes are repaired.
-    TS2 = erlang:now(),
+    TS2 = os:timestamp(),
     yz_rt:wait_for_full_exchange_round(Cluster, TS2),
     lager:info("Verify AAE repairs missing Solr documents"),
     yz_rt:verify_num_match(Cluster, Index, ?TOTAL_KEYS),
@@ -269,12 +268,12 @@ verify_exchange_after_clear(Cluster, Index) ->
 %%      corresponding KV object.
 -spec verify_removal_of_orphan_postings([node()], index_name(), bucket()) -> ok.
 verify_removal_of_orphan_postings(Cluster, Index, Bucket) ->
-    Num = random:uniform(100),
+    Num = rand:uniform(100),
     lager:info("verify removal of ~p orphan postings", [Num]),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
     Keys = lists:seq(?NUM_KEYS + 1, ?NUM_KEYS + Num),
     ok = create_orphan_postings(Cluster, Index, Bucket, Keys),
-    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
     ok = yz_rt:stop_tracing(),
     ?assertEqual(Num, yz_rt:get_call_count(Cluster, ?REPAIR_MFA)),
     lager:info("Verifying data was indexed"),
@@ -289,7 +288,7 @@ verify_removal_of_orphan_postings(Cluster, Index, Bucket) ->
 verify_no_indefinite_repair(Cluster) ->
     lager:info("Verify no indefinite repair"),
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
-    TS = erlang:now(),
+    TS = os:timestamp(),
     yz_rt:wait_for_full_exchange_round(Cluster, TS),
     yz_rt:stop_tracing(),
     Count = yz_rt:get_call_count(Cluster, ?REPAIR_MFA),
@@ -310,7 +309,7 @@ verify_no_repair_after_restart(Cluster) ->
 
     yz_rt:count_calls(Cluster, ?REPAIR_MFA),
 
-    TS2 = erlang:now(),
+    TS2 = os:timestamp(),
     yz_rt:wait_for_full_exchange_round(Cluster, TS2),
 
     ok = verify_repair_count(Cluster, 0),
@@ -343,7 +342,7 @@ verify_count_and_repair_after_error_value(Cluster, {BType, _Bucket}, Index,
     ok = yz_rt:count_calls(Cluster, ?REPAIR_MFA),
 
     %% 3. wait for full exchange round
-    ok = yz_rt:wait_for_full_exchange_round(Cluster, now()),
+    ok = yz_rt:wait_for_full_exchange_round(Cluster, os:timestamp()),
     ok = yz_rt:stop_tracing(),
 
     %% 4. verify repair count is 0

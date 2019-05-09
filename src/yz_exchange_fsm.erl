@@ -19,9 +19,9 @@
 %% -------------------------------------------------------------------
 
 -module(yz_exchange_fsm).
--behaviour(gen_fsm).
+-behaviour(gen_fsm_compat).
 -include("yokozuna.hrl").
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3,
@@ -45,7 +45,7 @@
 -spec start(p(), {p(),n()}, tree(), tree(), pid()) ->
                    {ok, pid()} | {error, any()}.
 start(Index, Preflist, YZTree, KVTree, Manager) ->
-    gen_fsm:start(?MODULE, [Index, Preflist, YZTree, KVTree, Manager], []).
+    gen_fsm_compat:start(?MODULE, [Index, Preflist, YZTree, KVTree, Manager], []).
 
 %% @doc Send this FSM a drain_error message, with the supplied reason.  Calling
 %% drain error while the FSM is in the update_trees state will cause the FSM to stop
@@ -56,7 +56,7 @@ start(Index, Preflist, YZTree, KVTree, Manager) ->
 %%
 -spec drain_error(pid(), Reason::term()) -> ok.
 drain_error(Pid, Reason) ->
-    gen_fsm:send_event(Pid, {drain_error, Reason}).
+    gen_fsm_compat:send_event(Pid, {drain_error, Reason}).
 
 %% @doc  Update the yz index hashtree.
 %%
@@ -83,7 +83,7 @@ init([Index, Preflist, YZTree, KVTree, Manager]) ->
                kv_tree=KVTree,
                built=0,
                timeout=?YZ_ENTROPY_TIMEOUT},
-    gen_fsm:send_event(self(), start_exchange),
+    gen_fsm_compat:send_event(self(), start_exchange),
     lager:debug("Starting exchange between KV and Yokozuna: ~p", [Index]),
     {ok, prepare_exchange, S}.
 
@@ -123,7 +123,7 @@ prepare_exchange(start_exchange, S) ->
         ok = yz_index_hashtree:get_lock(YZTree, ?MODULE),
         ok = riak_kv_entropy_manager:get_lock(?MODULE),
         ok = riak_kv_index_hashtree:get_lock(KVTree, ?MODULE),
-        gen_fsm:send_event(self(), start_exchange),
+        gen_fsm_compat:send_event(self(), start_exchange),
         {next_state, update_trees, S}
     catch
         error:{badmatch, Reason} ->
@@ -220,7 +220,7 @@ async_do_compare(IndexN, Remote, AccFun, YZTree) ->
         end).
 
 compare_complete(ExchangePid, CompareResult) ->
-    gen_fsm:send_event(ExchangePid, {compare_complete, CompareResult}).
+    gen_fsm_compat:send_event(ExchangePid, {compare_complete, CompareResult}).
 
 
 %%%===================================================================
@@ -320,7 +320,7 @@ do_update(ToWhom, Module, Tree, Index, IndexN, Callback) ->
                  ok -> {tree_built, Module, Index, IndexN};
                  not_responsible -> {not_responsible, Index, IndexN}
              end,
-    gen_fsm:send_event(ToWhom, Result),
+    gen_fsm_compat:send_event(ToWhom, Result),
     UpdateResult.
 
 %% @private

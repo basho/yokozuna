@@ -65,7 +65,8 @@
 %%                       default of `.'.
 
 -module(yz_dt_extractor).
--compile(export_all).
+-export([extract/1, extract/2]).
+
 -include("yokozuna.hrl").
 -include_lib("riak_kv/include/riak_kv_types.hrl").
 -define(DEFAULT_FIELD_SEPARATOR, <<".">>).

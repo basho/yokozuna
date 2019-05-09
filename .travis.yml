@@ -1,0 +1,13 @@
+language: erlang
+otp_release:
+  - 20.3.8
+cache:
+  directories:
+  - "$HOME/otp-basho"
+before_script:
+- ./.travis.sh build
+script:
+- ./.travis.sh test
+notifications:
+  slack:
+    secure: EL4ZCavW6oLbhgKc/bcjO4zoccYx/XrjiXvcki3S7UGUtVm+qT5rR3AfBGMkHmssfj4dn0u4xgfS67kvro/RMHrkrGx4Vqulnnd+57wixon/lGAMy527OoUvNU3rz6ZQGrb8LvEgRGCGARoW6ed6K9zccJAhB9vg2FbDsm5XzkY=

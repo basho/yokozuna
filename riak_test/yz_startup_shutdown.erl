@@ -175,7 +175,6 @@ are_services_registered(Services, Node) ->
 -spec setup_indexed_buckets(Cluster::yz_rt:cluster(), Count::pos_integer())
                            -> [{bucket(), index_name()}].
 setup_indexed_buckets(Cluster, Count) ->
-    random:seed(now()),
     IndexedBuckets =
     [begin
          Index = list_to_binary(io_lib:format("index~B", [I])),

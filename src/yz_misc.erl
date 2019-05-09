@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 -module(yz_misc).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 -include_lib("kernel/include/file.hrl").

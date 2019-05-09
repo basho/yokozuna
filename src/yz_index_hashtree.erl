@@ -36,7 +36,8 @@
                 closed=false}).
 -type state() :: #state{}.
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).      % @todo //lelf
+
 
 %%%===================================================================
 %%% API
