@@ -10,7 +10,8 @@
                   ibrowse,
                   fuse,
                   riak_core,
-                  riak_kv
+                  riak_kv,
+                  kvc
                  ]},
   {mod, { yz_app, []}},
   {env, []}
