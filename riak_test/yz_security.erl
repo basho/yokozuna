@@ -226,7 +226,6 @@ confirm_index_https(Node) ->
              {cacertfile, Cacertfile},
              {verify, verify_peer},
              {server_name_indication, disable},
-             {crl_check, peer},
              {reuse_sessions, false}
             ]}],
     Headers = [{"accept", "multipart/mixed, */*;q=0.9"}] ++
