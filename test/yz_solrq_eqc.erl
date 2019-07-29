@@ -210,7 +210,7 @@ setup() ->
     %%                                     io:format("REQ: ~p\n", [{_A,_B,_C,_D,_E,_F}]),
     %%                                     {ok, "200", some, crap} end),
 
-    meck:new(exometer),
+    meck:new(exometer), %% TODO 54: use this as an example for EUNIT testing
     meck:expect(exometer, update, fun(_,_) -> ok end),
 
     meck:new(riak_kv_util),

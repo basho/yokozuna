@@ -183,8 +183,11 @@ stats() ->
 -spec aggregate_index_stats(application_name(), fuse_check(), count|one) -> non_neg_integer().
 aggregate_index_stats(Application, FuseCheck, Stat) ->
     proplists:get_value(Stat,
-                        exometer:aggregate([{{[Application, '_', FuseCheck],'_','_'},
+                        aggregate([{{[Application, '_', FuseCheck],'_','_'}, %% TODO 45: make an aggregation function in riak_stat exometer
                                              [], [true]}], [Stat])).
+
+aggregate(Application, Stat) ->
+  riak_stat:aggregate(Application, Stat).
 
 %% @doc NB.  This function is meant to be called manually from the console.
 -spec print_stats_for_index(atom() | index_name()) -> ok.
@@ -215,7 +218,7 @@ get_stats_for_index(Index) ->
             FuseName = fuse_name_for_index(Index),
             lists:map(
                 fun({Application, Check}) ->
-                    {ok, Stats} = exometer:get_value([Application, FuseName, Check]),
+                    {ok, Stats} = riak_stat:get_value([Application, FuseName, Check]),
                     {Check, Stats}
                 end, [{fuse, ok}, {fuse, melt}, {yz_fuse, blown}, {yz_fuse, recovered}])
     end.
@@ -234,9 +237,9 @@ round_trip_through_fuse_name(IndexName) ->
 
 %% @doc Remove exometer stats for fuse `Name'.
 remove_fuse_stats(Name) ->
-    _ = exometer:delete(metric(Name, ok)),
-    _ = exometer:delete(metric(Name, blown)),
-    _ = exometer:delete(metric(Name, melt)),
+    _ = riak_stat:unregister(metric(Name, ok)), %% TODO 47: send to unregister_stat in riak_stat
+    _ = riak_stat:unregister(metric(Name, blown)),
+    _ = riak_stat:unregister(metric(Name, melt)),
     ok.
 
 %% Internal.

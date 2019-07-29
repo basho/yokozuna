@@ -62,7 +62,7 @@
 %% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
 -define(APP, ?YZ_APP_NAME).
--define(PFX, riak_core_stat:prefix()).
+-define(PFX, riak_stat:prefix()).
 
 -type stat_name() :: list().
 -type stat_type() :: atom().
@@ -79,12 +79,12 @@ start_link() ->
 %% @doc Register Yokozuna stats.
 -spec register_stats() -> ok.
 register_stats() ->
-    riak_core_stat:register_stats(?APP, stats()).
+    riak_stat:register(?APP, stats()).
 
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, Reason :: term()}.
 get_stats() ->
-    riak_core_stat:get_stats(?APP).
+    riak_stat:get_app_stats(?APP).
 
 %% @doc Return the value for the stat with the given `Name', or `undefined' if
 %% not found.
@@ -93,7 +93,7 @@ get_stat(Name) when is_list(Name) ->
     get_stat(Name, value).
 get_stat(Name, SummaryName) ->
     Path = [?PFX, ?APP] ++ Name,
-    case exometer:get_value(Path, SummaryName) of
+    case riak_stat_coordinator:get_info(Path, SummaryName) of
         {ok, [{SummaryName, Value}]} ->
             Value;
         _ ->
@@ -212,53 +212,56 @@ delete_dynamic_stats(Index, Stats) ->
 
 -spec reset() -> [{stat_name(), ok | {error, any()}}].
 reset() ->
-    [{[?PFX, ?APP | Name], catch exometer:reset([?PFX, ?APP | Name])}
+    [{[?PFX, ?APP | Name], catch riak_stat:reset_stat([?PFX, ?APP | Name])}
         || {Name, _Type, _Args, _Aliases} <- stats()].
 
 %% @doc Notify specific metrics in exometer based on the `StatUpdate' term
 %% passed in.
 -spec perform_update(StatUpdate::term()) -> ok.
 perform_update({index_end, BatchSize, Time}) ->
-    exometer:update([?PFX, ?APP, index, latency], Time),
-    exometer:update([?PFX, ?APP, index, throughput], BatchSize),
-    exometer:update([?PFX, ?APP, queue, batch, throughput], 1),
-    exometer:update([?PFX, ?APP, queue, batchsize], BatchSize);
+    update([index, latency], Time, histogram),
+    update([index, throughput], BatchSize, spiral),
+    update([queue, batch, throughput], 1, spiral),
+    update([queue, batchsize], BatchSize, histogram);
 perform_update(index_fail) ->
-    exometer:update([?PFX, ?APP, index, fail], 1);
+    update([index, fail], 1, spiral);
 perform_update(index_bad_entry) ->
-    exometer:update([?PFX, ?APP, index, bad_entry], 1);
+    update([index, bad_entry], 1, spiral);
 perform_update(index_extract_fail) ->
-    exometer:update([?PFX, ?APP, index, extract, fail], 1);
+    update([index, extract, fail], 1, spiral);
 perform_update({batch_end, Time}) ->
-    exometer:update([?PFX, ?APP, queue, batch, latency], Time);
+    update([queue, batch, latency], Time, histogram);
 perform_update(blockedvnode) ->
-    exometer:update([?PFX, ?APP, blockedvnode], 1);
+    update([blockedvnode], 1, spiral);
 perform_update({queue_total_length, Length}) ->
-    exometer:update([?PFX, ?APP, queue, total_length], Length);
+    update([queue, total_length], Length, gauge);
 perform_update({hwm_purged, NumPurged}) ->
-    exometer:update([?PFX, ?APP, queue, hwm, purged], NumPurged);
+    update([queue, hwm, purged], NumPurged, spiral);
 perform_update({drain_end, Time}) ->
-    exometer:update([?PFX, ?APP, queue, drain, latency], Time),
-    exometer:update([?PFX, ?APP, queue, drain], 1);
+    update([queue, drain, latency], Time, histogram),
+    update([queue, drain], 1, spiral);
 perform_update(drain_fail) ->
-    exometer:update([?PFX, ?APP, queue, drain, fail], 1);
+    update([queue, drain, fail], 1, spiral);
 perform_update(drain_timeout) ->
-    exometer:update([?PFX, ?APP, queue, drain, timeout], 1);
+    update([queue, drain, timeout], 1, spiral);
 perform_update(drain_cancel_timeout) ->
-    exometer:update([?PFX, ?APP, queue, drain, cancel, timeout], 1);
+    update([queue, drain, cancel, timeout], 1, spiral);
 perform_update({detected_repairs, Count}) ->
-    exometer:update([?PFX, ?APP, detected_repairs], Count);
+    update([detected_repairs], Count, counter);
 perform_update({search_end, Time}) ->
-    exometer:update([?PFX, ?APP, 'query', latency], Time),
-    exometer:update([?PFX, ?APP, 'query', throughput], 1);
+    update(['query', latency], Time, histogram),
+    update(['query', throughput], 1, spiral);
 perform_update(search_fail) ->
-    exometer:update([?PFX, ?APP, 'query', fail], 1);
+    update(['query', fail], 1, spiral);
 perform_update({fuse_recovered, Index}) ->
-    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), recovered], 1);
+    update([yz_fuse, yz_fuse:fuse_name_for_index(Index), recovered], 1, spiral);
 perform_update({fuse_blown, Index}) ->
-    exometer:update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1);
+    update([yz_fuse, yz_fuse:fuse_name_for_index(Index), blown], 1, spiral);
 perform_update({update_fuse_stat, Name, Counter}) ->
     fuse_stats_exometer:increment(Name, Counter).
+
+update(Name, Val, Type) ->
+    riak_stat:update(stat_name(Name), Val, Type).
 
 
 %% -------------------------------------------------------------------
@@ -303,10 +306,10 @@ stat_name(Name) ->
 -spec create(StatUpdate::term()) -> ok.
 create({fuse_recovered, Index}) ->
     FuseName = yz_fuse:fuse_name_for_index(Index),
-    exometer:update_or_create([yz_fuse, FuseName, recovered], 0, spiral, []);
+    riak_stat:update([yz_fuse, FuseName, recovered], 0, spiral);
 create({fuse_blown, Index}) ->
     FuseName = yz_fuse:fuse_name_for_index(Index),
-    exometer:update_or_create([yz_fuse, FuseName, blown], 0, spiral, []);
+    riak_stat:update([yz_fuse, FuseName, blown], 0, spiral);
 create(_Stat) ->
     ok.
 
@@ -316,7 +319,7 @@ create(_Stat) ->
 %%      term.
 -spec delete(StatUpdate::term()) -> ok.
 delete({fuse_recovered, Index}) ->
-    exometer:delete([fuse, Index, recovered]);
+    riak_stat:unregister([fuse, Index, recovered]);
 delete(_Stat) ->
     ok.
 
