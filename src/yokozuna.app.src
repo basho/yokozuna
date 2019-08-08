@@ -9,7 +9,6 @@
                   stdlib,
                   ibrowse,
                   fuse,
-                  riak_stat,
                   riak_core,
                   riak_kv,
                   kvc

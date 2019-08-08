@@ -79,12 +79,12 @@ start_link() ->
 %% @doc Register Yokozuna stats.
 -spec register_stats() -> ok.
 register_stats() ->
-    riak_stat:register(?APP, stats()).
+    riak_core_stat_admin:register(?APP, stats()).
 
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, Reason :: term()}.
 get_stats() ->
-    riak_stat:get_app_stats(?APP).
+    riak_core_stat_admin:get_app_stats(?APP).
 
 %% @doc Return the value for the stat with the given `Name', or `undefined' if
 %% not found.
@@ -93,7 +93,7 @@ get_stat(Name) when is_list(Name) ->
     get_stat(Name, value).
 get_stat(Name, SummaryName) ->
     Path = [?PFX, ?APP] ++ Name,
-    case riak_stat_coordinator:get_info(Path, SummaryName) of
+    case riak_core_stat_coordinator:get_info(Path, SummaryName) of
         {ok, [{SummaryName, Value}]} ->
             Value;
         _ ->
@@ -212,7 +212,7 @@ delete_dynamic_stats(Index, Stats) ->
 
 -spec reset() -> [{stat_name(), ok | {error, any()}}].
 reset() ->
-    [{[?PFX, ?APP | Name], catch riak_stat:reset_stat([?PFX, ?APP | Name])}
+    [{[?PFX, ?APP | Name], catch riak_core_stat_console:reset_stat([?PFX, ?APP | Name])}
         || {Name, _Type, _Args, _Aliases} <- stats()].
 
 %% @doc Notify specific metrics in exometer based on the `StatUpdate' term
@@ -261,7 +261,7 @@ perform_update({update_fuse_stat, Name, Counter}) ->
     fuse_stats_exometer:increment(Name, Counter).
 
 update(Name, Val, Type) ->
-    riak_stat:update(stat_name(Name), Val, Type).
+    riak_core_stat_admin:update(stat_name(Name), Val, Type).
 
 
 %% -------------------------------------------------------------------
@@ -306,10 +306,10 @@ stat_name(Name) ->
 -spec create(StatUpdate::term()) -> ok.
 create({fuse_recovered, Index}) ->
     FuseName = yz_fuse:fuse_name_for_index(Index),
-    riak_stat:update([yz_fuse, FuseName, recovered], 0, spiral);
+    riak_core_stat_admin:update([yz_fuse, FuseName, recovered], 0, spiral);
 create({fuse_blown, Index}) ->
     FuseName = yz_fuse:fuse_name_for_index(Index),
-    riak_stat:update([yz_fuse, FuseName, blown], 0, spiral);
+    riak_core_stat_admin:update([yz_fuse, FuseName, blown], 0, spiral);
 create(_Stat) ->
     ok.
 
@@ -319,7 +319,7 @@ create(_Stat) ->
 %%      term.
 -spec delete(StatUpdate::term()) -> ok.
 delete({fuse_recovered, Index}) ->
-    riak_stat:unregister([fuse, Index, recovered]);
+    riak_core_stat_admin:unregister([fuse, Index, recovered]);
 delete(_Stat) ->
     ok.
 

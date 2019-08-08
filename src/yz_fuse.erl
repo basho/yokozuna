@@ -187,7 +187,7 @@ aggregate_index_stats(Application, FuseCheck, Stat) ->
                                              [], [true]}], [Stat])).
 
 aggregate(Application, Stat) ->
-  riak_stat:aggregate(Application, Stat).
+  riak_core_stat_admin:aggregate(Application, Stat).
 
 %% @doc NB.  This function is meant to be called manually from the console.
 -spec print_stats_for_index(atom() | index_name()) -> ok.
@@ -237,11 +237,11 @@ round_trip_through_fuse_name(IndexName) ->
 
 %% @doc Remove exometer stats for fuse `Name'.
 remove_fuse_stats(Name) ->
-    _ = riak_stat:unregister(metric(Name, ok)), %% TODO 47: send to unregister_stat in riak_stat
-    _ = riak_stat:unregister(metric(Name, blown)),
-    _ = riak_stat:unregister(metric(Name, melt)),
+    _ = riak_core_stat_admin:unregister(metric(Name, ok)), %% TODO 47: send to unregister_stat in riak_stat
+    _ = riak_core_stat_admin:unregister(metric(Name, blown)),
+    _ = riak_core_stat_admin:unregister(metric(Name, melt)),
     ok.
 
 %% Internal.
 metric(Name, Counter) ->
-    [fuse, Name, Counter].
+  {fuse, Name, Counter, yokozuna}.
