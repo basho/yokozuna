@@ -33,6 +33,9 @@
     get_stats/0,
     get_stat/1,
     get_stat/2,
+    get_value/1,
+    get_info/0,
+    aggregate/2,
     index_fail/0,
     index_bad_entry/0,
     index_extract_fail/0,
@@ -62,7 +65,7 @@
 %% -type microseconds() :: integer().
 -define(SERVER, ?MODULE).
 -define(APP, ?YZ_APP_NAME).
--define(PFX, riak_stat:prefix()).
+-define(PFX, riak_core_stat_admin:prefix()).
 
 -type stat_name() :: list().
 -type stat_type() :: atom().
@@ -84,7 +87,7 @@ register_stats() ->
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist() | {error, Reason :: term()}.
 get_stats() ->
-    riak_core_stat_admin:get_app_stats(?APP).
+    riak_core_stat_admin:get_stats(?APP).
 
 %% @doc Return the value for the stat with the given `Name', or `undefined' if
 %% not found.
@@ -99,6 +102,20 @@ get_stat(Name, SummaryName) ->
         _ ->
             undefined
     end.
+
+get_value(Arg) ->
+    riak_core_stat_admin:get_value(Arg).
+
+get_info() ->
+    riak_core_stat_admin:get_info(?APP).
+
+%%%----------------------------------------------------------------%%%
+
+aggregate(Stats, DPS) ->
+    riak_core_stat_admin:aggregate(Stats, DPS).
+
+%%%----------------------------------------------------------------%%%
+
 
 %% @doc Initialize the Fuse stats subsystem for a given fuse.
 -spec initialize_fuse_stats(Name :: atom()) -> ok.
