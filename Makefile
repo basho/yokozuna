@@ -23,7 +23,7 @@ deps:
 clean:
 	$(REBAR) clean
 	rm -rf riak_test/ebin
-	rm -rf build
+	rm -rf _build
 	git clean -dfx priv/
 
 distclean: clean
