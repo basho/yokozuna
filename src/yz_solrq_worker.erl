@@ -78,7 +78,7 @@
     %% Therefore, we need a list of processes, not just a single vnode PID
     pending_processes = [] :: [pending_processes()],
     drain_info = undefined :: drain_info(),
-    purge_strategy :: purge_strategy(),
+    purge_strategy :: purge_strategy() | undefined,
     helper_pid = undefined :: pid() | undefined,
     queue = queue:new()     :: yz_queue(),   % solrq_message()
     flush_timer_ref = undefined   :: reference()|undefined,

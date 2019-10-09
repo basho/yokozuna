@@ -33,7 +33,7 @@
 
 -record(state, {
           %% The ring used to calculate the current cached plan.
-          ring_used :: ring()
+          ring_used :: ring() | undefined
          }).
 
 %%%===================================================================

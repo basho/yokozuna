@@ -32,7 +32,7 @@ routes() ->
     [{["search", "extract"], yz_wm_extract, []}].
 
 init(_) ->
-    {ok, #state{}}.
+    {ok, #state{content = <<>>}}.
 
 allowed_methods(RD, S) ->
     Methods = ['PUT'],

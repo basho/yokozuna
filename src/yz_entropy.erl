@@ -67,18 +67,18 @@ iterate_entropy_data(_, _, Fun, #entropy_data{more=false,
     lists:foreach(Fun, Pairs).
 
 -spec get_entropy_data(index_name(), list()) ->
-                              {ok|error, entropy_data()}.
+                              {ok, entropy_data()} | {error, entropy_data()}.
 get_entropy_data(Index, Filter) ->
     case yz_solr:entropy_data(Index, Filter) of
         {error, {error, req_timedout}} ->
             ?ERROR("failed to iterate over entropy data due to request"
                    ++ " exceeding timeout ~b for filter params ~p",
                    [?YZ_SOLR_ED_REQUEST_TIMEOUT, Filter]),
-            {error, #entropy_data{more=false, pairs=[]}};
+            {error, #entropy_data{more=false, pairs=[], continuation = none}};
         {error, Err} ->
             ?ERROR("failed to iterate over entropy data due to request"
                    ++ " error ~p for filter params ~p", [Err, Filter]),
-            {error, #entropy_data{more=false, pairs=[]}};
+            {error, #entropy_data{more=false, pairs=[], continuation = none}};
         ED ->
             {ok, ED}
     end.
