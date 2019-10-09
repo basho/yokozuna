@@ -611,25 +611,26 @@ all_exchanges(Ring, Trees) ->
                           all_pairwise_exchanges(Index, Ring)
                   end, Indices).
 
--spec enqueue_exchange(p() | {p(), {p(),n()}}, state()) -> state().
-enqueue_exchange(E={_Index,_IndexN}, S) ->
+-spec enqueue_exchange(p() | exchange(), state()) -> state().
+enqueue_exchange(Index, S) when is_integer(Index) ->
+    Ring = yz_misc:get_ring(transformed),
+    Exchanges = all_pairwise_exchanges(Index, Ring),
+    enqueue_exchanges(Exchanges, S);
+enqueue_exchange(E, S) ->
     case verify_exchange(E) of
         true ->
             enqueue_exchanges([E], S);
         false ->
             S
-    end;
+    end.
 
-enqueue_exchange(Index, S) ->
-    Ring = yz_misc:get_ring(transformed),
-    Exchanges = all_pairwise_exchanges(Index, Ring),
-    enqueue_exchanges(Exchanges, S).
 
+-spec enqueue_exchanges([exchange()], state()) -> state().
 enqueue_exchanges(Exchanges, S) ->
     EQ = S#state.exchange_queue ++ Exchanges,
     S#state{exchange_queue=EQ}.
 
--spec verify_exchange({p(), n()}) -> boolean().
+-spec verify_exchange(exchange()) -> boolean().
 verify_exchange(E={Index,_N}) ->
     Ring = yz_misc:get_ring(transformed),
     ValidExchanges = all_pairwise_exchanges(Index, Ring),
