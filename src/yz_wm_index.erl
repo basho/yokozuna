@@ -72,10 +72,11 @@
 -include_lib("webmachine/include/webmachine.hrl").
 
 -record(ctx, {index_name :: index_name() | undefined,    %% name the index
-              props :: proplist(),                       %% properties of the body
+              props = [] :: proplist(),                  %% properties of the body
               method :: atom(),                          %% HTTP method for the request
-              ring :: ring(),                            %% Ring data
-              security,                                  %% security context
+              ring :: undefined | ring(),                %% Ring data
+              security :: undefined | riak_core_security:context(),
+                                                         %% security context
               timeout :: non_neg_integer() | undefined |
                          infinity
              }).
@@ -95,6 +96,7 @@ routes() ->
 %%% Callbacks
 %%%===================================================================
 
+-spec init(proplist()) -> {ok,  context()}.
 init(_Props) ->
     {ok, #ctx{}}.
 

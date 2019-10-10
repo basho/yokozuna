@@ -172,9 +172,10 @@ maybe_create_index(IndexName, SchemaName, Nval, Timeout)->
                 undefined -> ?YZ_DEFAULT_SCHEMA_NAME;
                 _ ->         SchemaName
             end,
-            Nval1 = case Nval of
-                <<>> -> undefined;
-                _ ->    Nval
+            Nval1 =
+                case is_integer(Nval) of
+                    true -> Nval;
+                    false -> undefined
             end,
             yz_index:create(IndexName, Schema, Nval1, Timeout)
     end.

@@ -44,9 +44,10 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(ctx, {schema_name :: string(), %% name the schema
-              method :: atom(),        %% HTTP method for the request
-              security                 %% security context
+-record(ctx, {schema_name :: string() | undefined, %% name the schema
+              method :: atom(),                    %% HTTP method for the request
+              security :: undefined | riak_core_security:context()
+                                                   %% security context
               }).
 
 %%%===================================================================
