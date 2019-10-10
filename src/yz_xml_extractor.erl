@@ -58,7 +58,12 @@ extract(Value, Opts) ->
     extract_fields(Value, #state{field_separator=Sep}).
 
 extract_fields(Data, State) ->
-    Options = [{event_fun, fun sax_cb/3}, {event_state, State}],
+    Options = [
+               {file_type, normal},
+               skip_external_dtd,
+               {event_fun, fun sax_cb/3},
+               {event_state, State}
+              ],
     case xmerl_sax_parser:stream(Data, Options) of
         {ok, State2, _Rest} ->
             State2#state.fields;
@@ -89,6 +94,9 @@ sax_cb({characters, Value}, _Location, S) ->
     Name = make_name(S#state.field_separator, S#state.name_stack),
     Field = {Name, unicode:characters_to_binary(Value)},
     S#state{fields = [Field|S#state.fields]};
+
+sax_cb({externalEntityDecl,_,_,_}, _, _State) ->
+    throw(external_entity_disarmed);
 
 sax_cb(_Event, _Location, State) ->
     State.

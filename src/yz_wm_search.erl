@@ -23,8 +23,6 @@
 -include("yokozuna.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--define(YZ_HEAD_FPROF, "yz-fprof").
-
 -record(ctx, {security      %% security context
              }).
 
@@ -121,8 +119,6 @@ search(Req, S) ->
     search(Req, S, Params).
 
 search(Req, S, Params) ->
-    {FProf, FProfFile} = check_for_fprof(Req),
-    ?IF(FProf, fprof:trace(start, FProfFile)),
     T1 = os:timestamp(),
     Index = list_to_binary(wrq:path_info(index, Req)),
     try
@@ -155,25 +151,12 @@ search(Req, S, Params) ->
             ErrReq2 = wrq:set_resp_header("Content-Type", "text/plain",
                                         ErrReq),
             {{halt, Code}, ErrReq2, S}
-    after
-        ?IF(FProf, fprof_analyse(FProfFile))
     end.
 
 %% @doc Solr returns as chunked but not going to return as chunked from
 %%      Yokozuna.
 scrub_headers(RespHeaders) when is_list(RespHeaders) ->
     lists:keydelete("Transfer-Encoding", 1, RespHeaders).
-
-check_for_fprof(Req) ->
-    case wrq:get_req_header(?YZ_HEAD_FPROF, Req) of
-        undefined -> {false, none};
-        File -> {true, File}
-    end.
-
-fprof_analyse(FileName) ->
-    fprof:trace(stop),
-    fprof:profile(file, FileName),
-    fprof:analyse([{dest, FileName ++ ".analysis"}, {cols, 120}]).
 
 -spec resource_exists(term(), term()) -> {boolean(), term(), term()}.
 resource_exists(RD, Context) ->
