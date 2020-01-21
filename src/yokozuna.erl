@@ -23,6 +23,51 @@
 
 -type fold_fun() :: fun(([term()], Acc::term()) -> Acc::term()).
 
+-behaviour(riak_kv_update_hook).
+
+%% riak_kv_update_hook behaviors
+-export([
+    update/3,
+    update_binary/5,
+    requires_existing_object/1,
+    should_handoff/1
+]).
+
+%%%===================================================================
+%% riak_kv_update_hook behavior
+%%%===================================================================
+
+%% @doc see riak_kv_update_hook:update/3
+-spec update(
+    riak_kv_update_hook:object_pair(),
+    riak_kv_update_hook:update_reason(),
+    riak_kv_update_hook:partition()
+) -> ok.
+update(RObjPair, Reason, Idx) ->
+    yz_kv:index(RObjPair, Reason, Idx).
+
+%% @doc see riak_kv_update_hook:update_binary/5
+-spec update_binary(
+    riak_core_bucket:bucket(),
+    riak_object:key(),
+    binary(),
+    riak_kv_update_hook:update_reason(),
+    riak_kv_update_hook:partition()
+) -> ok.
+update_binary(Bucket, Key, Bin, Reason, P) ->
+    yz_kv:index_binary(Bucket, Key, Bin, Reason, P).
+
+%% @doc see riak_kv_update_hook:requires_existing_object/1
+-spec requires_existing_object(riak_kv_bucket:props()) -> boolean().
+requires_existing_object(BProps) ->
+    yz_kv:is_search_enabled_for_bucket(BProps).
+
+%% @doc see riak_kv_update_hook:should_handoff/1
+-spec should_handoff(riak_kv_update_hook:handoff_dest()) -> boolean().
+should_handoff(HandoffSpec) ->
+    yz_kv:should_handoff(HandoffSpec).
+
+
 %%%===================================================================
 %%% API
 %%%===================================================================
