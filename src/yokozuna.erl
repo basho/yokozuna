@@ -182,10 +182,11 @@ search_fold(Index, Query, Filter, F, Acc) ->
     Params = [{q, Query},
               {fq, Filter},
               {start, Start},
-              {rows, 100},
+              {rows, 100},                      % @todo 100 is small. make configurable somehow
               {fl, <<?YZ_RT_FIELD_S,",",?YZ_RB_FIELD_S,",",?YZ_RK_FIELD_S>>},
               {sort, <<?YZ_RT_FIELD_S," asc, ",?YZ_RB_FIELD_S," asc, ",?YZ_RK_FIELD_S," asc">>},
               {omitHeader, <<"true">>},
+              {indent, <<"false">>},
               {wt, <<"json">>}],
     {_, Body} = yz_solr:dist_search(Index, Params),
     case extract_docs(Body) of
