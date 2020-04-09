@@ -24,6 +24,7 @@
 
 -include_lib("riak_pb/include/riak_search_pb.hrl").
 -include("yokozuna.hrl").
+-include("stacktrace.hrl").
 
 -behaviour(riak_api_pb_service).
 
@@ -114,10 +115,9 @@ maybe_process(true, #rpbsearchqueryreq{index=Index}=Msg, State) ->
                     yz_stat:search_fail(),
                     ?INFO("~p ~p ~p~n", [Message, URL, Err]),
                     {error, Message, State};
-                _:Reason ->
+                ?_exception_(_, Reason, StackToken) ->
                     yz_stat:search_fail(),
-                    Trace = erlang:get_stacktrace(),
-                    ?ERROR("~p ~p~n", [Reason, Trace]),
+                    ?ERROR("~p ~p~n", [Reason, ?_get_stacktrace_(StackToken)]),
                     {error, ?YZ_ERR_QUERY_FAILURE, State}
             end;
         {error, missing_query} ->

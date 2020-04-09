@@ -30,3 +30,4 @@ dialyzer_unhandled_warnings
 /.eqc-info
 /current_counterexample.eqc
 data/
+rebar.lock
