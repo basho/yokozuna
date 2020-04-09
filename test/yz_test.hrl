@@ -1,11 +1,13 @@
 %% Macros and functions to shared across tests.
 -include_lib("eunit/include/eunit.hrl").
+-include("../src/stacktrace.hrl").
 
 -define(STACK_IF_FAIL(Expr),
         try
             _ = Expr, ok
-        catch _:_ ->
-                Trace = erlang:get_stacktrace(),
+        catch  
+            ?_exception_(_, _, StackToken) ->
+                Trace = ?_get_stacktrace_(StackToken),
                 ?debugFmt("~n~p failed: ~p~n", [??Expr, Trace]),
                 throw({expression_failed, ??Expr})
         end).
