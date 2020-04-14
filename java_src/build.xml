@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="yokozuna">
+
+  <property name="ant.build.javac.source" value="8" />
+  <property name="ant.build.javac.target" value="8" />
+  <property name="ant.build.javac.destdir" value="out" />
+
+  <property name="solr_vsn"   value="7.3.1" />
+  <property name="yz_vsn"     value="3.2"   />
+  <property name="yz_mon_vsn" value="1.2"   />
+
+  <property name="out">out</property>
+  <property name="tmp">../yz-build</property>
+  
+  <target name="all">
+    <mkdir dir="${out}"/>
+    <delete>
+      <fileset dir="${out}" includes="**/*.class"/>
+    </delete>
+    <antcall target="yz-handler.jar"/>
+    <antcall target="yz-monitor.jar"/>
+  </target>
+  
+  <target name="yz-handler.jar" depends="c">
+    <jar destfile="${tmp}/yokozuna-${yz_vsn}.jar"
+         basedir="${out}"
+         includes="com/basho/yokozuna/handler/**/*.class"
+         />
+    <!-- + com/basho/yokozuna/query/**/*.class -->
+  </target>
+
+  <target name="yz-monitor.jar" depends="c">
+    <jar destfile="${tmp}/yz_monitor-${yz_mon_vsn}.jar"
+         basedir="${out}"
+         includes="com/basho/yokozuna/monitor/**/*.class"
+         />
+  </target>
+      
+   <target name="c">
+     <javac srcdir="." includeantruntime="false"
+            destdir="${out}"
+            debug="on" debuglevel="lines"
+            includeDestClasses="no"
+            >
+        <classpath>
+          <!-- <fileset dir="../build/solr-jars"/> -->
+          <!-- <fileset dir="../build/solr-${solr_vsn}-SNAPSHOT/dist"/> -->
+          <!-- <fileset dir="../build/solr-${solr_vsn}-SNAPSHOT/dist/solrj-lib"/> -->
+          <fileset dir="../build/solr-${solr_vsn}/server/lib"/>
+          <fileset dir="../build/solr-${solr_vsn}/server/solr-webapp/webapp/WEB-INF/lib"/>
+        </classpath>
+      </javac>
+   </target>
+      
+   <target name="docs">
+     <javadoc linksource="yes"
+              sourcepath="." destdir="doc" access="private" source="8"
+              includenosourcepackages="yes"
+              >
+       <classpath>
+          <fileset dir="../build/solr-${solr_vsn}/server/lib"/>
+          <fileset dir="../build/solr-${solr_vsn}/server/solr-webapp/webapp/WEB-INF/lib"/>
+        </classpath>
+     </javadoc>
+   </target>
+
+</project>
+

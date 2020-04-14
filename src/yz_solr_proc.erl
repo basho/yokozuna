@@ -166,7 +166,7 @@ handle_info({check_solr, WaitTimeSecs}, S=?S_MATCH) ->
         {false, _} ->
             %% solr did not finish startup quickly enough, or has just
             %% crashed and the exit message is on its way, shutdown
-            {stop, "solr didn't start in alloted time", S}
+            {stop, "solr didn't start in allowed time", S}
     end;
 handle_info(tick, #state{is_up=IsUp, enable_dist_query=EnableDistQuery} = S) ->
     NewIsUp = yz_solr:is_up(),
@@ -228,37 +228,54 @@ build_cmd(_JavaPath, _SolrPort, _SolrJXMPort, "data/::yz_solr_start_timeout::", 
     %% happy, but will never respond to pings, so we can test the
     %% timeout capability
     {os:find_executable("grep"), ["foo"]};
-build_cmd(JavaPath, SolrPort, SolrJMXPort, Dir, TempDir) ->
+build_cmd(JavaPath, SolrPort, _SolrJMXPort, Dir, TempDir) ->
     YZPrivSolr = filename:join([?YZ_PRIV, "solr"]),
     {ok, Etc} = application:get_env(riak_core, platform_etc_dir),
-    Headless = "-Djava.awt.headless=true",
-    SolrHome = "-Dsolr.solr.home=" ++ filename:absname(Dir),
-    HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
-    JettyHome = "-Djetty.home=" ++ YZPrivSolr,
-    JettyTemp = "-Djetty.temp=" ++ filename:absname(TempDir),
-    Port = "-Djetty.port=" ++ integer_to_list(SolrPort),
-    CP = "-cp",
-    CP2 = filename:join([YZPrivSolr, "start.jar"]),
-    %% log4j.properties must be in the classpath unless a full URL
-    %% (e.g. file://) is given for it, and we'd rather not put etc or
-    %% data on the classpath, but we have to templatize the file to
-    %% get the platform log directory into it
-    Logging = "-Dlog4j.configuration=file://" ++
-        filename:join([filename:absname(Etc), "solr-log4j.properties"]),
-    LibDir = "-Dyz.lib.dir=" ++ filename:join([?YZ_PRIV, "java_lib"]),
-    Class = "org.eclipse.jetty.start.Main",
-    case SolrJMXPort of
-        undefined ->
-            JMX = [];
-        _ ->
-            JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ integer_to_list(SolrJMXPort),
-            JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
-            JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
-            JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
-    end,
+    {ok, Log} = application:get_env(riak_core, platform_log_dir),
 
-    Args = [Headless, JettyHome, JettyTemp, Port, SolrHome, HostContext, CP, CP2, Logging, LibDir]
-        ++ string:tokens(solr_jvm_opts(), " ") ++ JMX ++ [Class],
+    JOptions = [
+                { "java.awt.headless", true },
+
+                { "solr.solr.home",    filename:absname(Dir) },
+                { "solr.log.dir",      filename:absname(Log) },
+
+                { "jetty.home",        YZPrivSolr },
+                { "jetty.base",        YZPrivSolr },
+                { "jetty.port",        integer_to_binary(SolrPort) },
+                { "jetty.temp",        filename:absname(TempDir) },
+
+                %% log4j.properties must be in the classpath unless a full URL
+                %% (e.g. file://) is given for it, and we'd rather not put etc or
+                %% data on the classpath, but we have to templatize the file to
+                %% get the platform log directory into it
+                { "log4j.configuration",
+                  "file://" ++ filename:join([filename:absname(Etc), "solr-log4j.properties"])
+                },
+
+                { "yz.lib.dir", filename:join([?YZ_PRIV, "java_lib"]) }
+               ],
+
+    %% HostContext = "-DhostContext=" ++ ?SOLR_HOST_CONTEXT,
+
+    StartJAR = filename:join([YZPrivSolr, "start.jar"]),
+
+    %% @TODO
+    %% case SolrJMXPort of
+    %%     undefined ->
+    %%         JMX = [];
+    %%     _ ->
+    %%         JMXPortArg = "-Dcom.sun.management.jmxremote.port=" ++ integer_to_list(SolrJMXPort),
+    %%         JMXAuthArg = "-Dcom.sun.management.jmxremote.authenticate=false",
+    %%         JMXSSLArg = "-Dcom.sun.management.jmxremote.ssl=false",
+    %%         JMX = [JMXPortArg, JMXAuthArg, JMXSSLArg]
+    %% end,
+
+    JOptArgs = [ io_lib:format("-D~ts=~ts", [K,V]) || {K,V} <- JOptions ],
+
+    Args = JOptArgs
+        ++ string:tokens(solr_jvm_opts(), " ")
+        ++ ['-jar', StartJAR]
+        ++ ['--module=http'],
     {JavaPath, Args}.
 
 %% @private

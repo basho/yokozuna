@@ -23,7 +23,8 @@
 -include("yokozuna.hrl").
 -compile([export_all, nowarn_export_all]).
 
--define(SCHEMA_VSN, "1.5").
+-define(SCHEMA_VSN_OLD, "1.5").
+-define(SCHEMA_VSN,     "1.6").
 -type schema_err() :: {error, string()}.
 
 %%%===================================================================
@@ -124,6 +125,8 @@ verify_name(Name) ->
 -spec verify_vsn({ok, schema()} | schema_err()) -> {ok, schema()} | schema_err().
 verify_vsn({ok, Schema}) ->
     case xmerl_xpath:string("string(/schema/@version)", Schema) of
+        {xmlObj, string, ?SCHEMA_VSN_OLD} ->
+            {ok, Schema};
         {xmlObj, string, ?SCHEMA_VSN} ->
             {ok, Schema};
         _ ->
