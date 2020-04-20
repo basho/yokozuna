@@ -18,6 +18,7 @@
 %%
 %%-------------------------------------------------------------------
 -module(yz_core_properties_create_unload).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 

@@ -1,4 +1,5 @@
 -module(yz_solr_intercepts).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -type index_name() :: binary().

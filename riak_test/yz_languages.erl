@@ -1,6 +1,7 @@
 %% -*- coding: utf-8 -*-
 %% @doc Test the index adminstration API in various ways.
 -module(yz_languages).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 

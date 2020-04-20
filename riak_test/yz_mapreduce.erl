@@ -6,6 +6,7 @@
 %%
 %% @doc Test Yokozuna's map/reduce integration.
 -module(yz_mapreduce).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include("yokozuna.hrl").

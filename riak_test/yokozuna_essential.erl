@@ -1,4 +1,5 @@
 -module(yokozuna_essential).
+-compile(nowarn_export_all).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
                 search_expect/5, search_expect/6,

@@ -22,6 +22,7 @@
 %% http://docs.basho.com/riak/latest/dev/search/custom-extractors/#An-Example-Custom-Extractor
 
 -module(yz_noop_extractor_intercepts).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include("intercept.hrl").
 

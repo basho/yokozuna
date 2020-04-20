@@ -1,6 +1,7 @@
 %% @doc Ensure that only approved users can search,index,schema
 %%      if security is activated
 -module(yz_security).
+-compile(nowarn_export_all).
 -compile(export_all).
 -import(yz_rt, [host_entries/1]).
 -import(rt, [connection_info/1,

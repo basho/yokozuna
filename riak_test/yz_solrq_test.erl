@@ -21,6 +21,7 @@
 %% @doc Confirm that the batching and queueing behavior in yz_solrq and
 %%      related modules works correctly.
 -module(yz_solrq_test).
+-compile(nowarn_export_all).
 -export([confirm/0]).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").

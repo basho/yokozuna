@@ -18,6 +18,7 @@
 %%
 %%-------------------------------------------------------------------
 -module(yz_solrq_helper_intercepts).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -include("intercept.hrl").

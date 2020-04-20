@@ -1,5 +1,5 @@
 -module(yz_crdt).
-
+-compile(nowarn_export_all).
 -compile(export_all).
 -compile({parse_transform, rt_intercept_pt}).
 

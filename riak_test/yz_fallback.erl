@@ -1,5 +1,6 @@
 %% @doc Verify that fallback data is handled properly.  I.e. not indexed.
 -module(yz_fallback).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -define(NUM_KEYS, 1000).

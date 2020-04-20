@@ -25,6 +25,7 @@
 
 
 -module(yz_default_bucket_type_upgrade).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("riakc/include/riakc.hrl").
