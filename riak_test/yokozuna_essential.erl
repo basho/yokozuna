@@ -350,7 +350,7 @@ delete_key(Cluster, Bucket, Key) ->
     Node = yz_rt:select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
-    ok = C:delete(Bucket, Key).
+    ok = riak_client:delete(Bucket, Key, C).
 
 delete_some_data(Cluster, Bucket, NumKeys, ReapSleep) ->
     Keys = lists:usort(yz_rt:random_keys(NumKeys)),

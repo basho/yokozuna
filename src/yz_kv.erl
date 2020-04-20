@@ -76,7 +76,7 @@ compute_tree_info() ->
 
 -spec get(any(), binary(), binary()) -> any().
 get(C, Bucket, Key) ->
-    case C:get(Bucket, Key) of
+    case riak_client:get(Bucket, Key, C) of
         {ok, O} ->
             {value, riak_object:get_value(O)};
         Other ->
@@ -291,7 +291,7 @@ put(Client, Bucket, Key, Value, ContentType) ->
     O = riak_object:new(Bucket, Key, Value, ContentType),
     BucketProps = riak_core_bucket:get_bucket(Bucket),
     N = riak_core_bucket:n_val(BucketProps),
-    Client:put(O, [{pw,N},{w,N},{dw,N}]).
+    riak_client:put(O, [{pw,N},{w,N},{dw,N}], Client).
 
 %%%===================================================================
 %%% Private
