@@ -42,7 +42,7 @@ basic_schema_test() ->
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_port", 12345),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_jmx_port", 54321),
     cuttlefish_unit:assert_config(Config, "yokozuna.solr_jvm_opts",
-                                  "-d64 -Xms1g -Xmx1g"),
+                                  "-Xms1g -Xmx1g"),
     cuttlefish_unit:assert_config(Config, "yokozuna.anti_entropy_data_dir",
                                   "./data/yolo/yz_anti_entropy"),
     cuttlefish_unit:assert_config(Config, "yokozuna.root_dir", "./data/yolo/yz"),
