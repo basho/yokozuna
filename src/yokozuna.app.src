@@ -2,7 +2,7 @@
 {application, yokozuna,
  [
   {description, "Integrating Apache Solr into Riak"},
-  {vsn, {cmd, "git describe --always --tags | sed 's/-/-sentenai-/3'"}},
+  {vsn, git},
   {registered, []},
   {applications, [
                   kernel,
@@ -12,7 +12,6 @@
                   riak_core,
                   riak_kv,
                   kvc,
-                  gen_fsm_compat,
                   clique,
                   riak_api
                  ]},
