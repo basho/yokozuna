@@ -461,7 +461,7 @@ prop_correct() ->
                                 end)))).
 
 %% Private
--spec set_treedata(obj(), dict()) -> dict().
+-spec set_treedata(obj(), dict:dict()) -> dict:dict().
 set_treedata(RObj, D) ->
     BKey = eqc_util:get_bkey_from_object(RObj),
     dict:store(BKey, yz_kv:hash_object(RObj), D).

@@ -12,7 +12,6 @@
                   riak_core,
                   riak_kv,
                   kvc,
-                  gen_fsm_compat,
                   clique,
                   riak_api
                  ]},

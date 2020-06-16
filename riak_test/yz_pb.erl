@@ -1,5 +1,6 @@
 %% @doc Test the index adminstration API in various ways.
 -module(yz_pb).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("riak_pb/include/riak_kv_pb.hrl").

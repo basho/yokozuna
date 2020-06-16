@@ -1,5 +1,6 @@
 %% @doc Ensure that JVM killing works.
 -module(yz_monitor_solr).
+-compile(nowarn_export_all).
 -compile(export_all).
 -import(yz_rt, [host_entries/1]).
 -include_lib("eunit/include/eunit.hrl").

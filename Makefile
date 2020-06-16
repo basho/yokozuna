@@ -12,10 +12,8 @@ compile: deps
 	$(REBAR) compile
 
 compile-riak-test: compile
-#	I'm truly sorry
-	mkdir -p riak_test/ebin
-	erlc +nowarn_export_all -oriak_test/ebin -Iinclude -I_build/default/lib \
-		-pz _build/default/lib/yokozuna/ebin riak_test/*.erl
+	mkdir -p misc/bench/ebin
+	cp _build/default/lib/yokozuna/misc/bench/src/*.beam misc/bench/ebin/
 
 deps:
 	$(REBAR) get-deps

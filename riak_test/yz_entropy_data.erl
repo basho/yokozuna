@@ -23,7 +23,7 @@
 %% @end
 
 -module(yz_entropy_data).
-
+-compile(nowarn_export_all).
 -compile(export_all).
 -include("yokozuna.hrl").
 -include_lib("eunit/include/eunit.hrl").

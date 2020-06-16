@@ -4,6 +4,7 @@
 %% Callbacks
 -export([new/1,
          run/4]).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
@@ -147,8 +148,8 @@ run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruits=u
 run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
     %% Select a random number of terms, NumTerms, from the shuffled
     %% Fruits list.
-    NumTerms = random:uniform(MaxTerms),
-    Offset = random:uniform(Len),
+    NumTerms = rand:uniform(MaxTerms),
+    Offset = rand:uniform(Len),
     TermList = lists:sublist(Fruits, Offset, NumTerms),
     CardList = lists:sublist(Cards, Offset, NumTerms),
     ExpectedNumFound = lists:min(CardList),
@@ -156,7 +157,7 @@ run({random_fruit_search, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, 
     run({search, Query, FL, ExpectedNumFound}, K, V, S);
 
 run({random_fruit_search_per_index, FL, MaxTerms, MaxCardinality}, K, V, S=#state{indexes=Indexes}) ->
-    Index = lists:nth(random:uniform(length(Indexes)), Indexes),
+    Index = lists:nth(rand:uniform(length(Indexes)), Indexes),
     S2 = S#state{fruits=gen_fruits(MaxCardinality), index=Index},
     run({random_fruit_search, FL, MaxTerms, MaxCardinality}, K, V, S2);
 
@@ -246,8 +247,8 @@ run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S=#state{fruit
     run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S2);
 
 run({random_fruit_search_pb, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruits, Cards}}) ->
-    NumTerms = random:uniform(MaxTerms),
-    Offset = random:uniform(Len),
+    NumTerms = rand:uniform(MaxTerms),
+    Offset = rand:uniform(Len),
     TermList = lists:sublist(Fruits, Offset, NumTerms),
     CardList = lists:sublist(Cards, Offset, NumTerms),
     ExpectedNumFound = lists:min(CardList),
@@ -255,7 +256,7 @@ run({random_fruit_search_pb, FL, MaxTerms, _}, K, V, S=#state{fruits={Len, Fruit
     run({search_pb, Query, FL, ExpectedNumFound}, K, V, S);
 
 run({random_fruit_search_pb_per_index, FL, MaxTerms, MaxCardinality}, K, V, S=#state{indexes=Indexes}) ->
-    Index = lists:nth(random:uniform(length(Indexes)), Indexes),
+    Index = lists:nth(rand:uniform(length(Indexes)), Indexes),
     S2 = S#state{fruits=gen_fruits(MaxCardinality), index=Index},
     run({random_fruit_search_pb, FL, MaxTerms, MaxCardinality}, K, V, S2);
 
@@ -498,7 +499,7 @@ make_conn(Secure, User, Password, Cert) ->
 %% @doc Suffle the list.
 -spec shuffle(list()) -> list().
 shuffle(L) ->
-    L0 = lists:keysort(1, [{random:uniform(1000), X} || X <- L]),
+    L0 = lists:keysort(1, [{rand:uniform(1000), X} || X <- L]),
     [X || {_,X} <- L0].
 
 %% @private

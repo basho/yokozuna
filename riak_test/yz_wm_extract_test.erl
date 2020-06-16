@@ -1,5 +1,6 @@
 %% @doc Test the extractor API in various ways.
 -module(yz_wm_extract_test).
+-compile(nowarn_export_all).
 -compile(export_all).
 -import(yz_rt, [host_entries/1, select_random/1]).
 -include("yokozuna.hrl").

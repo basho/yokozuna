@@ -4,10 +4,11 @@
 %%      Terms} pairs as they are requested.
 -module(yz_file_terms).
 -behavior(gen_server).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 %% Callbacks
--export([init/1, handle_call/3, terminate/2]).
+-export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
 -define(MB, 1048576).
@@ -101,6 +102,9 @@ handle_call(line, _From, S=#state{cache=[], i=I, file=F}) ->
 handle_call(line, _From, S=#state{cache=[Line|Cache], i=I}) ->
     Is = integer_to_list(I),
     {reply, {Is, Line}, S#state{cache=Cache, i=I+1}}.
+
+handle_cast(_Msg, State) ->
+    {norepl, State}.
 
 terminate(_Reason, _State) -> ignore.
 

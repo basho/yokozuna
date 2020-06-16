@@ -18,6 +18,7 @@
 %%
 %%-------------------------------------------------------------------
 -module(yz_handoff).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("riakc/include/riakc.hrl").

@@ -18,6 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 -module(yz_solrq_drain_mgr_intercepts).
+-compile(nowarn_export_all).
 -compile(export_all).
 
 -define(M, yz_solrq_drain_mgr_orig).

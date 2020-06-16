@@ -1,5 +1,6 @@
 %% @doc Verify yokozuna cannot block kv handoff forever
 -module(yz_handoff_blocking).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 -define(FMT(S, Args), lists:flatten(io_lib:format(S, Args))).

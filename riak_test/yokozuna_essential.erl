@@ -1,4 +1,5 @@
 -module(yokozuna_essential).
+-compile(nowarn_export_all).
 -compile(export_all).
 -import(yz_rt, [host_entries/1,
                 search_expect/5, search_expect/6,
@@ -349,7 +350,7 @@ delete_key(Cluster, Bucket, Key) ->
     Node = yz_rt:select_random(Cluster),
     lager:info("Deleting key ~s", [Key]),
     {ok, C} = riak:client_connect(Node),
-    ok = C:delete(Bucket, Key).
+    ok = riak_client:delete(Bucket, Key, C).
 
 delete_some_data(Cluster, Bucket, NumKeys, ReapSleep) ->
     Keys = lists:usort(yz_rt:random_keys(NumKeys)),

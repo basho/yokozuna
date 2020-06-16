@@ -1,6 +1,7 @@
 %% @doc Ensure that if Solr doesn't start before the startup wait,
 %% yokozuna tears down the Riak node.
 -module(yz_solr_start_timeout).
+-compile(nowarn_export_all).
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 

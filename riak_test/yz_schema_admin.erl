@@ -1,5 +1,6 @@
 %% @doc Test the index schema API in various ways.
 -module(yz_schema_admin).
+-compile(nowarn_export_all).
 -compile(export_all).
 -import(yz_rt, [host_entries/1, select_random/1]).
 -include("yokozuna.hrl").
