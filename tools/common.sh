@@ -18,8 +18,8 @@ mk_sha()
 
     if type sha512t256 &>/dev/null; then
         sha512t256 $file > $file.sha512
-    elif type shasum &>/dev/null; then
-        shasum -a 512256 $file > $file.sha512
+    elif type sha512sum &>/dev/null; then
+        sha512sum $file > $file.sha512
     else
         echo "Unable to locate program to compute SHA"
         exit 1
