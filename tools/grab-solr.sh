@@ -59,7 +59,7 @@ get_solr()
             echo "Downloading original Solr..."
             download "${ARTIFACT_URL_PREFIX}/$FILENAME"
             download "${ARTIFACT_URL_PREFIX}/$FILENAME.sha1"
-            set -u; shasum -s -c $FILENAME.sha1
+            set -u; sha1sum --status -c $FILENAME.sha1
             mkdir -p -m 1777 $TMP_DIR
             cp $FILENAME $TMP_DIR
         fi
