@@ -31,7 +31,7 @@ download()
     if which fetch > /dev/null; then
         fetch $1
     elif which wget > /dev/null; then
-        wget --progress=dot:mega $1
+        wget --no-check-certificate --progress=dot:mega $1
     elif which curl > /dev/null; then
         curl --progress-bar -O $1
     fi
