@@ -151,6 +151,7 @@ extract_params(#rpbsearchqueryreq{q=Query, sort=Sort,
     Params1 = [P || P={_,V} <- MaybeParams, V /= undefined andalso V /= []],
     Params2 = [{q,Query},
                {wt,<<"json">>},
+               {indent,false},
                {omitHeader,true}
                |Params1],
     {ok, Params2}.
