@@ -17,7 +17,8 @@
            {default_bucket_props, [{allow_mult, true}]},
            {ssl, [
              {certfile, ?CERT_FILE(CertDir, "site3.basho.com")},
-             {keyfile, ?KEY_FILE(CertDir, "site3.basho.com")}
+             {keyfile, ?KEY_FILE(CertDir, "site3.basho.com")},
+             {cacertfile, ?ROOT_CERT(CertDir)}
            ]}
           ]},
          {riak_api, [
