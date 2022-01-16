@@ -10,7 +10,7 @@
 
 set    -eu
 
-[ $(basename $PWD) == "tools" ] || cd tools
+[ $(basename $PWD) = "tools" ] || cd tools
 . ./common.sh
 
 
