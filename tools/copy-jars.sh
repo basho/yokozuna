@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-[ $(basename $PWD) == "tools" ] || cd tools
+[ $(basename $PWD) = "tools" ] || cd tools
 . ./common.sh
 
 JAVA_LIB=../priv/java_lib

@@ -3,7 +3,7 @@
 # Build JAR file containing customer Solr request handlers.
 set -eu
 
-[ $(basename $PWD) == "tools" ] || cd tools
+[ $(basename $PWD) = "tools" ] || cd tools
 . ./common.sh
 
 
